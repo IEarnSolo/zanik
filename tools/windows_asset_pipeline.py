@@ -18,6 +18,17 @@ RECIPE_VERSION = 1
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 
 
+def remove_tree(path: Path) -> None:
+    def handle_error(function, target, error):
+        if isinstance(error[1], FileNotFoundError):
+            return
+        raise error[1]
+    try:
+        shutil.rmtree(path, onerror=handle_error)
+    except FileNotFoundError:
+        pass
+
+
 def run(command: list[str], label: str, *, quiet: bool = False) -> None:
     print(f"[Zanik] {label}", flush=True)
     completed = subprocess.run(
@@ -112,17 +123,17 @@ def extract(args: argparse.Namespace) -> int:
         asset_tool = scripts / "zanik_assets.py"
         run([py, str(asset_tool), "validate", "--generated-root", str(web)], "Validating generated asset tree")
         replacement = output.with_name(output.name + ".new")
-        if replacement.exists(): shutil.rmtree(replacement)
+        if replacement.exists(): remove_tree(replacement)
         shutil.copytree(web, replacement)
         previous = output.with_name(output.name + ".previous")
         if output.exists():
-            if previous.exists(): shutil.rmtree(previous)
+            if previous.exists(): remove_tree(previous)
             output.replace(previous)
         replacement.replace(output)
         print(json.dumps({"output": str(output), "work": str(temporary) if keep else None, "ready": True}, sort_keys=True))
         return 0
     finally:
-        if not keep and temporary.exists(): shutil.rmtree(temporary)
+        if not keep and temporary.exists(): remove_tree(temporary)
 
 
 def main() -> int:

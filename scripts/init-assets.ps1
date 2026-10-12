@@ -29,16 +29,17 @@ if ($InstallBundle) {
     exit $LASTEXITCODE
 }
 $GameRoot = [IO.Path]::GetFullPath($GameRoot)
-$Work = Join-Path ([IO.Path]::GetTempPath()) 'ZanikAssetWork'
+$Work = Join-Path ([IO.Path]::GetTempPath()) ("ZanikAssetWork-" + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $Work -Force | Out-Null
 $Generated = Join-Path $Work 'generated-web'
 $MappingWasGenerated = $false
+try {
 if (-not $UsmapPath) {
     if ($SkipGameLaunch) { throw '-SkipGameLaunch requires -UsmapPath because cooked catalog assets need locally generated mappings.' }
     $Ue4ss = Join-Path $Root 'third_party\ue4ss'
     $UsmapPath = Join-Path $Work 'Mappings.usmap'
     & $Python $AssetTool prepare-mappings --game-root $GameRoot --ue4ss-root $Ue4ss --output $UsmapPath --work-root (Join-Path $Work 'mapping')
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    if ($LASTEXITCODE -ne 0) { throw "Mapping generation failed with exit code $LASTEXITCODE" }
     $MappingWasGenerated = $true
 } else {
     $UsmapPath = [IO.Path]::GetFullPath($UsmapPath)
@@ -49,13 +50,13 @@ $PipelineArguments = @($Pipeline, '--game-root', $GameRoot, '--output', $Generat
 if ($KeepWork) { $PipelineArguments += '--keep-work' }
 if ($CatalogsOnly) { Write-Warning '-CatalogsOnly retains artwork referenced by runtime catalogs and omits only unreachable exports.' }
 & $Python @PipelineArguments
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($LASTEXITCODE -ne 0) { throw "Asset extraction failed with exit code $LASTEXITCODE" }
 $Build = (& $Python $AssetTool show-build --game-root $GameRoot).Trim()
 if (-not $Build) { $Build = 'unknown' }
 $Bundle = Join-Path $OutputDirectory "zanik-assets-$Build.zip"
 $Versions = '{"python":"3.12.10-embed","unrealAssetScout":"0.5.0","ue4ss":"3.0.1-1165-g12ec45a0"}'
 & $Python $AssetTool bundle --game-root $GameRoot --generated-root $Generated --output $Bundle --mapping $UsmapPath --tool-versions $Versions --recipe-version 1 --profile $Recipe
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($LASTEXITCODE -ne 0) { throw "Asset bundling failed with exit code $LASTEXITCODE" }
 $Parts = Join-Path $OutputDirectory "zanik-assets-$Build-parts"
 $ResolvedOutput = [IO.Path]::GetFullPath($OutputDirectory).TrimEnd([IO.Path]::DirectorySeparatorChar)
 $ResolvedParts = [IO.Path]::GetFullPath($Parts)
@@ -64,12 +65,16 @@ if (-not $ResolvedParts.StartsWith($ResolvedOutput + [IO.Path]::DirectorySeparat
 }
 if (Test-Path -LiteralPath $ResolvedParts) { Remove-Item -LiteralPath $ResolvedParts -Recurse -Force }
 & $Python $AssetTool bundle-set --bundle $Bundle --output-dir $Parts
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($LASTEXITCODE -ne 0) { throw "Multipart bundling failed with exit code $LASTEXITCODE" }
 & $Python $AssetTool validate --bundle $Bundle
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-if ($MappingWasGenerated -and -not $KeepWork -and (Test-Path -LiteralPath $UsmapPath)) {
-    Remove-Item -LiteralPath $UsmapPath -Force
-}
+if ($LASTEXITCODE -ne 0) { throw "Bundle validation failed with exit code $LASTEXITCODE" }
 Write-Host "Created $Bundle"
 Write-Host "Created Pterodactyl bundle set at $Parts"
 Write-Host "Upload the part directory to /home/container/zanik-assets-incoming/$Build/ and install bundle-index.json."
+} finally {
+    if ($KeepWork) {
+        Write-Warning "Intermediate game exports remain at '$Work'. They are game-derived and must not be redistributed."
+    } elseif (Test-Path -LiteralPath $Work) {
+        Remove-Item -LiteralPath $Work -Recurse -Force
+    }
+}
