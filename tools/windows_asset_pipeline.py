@@ -134,9 +134,9 @@ def extract(args: argparse.Namespace) -> int:
     if not mapping.is_file(): raise ValueError(f"mapping file does not exist: {mapping}")
     work_parent = args.work_root.resolve() if args.work_root else output.parent
     work_parent.mkdir(parents=True, exist_ok=True)
-    if os.name == "nt" and len(str(work_parent)) > 100:
-        raise ValueError("the intermediate work root is too deep for cooked asset paths; use a short path such as $env:TEMP\\ZanikAssetWork")
-    temporary = args.resume_work.resolve() if args.resume_work else Path(tempfile.mkdtemp(prefix="zanik-client-extract-", dir=work_parent))
+    if os.name == "nt" and len(str(work_parent)) > 70:
+        raise ValueError("the intermediate work root is too deep for cooked asset paths; use a short path such as $env:TEMP\\zw-assets")
+    temporary = args.resume_work.resolve() if args.resume_work else Path(tempfile.mkdtemp(prefix="zx-", dir=work_parent))
     keep = bool(args.keep_work or args.resume_work)
     try:
         json_root = temporary / "json"; texture_root = temporary / "textures"; font_root = temporary / "font"; web = temporary / "web"; internal = temporary / "internal"
