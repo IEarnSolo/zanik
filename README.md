@@ -4,6 +4,8 @@ Zanik is a Linux x86-64 server-side mod for RuneScape: Dragonwilds. It exposes p
 
 Zanik is a native `LD_PRELOAD` library. The recommended installation leaves the official game executable untouched and starts it through `zanik-server`. Executable replacement remains available only for hosting panels whose egg cannot change its startup command; it is explicitly non-recommended.
 
+For Pterodactyl administrators on Windows, the recommended download is **Zanik Manager**. The portable app installs and updates the server package, edits configuration, runs diagnostics, builds assets from a licensed client, and uploads them without requiring Python or SSH. See [docs/manager.md](docs/manager.md).
+
 ## Choose an installation
 
 - Can edit the startup command: use **wrapper mode** (recommended).

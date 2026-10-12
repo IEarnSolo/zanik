@@ -9,6 +9,7 @@ cp "$ROOT/dist/zanik-compat-analyzer" "$RELEASE/bin/zanik-compat-analyzer"
 cp "$ROOT/scripts/zanik-server" "$RELEASE/bin/zanik-server"
 cp "$ROOT/scripts/lib/zanik-common.sh" "$RELEASE/lib/zanik-common.sh"
 cp "$ROOT/config/zanik.conf.example" "$RELEASE/config/zanik.conf.example"
+cp "$ROOT/config/zanik-config.schema.json" "$RELEASE/config/zanik-config.schema.json"
 cp "$ROOT/deploy/compatibility.tsv" "$RELEASE/compatibility/compatibility.tsv"
 cp "$ROOT/tools/zanik_assets.py" "$RELEASE/tools/zanik_assets.py"
 cp "$ROOT/VERSION" "$RELEASE/VERSION"
@@ -20,6 +21,7 @@ ORIGINAL=$(sha256sum "$GAME" | awk '{print $1}')
 "$RELEASE/scripts/install.sh" --server-root "$SERVER" --mode wrapper
 [ "$(sha256sum "$GAME" | awk '{print $1}')" = "$ORIGINAL" ]
 grep -q '"mode":"wrapper"' "$SERVER/zanik/install-state.json"
+[ -f "$SERVER/zanik/config/zanik-config.schema.json" ]
 [ "$(stat -c %a "$SERVER/zanik-data/console-admin.key")" = 600 ]
 "$SERVER/zanik/scripts/doctor.sh" --server-root "$SERVER" --json | grep -q '"healthy":true'
 "$RELEASE/scripts/install.sh" --server-root "$SERVER" --mode wrapper

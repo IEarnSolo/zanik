@@ -2,6 +2,27 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.0] - 2026-10-12
+
+### Added
+
+- Zanik Manager, a portable Windows GUI for managing one or more Pterodactyl servers without Python, SSH, or manual file copying.
+- Windows Credential Manager storage for panel API keys, explicit remote-HTTP warnings, redacted activity logs, and reviewable support bundles.
+- Journaled install, repair, update, uninstall, configuration, Doctor, and asset-activation workflows with verified staging, backups, rollback records, and interrupted-operation recovery.
+- Integrated licensed-client asset extraction, a two-version validated bundle cache, and direct upload and activation from the manager.
+- A shared configuration schema and release payload manifest to keep GUI and command-line behavior aligned.
+
+### Distribution
+
+- The recommended Windows download is an all-in-one manager containing the matching server payload and asset extractor.
+- Standalone Linux server and Windows/Linux asset-tool archives remain available for advanced and command-line installations.
+- The initial portable manager is unsigned and may display a Windows SmartScreen warning. Release checksums remain published, and CI supports optional protected-variable signing.
+
+### Known limitations
+
+- Pterodactyl is the only GUI hosting provider in this release. Unknown eggs may require a guided startup-command change for wrapper mode.
+- The native server loader remains Linux x86-64 only. The GUI and asset extractor run on Windows x86-64.
+
 ## [0.1.2] - 2026-10-12
 
 ### Added

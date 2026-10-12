@@ -65,7 +65,7 @@ def release_files(directory: Path, version: str) -> list[Path]:
     archives = sorted(directory.glob(f"zanik-*{version}.*"))
     paths = archives + [directory / name for name in FILES]
     missing = [str(path) for path in paths if not path.is_file()]
-    if missing or len(archives) != 4:
+    if missing or len(archives) != 5:
         raise ValueError(f"release directory is incomplete: {missing or archives}")
     return paths
 
