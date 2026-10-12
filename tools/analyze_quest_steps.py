@@ -5,18 +5,11 @@ quest-scoped GameplayObjectRegistry landmarks named by an objective/location
 operation.  Wiki text is useful to review ordering, but never supplies coords.
 """
 from __future__ import annotations
-import json,math,re
+import argparse,json,math,re
 from pathlib import Path
 
-ROOT=Path(__file__).resolve().parents[1]
-CONTENT=ROOT/'dist/recipe-unlock-all-json-current'
-CATALOG=json.loads((ROOT/'web/quest-catalog.json').read_text(encoding='utf-8'))
-NPC=json.loads((ROOT/'web/npc-catalog.json').read_text(encoding='utf-8'))
-OUTPUT=ROOT/'dist/quest-step-analysis.json'
-PUBLIC=ROOT/'web/quest-step-locations.json'
-COVERAGE=ROOT/'docs/quest-step-location-coverage.md'
-OVERRIDES=ROOT/'deploy/quest-step-overrides.json'
-NPC_IDENTITIES=ROOT/'deploy/npc-identities.tsv'
+ROOT=CONTENT=OUTPUT=PUBLIC=COVERAGE=OVERRIDES=NPC_IDENTITIES=Path()
+CATALOG={};NPC={}
 
 def txt(v):
     return (v or {}).get('LocalizedString') or (v or {}).get('SourceString') or '' if isinstance(v,dict) else ''
@@ -128,6 +121,24 @@ def dungeon_entrances():
     return result
 
 def main():
+    global ROOT,CONTENT,CATALOG,NPC,OUTPUT,PUBLIC,COVERAGE,OVERRIDES,NPC_IDENTITIES
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--source',type=Path,required=True)
+    parser.add_argument('--quest-catalog',type=Path,required=True)
+    parser.add_argument('--quest-runtime-catalog',type=Path,required=True)
+    parser.add_argument('--npc-catalog',type=Path,required=True)
+    parser.add_argument('--npc-identities',type=Path,required=True)
+    parser.add_argument('--overrides',type=Path,required=True)
+    parser.add_argument('--analysis-output',type=Path,required=True)
+    parser.add_argument('--public-output',type=Path,required=True)
+    parser.add_argument('--coverage-output',type=Path,required=True)
+    args=parser.parse_args()
+    ROOT=CONTENT=args.source.resolve();OUTPUT=args.analysis_output;PUBLIC=args.public_output;COVERAGE=args.coverage_output
+    OVERRIDES=args.overrides;NPC_IDENTITIES=args.npc_identities
+    CATALOG=json.loads(args.quest_catalog.read_text(encoding='utf-8'))
+    NPC=json.loads(args.npc_catalog.read_text(encoding='utf-8'))
+    runtime_catalog=args.quest_runtime_catalog.read_text(encoding='utf-8').splitlines()
+    for path in (OUTPUT,PUBLIC,COVERAGE):path.parent.mkdir(parents=True,exist_ok=True)
     entrances=dungeon_entrances()
     overrides=json.loads(OVERRIDES.read_text(encoding='utf-8')) if OVERRIDES.exists() else {'schemaVersion':1,'relationships':[]}
     if overrides.get('schemaVersion')!=2:raise ValueError('unsupported quest-step override schema')
@@ -227,7 +238,7 @@ def main():
             override_by_step[identity]={**row,'objectiveKey':key}
     reports=[]
     for public in CATALOG['quests']:
-        internal=next((line.split('\t')[2] for line in (ROOT/'web/quest-runtime-catalog.tsv').read_text(encoding='utf-8').splitlines() if line and not line.startswith('#') and line.split('\t')[0]==public['id']), '')
+        internal=next((line.split('\t')[2] for line in runtime_catalog if line and not line.startswith('#') and line.split('\t')[0]==public['id']), '')
         asset=quest_assets.get(internal)
         if not asset:continue
         quest_path,quest=asset;p=quest.get('Properties') or {};scope=quest_scope_tokens(quest_path,internal,public)
@@ -411,6 +422,7 @@ def main():
                     if npc_type:
                         nodes=npc_nodes.get(reference,[])
                         if target.get('actorType'):nodes=[n for n in nodes if n.get('actorType')==target['actorType']]
+                        if target.get('stateKey'):nodes=[n for n in nodes if n.get('stateKey')==target['stateKey']]
                         if target.get('opaqueId'):nodes=[n for n in nodes if n.get('id')==target['opaqueId']]
                         if len(nodes)>1 and not target.get('allowMultiple'):raise ValueError(f"ambiguous NPC override {step_identity}: '{reference}' resolved {len(nodes)} placements; specify actorType/opaqueId or explicitly allowMultiple")
                         resolved=[{'kind':'npc','type':reference,'actorType':n.get('actorType'),'opaqueId':n.get('id'),'name':npc_type['name'],'map':{'x':n['x'],'y':n['y']},'world':{'x':n.get('worldX'),'y':n.get('worldY'),'z':n.get('worldZ')},'source':'web/npc-catalog.json'} for n in nodes]
@@ -422,7 +434,9 @@ def main():
                     resolved=[marker for marker in landmarks if marker.get('identifier')==reference]
                 if not resolved:unresolved.append(f'{kind}:{reference}')
                 for marker in resolved:
-                    qualifier=f" actor type '{target.get('actorType')}'" if target.get('actorType') else f" placement '{target.get('opaqueId')}'" if target.get('opaqueId') else ''
+                    qualifier=(f" actor type '{target.get('actorType')}'" if target.get('actorType') else
+                               f" state identity '{target.get('stateKey')}'" if target.get('stateKey') else
+                               f" placement '{target.get('opaqueId')}'" if target.get('opaqueId') else '')
                     resolved_marker={**marker}
                     if target.get('displayName'):resolved_marker['name']=target['displayName']
                     override_candidates.append({**resolved_marker,'role':target.get('role','destination'),'evidence':f"reviewed objective relationship to extracted game {kind.replace('_',' ')} '{reference}'{qualifier}: {override.get('reason','')}"})

@@ -33,18 +33,28 @@ tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owne
 
 python3 - "$ROOT/asset-tools/tools.lock.json" "$WORK" <<'PY'
 import json, pathlib, sys, urllib.request, hashlib
-lock=pathlib.Path(sys.argv[1]); work=pathlib.Path(sys.argv[2]); data=json.loads(lock.read_text())['tools']['retoc']
-for platform, suffix in [('linux-x86_64','tar.xz'),('windows-x86_64','zip')]:
-    record=data[platform]; target=work/f'retoc-{platform}.{suffix}'
-    urllib.request.urlretrieve(record['url'], target)
+lock=pathlib.Path(sys.argv[1]); work=pathlib.Path(sys.argv[2]); data=json.loads(lock.read_text())['tools']
+for name, record in data.items():
+    target=work/f'{name}.zip'
+    request=urllib.request.Request(record['url'], headers={'Accept':record.get('accept','application/octet-stream'), 'User-Agent':'Zanik-release-builder'})
+    with urllib.request.urlopen(request) as response, target.open('wb') as output:
+        while block := response.read(1024 * 1024): output.write(block)
     actual=hashlib.sha256(target.read_bytes()).hexdigest()
-    if actual != record['sha256']: raise SystemExit(f'checksum mismatch for {platform}: {actual}')
+    if actual != record['sha256']: raise SystemExit(f'checksum mismatch for {name}: {actual}')
 PY
-mkdir -p "$WORK/asset-linux/tools" "$WORK/asset-windows/tools"
-tar -xJf "$WORK/retoc-linux-x86_64.tar.xz" -C "$WORK/asset-linux"
-unzip -q "$WORK/retoc-windows-x86_64.zip" -d "$WORK/asset-windows"
+mkdir -p "$WORK/asset-linux/tools" "$WORK/asset-windows/tools" "$WORK/asset-windows/runtime" "$WORK/asset-windows/third_party/uas" "$WORK/asset-windows/third_party/ue4ss" "$WORK/asset-windows/asset-tools" "$WORK/asset-windows/deploy"
+unzip -q "$WORK/python-embed-windows-x86_64.zip" -d "$WORK/asset-windows/runtime"
+unzip -q "$WORK/unreal-asset-scout-windows-x86_64.zip" -d "$WORK/asset-windows/third_party/uas"
+unzip -q "$WORK/ue4ss-windows-x86_64.zip" -d "$WORK/asset-windows/third_party/ue4ss"
+printf '../tools\n' >> "$WORK/asset-windows/runtime/python312._pth"
+install -m 0644 "$ROOT/tools/zanik_assets.py" "$WORK/asset-linux/tools/zanik_assets.py"
+for file in zanik_assets windows_mapping windows_asset_pipeline generate_building_catalog generate_plan_item_catalog generate_world_catalogs generate_quest_catalog generate_web_assets generate_recipe_unlock_catalog analyze_quest_steps; do
+  install -m 0644 "$ROOT/tools/$file.py" "$WORK/asset-windows/tools/$file.py"
+done
+install -m 0644 "$ROOT/asset-tools/tools.lock.json" "$ROOT/asset-tools/extraction-recipes.json" "$ROOT/asset-tools/catalog-rules.json" "$WORK/asset-windows/asset-tools/"
+install -m 0644 "$ROOT/asset-tools/LICENSE-UnrealAssetScout.txt" "$WORK/asset-windows/third_party/uas/LICENSE.txt"
+install -m 0644 "$ROOT/deploy/quest-overrides.json" "$ROOT/deploy/quest-step-overrides.json" "$WORK/asset-windows/deploy/"
 for dir in asset-linux asset-windows; do
-  install -m 0644 "$ROOT/tools/zanik_assets.py" "$WORK/$dir/tools/zanik_assets.py"
   install -m 0644 "$ROOT/asset-tools/tools.lock.json" "$WORK/$dir/tools.lock.json"
   install -m 0644 "$ROOT/THIRD_PARTY_NOTICES.md" "$WORK/$dir/THIRD_PARTY_NOTICES.md"
 done

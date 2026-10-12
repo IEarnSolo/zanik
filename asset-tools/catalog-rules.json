@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "recipeExclusions": [
+    {
+      "internalName": "RECIPE_Armour_T0_Cape_EarlyAdopter",
+      "reason": "Legacy early-adopter entitlement recipe has no obtainable provider in the current cooked client data."
+    },
+    {
+      "internalName": "RECIPE_Armour_T0_Head_EarlyAdopter",
+      "reason": "Legacy early-adopter entitlement recipe has no obtainable provider in the current cooked client data."
+    }
+  ]
+}

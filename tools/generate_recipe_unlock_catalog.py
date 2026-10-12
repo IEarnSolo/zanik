@@ -884,24 +884,12 @@ def render_web_catalog(
         if piece in ids:
             actor_unlocks[actor].append(ids[piece])
 
-    icon_root = output_path.parent / "recipe-icons"
-    icon_root.mkdir(parents=True, exist_ok=True)
-    used_icons: set[str] = set()
-
     def public_icon(internal: str) -> str:
         icon_internal = buildable_to_piece.get(internal, internal)
-        source = next((candidate for candidate in (
-            output_path.parent / "items" / f"{icon_internal}.png",
-            output_path.parent / "buildings" / f"{icon_internal}.png",
-        ) if candidate.is_file()), None)
-        if source is None:
-            return ""
-        filename = hashlib.sha256(f"icon:{icon_internal}".encode()).hexdigest()[:16] + ".png"
-        destination = icon_root / filename
-        if not destination.exists() or destination.stat().st_size != source.stat().st_size:
-            shutil.copyfile(source, destination)
-        used_icons.add(filename)
-        return f"/assets/recipe-icons/{filename}"
+        for group in ("items", "buildings"):
+            if (output_path.parent / group / f"{icon_internal}.png").is_file():
+                return f"/assets/{group}/{icon_internal}.png"
+        return ""
 
     def target_label(target: dict[str, Any]) -> str:
         internal = str(target.get("internalName", ""))
@@ -1081,9 +1069,6 @@ def render_web_catalog(
             runtime_history_path.write_text("# schema=1\n" + "".join(
                 f"C\t{catalog_fingerprint}\t{','.join(recipe_ids)}\n"
                 for catalog_fingerprint, recipe_ids in sorted(history.items())), encoding="utf-8")
-    for stale in icon_root.glob("*.png"):
-        if stale.name not in used_icons:
-            stale.unlink()
     return payload["counts"]
 
 
@@ -1093,10 +1078,14 @@ def main() -> int:
     parser.add_argument("--building-assets", type=Path, action="append", default=None,
                         help="Building JSON root; repeat to merge roots")
     parser.add_argument("--building-catalog", type=Path, default=Path("web/buildings/catalog.json"))
-    parser.add_argument("--editor-data", type=Path, default=Path("dist/dw-editor-release/data"))
+    parser.add_argument("--editor-data", type=Path,
+                        help="Optional legacy registry used only as supplemental diagnostics")
     parser.add_argument("--usmap", type=Path, default=Path("dist/RSDragonwilds-current.usmap"))
     parser.add_argument("--game-exe", type=Path, default=Path(r"E:\SteamLibrary\steamapps\common\RSDragonwilds\RSDragonwilds\Binaries\Win64\RSDragonwilds-Win64-Shipping.exe"))
-    parser.add_argument("--fresh-baseline", type=Path, default=Path("reference/recipe-unlock-testdude-baseline.json"))
+    parser.add_argument("--fresh-baseline", type=Path,
+                        help="Optional clean-character comparison; never required for generation")
+    parser.add_argument("--rules", type=Path,
+                        help="Zanik-authored catalog rules (exclusions and reviewed overrides)")
     parser.add_argument("--output", type=Path, default=Path("reference/recipe-unlocks.json"))
     parser.add_argument("--docs-dir", type=Path, default=Path("docs"))
     parser.add_argument("--web-output", type=Path, default=Path("web/recipe-unlocks.json"))
@@ -1106,8 +1095,17 @@ def main() -> int:
     parser.add_argument("--allow-unresolved", action="store_true")
     args = parser.parse_args()
 
-    editor_recipes = read_json(args.editor_data / "RecipeID.json")
-    recipe_exclusions = {entry["Id"]: entry for entry in read_json(args.editor_data / "RecipeExclusions.json")}
+    rules = read_json(args.rules) if args.rules else {"schemaVersion": 1, "recipeExclusions": []}
+    if rules.get("schemaVersion") != 1:
+        raise ValueError("unsupported catalog rules schemaVersion")
+    authored_recipe_exclusions = {
+        str(entry["internalName"]): str(entry["reason"])
+        for entry in rules.get("recipeExclusions", [])
+    }
+
+    editor_recipes = read_json(args.editor_data / "RecipeID.json") if args.editor_data and (args.editor_data / "RecipeID.json").is_file() else []
+    recipe_exclusions = ({entry["Id"]: entry for entry in read_json(args.editor_data / "RecipeExclusions.json")}
+                         if args.editor_data and (args.editor_data / "RecipeExclusions.json").is_file() else {})
     editor_by_guid = {entry["Id"]: entry for entry in editor_recipes}
     building_catalog = read_json(args.building_catalog)
     catalog_pieces = {piece["key"]: piece for piece in building_catalog["pieces"]}
@@ -1354,7 +1352,7 @@ def main() -> int:
                 "station": normalized,
                 "table": "legacyRecipeRegistry",
                 "property": "StationName",
-                "assetPath": str(args.editor_data / "RecipeID.json"),
+                "assetPath": str(args.editor_data / "RecipeID.json") if args.editor_data else "",
             })
             continue
         recipe_props = recipe_record.get("Properties") or {}
@@ -1415,6 +1413,14 @@ def main() -> int:
         path, record = asset_pair
         props = record.get("Properties") or {}
         name = str(record.get("Name", ""))
+        authored_exclusion = authored_recipe_exclusions.get(name)
+        if authored_exclusion:
+            exclusions.append({"kind": "crafting", "internalName": name,
+                               "persistentId": guid,
+                               "assetPath": record.get("Package", ""),
+                               "reason": authored_exclusion,
+                               "evidence": {"catalogRules": str(args.rules)}})
+            continue
         if name in deleted_journal_recipes:
             exclusions.append({"kind": "crafting", "internalName": name, "persistentId": guid,
                                "assetPath": record.get("Package", ""),
@@ -1436,7 +1442,7 @@ def main() -> int:
                 "source": {
                     "assetPath": record.get("Package", ""),
                     "property": "bIgnoreAutomaticUnlocks=false (inherited default)",
-                    "baseline": str(args.fresh_baseline),
+                    **({"baseline": str(args.fresh_baseline)} if args.fresh_baseline else {}),
                 },
                 "evidence": "static:complete_unlock_provider_complement;runtime:fresh_character_save",
                 "confidence": "proven",
@@ -1479,7 +1485,7 @@ def main() -> int:
             "persistentId": guid,
             "assetPath": record.get("Package", ""),
             "reason": "exported RecipeData is absent from the active runtime/save-editor recipe registry",
-            "evidence": {"asset": str(path), "activeRegistry": str(args.editor_data / "RecipeID.json")},
+            "evidence": {"asset": str(path), **({"activeRegistry": str(args.editor_data / "RecipeID.json")} if args.editor_data else {})},
         })
 
     for name in sorted(catalog_pieces):
@@ -1496,6 +1502,19 @@ def main() -> int:
             package = record.get("Package", package)
             evidence.append(str(path))
         unlocks = list(trigger_map.get(("building", name), []))
+        if not unlocks and not props.get("bIgnoreAutomaticUnlocks"):
+            unlocks.append({
+                "type": "default",
+                "action": "Available without an explicit unlock action",
+                "source": {
+                    "assetPath": package,
+                    "property": "bIgnoreAutomaticUnlocks=false (inherited default)",
+                },
+                "evidence": "static:complete_unlock_provider_complement",
+                "confidence": "proven",
+                "validationNote": "No cooked grant provider is required for this default building piece.",
+            })
+            evidence_sources["default_building"] += 1
         unlocks, redundant_unlocks = canonicalize_unlock_paths(unlocks)
         if not unlocks:
             exclusions.append({
@@ -1554,7 +1573,7 @@ def main() -> int:
     unaccounted_recipe_ids = sorted(set(recipe_assets) - accounted_recipe_ids)
     manifest_path = args.assets / ".uas-manifest.json"
     manifest = read_json(manifest_path)
-    fingerprint_files = [path for path in (args.game_exe, args.usmap, manifest_path, args.building_catalog, args.fresh_baseline) if path.exists()]
+    fingerprint_files = [path for path in (args.game_exe, args.usmap, manifest_path, args.building_catalog, args.fresh_baseline) if path and path.exists()]
     result = {
         "schemaVersion": 1,
         "generatedAt": datetime.now(timezone.utc).isoformat(),

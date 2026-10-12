@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import importlib.util, json, os, subprocess, tempfile, threading
+import importlib.util, json, os, subprocess, sys, tempfile, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -14,9 +14,11 @@ gitlab = module("publish_gitlab_package", "tools/publish_gitlab_package.py")
 
 current_version = contract.read_version(ROOT / "VERSION")
 contract.validate(f"v{current_version}", current_version)
-assert "legacy Pterodactyl" in contract.release_notes(ROOT / "CHANGELOG.md", current_version)
+assert "Windows client asset tool" in contract.release_notes(ROOT / "CHANGELOG.md", current_version)
 package_script = (ROOT / "scripts/package-release.sh").read_text()
-assert "retoc-linux-x86_64.tar.xz" in package_script
+assert "python-embed-windows-x86_64" in package_script
+assert "unreal-asset-scout-windows-x86_64" in package_script
+assert "ue4ss-windows-x86_64" in package_script
 assert "zanik-asset-tools-linux-x86_64-$VERSION.tar.gz" in package_script
 for tag in (current_version, "v0.1", "v1.2.3-rc1", "v9.9.9"):
     try:
@@ -55,7 +57,7 @@ with tempfile.TemporaryDirectory() as temporary:
     except RuntimeError as error: assert "differs" in str(error)
     (root / names[0]).write_bytes(b"archive-0")
     report = root / "curseforge-report.json"; env = os.environ.copy(); env["CURSEFORGE_API_TOKEN"] = "test-secret-token"
-    command = ["python3", str(ROOT / "tools/curseforge_upload.py"), "--directory", str(root), "--version", version, "--tag", "v0.1.0", "--changelog", str(ROOT / "CHANGELOG.md"), "--report", str(report), "--project-id", "123", "--base-url", base]
+    command = [sys.executable, str(ROOT / "tools/curseforge_upload.py"), "--directory", str(root), "--version", version, "--tag", "v0.1.0", "--changelog", str(ROOT / "CHANGELOG.md"), "--report", str(report), "--project-id", "123", "--base-url", base]
     subprocess.run(command + ["--dry-run"], check=True, env=env)
     assert json.loads(report.read_text())["status"] == "validated"
     subprocess.run(command, check=True, env=env)

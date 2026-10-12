@@ -1,13 +1,8 @@
 """Generate the public/runtime quest catalogs from cooked QuestData exports."""
 from __future__ import annotations
-import hashlib,json,re,sys
+import argparse,hashlib,json,re,sys
 from pathlib import Path
 
-ROOT=Path(__file__).resolve().parents[1]
-SOURCE=ROOT/'dist/recipe-unlock-all-json-current'
-PUBLIC=ROOT/'web/quest-catalog.json'
-RUNTIME=ROOT/'web/quest-runtime-catalog.tsv'
-OVERRIDES=ROOT/'deploy/quest-overrides.json'
 REGIONS={'Brynmoor':'Brynmoor','Ghornfell':'Ghornfell','Fellhollow':'Fellhollow','DowdunReach':'Dowdun Reach','UmbralSands':'Umbral Sands','ScornedWilderness':'Scorned Wilderness'}
 EXCLUDE=('ftue','test','debug','example','template')
 
@@ -33,9 +28,15 @@ def region(value,path):
     return 'Brynmoor'
 
 def main():
-    overrides=json.loads(OVERRIDES.read_text(encoding='utf-8')) if OVERRIDES.exists() else {}
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--source',type=Path,required=True)
+    parser.add_argument('--public',type=Path,required=True)
+    parser.add_argument('--runtime',type=Path,required=True)
+    parser.add_argument('--overrides',type=Path,required=True)
+    args=parser.parse_args()
+    overrides=json.loads(args.overrides.read_text(encoding='utf-8')) if args.overrides.exists() else {}
     quests=[]
-    for path in SOURCE.rglob('*.json'):
+    for path in args.source.rglob('*.json'):
         if 'quest' not in str(path).lower():continue
         try:data=json.loads(path.read_text(encoding='utf-8'))
         except Exception:continue
@@ -63,8 +64,9 @@ def main():
     public_quests=[]
     for quest in quests:
         quest=dict(quest);quest.pop('internal');public_quests.append(quest)
-    PUBLIC.write_text(json.dumps({'schemaVersion':1,'fingerprint':fingerprint,'quests':public_quests},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+    args.public.parent.mkdir(parents=True,exist_ok=True)
+    args.public.write_text(json.dumps({'schemaVersion':1,'fingerprint':fingerprint,'quests':public_quests},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     lines=[f'# schema=1 fingerprint={fingerprint} count={len(quests)}']+[f"{q['id']}\t{q['name']}\t{q['internal']}" for q in quests]
-    RUNTIME.write_text('\n'.join(lines)+'\n',encoding='utf-8')
+    args.runtime.write_text('\n'.join(lines)+'\n',encoding='utf-8')
     print(f'generated {len(quests)} playable quests ({fingerprint})')
 if __name__=='__main__':main()
