@@ -12,7 +12,7 @@ default:
   interruptible: true
   before_script:
     - apt-get update
-    - apt-get install --yes --no-install-recommends ca-certificates curl g++ make nodejs python3 unzip xz-utils zip
+    - apt-get install --yes --no-install-recommends ca-certificates curl g++ git make nodejs python3 unzip xz-utils zip
 
 variables:
   DEBIAN_FRONTEND: noninteractive
