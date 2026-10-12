@@ -34,6 +34,25 @@ grep -q 'Unknown configuration key' "$TMP/invalid.log"
 ! grep -q 'secret-value' "$TMP/invalid.log"
 cp "$RELEASE/config/zanik.conf.example" "$SERVER/zanik/config/zanik.conf"
 
+# The canonical launcher must retain Pterodactyl's console login proxy while
+# forwarding all ordinary commands unchanged to the official server process.
+FAKEBIN=$TMP/fake-bin; mkdir -p "$FAKEBIN"
+cat > "$FAKEBIN/env" <<'EOF'
+#!/bin/sh
+case "${1-}" in LD_PRELOAD=*) shift;; esac
+exec /usr/bin/env "$@"
+EOF
+cat > "$FAKEBIN/curl" <<'EOF'
+#!/bin/sh
+printf '%s\n' '{"url":"http://example.invalid/admin/claim#token=test-token","expiresIn":300,"characterName":"Tester"}'
+EOF
+chmod +x "$FAKEBIN/env" "$FAKEBIN/curl"
+printf '#!/bin/sh\nIFS= read -r line; printf "%%s\\n" "$line" > "$0.console"\n' > "$GAME"; chmod +x "$GAME"
+printf 'zanik-admin public-character-id\nstatus\n' | PATH="$FAKEBIN:$PATH" "$SERVER/zanik/bin/zanik-server" --server-root "$SERVER" -- > "$TMP/proxy.out" 2>&1
+grep -q 'expires in 5 minutes' "$TMP/proxy.out"
+grep -q '^status$' "$GAME.console"
+! grep -q 'zanik-admin' "$GAME.console"
+
 "$RELEASE/scripts/install.sh" --server-root "$SERVER" --mode replace-executable --acknowledge-core-file-replacement
 grep -q 'ZANIK_COMPAT_LAUNCHER=1' "$GAME"
 [ -x "$GAME.zanik-original" ]

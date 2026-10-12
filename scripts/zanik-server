@@ -76,5 +76,37 @@ chmod 700 "$server_root/zanik-data"
 zanik_make_secret "$server_root/zanik-data/console-admin.key" || { zanik_log 'Could not create console secret; starting without Zanik.'; exec "$game" "$@"; }
 DW_CONSOLE_SECRET=$(tr -d '\r\n' < "$server_root/zanik-data/console-admin.key"); export DW_CONSOLE_SECRET
 zanik_export_runtime "$server_root" "$install_mode"
-export LD_PRELOAD="$ZANIK_DIR/bin/libzanik.so${LD_PRELOAD:+:$LD_PRELOAD}"
-exec "$game" "$@"
+game_preload="$ZANIK_DIR/bin/libzanik.so${LD_PRELOAD:+:$LD_PRELOAD}"
+
+# Pterodactyl delivers console input on stdin. Keep the game on a private FIFO
+# so Zanik can consume its one administrative command without swallowing or
+# reinterpreting ordinary server commands. The proxy secret is sent only to
+# the loopback API and is never included in console output.
+console_fifo="$ZANIK_DIR/state/console-input.$$"
+if ! mkfifo "$console_fifo"; then
+  LD_PRELOAD=$game_preload; export LD_PRELOAD
+  exec "$game" "$@"
+fi
+exec 3<>"$console_fifo"
+env LD_PRELOAD="$game_preload" "$game" "$@" <&3 &
+game_pid=$!
+cleanup(){ kill "$game_pid" 2>/dev/null || true; wait "$game_pid" 2>/dev/null || true; rm -f "$console_fifo"; }
+trap cleanup INT TERM EXIT
+while kill -0 "$game_pid" 2>/dev/null && IFS= read -r command; do
+  case "$command" in
+    zanik-admin\ *)
+      requested=${command#zanik-admin }
+      response=$(curl -fsS --max-time 5 -X POST -H "X-Zanik-Console-Key: $DW_CONSOLE_SECRET" --data-binary "$requested" "http://127.0.0.1:$CFG_STATUS_PORT/api/admin/console-claim" 2>/dev/null || true)
+      url=$(printf '%s' "$response" | sed -n 's/.*"url":"\([^"]*\)".*/\1/p')
+      if [ -n "$url" ]; then zanik_log "Admin login for $requested (expires in 5 minutes): $url"; else zanik_log "Could not create an admin login link for the requested character."; fi
+      ;;
+    zanik-admin)
+      zanik_log 'Usage: zanik-admin <public-character-id>'
+      ;;
+    *) printf '%s\n' "$command" >&3;;
+  esac
+done
+wait "$game_pid"; result=$?
+trap - INT TERM EXIT
+rm -f "$console_fifo"
+exit "$result"
