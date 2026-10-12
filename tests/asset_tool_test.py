@@ -3,7 +3,7 @@ from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
 TOOL=ROOT/'tools/zanik_assets.py'
-REQUIRED=('buildings/catalog.json','buildings/catalog.tsv','npc-catalog.json','plan-items.tsv','quest-catalog.json','quest-runtime-catalog.tsv','quest-step-locations.json','recipe-unlocks.json','recipe-runtime-catalog.tsv')
+REQUIRED=('buildings/catalog.json','buildings/catalog.tsv','npc-catalog.json','plan-items.tsv','quest-catalog.json','quest-runtime-catalog.tsv','quest-step-locations.json','recipe-unlocks.json','recipe-runtime-catalog.tsv','resource-catalog.json','resource-identities.tsv','npc-identities.tsv')
 
 with tempfile.TemporaryDirectory() as name:
     root=Path(name); game=root/'game'; generated=game/'zanik-generated-web'; destination=root/'assets'

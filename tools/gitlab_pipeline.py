@@ -78,6 +78,19 @@ class GitLab:
         except json.JSONDecodeError as error:
             raise MonitorError(f"GitLab returned invalid JSON for {path}") from error
 
+    def download(self, path: str, destination: Path) -> None:
+        url = f"{self.base}/api/v4/projects/{self.project}/{path.lstrip('/')}"
+        request = Request(url, headers={"PRIVATE-TOKEN": self.token, "User-Agent": "Zanik-pipeline-monitor/1"})
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with urlopen(request, timeout=120) as response, destination.open("wb") as output:
+                while block := response.read(1024 * 1024):
+                    output.write(block)
+        except HTTPError as error:
+            raise MonitorError(f"GitLab API returned HTTP {error.code} while downloading job artifacts") from error
+        except URLError as error:
+            raise MonitorError(f"Could not reach the GitLab API: {error.reason}") from error
+
 
 def current_sha() -> str:
     try:
@@ -180,9 +193,22 @@ def watch(api: GitLab, args: argparse.Namespace) -> int:
     return 0
 
 
+def download_artifacts(api: GitLab, args: argparse.Namespace) -> int:
+    pipeline = resolve_pipeline(api, args)
+    jobs = pipeline_jobs(api, int(pipeline["id"]))
+    matches = [job for job in jobs if job.get("name") == args.job_name and job.get("status") == "success"]
+    if not matches:
+        raise MonitorError(f"No successful {args.job_name!r} job exists in pipeline {pipeline['id']}")
+    job = max(matches, key=lambda value: int(value["id"]))
+    destination = args.output.resolve()
+    api.download(f"jobs/{job['id']}/artifacts", destination)
+    print(f"downloaded {args.job_name} artifacts from pipeline {pipeline['id']} to {destination}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("latest", "watch", "jobs", "trace"), nargs="?", default="watch")
+    parser.add_argument("action", choices=("latest", "watch", "jobs", "trace", "artifacts"), nargs="?", default="watch")
     parser.add_argument("--env-file", type=Path, default=ROOT / ".env.gitlab")
     parser.add_argument("--ref", default="main")
     parser.add_argument("--sha", help="Commit SHA; watch defaults to the current Git HEAD")
@@ -191,6 +217,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--interval", type=float)
     parser.add_argument("--timeout", type=float)
     parser.add_argument("--tail", type=int, default=200)
+    parser.add_argument("--job-name", default="package-release")
+    parser.add_argument("--output", type=Path, default=ROOT / ".tmp" / "gitlab-artifacts.zip")
     return parser
 
 
@@ -212,6 +240,8 @@ def main() -> int:
                 raise MonitorError("trace requires --job-id")
             print(api.get(f"jobs/{args.job_id}/trace", raw=True), end="")
             return 0
+        if args.action == "artifacts":
+            return download_artifacts(api, args)
         pipeline = resolve_pipeline(api, args)
         print_pipeline(pipeline)
         if args.action == "jobs":
