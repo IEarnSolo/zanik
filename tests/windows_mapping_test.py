@@ -12,12 +12,22 @@ with tempfile.TemporaryDirectory() as name:
     (mods / "OldMod/Scripts/main.lua").write_text("old")
     (mods / "mods.txt").write_text("OldMod : 1\n")
     (mods / "mods.json").write_text("[]\n")
-    (stage / "ue4ss/UE4SS-settings.ini").write_text("GuiConsoleEnabled = 1\nGuiConsoleVisible = 1\n")
+    (stage / "ue4ss/UE4SS-settings.ini").write_text(
+        "GuiConsoleEnabled = 1\nGuiConsoleVisible = 1\n"
+        "[EngineVersionOverride]\nMajorVersion = \nMinorVersion = \n"
+    )
     mapping.configure_staging(stage)
     configured = json.loads((mods / "mods.json").read_text())
     assert configured == [{"mod_enabled": True, "mod_name": "ZanikMappings"}]
     assert not (mods / "OldMod").exists()
-    assert "DumpUSMAP(true)" in (mods / "ZanikMappings/Scripts/main.lua").read_text()
+    mapping_script = (mods / "ZanikMappings/Scripts/main.lua").read_text()
+    assert "ExecuteWithDelay(15000" in mapping_script
+    assert "DumpUSMAP()" in mapping_script
+    configured_settings = (stage / "ue4ss/UE4SS-settings.ini").read_text()
+    assert "GuiConsoleEnabled = 1" in configured_settings
+    assert "GuiConsoleVisible = 1" in configured_settings
+    assert "MajorVersion = 5" in configured_settings
+    assert "MinorVersion = 6" in configured_settings
 
     binary = root / "game/RSDragonwilds/Binaries/Win64"; binary.mkdir(parents=True)
     executable = binary / "RSDragonwilds-Win64-Shipping.exe"; executable.write_bytes(b"elf-not-needed")
@@ -28,6 +38,8 @@ with tempfile.TemporaryDirectory() as name:
     journal.write_text(json.dumps({"schemaVersion": 2, "state": "installed", "binaryDirectory": str(binary),
                                    "gameExecutable": str(executable), "gameExecutableSha256": mapping.sha256(executable),
                                    "proxySha256": mapping.sha256(proxy), "ownedFilesInstalled": installed}))
+    (owned / "UE4SS.log").write_text("runtime log")
+    (owned / "imgui.ini").write_text("runtime UI state")
     assert mapping.recover(journal)
     assert not proxy.exists() and not owned.exists()
     assert json.loads(journal.read_text())["state"] == "restored"

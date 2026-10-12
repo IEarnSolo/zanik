@@ -54,7 +54,7 @@ if ($LASTEXITCODE -ne 0) { throw "Asset extraction failed with exit code $LASTEX
 $Build = (& $Python $AssetTool show-build --game-root $GameRoot).Trim()
 if (-not $Build) { $Build = 'unknown' }
 $Bundle = Join-Path $OutputDirectory "zanik-assets-$Build.zip"
-$Versions = '{"python":"3.12.10-embed","unrealAssetScout":"0.5.0","ue4ss":"3.0.1-1165-g12ec45a0"}'
+$Versions = '{"python":"3.12.10-embed","unrealAssetScout":"0.5.0","ue4ss":"3.0.1-1135-gf6d5f942"}'
 & $Python $AssetTool bundle --game-root $GameRoot --generated-root $Generated --output $Bundle --mapping $UsmapPath --tool-versions $Versions --recipe-version 1 --profile $Recipe
 if ($LASTEXITCODE -ne 0) { throw "Asset bundling failed with exit code $LASTEXITCODE" }
 $Parts = Join-Path $OutputDirectory "zanik-assets-$Build-parts"

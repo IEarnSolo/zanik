@@ -16,12 +16,11 @@
       "sha256": "6af6e1ca983833b88fb767a1d5b89dd8037167a467cf58bbbb0113f9ca69443d"
     },
     "ue4ss-windows-x86_64": {
-      "version": "3.0.1-1165-g12ec45a0",
+      "version": "3.0.1-1135-gf6d5f942",
       "license": "MIT",
       "source": "https://github.com/UE4SS-RE/RE-UE4SS",
-      "url": "https://api.github.com/repos/UE4SS-RE/RE-UE4SS/releases/assets/632331429",
-      "accept": "application/octet-stream",
-      "sha256": "d51512869bde8c32a1ebd6732a01fbb1343e6b3e0fb9cd0d8a9b1841b68cba97"
+      "url": "https://github.com/UE4SS-RE/RE-UE4SS/releases/download/experimental/UE4SS_v3.0.1-1135-gf6d5f942.zip",
+      "sha256": "e96640054e0da71232ea63d105eeefb96de1ece609b113f0c6e617b83addbac2"
     }
   }
 }
