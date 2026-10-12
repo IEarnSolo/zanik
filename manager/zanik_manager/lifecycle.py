@@ -168,7 +168,10 @@ class PterodactylProvider(ServerProvider):
                 raise RuntimeError(f"Remote verification failed for {name}")
             modes.setdefault(directory, []).append((PurePosixPath(name).name, entry.mode))
         for directory, files in modes.items():
-            self.client.chmod(server_id, directory, files)
+            # Some Wings versions accept an array but apply only its last item.
+            # Issue one bounded request per file so every packaged mode is honored.
+            for file in files:
+                self.client.chmod(server_id, directory, [file])
         journal.completed_steps.append("payload-uploaded-and-verified")
         self.journals.save(journal)
 
@@ -401,9 +404,16 @@ class PterodactylProvider(ServerProvider):
         self.client.write_file(server_id, temporary, content)
         if sha256(self.client.read_file(server_id, temporary)) != sha256(content):
             raise RuntimeError("Uploaded configuration did not verify")
-        self.client.rename(server_id, f"{root}/zanik/config", [("zanik.conf", "zanik.conf.manager-old"),
-                                                               ("zanik.conf.manager-new", "zanik.conf")])
-        self.client.delete(server_id, f"{root}/zanik/config", ["zanik.conf.manager-old"])
+        config_root = f"{root}/zanik/config"
+        old_name = f"zanik.conf.manager-old-{timestamp}"
+        self.client.rename(server_id, config_root, [("zanik.conf", old_name)])
+        try:
+            self.client.rename(server_id, config_root, [("zanik.conf.manager-new", "zanik.conf")])
+        except Exception:
+            if not self._exists(server_id, path) and self._exists(server_id, f"{config_root}/{old_name}"):
+                self.client.rename(server_id, config_root, [(old_name, "zanik.conf")])
+            raise
+        self.client.delete(server_id, config_root, [old_name])
         self.client.chmod(server_id, f"{root}/zanik/config", [("zanik.conf", 0o600)])
         return {"sha256": sha256(content), "backup": f"{backup_dir}/zanik.conf"}
 
