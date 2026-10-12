@@ -1,0 +1,1718 @@
+{
+  "schemaVersion": 2,
+  "coordinatePolicy": "References only. Coordinates are resolved from the current extracted game build.",
+  "relationships": [
+    {
+      "questId": "yrRZnkmro-IvH_OmZ3f-5A",
+      "objectiveKey": "Claim a bed",
+      "destinationMode": "area",
+      "note": "Build and claim a bed anywhere valid in Bramblemead village; this marker identifies the authored village objective area, not a required bed position.",
+      "reason": "The objective is completed by player construction in Bramblemead; Quest_DragonSlayer owns the BMCastle area marker.",
+      "targets": [{"kind": "quest_marker", "reference": "BMCastle"}]
+    },
+    {
+      "questId": "yrRZnkmro-IvH_OmZ3f-5A",
+      "objectiveKey": "Locate cathan in the vault",
+      "destinationMode": "fixed",
+      "note": "The objective continues inside Vertentis Kara; the world-map marker shows its Whispering Swamp entrance.",
+      "reason": "The Beat 2 objective is directly preceded by the authored BMSwamp quest-location reveal, and the extracted DungeonEntrance_VertentisKara actor is the blue-flame vault entrance inside that authored area.",
+      "targets": [{"kind": "dungeon_entrance", "reference": "VertentisKara"}]
+    },
+    {
+      "questId": "AsyEt0xjewNEzYmzr_kg_w",
+      "objectiveKey": "Objective1",
+      "destinationMode": "multiple",
+      "note": "Both valid first-investigation destinations are shown; the player may visit them in either order.",
+      "reason": "The objective names the ruins northeast of Zanik and the guild to her south. The compiled quest branches enter ReliquaryCliffRuins and ReliquaryGuild, whose exact current-build placements are BP_NPC_ReliquaryCastle and BP_NPC_ReliquaryGuild. The temporarily revealed Zanik marker identifies the quest giver, not either requested destination.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_NPC_ReliquaryCastle", "displayName": "Outlook Ruins reliquary"},
+        {"kind": "world_actor", "reference": "BP_NPC_ReliquaryGuild", "displayName": "Adventurers' Guild reliquary"}
+      ]
+    },
+    {
+      "questId": "AsyEt0xjewNEzYmzr_kg_w",
+      "objectiveKey": "Objective2a",
+      "destinationMode": "fixed",
+      "reason": "The cliff-ruins branch enters QuestFlow.Entry.GoblinDiplomacy.ReliquaryCliffRuins; the placed quest actor is BP_NPC_ReliquaryCastle.",
+      "targets": [{"kind": "world_actor", "reference": "BP_NPC_ReliquaryCastle", "displayName": "Outlook Ruins reliquary"}]
+    },
+    {
+      "questId": "AsyEt0xjewNEzYmzr_kg_w",
+      "objectiveKey": "Objective2b",
+      "destinationMode": "fixed",
+      "reason": "The guild branch enters QuestFlow.Entry.GoblinDiplomacy.ReliquaryGuild; the placed quest actor is BP_NPC_ReliquaryGuild.",
+      "targets": [{"kind": "world_actor", "reference": "BP_NPC_ReliquaryGuild", "displayName": "Adventurers' Guild reliquary"}]
+    },
+    {
+      "questId": "AsyEt0xjewNEzYmzr_kg_w",
+      "objectiveKey": "Objective3",
+      "destinationMode": "fixed",
+      "reason": "After finding the emptied reliquary, the amulet is recovered from the quest-only corrupted beast at the authored Goblin Diplomacy druid encounter.",
+      "targets": [{"kind": "world_actor", "reference": "BP_SpawnPoint_MagicBeast_Quest_GD"}]
+    },
+    {
+      "questId": "AsyEt0xjewNEzYmzr_kg_w",
+      "objectiveKey": "Objective5",
+      "destinationMode": "multiple",
+      "note": "Either reliquary can be investigated first; both authored destinations are shown.",
+      "reason": "This objective explicitly permits either the cliff ruins or guild branch, whose exact placed quest actors are the two reliquaries.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_NPC_ReliquaryCastle", "displayName": "Outlook Ruins reliquary"},
+        {"kind": "world_actor", "reference": "BP_NPC_ReliquaryGuild", "displayName": "Adventurers' Guild reliquary"}
+      ]
+    },
+    {
+      "questId": "AsyEt0xjewNEzYmzr_kg_w",
+      "objectiveKey": "Objective4",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly returns both amulets to Zanik; this quest owns the ZanikGoblinDeplomacy marker.",
+      "targets": [{"kind": "quest_marker", "reference": "ZanikGoblinDeplomacy"}]
+    },
+    {
+      "questId": "AsyEt0xjewNEzYmzr_kg_w",
+      "objectiveKey": "Objective6",
+      "destinationMode": "fixed",
+      "reason": "The walkthrough resolves the unidentified Bandosian amulet by returning to Zanik, and the compiled flow reveals this quest's ZanikGoblinDeplomacy location for the state. This is an exact quest-owned marker, not a name-based NPC inference.",
+      "targets": [{"kind": "quest_marker", "reference": "ZanikGoblinDeplomacy", "displayName": "Zanik (amulet identification)"}]
+    },
+    {
+      "questId": "jP8SfEP3QLjisgaHyBzCPw",
+      "objectiveKey": "Investigate for clues about the statue",
+      "destinationMode": "fixed",
+      "note": "The password statue is inside Thishepen Kara; per the dungeon-marker policy, the public world map points to the vault entrance.",
+      "reason": "Multiple walkthroughs identify the required clue as the password Pthentorok, learned from the blue statue inside Thishepen Kara. The current build contains the exact DungeonEntrance_ThishepenKara placement; the broad MagicGuild_HtP area does not represent this interior destination.",
+      "targets": [{"kind": "dungeon_entrance", "reference": "ThishepenKara", "displayName": "Thishepen Kara password-statue entrance"}]
+    },
+    {
+      "questId": "jP8SfEP3QLjisgaHyBzCPw",
+      "objectiveKey": "Search the runecrafting guild for wizard statue",
+      "destinationMode": "fixed",
+      "reason": "After learning Pthentorok in Thishepen Kara, the player must enter it at the central wizard statue outside the Runecrafting Guild. The current world contains one quest-specific BP_NPC_HighLightingTheProblem_Statue placement.",
+      "targets": [{"kind": "world_actor", "reference": "BP_NPC_HighLightingTheProblem_Statue", "displayName": "Runecrafting Guild wizard statue"}]
+    },
+    {
+      "questId": "jP8SfEP3QLjisgaHyBzCPw",
+      "objectiveKey": "Charge the orb",
+      "destinationMode": "multiple",
+      "note": "All three tower pedestals must be activated; the markers represent the exact interaction actors rather than the shared guild-area center.",
+      "reason": "The walkthrough and compiled quest flow require three pedestal interactions around the guild. The current world has exactly three placements of the quest-specific BP_NPC_HighLightingTheProbem_Pedestal actor, so each actionable tower can be mapped independently.",
+      "targets": [{"kind": "world_actor_type", "reference": "BP_NPC_HighLightingTheProbem_Pedestal", "allowMultiple": true, "displayName": "Mysterious Orb charging pedestal", "role": "interact"}]
+    },
+    {
+      "questId": "jP8SfEP3QLjisgaHyBzCPw",
+      "objectiveKey": "Return to statue",
+      "destinationMode": "fixed",
+      "reason": "The charged orb is returned to the same central wizard statue that issued it. The exact current-build quest actor is BP_NPC_HighLightingTheProblem_Statue, which is more precise than the broad MagicGuild_HtP area marker.",
+      "targets": [{"kind": "world_actor", "reference": "BP_NPC_HighLightingTheProblem_Statue", "displayName": "Runecrafting Guild wizard statue (charged-orb return)", "role": "return"}]
+    },
+    {
+      "questId": "2kXJ3kWFS38kZfmPnvUFXw",
+      "objectiveKey": "DR_SQ3_EntryPickup",
+      "destinationMode": "fixed",
+      "note": "Zanik is underground in the cell beneath The Approach; the surface projection is the exact quest-owned Zanik marker.",
+      "reason": "Picking up a Corrupted Essence Sample starts this entry path, but the objective explicitly requires speaking to Zanik. DR_SQ3_Zanik is Biohazard's exact Dowdun marker and prevents unrelated Zanik phase copies from being published.",
+      "targets": [{"kind": "quest_marker", "reference": "DR_SQ3_Zanik", "displayName": "Zanik — cell beneath The Approach", "role": "talk"}]
+    },
+    {
+      "questId": "2kXJ3kWFS38kZfmPnvUFXw",
+      "objectiveKey": "DR_SQ3_FindIngredients",
+      "destinationMode": "multiple",
+      "note": "Dragon Blood may instead be obtained from Dragon Wolves in Fellhollow. The map shows the four current Dowdun Blue Dragon placements to avoid flooding it with every renewable Dragon Wolf spawn, plus both fixed pickups and Zanik's hand-in.",
+      "reason": "The guide and cooked objective require Dragon Blood, Twilight Lily, and Unholy Water. The current world registry provides exact identities for the lily at The Lake and water behind The Cathedral; the NPC catalog contains four Blue Dragons in Dowdun Reach, and DR_SQ3_Zanik is the required delivery point.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "A3D9F580-489D131D-5092F8A4-42ECD820", "displayName": "Twilight Lily — The Lake", "role": "collect"},
+        {"kind": "registry_landmark", "reference": "26470032-49E96542-0CAF80AB-54320698", "displayName": "Unholy Water — behind The Cathedral", "role": "collect"},
+        {"kind": "npc", "reference": "blue-dragon", "allowMultiple": true, "displayName": "Blue Dragon — Dragon Blood source", "role": "hunt"},
+        {"kind": "quest_marker", "reference": "DR_SQ3_Zanik", "displayName": "Zanik — ingredient hand-in", "role": "return"}
+      ]
+    },
+    {
+      "questId": "2kXJ3kWFS38kZfmPnvUFXw",
+      "objectiveKey": "DR_SQ3_LocateSource",
+      "destinationMode": "fixed",
+      "reason": "Zanik's dialogue identifies the central intelligence as Putrilius/Pusilineous; the world contains one BP_NPC_Pusilineous quest placement high in Dowdun Reach.",
+      "targets": [{"kind": "npc", "reference": "pusilineous", "displayName": "Putrilius — Grand Hall roof", "role": "talk"}]
+    },
+    {
+      "questId": "2kXJ3kWFS38kZfmPnvUFXw",
+      "objectiveKey": "DR_SQ3_FinalBeat",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly returns to Zanik; Quest_SQ3_Nevermore owns DR_SQ3_Zanik.",
+      "targets": [{"kind": "quest_marker", "reference": "DR_SQ3_Zanik", "displayName": "Zanik — final report", "role": "return"}]
+    },
+    {
+      "questId": "9Kod2UgSkm8YrJCwMgmAdQ",
+      "objectiveKey": "DR_SQ2_EntryJournal",
+      "destinationMode": "fixed",
+      "reason": "This alternate entry state occurs after a journal is found before accepting the quest and explicitly requires bringing it to Vannaka. DR_SQ2_Vannaka is the quest-owned Courtyard marker and excludes Vannaka's other regional phase copies.",
+      "targets": [{"kind": "quest_marker", "reference": "DR_SQ2_Vannaka", "displayName": "Vannaka — Wanted! journal hand-in", "role": "return"}]
+    },
+    {
+      "questId": "9Kod2UgSkm8YrJCwMgmAdQ",
+      "objectiveKey": "DR_SQ2_FindPages_0",
+      "destinationMode": "multiple",
+      "note": "The three journals can be collected in any order; these are the exact post-fight journal interactions, not approximate trainer spawn points.",
+      "reason": "Quest booleans name the Rat, Hound, and Demon journals. The current world contains three switchable journal actors whose entry tags and localized display names correspond exactly to those booleans and guide locations.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_Journal_DR_RatMaster_Switchable", "displayName": "Rat Master's Journal — Menagerie", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_Journal_DR_Houndmaster_Switchable", "displayName": "Hound Master's Journal — Garrison kennels", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_Journal__DR_Demonmaster_Switchable", "displayName": "Summoner's Journal — Cathedral crypt", "role": "collect"}
+      ]
+    },
+    {
+      "questId": "9Kod2UgSkm8YrJCwMgmAdQ",
+      "objectiveKey": "DR_SQ2_FindPages_1",
+      "destinationMode": "multiple",
+      "note": "One journal is already collected, but the snapshot does not expose which one; all three possible remaining locations are shown.",
+      "reason": "Journal collection order is free and the current progress counter alone cannot identify which exact journal interaction remains.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_Journal_DR_RatMaster_Switchable", "displayName": "Rat Master's Journal — Menagerie", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_Journal_DR_Houndmaster_Switchable", "displayName": "Hound Master's Journal — Garrison kennels", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_Journal__DR_Demonmaster_Switchable", "displayName": "Summoner's Journal — Cathedral crypt", "role": "collect"}
+      ]
+    },
+    {
+      "questId": "9Kod2UgSkm8YrJCwMgmAdQ",
+      "objectiveKey": "DR_SQ2_FindPages_2",
+      "destinationMode": "multiple",
+      "note": "Two journals are already collected, but the snapshot does not expose which trainer remains; all possible locations are shown.",
+      "reason": "Journal collection order is free and the current progress counter alone cannot identify the final journal interaction.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_Journal_DR_RatMaster_Switchable", "displayName": "Rat Master's Journal — Menagerie", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_Journal_DR_Houndmaster_Switchable", "displayName": "Hound Master's Journal — Garrison kennels", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_Journal__DR_Demonmaster_Switchable", "displayName": "Summoner's Journal — Cathedral crypt", "role": "collect"}
+      ]
+    },
+    {
+      "questId": "9Kod2UgSkm8YrJCwMgmAdQ",
+      "objectiveKey": "DR_SQ2_ReturnToVannaka",
+      "destinationMode": "fixed",
+      "reason": "The 3/3 objective explicitly says Return to Vannaka, and its compiled QFT_SetQuestObjective directly reveals the quest-owned DR_SQ2_Vannaka marker.",
+      "targets": [{"kind": "quest_marker", "reference": "DR_SQ2_Vannaka", "displayName": "Vannaka (Wanted! hand-in)", "role": "return"}]
+    },
+    {
+      "questId": "vxS7_kzdpGvmWKWwjqF7Jg",
+      "objectiveKey": "DR_SQ1_Temple",
+      "destinationMode": "fixed",
+      "reason": "The Cathedral branch advances by reading the Scrawled Notes on its upper ledge. The current world registry contains the exact quest-owned note identity at the Cathedral; Doric is the quest giver and must not be carried into this search state.",
+      "targets": [{"kind": "registry_landmark", "reference": "1E6B02E6-471FCF0A-7DD0B08A-072FE962", "displayName": "Scrawled Notes — Cathedral upper ledge", "role": "read"}]
+    },
+    {
+      "questId": "vxS7_kzdpGvmWKWwjqF7Jg",
+      "objectiveKey": "DR_SQ1_Garrison",
+      "destinationMode": "fixed",
+      "reason": "The Garrison branch advances by reading the schematics beside its nodestone. The registry identity is the exact placed Scrawled Notes interaction and is more precise than the Nexus portal previously used as a proxy.",
+      "targets": [{"kind": "registry_landmark", "reference": "843B8CD4-4E5E1A28-684CC6A5-8AE67163", "displayName": "Scrawled Notes — Garrison nodestone", "role": "read"}]
+    },
+    {
+      "questId": "vxS7_kzdpGvmWKWwjqF7Jg",
+      "objectiveKey": "DR_SQ1_Aquifer",
+      "destinationMode": "fixed",
+      "reason": "The Demon Gate branch advances by searching the dead Zamorak mage beyond the two shardbound demons. The registry exposes that exact quest-owned body, allowing the marker to replace the broader Aquifer portal proxy.",
+      "targets": [{"kind": "registry_landmark", "reference": "40E5E9B9-4B732365-3BB67AAE-8B01D1EB", "displayName": "Dead Zamorak Mage — Demon Gate", "role": "search"}]
+    },
+    {
+      "questId": "vxS7_kzdpGvmWKWwjqF7Jg",
+      "objectiveKey": "DR_SQ1_ReturnToDoric",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly returns to Doric; this quest owns Doric_SQ1_NPC.",
+      "targets": [{"kind": "quest_marker", "reference": "Doric_SQ1_NPC", "displayName": "Doric — The Nexus", "role": "return"}]
+    },
+    {
+      "questId": "4QQuNkR6spTCXC6zj6VqxQ",
+      "objectiveKey": "BackToZanikNotSpokenToZanik",
+      "destinationMode": "fixed",
+      "reason": "The flow state is the pre-dialogue return to Zanik and the quest owns ZanikNPC.",
+      "targets": [{"kind": "quest_marker", "reference": "ZanikNPC"}]
+    },
+    {
+      "questId": "4kbEAUJrs6mebhGkzFQxmA",
+      "objectiveKey": "ObjectiveZero",
+      "destinationMode": "fixed",
+      "reason": "The objective names Postie Pete near Fellhollow. The Fellhollow BP_NPC_PostiePete placement is distinct from the Dowdun Postie Pete actor.",
+      "targets": [{"kind": "npc", "reference": "postie-pete", "opaqueId": "d63ae2ad16b258bf984f", "displayName": "Postie Pete (Fellhollow)", "role": "start"}]
+    },
+    {
+      "questId": "4kbEAUJrs6mebhGkzFQxmA",
+      "objectiveKey": "ObjectiveOne",
+      "destinationMode": "multiple",
+      "note": "First recover Letter 1 from the Suspicious Skeleton, then deliver it to the postbox north-west of Vannaka's camp.",
+      "reason": "The cooked flow gives ITEM_quest_FH_LettersForTheDead_Letter_1 from the Suspicious Skeleton and sets TookLetter1. The matching placed postbox carries QuestFlow.Entry.FH_LettersForTheDead.PostBox1.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_NPC_Quest_FunnySkeleton", "displayName": "Suspicious Skeleton (Letter 1)", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_QuestPostBox_01", "displayName": "Postbox 1 (Letter 1 delivery)", "role": "deliver"}
+      ]
+    },
+    {
+      "questId": "4kbEAUJrs6mebhGkzFQxmA",
+      "objectiveKey": "ObjectiveTwo",
+      "destinationMode": "multiple",
+      "note": "Follow the spectral-leaf clue to the hanging letter south-east of Cathan's standing stones, then deliver it to PostBox2.",
+      "reason": "The placed Missing Letter actor enters QuestFlow.Entry.FH_LettersForTheDead.Letter1 and the flow awards Letter 2. The matching placed postbox carries QuestFlow.Entry.FH_LettersForTheDead.PostBox2.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_NPC_Quest_Letter", "displayName": "Spectral hanging letter (Letter 2)", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_QuestPostBox_02", "displayName": "Postbox 2 (Letter 2 delivery)", "role": "deliver"}
+      ]
+    },
+    {
+      "questId": "4kbEAUJrs6mebhGkzFQxmA",
+      "objectiveKey": "ObjectiveThree",
+      "destinationMode": "multiple",
+      "note": "Recover the final letter from Shaun and deliver it to PostBox3 outside Imaru's tower.",
+      "reason": "Shaun is the uniquely placed BP_NPC_Quest_GhostSheep actor and his flow awards Letter 3. The matching placed postbox carries QuestFlow.Entry.FH_LettersForTheDead.PostBox3.",
+      "targets": [
+        {"kind": "npc", "reference": "shaun", "displayName": "Shaun (Letter 3)", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_QuestPostBox_03", "displayName": "Postbox 3 (Letter 3 delivery)", "role": "deliver"}
+      ]
+    },
+    {
+      "questId": "4kbEAUJrs6mebhGkzFQxmA",
+      "objectiveKey": "ObjectiveReturn",
+      "destinationMode": "fixed",
+      "reason": "The quest begins and ends with the Fellhollow Postie Pete, whose placement is distinct from the Dowdun actor.",
+      "targets": [{"kind": "npc", "reference": "postie-pete", "opaqueId": "d63ae2ad16b258bf984f", "displayName": "Postie Pete (Fellhollow)", "role": "return"}]
+    },
+    {
+      "questId": "2kXJ3kWFS38kZfmPnvUFXw",
+      "objectiveKey": "DR_SQ3_HuntRavens",
+      "destinationMode": "multiple",
+      "note": "All ten current-build corrupted-raven spawn points are possible sample sources; Zanik beneath The Approach is the hand-in.",
+      "reason": "BP_SpawnPoint_MagicalRaven uses the quest-specific Magical Raven character/data and the current world contains exactly ten placements. The quest-owned DR_SQ3_Zanik marker is the return point.",
+      "targets": [
+        {"kind": "npc", "reference": "magical-raven", "actorType": "BP_SpawnPoint_MagicalRaven", "allowMultiple": true, "displayName": "Corrupted Raven spawn", "role": "hunt"},
+        {"kind": "quest_marker", "reference": "DR_SQ3_Zanik", "displayName": "Zanik (sample hand-in)", "role": "return"}
+      ]
+    },
+    {
+      "questId": "cZlfrUaPSsi4VfeVc6iIEw",
+      "objectiveKey": "Objective1",
+      "destinationMode": "multiple",
+      "allowPartialTargets": true,
+      "note": "The Dairy Cow is the fixed milk interaction and Slopfinger is the hand-in. Eggs may come from chicken or terrorbird eggs, and wheat is grown at any valid farming patch, so those renewable sources have no single truthful marker.",
+      "reason": "Cooked Slopfinger dialogue explicitly permits chicken or terrorbird eggs, describes farming wheat, and identifies the nearby Dairy Cow. BP_NPC_Quest_Cow and Slopfinger each have one current-build placement.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_NPC_Quest_Cow", "displayName": "Dairy Cow (Bucket of Milk)", "role": "collect"},
+        {"kind": "npc", "reference": "slopfinger", "displayName": "Slopfinger (ingredient hand-in)", "role": "return"}
+      ]
+    },
+    {
+      "questId": "cZlfrUaPSsi4VfeVc6iIEw",
+      "objectiveKey": "Objective2",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly names the stove beside Slopfinger; the current world has one placed BP_NPC_Quest_Stove whose dialogue bakes the Glorious Cake.",
+      "targets": [{"kind": "world_actor", "reference": "BP_NPC_Quest_Stove", "displayName": "Goblin Stove", "role": "interact"}]
+    },
+    {
+      "questId": "cZlfrUaPSsi4VfeVc6iIEw",
+      "objectiveKey": "Objective3",
+      "destinationMode": "fixed",
+      "reason": "The signed-cake state advances only through Manktongue's dialogue. The NPC catalog contains one current Manktongue placement at the camp.",
+      "targets": [{"kind": "npc", "reference": "manktongue", "displayName": "Manktongue — signed cake delivery", "role": "deliver"}]
+    },
+    {
+      "questId": "cZlfrUaPSsi4VfeVc6iIEw",
+      "objectiveKey": "Objective4",
+      "destinationMode": "fixed",
+      "reason": "The freshly baked cake must be shown to Slopfinger so he can sign it; the current world contains one Slopfinger placement.",
+      "targets": [{"kind": "npc", "reference": "slopfinger", "displayName": "Slopfinger — have the cake signed", "role": "talk"}]
+    },
+    {
+      "questId": "cZlfrUaPSsi4VfeVc6iIEw",
+      "objectiveKey": "Objective5",
+      "destinationMode": "fixed",
+      "reason": "After Manktongue accepts the cake, the final conversation and reward occur at the same unique Slopfinger actor.",
+      "targets": [{"kind": "npc", "reference": "slopfinger", "displayName": "Slopfinger — report the good news", "role": "return"}]
+    },
+    {
+      "questId": "Kdj6N0dEw05JjoyDP0pNvw",
+      "objectiveKey": "Objective1",
+      "destinationMode": "fixed",
+      "reason": "The ritual-practices clue is the uniquely placed BP_LoreItem_DogDays_DD1, whose close callback enters QuestFlow.Entry.DogDays.LoreEntry.",
+      "targets": [{"kind": "world_actor", "reference": "BP_LoreItem_DogDays_DD1"}]
+    },
+    {
+      "questId": "Kdj6N0dEw05JjoyDP0pNvw",
+      "objectiveKey": "Objective2",
+      "destinationMode": "fixed",
+      "reason": "The objective requires challenging the uniquely placed Garou King, resolved from the NPC registry.",
+      "targets": [{"kind": "npc", "reference": "garou-king"}]
+    },
+    {
+      "questId": "Kdj6N0dEw05JjoyDP0pNvw",
+      "objectiveKey": "Objective3",
+      "destinationMode": "fixed",
+      "reason": "This alternate ordering state still requires the Dog Days ritual lore entry after obtaining the King's Token first.",
+      "targets": [{"kind": "world_actor", "reference": "BP_LoreItem_DogDays_DD1"}]
+    },
+    {
+      "questId": "Kdj6N0dEw05JjoyDP0pNvw",
+      "objectiveKey": "Objective4",
+      "destinationMode": "fixed",
+      "reason": "The objective is completed through QuestFlow.Participant.LougrimShrine; the world contains one exact BP_NPC_Lougrim_Shrine actor.",
+      "targets": [{"kind": "world_actor", "reference": "BP_NPC_Lougrim_Shrine"}]
+    },
+    {
+      "questId": "Kdj6N0dEw05JjoyDP0pNvw",
+      "objectiveKey": "Objective6",
+      "destinationMode": "fixed",
+      "reason": "The quest dialogue identifies the friendly ritual expert as Vannaka and Quest_DogDays owns Vannaka_DogDays.",
+      "targets": [{"kind": "quest_marker", "reference": "Vannaka_DogDays"}]
+    },
+    {
+      "questId": "bsfNlkgT8D_Y5HCdCf-Seg",
+      "objectiveKey": "Objective1",
+      "destinationMode": "fixed",
+      "note": "The objective is inside the Skeklac vault; the world-map marker shows the Skeklac Kara entrance.",
+      "reason": "The Granite Mauled interior contains BP_LootChest_Prefab_Tier3_Vault_FinalChest_Skeklac, proving the vault identity; its extracted overworld entrance is SkeklacKara.",
+      "targets": [{"kind": "dungeon_entrance", "reference": "SkeklacKara"}]
+    },
+    {
+      "questId": "bsfNlkgT8D_Y5HCdCf-Seg",
+      "objectiveKey": "Objective2",
+      "destinationMode": "fixed",
+      "reason": "The quest's translator objective resolves to Doric and Quest_GraniteMauled owns Doric_GM.",
+      "targets": [{"kind": "quest_marker", "reference": "Doric_GM"}]
+    },
+    {
+      "questId": "xsgOzUS-M2iCLDe-XTDq3w",
+      "objectiveKey": "follow the blue-leafed trees",
+      "destinationMode": "multiple",
+      "note": "All seven authored memorials are shown because this single aggregate objective remains active for the entire memorial path.",
+      "reason": "The cooked world contains exactly seven placed BP_NPC_Hearstrings_Memorial actors. This matches the seven sequential memorial interactions described by the quest guide; using the exact actor set is more precise than the broad Mesa_HS quest marker.",
+      "targets": [{"kind": "world_actor_type", "reference": "BP_NPC_Hearstrings_Memorial", "displayName": "Heartstrings memorial"}]
+    },
+    {
+      "questId": "0cB0D0QD_L4nrpu6CxZEsw",
+      "objectiveKey": "FollowBeast",
+      "destinationMode": "multiple",
+      "note": "The public objective key is reused while the Dearg Due moves through the sandstorm, so all four authored trail stages are shown as the route.",
+      "reason": "The compiled quest flow advances and hides the four quest-owned Mirage1 through Mirage4 locations in sequence. The quest guide independently confirms three howl stops followed by Efina's hiding place. The task-giver marker exposed later in the same flow is a return-state target and is excluded here.",
+      "targets": [
+        {"kind": "quest_marker", "reference": "TribeC.Task1.Mirage1", "displayName": "Dearg Due trail — first sighting"},
+        {"kind": "quest_marker", "reference": "TribeC.Task1.Mirage2", "displayName": "Dearg Due trail — second sighting"},
+        {"kind": "quest_marker", "reference": "TribeC.Task1.Mirage3", "displayName": "Dearg Due trail — third sighting"},
+        {"kind": "quest_marker", "reference": "TribeC.Task1.Mirage4", "displayName": "Efina's hiding place"}
+      ]
+    },
+    {
+      "questId": "0cB0D0QD_L4nrpu6CxZEsw",
+      "objectiveKey": "GiveWater",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly names Efina, and the world registry contains one exact Efina - The Lost NPC placement at the final trail destination.",
+      "targets": [{"kind": "registry_landmark", "reference": "2736394F-4613C7C2-566C60B3-DFA40E46", "displayName": "Efina — The Lost"}]
+    },
+    {
+      "questId": "0cB0D0QD_L4nrpu6CxZEsw",
+      "objectiveKey": "Return",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly names Manathep, and the world registry contains one exact Manathep - The Bereaved NPC placement in the Manafem camp.",
+      "targets": [{"kind": "registry_landmark", "reference": "66CC10A1-43D25A90-6B505FAB-74A2DDC2", "displayName": "Manathep — The Bereaved", "role": "return"}]
+    },
+    {
+      "questId": "sQ91eUA55bcQx0OQ0m59sg",
+      "objectiveKey": "Objective1",
+      "destinationMode": "fixed",
+      "reason": "The objective is an item hand-in to Zi and the compiled flow reveals the quest-owned Zi marker. Unrelated NPCs previously introduced by loose name matching are excluded.",
+      "targets": [{"kind": "quest_marker", "reference": "Zi", "displayName": "Zi — food hand-in", "role": "return"}]
+    },
+    {
+      "questId": "sQ91eUA55bcQx0OQ0m59sg",
+      "objectiveKey": "Objective4",
+      "destinationMode": "fixed",
+      "note": "The bouncer stands at the Cave of Screams entrance and controls access; the marker identifies that exterior interaction.",
+      "reason": "The compiled flow reveals the quest-owned Bouncer marker for the password stage, and the guide confirms the password is spoken to the bouncer outside the cave.",
+      "targets": [{"kind": "quest_marker", "reference": "Bouncer", "displayName": "KotHaar Bouncer — Cave of Screams entrance"}]
+    },
+    {
+      "questId": "sQ91eUA55bcQx0OQ0m59sg",
+      "objectiveKey": "Objective6",
+      "destinationMode": "fixed",
+      "reason": "The final objective explicitly returns to the KotHaar Bouncer and the flow re-reveals the same exact quest-owned Bouncer marker after the cave encounter.",
+      "targets": [{"kind": "quest_marker", "reference": "Bouncer", "displayName": "KotHaar Bouncer — final return", "role": "return"}]
+    },
+    {
+      "questId": "A3DOkkGZxXUHc82rPKHznA",
+      "objectiveKeys": ["Objective5", "Objective7"],
+      "destinationMode": "fixed",
+      "note": "Zanik is inside the Kalphite Hive Shortcut Chamber; the world map shows the Kalphite Hive entrance.",
+      "reason": "Both objectives explicitly locate Zanik in the interior Shortcut Chamber. The compiled flow and guide place the conversation beyond the Prime guardian's magical barrier, so the verified overworld Kalphite Hive entrance is the only truthful world-map destination.",
+      "targets": [{"kind": "dungeon_entrance", "reference": "KalphiteHive", "displayName": "Zanik — Kalphite Hive entrance", "role": "enter"}]
+    },
+    {
+      "questId": "nIvEyEv-kvSwgqOLc5VopQ",
+      "objectiveKey": "ConvinceNoble.0",
+      "destinationMode": "multiple",
+      "note": "The three councillors may be persuaded in any order. Only their three authored target areas are shown; the quest giver is a later return destination.",
+      "reason": "The compiled flow reveals Noble1, Noble2, and Noble3 for Brialka, Alabrais, and Chirot. The guide independently confirms these are the three councillors, while TribeB_Taskgiver3_NPC is Shangruuh and not a persuasion target.",
+      "targets": [
+        {"kind": "quest_marker", "reference": "TribeB.Task3.Noble1", "displayName": "Brialka — Historian Councillor", "role": "convince"},
+        {"kind": "quest_marker", "reference": "TribeB.Task3.Noble2", "displayName": "Alabrais — Science Councillor", "role": "convince"},
+        {"kind": "quest_marker", "reference": "TribeB.Task3.Noble3", "displayName": "Chirot — Broker Councillor", "role": "convince"}
+      ]
+    },
+    {
+      "questId": "nIvEyEv-kvSwgqOLc5VopQ",
+      "objectiveKey": "ReturnToShangruuh",
+      "destinationMode": "fixed",
+      "reason": "The compiled flow reveals TribeB_Taskgiver3_Target only for the final return, and the objective explicitly identifies Shangruuh in the Uzzer Camp.",
+      "targets": [{"kind": "quest_marker", "reference": "TribeB_Taskgiver3_Target", "displayName": "Shangruuh — Uzzer Camp", "role": "return"}]
+    },
+    {
+      "questId": "1BhNkkkP6y7ireu6yVR5tg",
+      "objectiveKey": "GatherIngredients",
+      "destinationMode": "fixed",
+      "note": "The ingredients have multiple renewable sources; this marker identifies the required hand-in to Lagra rather than pretending there is one mandatory gathering location.",
+      "reason": "The objective explicitly brings all three ingredient types to Lagra, and the registry contains one exact Lagra - The Butcher placement. Guides confirm raw farm meat, kalphite shell fragments, and cactus steaks can each be sourced in multiple ways or places.",
+      "targets": [{"kind": "registry_landmark", "reference": "685A686A-4A3B33AE-D302F8B9-E65410FF", "displayName": "Lagra — The Butcher", "role": "return"}]
+    },
+    {
+      "questId": "XElCtUmXXqK35p63tua9og",
+      "objectiveKey": "FindTheClues",
+      "destinationMode": "area",
+      "note": "Search the authored rocky-spire clue area north of Uzzer Camp. The cooked quest data exposes the search area, not separate publishable transforms for every slab.",
+      "reason": "The compiled flow reveals TribeB.Task1_Target_1 for the first clue search. TribeB_Taskgiver1_NPC is Laguna's later return marker and is excluded from this search objective.",
+      "targets": [{"kind": "quest_marker", "reference": "TribeB.Task1_Target_1", "displayName": "Rocky-spire stone slab search area"}]
+    },
+    {
+      "questId": "XElCtUmXXqK35p63tua9og",
+      "objectiveKey": "LocateTheGateway",
+      "destinationMode": "area",
+      "note": "The final slab is approached through the authored gateway search area near the Crucible spire.",
+      "reason": "The compiled flow directly reveals TribeB.Task1_Area_step2 for this final-clue state, and the guide identifies the destination as the last ancient Garou statue at the Crucible of Humiliation spire.",
+      "targets": [{"kind": "quest_marker", "reference": "TribeB.Task1_Area_step2", "displayName": "Final slab — Crucible spire gateway"}]
+    },
+    {
+      "questId": "Bnon4kzm_EdvZz-bma5HBg",
+      "objectiveKey": "SearchLocation",
+      "destinationMode": "multiple",
+      "note": "Inspect both fallen Garou scouts and the scorched wall in the eastern village.",
+      "reason": "The current world contains three quest-specific placed interactions for this investigation: BP_NPC_UmS_TribeC_Task2_DeadGarou, BP_NPC_UmS_TribeC_Task2_DeadGarou1, and BP_NPC_UmS_TribeC_Task2_ScorchMarks. The guide independently confirms exactly two bodies and one scorched wall.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_NPC_UmS_TribeC_Task2_DeadGarou", "displayName": "Lost scout — village ruins", "role": "investigate"},
+        {"kind": "world_actor", "reference": "BP_NPC_UmS_TribeC_Task2_DeadGarou1", "displayName": "Lost scout — eastern village", "role": "investigate"},
+        {"kind": "world_actor", "reference": "BP_NPC_UmS_TribeC_Task2_ScorchMarks", "displayName": "Scorched wall clue", "role": "investigate"}
+      ]
+    },
+    {
+      "questId": "Bnon4kzm_EdvZz-bma5HBg",
+      "objectiveKey": "FindDragon",
+      "destinationMode": "fixed",
+      "note": "Defeat the red dragon at the authored Radiant encounter, then return its heart to Hedric.",
+      "reason": "The quest owns an exact placed marker named The Radiant at the red-dragon encounter. The guide confirms the investigation leads farther east to that dragon; Hedric is the subsequent hand-in rather than the kill location.",
+      "targets": [{"kind": "quest_marker", "reference": "The Radiant", "displayName": "The Radiant — red dragon encounter", "role": "defeat"}]
+    },
+    {
+      "questId": "Bnon4kzm_EdvZz-bma5HBg",
+      "objectiveKey": "ReturnToGarou",
+      "destinationMode": "fixed",
+      "reason": "The flow reveals TribeC_Taskgiver2_Target after the Radiant encounter and the objective explicitly returns the heart to Hedric.",
+      "targets": [{"kind": "quest_marker", "reference": "TribeC_Taskgiver2_Target", "displayName": "Hedric — The Hunter", "role": "return"}]
+    },
+    {
+      "questId": "8Rb0t0upslwKHXWYGnTKgg",
+      "objectiveKeys": ["DigScroll.0", "DigScroll.1", "DigScroll.2", "DigScroll.3"],
+      "destinationMode": "multiple",
+      "note": "The counter does not identify which scroll sites have already been dug, so all four exact sites remain visible for every 0/4 through 3/4 state.",
+      "reason": "The current world contains exactly four placed BP_UmS_Mainquest_TribeB_Task2_ArchaeologyDigSite actors. Their count and placement in four separate Garou ruins match the compiled four-scroll objective and the guide's four specific ruins.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_UmS_Mainquest_TribeB_Task2_ArchaeologyDigSite", "displayName": "Forbidden Scroll dig site — western ruin", "role": "dig"},
+        {"kind": "world_actor", "reference": "BP_UmS_Mainquest_TribeB_Task2_ArchaeologyDigSite2", "displayName": "Forbidden Scroll dig site — lower western ruin", "role": "dig"},
+        {"kind": "world_actor", "reference": "BP_UmS_Mainquest_TribeB_Task2_ArchaeologyDigSite3", "displayName": "Forbidden Scroll dig site — southern ruin", "role": "dig"},
+        {"kind": "world_actor", "reference": "BP_UmS_Mainquest_TribeB_Task2_ArchaeologyDigSite4", "displayName": "Forbidden Scroll dig site — eastern ruin", "role": "dig"}
+      ]
+    },
+    {
+      "questId": "8Rb0t0upslwKHXWYGnTKgg",
+      "objectiveKey": "ReturnToArchaeologist",
+      "destinationMode": "fixed",
+      "reason": "The flow reveals TribeB_Taskgiver2_Target after all four scrolls and the objective explicitly returns to Lehran in Uzzer Camp.",
+      "targets": [{"kind": "quest_marker", "reference": "TribeB_Taskgiver2_Target", "displayName": "Lehran — The Archaeologist", "role": "return"}]
+    },
+    {
+      "questId": "d6M5Dkpx9Pjw_V2mNJh6eA",
+      "objectiveKey": "BringBars",
+      "destinationMode": "fixed",
+      "note": "Adamant ore and bars can be sourced outside the suggested search area; the required progression interaction is the hand-in to Valas.",
+      "reason": "The objective explicitly brings three adamant bars to Valas and the current world registry contains one exact Valas - The Blacksmith placement. The broad TribeA.Task3 area is optional sourcing guidance, not a required destination.",
+      "targets": [{"kind": "registry_landmark", "reference": "F8250830-405F796E-EC7E0581-8790FA54", "displayName": "Valas — The Blacksmith", "role": "return"}]
+    },
+    {
+      "questId": "WXRGL036pJRhAU-BWTZ_9g",
+      "objectiveKey": "ObjectiveZero",
+      "destinationMode": "fixed",
+      "note": "This objective points to Abraxus at Coalridge Pass; the separate Dowdun quest-state actor is not part of this objective.",
+      "reason": "The quest flow identifies Abraxus as the owner. The authored Coalridge placement is BP_NPC_FH_Abraxus_Ghost; BP_NPC_FH_Abraxus_Dowdun belongs to a different quest state.",
+      "targets": [{"kind": "npc", "reference": "abraxus-the-eternal", "actorType": "BP_NPC_FH_Abraxus_Ghost"}]
+    },
+    {
+      "questId": "db-ciknQnYrkNHuOcQXhkA",
+      "objectiveKey": "BodyParts.0",
+      "destinationMode": "multiple",
+      "note": "Dig up the Human torso, Garou Arms, and Goblin Legs at the three quest-specific buried coffins. Collection order is unrestricted, so all three remain visible.",
+      "reason": "Three placed BP_TheGreatBodyRobbery_BuriedCoffin actors belong to Quest_GreatBodyRobbery. Their Coffin01/02/03 entry tags and booleans lead respectively to the torso, arms, and legs grant branches in the cooked quest flow.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_TheGreatBodyRobbery_BuriedCoffin3", "displayName": "Human torso grave", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_TheGreatBodyRobbery_BuriedCoffin2", "displayName": "Garou Arms grave", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_TheGreatBodyRobbery_BuriedCoffin", "displayName": "Goblin Legs grave", "role": "collect"}
+      ]
+    },
+    {
+      "questId": "db-ciknQnYrkNHuOcQXhkA",
+      "objectiveKey": "BodyParts.1",
+      "destinationMode": "multiple",
+      "note": "One part has been collected, but the aggregate counter does not identify which one. All three authored graves remain possible destinations.",
+      "reason": "The objective exposes only a count. The same three Coffin01/02/03 actors remain the complete game-authored target set and the current snapshot does not expose their individual booleans.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_TheGreatBodyRobbery_BuriedCoffin3", "displayName": "Human torso grave", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_TheGreatBodyRobbery_BuriedCoffin2", "displayName": "Garou Arms grave", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_TheGreatBodyRobbery_BuriedCoffin", "displayName": "Goblin Legs grave", "role": "collect"}
+      ]
+    },
+    {
+      "questId": "db-ciknQnYrkNHuOcQXhkA",
+      "objectiveKey": "BodyParts.2",
+      "destinationMode": "multiple",
+      "note": "Two parts have been collected, but the aggregate counter does not identify the remaining grave. All three authored graves remain possible destinations.",
+      "reason": "The objective exposes only a count. The same three Coffin01/02/03 actors remain the complete game-authored target set and the current snapshot does not expose their individual booleans.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_TheGreatBodyRobbery_BuriedCoffin3", "displayName": "Human torso grave", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_TheGreatBodyRobbery_BuriedCoffin2", "displayName": "Garou Arms grave", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_TheGreatBodyRobbery_BuriedCoffin", "displayName": "Goblin Legs grave", "role": "collect"}
+      ]
+    },
+    {
+      "questId": "db-ciknQnYrkNHuOcQXhkA",
+      "objectiveKey": "AddPartsToTable",
+      "destinationMode": "fixed",
+      "reason": "The current-build registry identity B583AF8E-4A86E359-FA1FDF88-8EA67879 is the quest-authored Examination Table in Fenkenstrain's laboratory.",
+      "targets": [{"kind": "registry_landmark", "reference": "B583AF8E-4A86E359-FA1FDF88-8EA67879", "role": "interact"}]
+    },
+    {
+      "questId": "db-ciknQnYrkNHuOcQXhkA",
+      "objectiveKey": "Objecrive3.5",
+      "destinationMode": "fixed",
+      "reason": "The autopsy is performed on the exact quest-authored Examination Table registry identity, not on one of the several Fenkenstrain stage actors nearby.",
+      "targets": [{"kind": "registry_landmark", "reference": "B583AF8E-4A86E359-FA1FDF88-8EA67879", "role": "interact"}]
+    },
+    {
+      "questId": "db-ciknQnYrkNHuOcQXhkA",
+      "objectiveKey": "Objective7",
+      "destinationMode": "fixed",
+      "reason": "The head is attached at the exact quest-authored Examination Table registry identity.",
+      "targets": [{"kind": "registry_landmark", "reference": "B583AF8E-4A86E359-FA1FDF88-8EA67879", "role": "interact"}]
+    },
+    {
+      "questId": "db-ciknQnYrkNHuOcQXhkA",
+      "objectiveKey": "Objective8",
+      "destinationMode": "fixed",
+      "reason": "The bottled lightning is inserted into the quest-authored Strange Machine registry identity in Fenkenstrain's laboratory.",
+      "targets": [{"kind": "registry_landmark", "reference": "AFA8DDF4-402C43D9-030F73B9-872E4367", "role": "interact"}]
+    },
+    {
+      "questId": "db-ciknQnYrkNHuOcQXhkA",
+      "objectiveKey": "Objective5",
+      "destinationMode": "multiple",
+      "note": "Carry the empty vial and get struck by lightning. Stormtouched Highlands is the reliable destination, while a thunderstorm can work in nearly any region; no exact strike coordinate exists. Once filled, bring the bottle to Doctor Fenkenstrain at the marked laboratory.",
+      "reason": "The cooked quest requires the empty vial to become Lightning-in-a-bottle after a lightning strike, so no fixed collection point can truthfully be published. The same objective explicitly includes the hand-in, and Fenkenstrain is the quest-owned exact laboratory marker used by its surrounding conversation states.",
+      "targets": [{"kind": "quest_marker", "reference": "Fenkenstrain", "displayName": "Doctor Fenkenstrain — lightning bottle hand-in", "role": "return-after-dynamic-collection"}]
+    },
+    {
+      "questId": "WXRGL036pJRhAU-BWTZ_9g",
+      "objectiveKey": "FindBooks",
+      "destinationMode": "multiple",
+      "note": "Collect the five individually placed books in eastern Fellhollow, then return them to Abraxus at Coalridge Pass.",
+      "reason": "The current-build quest actors BP_NPC_FH_WhatRemains_Book1 through Book5 expose the five exact book display names, TookBook1..5 quest booleans, WhatRemains participant/entry tags, and unique authored world placements. The objective also explicitly includes the return to the Coalridge Abraxus actor.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_NPC_FH_WhatRemains_Book1", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_FH_WhatRemains_Book2", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_FH_WhatRemains_Book3", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_FH_WhatRemains_Book4", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_FH_WhatRemains_Book5", "role": "collect"},
+        {"kind": "npc", "reference": "abraxus-the-eternal", "actorType": "BP_NPC_FH_Abraxus_Ghost", "role": "return"}
+      ]
+    },
+    {
+      "questId": "WXRGL036pJRhAU-BWTZ_9g",
+      "objectiveKey": "FoundBooks",
+      "destinationMode": "fixed",
+      "note": "Bring the five books to Abraxus at Coalridge Pass.",
+      "reason": "This is the book hand-in state. BP_NPC_FH_Abraxus_Ghost is the quest's Coalridge actor; the same-named BP_NPC_FH_Abraxus_Dowdun placement belongs to another quest state.",
+      "targets": [{"kind": "npc", "reference": "abraxus-the-eternal", "actorType": "BP_NPC_FH_Abraxus_Ghost"}]
+    },
+    {
+      "questId": "WXRGL036pJRhAU-BWTZ_9g",
+      "objectiveKey": "FindBooksAndReturn",
+      "destinationMode": "multiple",
+      "note": "Collect any missing books at their five authored interaction points and return the complete set to Abraxus at Coalridge Pass.",
+      "reason": "This counter/combined state has the same five-book action and return requirement. The exact current-build WhatRemains book actors provide the collection positions; the exact Coalridge Abraxus actor provides the hand-in position.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_NPC_FH_WhatRemains_Book1", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_FH_WhatRemains_Book2", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_FH_WhatRemains_Book3", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_FH_WhatRemains_Book4", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_FH_WhatRemains_Book5", "role": "collect"},
+        {"kind": "npc", "reference": "abraxus-the-eternal", "actorType": "BP_NPC_FH_Abraxus_Ghost", "role": "return"}
+      ]
+    },
+    {
+      "questId": "WXRGL036pJRhAU-BWTZ_9g",
+      "objectiveKey": "FindScrolls",
+      "destinationMode": "multiple",
+      "note": "Recover Binding of Ib, Coclear Malificarum, and Eventide at their three authored interaction points. The markers identify the scroll pickups associated with Blightscale, Ulgo, and Razlem, not merely the enemies' patrol positions.",
+      "reason": "The current-build quest actors BP_NPC_FH_WhatRemains_Scroll1 through Scroll3 expose the exact scroll names, TookScroll1..3 quest booleans, WhatRemains participant/entry tags, and unique authored placements.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_NPC_FH_WhatRemains_Scroll1", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_FH_WhatRemains_Scroll2", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_FH_WhatRemains_Scroll3", "role": "collect"}
+      ]
+    },
+    {
+      "questId": "WXRGL036pJRhAU-BWTZ_9g",
+      "objectiveKey": "FoundScrolls",
+      "destinationMode": "fixed",
+      "note": "Bring the three scrolls to Abraxus at Coalridge Pass.",
+      "reason": "This is the scroll hand-in state. BP_NPC_FH_Abraxus_Ghost is the exact Coalridge quest actor and excludes the unrelated same-named Dowdun placement.",
+      "targets": [{"kind": "npc", "reference": "abraxus-the-eternal", "actorType": "BP_NPC_FH_Abraxus_Ghost"}]
+    },
+    {
+      "questId": "WXRGL036pJRhAU-BWTZ_9g",
+      "objectiveKey": "FindScrollsAndReturn",
+      "destinationMode": "multiple",
+      "note": "Recover any missing scrolls at their three authored interaction points, then return them to Abraxus at Coalridge Pass.",
+      "reason": "This combined state retains the three current-build WhatRemains scroll actors and the exact Coalridge Abraxus hand-in actor.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_NPC_FH_WhatRemains_Scroll1", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_FH_WhatRemains_Scroll2", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_FH_WhatRemains_Scroll3", "role": "collect"},
+        {"kind": "npc", "reference": "abraxus-the-eternal", "actorType": "BP_NPC_FH_Abraxus_Ghost", "role": "return"}
+      ]
+    },
+    {
+      "questId": "Nw3wiUaB8siRIN2bStWJmw",
+      "objectiveKey": "DefeatKuldra",
+      "destinationMode": "fixed",
+      "note": "Kuldra is in the Silverthorn interior; the world-map marker shows the authored entrance.",
+      "reason": "The Regicide flow enters the Silverthorn encounter through SW_Door; interior coordinates are intentionally replaced by the overworld entrance marker.",
+      "targets": [{"kind": "quest_marker", "reference": "SW_Door"}]
+    },
+    {
+      "questId": "Nw3wiUaB8siRIN2bStWJmw",
+      "objectiveKey": "BringHead",
+      "destinationMode": "fixed",
+      "note": "Zilyana is inside Silverthorn Keep; the world-map marker shows the authored entrance.",
+      "reason": "The target NPC placement is outside world-map bounds inside the keep; SW_Door is the quest-owned overworld entrance.",
+      "targets": [{"kind": "quest_marker", "reference": "SW_Door"}]
+    },
+    {
+      "questId": "Nw3wiUaB8siRIN2bStWJmw",
+      "objectiveKey": "ReturnToZilyana",
+      "destinationMode": "fixed",
+      "note": "Zilyana is inside Silverthorn Keep; the world-map marker shows the authored entrance.",
+      "reason": "The target NPC placement is outside world-map bounds inside the keep; SW_Door is the quest-owned overworld entrance.",
+      "targets": [{"kind": "quest_marker", "reference": "SW_Door"}]
+    },
+    {
+      "questId": "XElCtUmXXqK35p63tua9og",
+      "objectiveKey": "None",
+      "destinationMode": "multiple",
+      "note": "Search the two authored first-clue areas.",
+      "reason": "The first Saga state precedes the clue counter and the quest owns both initial clue targets.",
+      "targets": [
+        {"kind": "quest_marker", "reference": "TribeB.Task1_Target_1"},
+        {"kind": "quest_marker", "reference": "TribeB.Task1_Area_step2"}
+      ]
+    },
+    {
+      "questId": "XElCtUmXXqK35p63tua9og",
+      "objectiveKey": "FindRemainingClues2/4",
+      "destinationMode": "fixed",
+      "reason": "Quest flow ordering links the 2/4 state to the authored step-two target.",
+      "targets": [{"kind": "quest_marker", "reference": "TribeB.Task1_Target_step2"}]
+    },
+    {
+      "questId": "XElCtUmXXqK35p63tua9og",
+      "objectiveKey": "FindRemainingClues3/4",
+      "destinationMode": "fixed",
+      "reason": "The remaining clue state resolves to the quest's remaining authored clue target.",
+      "targets": [{"kind": "quest_marker", "reference": "TribeB.Task1_Target_1"}]
+    },
+    {
+      "questId": "XElCtUmXXqK35p63tua9og",
+      "objectiveKey": "ReturnToBard",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly returns to Laguna and the quest's task-giver NPC and target share this authored transform.",
+      "targets": [{"kind": "quest_marker", "reference": "TribeB_Taskgiver1_NPC"}]
+    },
+    {
+      "questId": "A3DOkkGZxXUHc82rPKHznA",
+      "objectiveKey": "Objective2.1",
+      "destinationMode": "area",
+      "note": "Follow the trail within the authored Vault Guardian search area.",
+      "reason": "QF_Contact updates VaultGuardianSearchArea directly below Objective2.1; the quest owns the matching placed search-area marker.",
+      "targets": [{"kind": "quest_marker", "reference": "VaultGuardianSearchArea"}]
+    },
+    {
+      "questId": "rai6k0UuXT_GPEixJM0boQ",
+      "objectiveKey": "BringHeartNotStarted",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly asks for someone interested in the Wild Hunt; the quest flow identifies VannakaNPC and the quest owns one exact VannakaNPC marker.",
+      "targets": [{"kind": "quest_marker", "reference": "VannakaNPC"}]
+    },
+    {
+      "questId": "Nw3wiUaB8siRIN2bStWJmw",
+      "objectiveKey": "SpeakZilyana",
+      "destinationMode": "fixed",
+      "note": "Zilyana is inside Silverthorn Keep; the world-map marker shows its overworld entrance.",
+      "reason": "The objective reveals the interior ZilyanaNPC marker, which has no publishable overworld transform; the quest-owned SW_Door marker is the extracted entrance used for this interior.",
+      "targets": [{"kind": "quest_marker", "reference": "SW_Door"}]
+    },
+    {
+      "questId": "sQ91eUA55bcQx0OQ0m59sg",
+      "objectiveKey": "Objective3",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly returns to Zi in the Burning Spire and the extracted NPC registry contains one uniquely placed Zi.",
+      "targets": [{"kind": "npc", "reference": "zi"}]
+    },
+    {
+      "questId": "Xb1KUkU_wOIHvzahULr6yA",
+      "objectiveKey": "Return",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly returns to Laguna in the Manafem Camp; TribeC_Taskgiver3_NPC is the quest-owned marker at Laguna's extracted Manafem placement.",
+      "targets": [{"kind": "quest_marker", "reference": "TribeC_Taskgiver3_NPC"}]
+    },
+    {
+      "questId": "eKV5vkDqZH89aGWiY_T7GQ",
+      "objectiveKey": "Found ghost amulet",
+      "destinationMode": "fixed",
+      "note": "Warren is the first spirit beside the ruined village, southwest of the well; he appears only at night.",
+      "reason": "The guide sequence identifies Warren as the interaction that establishes the amulet's purpose. The extracted Restless Spirit registry placement southwest of the authored Well_RG marker is Warren's placed quest actor.",
+      "targets": [{"kind": "registry_landmark", "reference": "689EC4DF-4A18B80D-220E4EB3-ED4ED5AE", "displayName": "Warren", "role": "talk"}]
+    },
+    {
+      "questId": "eKV5vkDqZH89aGWiY_T7GQ",
+      "objectiveKey": "Put ghosts to rest",
+      "destinationMode": "multiple",
+      "note": "Speak to Warren, Lazina, Finn, and Kay at night, then remember all four at the Remembrance Shrine. The objective key does not expose which names the character has already learned, so every still-possible interaction is shown.",
+      "reason": "The quest flow contains four named remembrance choices and uses QuestFlow.Participant.Memorial_RG for the final interactions. Extracted world data contains exactly four BP_NPC_RestlessGhost_Quest placements and one BP_NPC_RestlessGhostMemorial placement, matching the guide's four spirits plus final shrine sequence.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "689EC4DF-4A18B80D-220E4EB3-ED4ED5AE", "displayName": "Warren", "role": "talk"},
+        {"kind": "registry_landmark", "reference": "9734735E-46C37F16-BDD72EB5-983FAEF2", "displayName": "Lazina", "role": "talk"},
+        {"kind": "registry_landmark", "reference": "07D13459-4DCF3A28-257A81BF-FD5DF0A7", "displayName": "Finn", "role": "talk"},
+        {"kind": "registry_landmark", "reference": "6F4B9D60-494C735B-61CD6695-47C1B657", "displayName": "Kay", "role": "talk"},
+        {"kind": "world_actor", "reference": "BP_NPC_RestlessGhostMemorial", "displayName": "Remembrance Shrine", "role": "finish"}
+      ]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_-1",
+      "destinationMode": "fixed",
+      "reason": "This opening state follows the Imaru hand-in and explicitly requires Death. Quest_BlackKnightsFortress owns the exact DR_MQ_Death marker at Death's Forgotten Temple placement; the colocated NPC and duplicate flow discoveries are evidence for the same destination, not additional markers.",
+      "targets": [{"kind": "quest_marker", "reference": "DR_MQ_Death", "displayName": "Death — Forgotten Temple", "role": "talk"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_0",
+      "destinationMode": "fixed",
+      "reason": "After Death, the walkthrough sends the player to Cathan at Silverthorn Keep's eastern gatehouse. The compiled flow repeatedly names the single quest-owned DR_MQ_Cathan marker; repeated references are one physical destination.",
+      "targets": [{"kind": "quest_marker", "reference": "DR_MQ_Cathan", "displayName": "Cathan — Silverthorn Keep eastern gate", "role": "talk"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_2",
+      "destinationMode": "fixed",
+      "reason": "The route from the Courtyard continues to Doric at The Nexus. DR_MQ_Doric is this quest's exact marker at the Dowdun Doric placement; global Doric registry copies in other regions must not be published.",
+      "targets": [{"kind": "quest_marker", "reference": "DR_MQ_Doric", "displayName": "Doric — The Nexus", "role": "talk"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_3",
+      "destinationMode": "fixed",
+      "reason": "QF_DR_MainQuest_Doric sets this objective and immediately reveals DR_MQ_DreamingStone; the shards are not revealed until the subsequent fragment sequence.",
+      "targets": [{"kind": "quest_marker", "reference": "DR_MQ_DreamingStone", "displayName": "Dreaming Stone", "role": "investigate"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_5",
+      "destinationMode": "fixed",
+      "reason": "Restoring the Dreaming Stone opens the route to The Bastion and the Black Knight Titan encounter. The objective has a direct parent relationship to the unique quest-owned DR_GateKeeper marker at the arena.",
+      "targets": [{"kind": "quest_marker", "reference": "DR_GateKeeper", "displayName": "Black Knight Titan arena", "role": "defeat"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_6",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly returns to the restored Dreaming Stone/Avisk after the Gatekeeper sequence; its authored DR_MQ_DreamingStone location is the destination.",
+      "targets": [{"kind": "quest_marker", "reference": "DR_MQ_DreamingStone", "displayName": "Avisk — restored Dreaming Stone", "role": "return"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_4_13",
+      "destinationMode": "fixed",
+      "reason": "At 13/13 the collection is complete and QF_DR_MainQuest_Fragments reveals DR_MQ_DreamingStone for the hand-in; fragment markers are no longer destinations.",
+      "targets": [{"kind": "quest_marker", "reference": "DR_MQ_DreamingStone", "displayName": "Dreaming Stone", "role": "return"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_4_-1",
+      "destinationMode": "fixed",
+      "reason": "This pre-collection state explicitly asks Doric about the shards. The current quest's DR_MQ_Doric marker is colocated with the Dowdun Doric actor at The Nexus and excludes his unrelated global placements.",
+      "targets": [{"kind": "quest_marker", "reference": "DR_MQ_Doric", "displayName": "Doric — shard briefing at The Nexus", "role": "talk"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_4",
+      "destinationMode": "multiple",
+      "note": "All thirteen authored shard locations are shown because the aggregate count does not identify which individual shards remain.",
+      "reason": "QF_DR_MainQuest_Dreamstone independently reveals DR_MQ_Fragment_1 through DR_MQ_Fragment_13 and gates them with per-fragment quest booleans.",
+      "targets": [{"kind": "quest_marker_prefix", "reference": "DR_MQ_Fragment_", "role": "collect"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_4_1",
+      "destinationMode": "multiple",
+      "note": "The count alone does not reveal which shard was collected; all thirteen possible locations remain visible.",
+      "reason": "The fragment flow tracks thirteen independent booleans, while this public objective exposes only an aggregate count.",
+      "targets": [{"kind": "quest_marker_prefix", "reference": "DR_MQ_Fragment_", "role": "collect"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_4_2",
+      "destinationMode": "multiple",
+      "note": "The count alone does not reveal which shards were collected; all thirteen possible locations remain visible.",
+      "reason": "The fragment flow tracks thirteen independent booleans, while this public objective exposes only an aggregate count.",
+      "targets": [{"kind": "quest_marker_prefix", "reference": "DR_MQ_Fragment_", "role": "collect"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_4_3",
+      "destinationMode": "multiple",
+      "note": "The count alone does not identify the collected shards; all authored possibilities are shown.",
+      "reason": "The fragment flow tracks thirteen independent booleans, while this public objective exposes only an aggregate count.",
+      "targets": [{"kind": "quest_marker_prefix", "reference": "DR_MQ_Fragment_", "role": "collect"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_4_4",
+      "destinationMode": "multiple",
+      "note": "The count alone does not identify the collected shards; all authored possibilities are shown.",
+      "reason": "The fragment flow tracks thirteen independent booleans, while this public objective exposes only an aggregate count.",
+      "targets": [{"kind": "quest_marker_prefix", "reference": "DR_MQ_Fragment_", "role": "collect"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_4_5",
+      "destinationMode": "multiple",
+      "note": "The count alone does not identify the collected shards; all authored possibilities are shown.",
+      "reason": "The fragment flow tracks thirteen independent booleans, while this public objective exposes only an aggregate count.",
+      "targets": [{"kind": "quest_marker_prefix", "reference": "DR_MQ_Fragment_", "role": "collect"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_4_6",
+      "destinationMode": "multiple",
+      "note": "The count alone does not identify the collected shards; all authored possibilities are shown.",
+      "reason": "The fragment flow tracks thirteen independent booleans, while this public objective exposes only an aggregate count.",
+      "targets": [{"kind": "quest_marker_prefix", "reference": "DR_MQ_Fragment_", "role": "collect"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_4_7",
+      "destinationMode": "multiple",
+      "note": "The count alone does not identify the collected shards; all authored possibilities are shown.",
+      "reason": "The fragment flow tracks thirteen independent booleans, while this public objective exposes only an aggregate count.",
+      "targets": [{"kind": "quest_marker_prefix", "reference": "DR_MQ_Fragment_", "role": "collect"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_4_8",
+      "destinationMode": "multiple",
+      "note": "The count alone does not identify the collected shards; all authored possibilities are shown.",
+      "reason": "The fragment flow tracks thirteen independent booleans, while this public objective exposes only an aggregate count.",
+      "targets": [{"kind": "quest_marker_prefix", "reference": "DR_MQ_Fragment_", "role": "collect"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_4_9",
+      "destinationMode": "multiple",
+      "note": "The count alone does not identify the collected shards; all authored possibilities are shown.",
+      "reason": "The fragment flow tracks thirteen independent booleans, while this public objective exposes only an aggregate count.",
+      "targets": [{"kind": "quest_marker_prefix", "reference": "DR_MQ_Fragment_", "role": "collect"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_4_10",
+      "destinationMode": "multiple",
+      "note": "The count alone does not identify the collected shards; all authored possibilities are shown.",
+      "reason": "The fragment flow tracks thirteen independent booleans, while this public objective exposes only an aggregate count.",
+      "targets": [{"kind": "quest_marker_prefix", "reference": "DR_MQ_Fragment_", "role": "collect"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_4_11",
+      "destinationMode": "multiple",
+      "note": "The count alone does not identify the collected shards; all authored possibilities are shown.",
+      "reason": "The fragment flow tracks thirteen independent booleans, while this public objective exposes only an aggregate count.",
+      "targets": [{"kind": "quest_marker_prefix", "reference": "DR_MQ_Fragment_", "role": "collect"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_4_12",
+      "destinationMode": "multiple",
+      "note": "One shard remains, but the aggregate count does not identify which one; all thirteen authored possibilities are shown.",
+      "reason": "The fragment flow tracks thirteen independent booleans, while this public objective exposes only an aggregate count.",
+      "targets": [{"kind": "quest_marker_prefix", "reference": "DR_MQ_Fragment_", "role": "collect"}]
+    },
+    {
+      "questId": "4QQuNkR6spTCXC6zj6VqxQ",
+      "objectiveKey": "FindGhosts0/3",
+      "destinationMode": "multiple",
+      "note": "The three spirits can be completed in any order. The sketchbook marker is the authored retrieval interaction for the paint-spattered spirit; return to that spirit afterward.",
+      "reason": "The three extracted Ghost landmarks align with the Emberwood house, Hope's Fall gate, and Fellhollow paint-spattered-spirit locations. The current world also places the quest-specific BP_NPC_FHGhostQuest_Sketchbook actor used by the third spirit's flow.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "22DE00B8-4CB15EF4-F101619F-E8B85D27", "displayName": "Windswept Ghost", "role": "help"},
+        {"kind": "registry_landmark", "reference": "8C8F2DE3-4365929A-14A90B8F-3484376E", "displayName": "Reminiscing Ghost", "role": "help"},
+        {"kind": "registry_landmark", "reference": "EB81888F-401988D1-26F7B1AD-CB140DF0", "displayName": "Paint-Spattered Ghost", "role": "talk"},
+        {"kind": "world_actor", "reference": "BP_NPC_FHGhostQuest_Sketchbook", "displayName": "Dust-covered Sketchbook", "role": "collect"}
+      ]
+    },
+    {
+      "questId": "4QQuNkR6spTCXC6zj6VqxQ",
+      "objectiveKey": "FindGhosts1/3",
+      "destinationMode": "multiple",
+      "note": "The counter does not identify which spirit is complete, so all three possible spirit locations and the quest-specific sketchbook retrieval remain visible.",
+      "reason": "The quest exposes only an aggregate counter while the cooked flow tracks the three spirit branches independently.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "22DE00B8-4CB15EF4-F101619F-E8B85D27", "displayName": "Windswept Ghost", "role": "help"},
+        {"kind": "registry_landmark", "reference": "8C8F2DE3-4365929A-14A90B8F-3484376E", "displayName": "Reminiscing Ghost", "role": "help"},
+        {"kind": "registry_landmark", "reference": "EB81888F-401988D1-26F7B1AD-CB140DF0", "displayName": "Paint-Spattered Ghost", "role": "talk"},
+        {"kind": "world_actor", "reference": "BP_NPC_FHGhostQuest_Sketchbook", "displayName": "Dust-covered Sketchbook", "role": "collect"}
+      ]
+    },
+    {
+      "questId": "4QQuNkR6spTCXC6zj6VqxQ",
+      "objectiveKey": "FindGhosts2/3",
+      "destinationMode": "multiple",
+      "note": "One spirit remains, but the aggregate counter does not identify it; all possible spirit locations and the sketchbook retrieval are shown.",
+      "reason": "The quest exposes only an aggregate counter while the cooked flow tracks the three spirit branches independently.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "22DE00B8-4CB15EF4-F101619F-E8B85D27", "displayName": "Windswept Ghost", "role": "help"},
+        {"kind": "registry_landmark", "reference": "8C8F2DE3-4365929A-14A90B8F-3484376E", "displayName": "Reminiscing Ghost", "role": "help"},
+        {"kind": "registry_landmark", "reference": "EB81888F-401988D1-26F7B1AD-CB140DF0", "displayName": "Paint-Spattered Ghost", "role": "talk"},
+        {"kind": "world_actor", "reference": "BP_NPC_FHGhostQuest_Sketchbook", "displayName": "Dust-covered Sketchbook", "role": "collect"}
+      ]
+    },
+    {
+      "questId": "0WS3LUBsaPUDeuiPT_akhQ",
+      "objectiveKey": "None",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly reads the uniquely identified Advert-Inna-Bottle interaction next to Manktongue; Manktongue himself is not the progression interaction for this state.",
+      "targets": [{"kind": "registry_landmark", "reference": "32BD943C-48CB0710-47A20DBF-E46A2612", "displayName": "Advert-Inna-Bottle", "role": "read"}]
+    },
+    {
+      "questId": "0WS3LUBsaPUDeuiPT_akhQ",
+      "objectiveKey": "Objective2",
+      "destinationMode": "fixed",
+      "reason": "After reading the advert, the authored dialogue and objective both return to the single extracted Manktongue NPC placement.",
+      "targets": [{"kind": "npc", "reference": "manktongue", "role": "talk"}]
+    },
+    {
+      "questId": "0WS3LUBsaPUDeuiPT_akhQ",
+      "objectiveKey": "Objective3",
+      "destinationMode": "multiple",
+      "note": "Collect the undead chicken and an undead twig bundle. Pulpknuckle magnetises an iron bar for five law runes at Manktongue's camp; return the components to Manktongue there.",
+      "reason": "The quest dialogue explicitly places the chicken due north, the twig bundle at a glowing Bloodblight tree, and Pulpknuckle upstairs at the quest-giver camp. The current world provides exact quest-specific chicken, twig, and BP_NPC_Goblin_Smith interactions; Manktongue remains the separate component hand-in.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "20A409F9-407F5A30-9262E180-5A922918", "displayName": "Undead Chicken", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_Quest_UndeadTwigBundle", "displayName": "Undead Twig Bundle", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_Goblin_Smith", "displayName": "Pulpknuckle — magnetise iron bar", "role": "craft"},
+        {"kind": "npc", "reference": "manktongue", "displayName": "Manktongue — component hand-in", "role": "return"}
+      ]
+    },
+    {
+      "questId": "0WS3LUBsaPUDeuiPT_akhQ",
+      "objectiveKey": "Objective4",
+      "destinationMode": "fixed",
+      "reason": "The final objective explicitly returns to the single extracted Manktongue placement.",
+      "targets": [{"kind": "npc", "reference": "manktongue", "role": "return"}]
+    },
+    {
+      "questId": "wwEK50EPipTecO20yTquSQ",
+      "objectiveKey": "FindSpectralChinchompaSkulls",
+      "destinationMode": "multiple",
+      "note": "The current build contains 26 authored Spectral Chinchompa spawn points across Fellhollow. Gather ten skulls from any available spawns, then return to Vannaka.",
+      "reason": "The objective is a roaming enemy collection task rather than a single Vannaka interaction. Every published hunt point resolves from a placed BP_SpawnPoint_SpectralChinchompa actor in the current world; Vannaka remains only as the hand-in marker.",
+      "targets": [
+        {"kind": "npc", "reference": "spectral-chinchompa", "actorType": "BP_SpawnPoint_SpectralChinchompa", "allowMultiple": true, "displayName": "Spectral Chinchompa spawn", "role": "hunt"},
+        {"kind": "registry_landmark", "reference": "4E97E2C0-40F420D4-82DBC3B5-F25FA4D1", "displayName": "Vannaka", "role": "return"}
+      ]
+    },
+    {
+      "questId": "wwEK50EPipTecO20yTquSQ",
+      "objectiveKey": "SpeaktoVannaka",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly starts at the uniquely resolved Fellhollow Vannaka placement.",
+      "targets": [{"kind": "registry_landmark", "reference": "4E97E2C0-40F420D4-82DBC3B5-F25FA4D1", "displayName": "Vannaka", "role": "talk"}]
+    },
+    {
+      "questId": "d6s4dUyoCduLy7eRc2KndQ",
+      "objectiveKey": "FindMoonstone",
+      "destinationMode": "multiple",
+      "note": "Mine the gypsum deposit at each of the three fixed Moonstone locations west of Alcarrid: the northern cave, the rock platforms, and the southern Ruby Vine cave.",
+      "reason": "The quest flow has three separately named Moonstone entry states, and the current world registry publishes exactly three FirstCamp.Task2 Moonstone identities. The three broad search areas surround those exact item placements; Domri is a separate return objective.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "8AAA344F-4CC04E18-8CC04DA1-7670E0CB", "displayName": "Moonstone 1 — northern cave", "role": "collect"},
+        {"kind": "registry_landmark", "reference": "FE794809-49AD55B2-F8E402AC-FC5A9041", "displayName": "Moonstone 2 — rock platforms", "role": "collect"},
+        {"kind": "registry_landmark", "reference": "4E6F5F7D-431A2937-099421B6-E9A69636", "displayName": "Moonstone 3 — Ruby Vine cave", "role": "collect"}
+      ]
+    },
+    {
+      "questId": "d6s4dUyoCduLy7eRc2KndQ",
+      "objectiveKey": "ReturnToShopkeeper",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly names Domri, and the current world registry contains one exact Domri - The Merchant placement at the authored TribeA_Task2 target in Alcarrid Camp.",
+      "targets": [{"kind": "registry_landmark", "reference": "8C55BAB3-4DC37D37-300CBB96-D03D2CFB", "displayName": "Domri — The Merchant", "role": "return"}]
+    },
+    {
+      "questId": "A3DOkkGZxXUHc82rPKHznA",
+      "objectiveKey": "Objective1",
+      "destinationMode": "fixed",
+      "note": "Vault Guardian Prime is inside the Kalphite Hive; the world map therefore marks the dungeon entrance.",
+      "reason": "The placed BP_NPC_Quest_Contact_VaultGuardian_Leader actor proves the NPC is inside the hive cave, and the current world independently exposes the Kalphite Hive overworld entrance.",
+      "targets": [{"kind": "dungeon_entrance", "reference": "KalphiteHive", "displayName": "Vault Guardian Prime — Kalphite Hive entrance", "role": "enter"}]
+    },
+    {
+      "questId": "A3DOkkGZxXUHc82rPKHznA",
+      "objectiveKey": "Objective2",
+      "destinationMode": "multiple",
+      "note": "The damaged guardian is reached from the Kalphite Hive entrance. The dead guardian is among the kalphite eggs, and the buried guardian must be dug up at the ruined building.",
+      "reason": "The current world contains three semantically distinct quest actors: BP_NPC_Quest_Contact_DamagedVaultGuardian_UmS inside the Prime cave, BP_NPC_Quest_Contact_DeadVaultGuardian_UmS outside by the eggs, and BP_Contact_Buried_VaultGuardian at the ruins. The walkthrough independently confirms those three interactions and their roles.",
+      "targets": [
+        {"kind": "dungeon_entrance", "reference": "KalphiteHive", "displayName": "Damaged guardian — Kalphite Hive entrance", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_Quest_Contact_DeadVaultGuardian_UmS", "displayName": "Dead Vault Guardian — kalphite eggs", "role": "investigate"},
+        {"kind": "world_actor", "reference": "BP_Contact_Buried_VaultGuardian", "displayName": "Buried Vault Guardian — ruined building", "role": "dig-and-collect"}
+      ]
+    },
+    {
+      "questId": "KLBpt02O2AA_kaa_A8Av9w",
+      "objectiveKey": "FindSilverThread",
+      "destinationMode": "multiple",
+      "note": "Collect the spellbook from Emberwood Village, have Edna make the spectral silver thread, and obtain dragon blood from the nearby green dragon or any valid dragon wolf. Return all three reagents to the mirror.",
+      "reason": "The current quest registry exposes an exact Bedraggled Spellbook and mirror identity, while the NPC catalog contains one Edna quest actor and a green dragon only 9,106 world units from the mirror. Cooked dialogue identifies Edna as the thread crafter and permits dragon blood from either the nearby green dragon or dragon wolves.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "AC5081C9-4B94236F-7ADE1F89-5459FBDB", "displayName": "Bedraggled Spellbook — Emberwood windmill", "role": "collect"},
+        {"kind": "npc", "reference": "edna", "displayName": "Edna — spectral silver thread", "role": "craft"},
+        {"kind": "npc", "reference": "green-dragon", "opaqueId": "3b26ef1bc5f72aa2c841", "displayName": "Nearby Green Dragon — dragon blood", "role": "hunt"},
+        {"kind": "registry_landmark", "reference": "7976CEBB-422FB482-F55B18A1-432B54A2", "displayName": "Magic Mirror — reagent hand-in", "role": "return"}
+      ]
+    },
+    {
+      "questId": "KLBpt02O2AA_kaa_A8Av9w",
+      "objectiveKey": "LightCandles",
+      "destinationMode": "multiple",
+      "note": "Light all six memorial candles: beside the mirror in Fellhollow; at the Fractured Plains lake; on the Stormtouched Highlands cliff; west of the Bloodblight Swamp Garou camp; beside the giant tree in Whispering Swamp; and on the Bramblemead clifftop south of Crasorak Kara.",
+      "reason": "The current world registry contains exactly six Candle identities owned by the Mirror Mirror string table. Each exact placement falls within its correspondingly named authored candle search area, and the guide descriptions independently distinguish the same six physical contexts.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "420BCC62-4A08DDD7-C39126A1-8D433769", "displayName": "Memorial Candle — Fellhollow mirror", "role": "light"},
+        {"kind": "registry_landmark", "reference": "E4094A70-43E6966C-FA63549D-B9AC8B47", "displayName": "Memorial Candle — Fractured Plains lake", "role": "light"},
+        {"kind": "registry_landmark", "reference": "43F5A15B-41F9C823-95EC228F-79246B19", "displayName": "Memorial Candle — Stormtouched cliff", "role": "light"},
+        {"kind": "registry_landmark", "reference": "58A8D2F4-4F968512-D4B05C99-D14A27D1", "displayName": "Memorial Candle — Bloodblight Swamp", "role": "light"},
+        {"kind": "registry_landmark", "reference": "0B63B5D7-4A7AC806-5D4EA99C-38CDA14C", "displayName": "Memorial Candle — Whispering Swamp tree", "role": "light"},
+        {"kind": "registry_landmark", "reference": "E6E3E03E-40259DC9-DAB0D6B7-96FE9125", "displayName": "Memorial Candle — Bramblemead clifftop", "role": "light"}
+      ]
+    },
+    {
+      "questId": "uftGB0es-CGrvXyPoxW31w",
+      "objectiveKey": "TalkToWomNEGF",
+      "destinationMode": "fixed",
+      "reason": "The opening objective and four current-build flow operations agree on WomGFExitTarget beside Ashien's Watch. Duplicate operations represent the same authored interaction, not four destinations.",
+      "targets": [{"kind": "quest_marker", "reference": "WomGFExitTarget", "displayName": "Wise Old Man — Ashien's Watch", "role": "talk"}]
+    },
+    {
+      "questId": "uftGB0es-CGrvXyPoxW31w",
+      "objectiveKey": "UnlockGate",
+      "destinationMode": "fixed",
+      "reason": "After the Wise Old Man conversation, the flow hides WomGFExitTarget and reveals EnterDeathsDomainTarget at the Ominous Door. Death is beyond the door and is not the unlocking interaction.",
+      "targets": [{"kind": "quest_marker", "reference": "EnterDeathsDomainTarget", "displayName": "Ominous Door — Forgotten Temple entrance", "role": "enter"}]
+    },
+    {
+      "questId": "uftGB0es-CGrvXyPoxW31w",
+      "objectiveKeys": ["SearchTheStructure", "SpeakToMysteriousFigure"],
+      "destinationMode": "fixed",
+      "note": "Death is inside the Forgotten Temple; this marker is the exact authored temple destination on the world map.",
+      "reason": "The flow hides the entrance and reveals DeathsTempleArea for the search state, while the following objective explicitly speaks to Death at that same temple destination.",
+      "targets": [{"kind": "quest_marker", "reference": "DeathsTempleArea", "displayName": "Death — Forgotten Temple", "role": "talk"}]
+    },
+    {
+      "questId": "uftGB0es-CGrvXyPoxW31w",
+      "objectiveKey": "SpeakToPostiePete",
+      "destinationMode": "fixed",
+      "reason": "This story beat occurs beside the Forgotten Temple exit. Of the two current Postie Pete registry identities, 354D8FA4 is colocated with the quest-owned PostiePeteTarget; the other is the later Dowdun Reach placement.",
+      "targets": [{"kind": "registry_landmark", "reference": "354D8FA4-4054FF1B-FE04DA81-EEF1DFFD", "displayName": "Postie Pete — Forgotten Temple", "role": "talk"}]
+    },
+    {
+      "questId": "uftGB0es-CGrvXyPoxW31w",
+      "objectiveKey": "GoThroughDoorToFH",
+      "destinationMode": "fixed",
+      "reason": "The Postie Pete state is complete when the flow hides his target and reveals EnterFHArea at the wither-water crossing into Fellhollow.",
+      "targets": [{"kind": "quest_marker", "reference": "EnterFHArea", "displayName": "Fellhollow crossing", "role": "enter"}]
+    },
+    {
+      "questId": "uftGB0es-CGrvXyPoxW31w",
+      "objectiveKey": "FindACleansingPool",
+      "destinationMode": "fixed",
+      "reason": "On entering Fellhollow, the flow hides EnterFHArea and reveals CleansingPoolTarget. This is the exact first Purification Pool used to remove Soul Rift.",
+      "targets": [{"kind": "quest_marker", "reference": "CleansingPoolTarget", "displayName": "Purification Pool — Fellhollow entry", "role": "cleanse"}]
+    },
+    {
+      "questId": "uftGB0es-CGrvXyPoxW31w",
+      "objectiveKey": "InvestigateStandingStones",
+      "destinationMode": "multiple",
+      "note": "Speak to Cathan on the Bleakfields cliff, then examine all three nearby standing stones to reveal the three curse-fragment routes.",
+      "reason": "The nearest Ghost of Cathan placement is only 760 world units from the authored StandingStonesArea, and the current registry contains exactly three Standing Stone identities inside that same area. Quest flow and guide sequencing require Cathan followed by all three clues.",
+      "targets": [
+        {"kind": "npc", "reference": "ghost-of-cathan", "opaqueId": "3f56e42c6827459a3d9b", "displayName": "Cathan — Bleakfields cliff", "role": "talk"},
+        {"kind": "registry_landmark", "reference": "727378D6-40266062-E871B38D-1F069AA6", "displayName": "Standing Stone — first curse clue", "role": "investigate"},
+        {"kind": "registry_landmark", "reference": "3509DF90-4B8870A6-F647E082-800F2459", "displayName": "Standing Stone — second curse clue", "role": "investigate"},
+        {"kind": "registry_landmark", "reference": "80C5DC0C-4E6152BC-DEFD5395-B174BA49", "displayName": "Standing Stone — third curse clue", "role": "investigate"}
+      ]
+    },
+    {
+      "questId": "uftGB0es-CGrvXyPoxW31w",
+      "objectiveKey": "ReachedStandingStones",
+      "destinationMode": "multiple",
+      "note": "Read all three nearby stones; they reveal the village, waterfall, and fortress fragment routes.",
+      "reason": "The current flow reveals exactly StandStoneVillage, StandStoneWaterfall, and StandStoneFortress for the 0/3 state. Their duplicate candidates are repeated flow references to the same three authored locations.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "727378D6-40266062-E871B38D-1F069AA6", "displayName": "Standing Stone — village clue", "role": "investigate"},
+        {"kind": "registry_landmark", "reference": "3509DF90-4B8870A6-F647E082-800F2459", "displayName": "Standing Stone — waterfall clue", "role": "investigate"},
+        {"kind": "registry_landmark", "reference": "80C5DC0C-4E6152BC-DEFD5395-B174BA49", "displayName": "Standing Stone — fortress clue", "role": "investigate"}
+      ]
+    },
+    {
+      "questId": "sQ91eUA55bcQx0OQ0m59sg",
+      "objectiveKey": "Objective2",
+      "destinationMode": "multiple",
+      "note": "Touch the four Burning Spire pedestals in any order. The 0/4 counter does not identify which pedestal will be used first, so all four valid interactions remain visible.",
+      "reason": "The Brink of Extinction string table owns exactly four Pedestal registry identities inside the authored UmS_PedestalRadius. Their current-build coordinates match the guide's north, east, south, and west positions around the Sinking Pyramid.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "6427174B-49675037-E713B9AB-3C3C119D", "displayName": "Fire Pedestal — north of Sinking Pyramid", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "4A50CA20-4FF14D60-F08C37AA-81320C2B", "displayName": "Fire Pedestal — east rock formation", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "CF2EE897-45637E57-6824AEA3-26B04CCB", "displayName": "Fire Pedestal — south of Sinking Pyramid", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "27A8F58C-4E95785F-89FA3792-4946CB91", "displayName": "Fire Pedestal — west of Sinking Pyramid", "role": "touch"}
+      ]
+    },
+    {
+      "questId": "sQ91eUA55bcQx0OQ0m59sg",
+      "objectiveKey": "Objective2.1",
+      "destinationMode": "multiple",
+      "note": "One pedestal is complete, but the quest counter does not expose its identity. All four possible remaining interactions stay visible rather than guessing which marker to hide.",
+      "reason": "This is the 1/4 counter state of the same freely ordered four-pedestal objective; no per-pedestal completion booleans are available in the public snapshot.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "6427174B-49675037-E713B9AB-3C3C119D", "displayName": "Fire Pedestal — north of Sinking Pyramid", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "4A50CA20-4FF14D60-F08C37AA-81320C2B", "displayName": "Fire Pedestal — east rock formation", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "CF2EE897-45637E57-6824AEA3-26B04CCB", "displayName": "Fire Pedestal — south of Sinking Pyramid", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "27A8F58C-4E95785F-89FA3792-4946CB91", "displayName": "Fire Pedestal — west of Sinking Pyramid", "role": "touch"}
+      ]
+    },
+    {
+      "questId": "sQ91eUA55bcQx0OQ0m59sg",
+      "objectiveKey": "Objective2.2",
+      "destinationMode": "multiple",
+      "note": "Two pedestals are complete, but the quest counter does not expose their identities. All four possible remaining interactions stay visible rather than guessing which markers to hide.",
+      "reason": "This is the 2/4 counter state of the same freely ordered four-pedestal objective; no per-pedestal completion booleans are available in the public snapshot.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "6427174B-49675037-E713B9AB-3C3C119D", "displayName": "Fire Pedestal — north of Sinking Pyramid", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "4A50CA20-4FF14D60-F08C37AA-81320C2B", "displayName": "Fire Pedestal — east rock formation", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "CF2EE897-45637E57-6824AEA3-26B04CCB", "displayName": "Fire Pedestal — south of Sinking Pyramid", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "27A8F58C-4E95785F-89FA3792-4946CB91", "displayName": "Fire Pedestal — west of Sinking Pyramid", "role": "touch"}
+      ]
+    },
+    {
+      "questId": "sQ91eUA55bcQx0OQ0m59sg",
+      "objectiveKey": "Objective2.3",
+      "destinationMode": "multiple",
+      "note": "Three pedestals are complete, but the quest counter does not expose which one remains. All four possible interactions stay visible rather than selecting an unsupported final marker.",
+      "reason": "This is the 3/4 counter state of the same freely ordered four-pedestal objective; no per-pedestal completion booleans are available in the public snapshot.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "6427174B-49675037-E713B9AB-3C3C119D", "displayName": "Fire Pedestal — north of Sinking Pyramid", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "4A50CA20-4FF14D60-F08C37AA-81320C2B", "displayName": "Fire Pedestal — east rock formation", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "CF2EE897-45637E57-6824AEA3-26B04CCB", "displayName": "Fire Pedestal — south of Sinking Pyramid", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "27A8F58C-4E95785F-89FA3792-4946CB91", "displayName": "Fire Pedestal — west of Sinking Pyramid", "role": "touch"}
+      ]
+    },
+    {
+      "questId": "NjeUO0TBeyQGzSCmu2b3bA",
+      "objectiveKeys": ["Objective1", "0/3", "1/3", "2/3", "3/3"],
+      "destinationMode": "multiple",
+      "note": "Interact with the three Survey I Moon Sprites on tall locations around Alcarrid Camp. Counter-only progress does not identify which freely ordered sprites were already found, so every verified target remains visible.",
+      "reason": "The current world contains exactly three non-b-series survey actors, BP_NPC_UmS_MoonSprite1, 2, and 3. Their positions match three registry identities; the colocated BP_NPC_UmS_MoonSpriteCamp is Anamcara's camp sprite and is deliberately excluded.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "DA7CE8F2-493C74D1-E29B67AC-21F0AB64", "displayName": "Survey I Moon Sprite 1 — east of Alcarrid Camp", "role": "find"},
+        {"kind": "registry_landmark", "reference": "24DAD7DB-47DAF91B-DF1DDEAA-CDE9C121", "displayName": "Survey I Moon Sprite 2 — southeast height", "role": "find"},
+        {"kind": "registry_landmark", "reference": "44DACD8B-48066352-860C6397-2221B764", "displayName": "Survey I Moon Sprite 3 — southwest height", "role": "find"}
+      ]
+    },
+    {
+      "questId": "rI4VkUT_8837ayKcLgxWwQ",
+      "objectiveKeys": ["Objective1", "0/8", "1/8", "2/8", "3/8", "4/8", "5/8", "6/8", "7/8"],
+      "destinationMode": "multiple",
+      "note": "Interact with all eight Survey II Moon Sprites across Umbral Sands. Counter-only progress does not identify which freely ordered sprites were already found, so every verified target remains visible.",
+      "reason": "The current world contains exactly eight Survey II b-series actors (1b through 7b plus 9b), each matching one registry identity by exact coordinates. The three Survey I actors and Anamcara's camp sprite are excluded.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "BCDC2CE7-40567BB6-0055BBB9-8E0DB2AE", "displayName": "Survey II Moon Sprite 1", "role": "find"},
+        {"kind": "registry_landmark", "reference": "E13773E6-46782333-AB396AB7-35507903", "displayName": "Survey II Moon Sprite 2", "role": "find"},
+        {"kind": "registry_landmark", "reference": "0EC1F4EA-4447FE69-5A2E17B7-8C7C1D97", "displayName": "Survey II Moon Sprite 3", "role": "find"},
+        {"kind": "registry_landmark", "reference": "D05DC1FC-4BC445AE-398275A7-772A4AC1", "displayName": "Survey II Moon Sprite 4", "role": "find"},
+        {"kind": "registry_landmark", "reference": "B4368D72-4DC36E39-76CDDC84-003E54A5", "displayName": "Survey II Moon Sprite 5", "role": "find"},
+        {"kind": "registry_landmark", "reference": "2890F86A-4F1E8EFA-126CBEA7-E46E02AC", "displayName": "Survey II Moon Sprite 6", "role": "find"},
+        {"kind": "registry_landmark", "reference": "AF47C155-4515C0B4-D8A82B8D-1203F227", "displayName": "Survey II Moon Sprite 7", "role": "find"},
+        {"kind": "registry_landmark", "reference": "C0CBAB63-43897DDA-F0B99FAC-04091E16", "displayName": "Survey II Moon Sprite 9", "role": "find"}
+      ]
+    },
+    {
+      "questId": "kPtTW0exXrqw2BqELR_bFA",
+      "objectiveKey": "FindGarou",
+      "destinationMode": "fixed",
+      "reason": "The objective names the Alcarrid Elder, and the cooked world provides CampLeader_A_Target at the active Ancamairon interaction. This avoids the two phase-specific Ancamairon registry copies and unrelated Uzzer/Manafem elders.",
+      "targets": [{"kind": "quest_marker", "reference": "CampLeader_A_Target", "displayName": "Ancamairon — Alcarrid Elder", "role": "talk"}]
+    },
+    {
+      "questId": "kPtTW0exXrqw2BqELR_bFA",
+      "objectiveKey": "InvestigateGarouProblem",
+      "destinationMode": "area",
+      "note": "Search within the authored Alcarrid camp vicinity. No individual progression actor for this legacy objective state can be proven from the current cooked flow.",
+      "reason": "This state follows the instruction to find the Alcarrid settlement, so the exact quest-owned GarouCamp_A_Area is the narrowest proven location. Community-map associations with Uzzer stone slabs and Manafem dead scouts are parent-quest aggregation and are deliberately excluded.",
+      "targets": [{"kind": "quest_marker", "reference": "GarouCamp_A_Area", "displayName": "Alcarrid camp investigation area", "role": "investigate"}]
+    },
+    {
+      "questId": "kPtTW0exXrqw2BqELR_bFA",
+      "objectiveKey": "ReturnToFirstGarou",
+      "destinationMode": "fixed",
+      "reason": "The objective specifies Shangruuh in the passage from Dowdun Reach. Of the two current placements, 10014319 is beside the Bastion/Umbral Sands passage; 2DBE7A7B is the later Uzzer-camp copy used by Mark Day.",
+      "targets": [{"kind": "registry_landmark", "reference": "10014319-45A53113-A476CD9E-1A6C7636", "displayName": "Shangruuh — Dowdun Reach passage", "role": "return"}]
+    },
+    {
+      "questId": "kPtTW0exXrqw2BqELR_bFA",
+      "objectiveKey": "FindThreeKeys",
+      "destinationMode": "multiple",
+      "note": "Visit the three clan elders and complete their camp tasks. The Alcarrid interaction is the authored leader target; the other two markers are the exact active Manafem and Uzzer elder placements.",
+      "reason": "The quest and walkthrough require lenses from Alcarrid, Manafem, and Uzzer. Cooked camp locations and elder placements distinguish the active camp copies from phase duplicates and unrelated mirror actors.",
+      "targets": [
+        {"kind": "quest_marker", "reference": "CampLeader_A_Target", "displayName": "Ancamairon — Alcarrid Elder", "role": "talk"},
+        {"kind": "registry_landmark", "reference": "E82A10BB-4F0B9238-2D9DA6AA-46AD12F5", "displayName": "Dúshlánach — Manafem Elder", "role": "talk"},
+        {"kind": "registry_landmark", "reference": "4CD11574-43227F44-A9FB52BA-94B5237B", "displayName": "Gaimbín — Uzzer Elder", "role": "talk"}
+      ]
+    },
+    {
+      "questId": "kPtTW0exXrqw2BqELR_bFA",
+      "objectiveKeys": ["FirstGarouEarnReputation.NoReputation", "FirstGarouEarnReputation.LowReputation", "FirstGarouEarnReputation.MediumReputation", "FirstGarouEarnReputation.HighReputation"],
+      "destinationMode": "multiple",
+      "note": "Complete the three Alcarrid trust tasks in any available order. Reputation alone does not identify which task remains, so all three authored task-giver targets stay visible.",
+      "reason": "The cooked reputation flow exposes three independently named Alcarrid task-giver locations. The public quest state provides only the reputation tier, not per-task completion flags.",
+      "targets": [
+        {"kind": "quest_marker", "reference": "TribeA.Taskgiver1", "displayName": "Valas — The Mirror Crack'd", "role": "task"},
+        {"kind": "quest_marker", "reference": "TribeA.Taskgiver2", "displayName": "Domri — Rogue Trader", "role": "task"},
+        {"kind": "quest_marker", "reference": "TribeA.Taskgiver3", "displayName": "Lagra — Rag and Bone Garou", "role": "task"}
+      ]
+    },
+    {
+      "questId": "kPtTW0exXrqw2BqELR_bFA",
+      "objectiveKey": "FirstGarouEarnReputation.MaxReputation",
+      "destinationMode": "fixed",
+      "reason": "This state explicitly says the Alcarrid tasks are complete and directs the player back to the elder; CampLeader_A_Target is the cooked Ancamairon interaction for that hand-in.",
+      "targets": [{"kind": "quest_marker", "reference": "CampLeader_A_Target", "displayName": "Ancamairon — Alcarrid Elder", "role": "return"}]
+    },
+    {
+      "questId": "kPtTW0exXrqw2BqELR_bFA",
+      "objectiveKey": "SpeakToGarouElder",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly names the Alcarrid Elder and the compiled Icthlarin flow reveals CampLeader_A_Target for this beat.",
+      "targets": [{"kind": "quest_marker", "reference": "CampLeader_A_Target", "displayName": "Ancamairon — Alcarrid Elder", "role": "talk"}]
+    },
+    {
+      "questId": "kPtTW0exXrqw2BqELR_bFA",
+      "objectiveKey": "RepairTheMirrors",
+      "destinationMode": "multiple",
+      "note": "Place the three clan lenses into the three separate sockets at the Alcarrid Mirror Relay.",
+      "reason": "The compiled quest flow reveals three independently authored mirror targets for this objective; their placements correspond to the three physical sockets rather than the nearby Icthlarin conversation marker.",
+      "targets": [
+        {"kind": "quest_marker", "reference": "UmS_TribeA_Mirror_1_Target", "displayName": "Mirror Relay — lens socket 1", "role": "insert"},
+        {"kind": "quest_marker", "reference": "UmS_TribeA_Mirror_2_Target", "displayName": "Mirror Relay — lens socket 2", "role": "insert"},
+        {"kind": "quest_marker", "reference": "UmS_TribeA_Mirror_3_Target", "displayName": "Mirror Relay — lens socket 3", "role": "insert"}
+      ]
+    },
+    {
+      "questId": "kPtTW0exXrqw2BqELR_bFA",
+      "objectiveKey": "FindLastKey",
+      "destinationMode": "multiple",
+      "note": "The saved objective does not identify whether Manafem or Uzzer is the player's final unfinished clan, so both exact elder locations remain visible.",
+      "reason": "Alcarrid is completed before this late aggregate state. The final outstanding lens may be earned from either Manafem or Uzzer, and no per-clan completion identity is exposed by this objective key.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "E82A10BB-4F0B9238-2D9DA6AA-46AD12F5", "displayName": "Dúshlánach — Manafem Elder", "role": "possible-final-camp"},
+        {"kind": "registry_landmark", "reference": "4CD11574-43227F44-A9FB52BA-94B5237B", "displayName": "Gaimbín — Uzzer Elder", "role": "possible-final-camp"}
+      ]
+    },
+    {
+      "questId": "kPtTW0exXrqw2BqELR_bFA",
+      "objectiveKeys": ["FightFuzan", "SlayFuzan"],
+      "destinationMode": "fixed",
+      "note": "Fuzan is inside the Fight Caves activity; the world map therefore marks its overworld entrance.",
+      "reason": "Both objective states explicitly require entering and completing the Fight Caves. Interior encounter coordinates are not published on the overworld map.",
+      "targets": [{"kind": "dungeon_entrance", "reference": "FightCaves", "displayName": "Fight Caves entrance", "role": "enter"}]
+    },
+    {
+      "questId": "kPtTW0exXrqw2BqELR_bFA",
+      "objectiveKeys": ["ReturnToIcthlarin", "SpeakToIcthlarin"],
+      "destinationMode": "fixed",
+      "reason": "Both objectives explicitly name Icthlarin at the Mirror Relay; Icthlarin_Mirror_Target is the exact quest-owned conversation target for that relay phase.",
+      "targets": [{"kind": "quest_marker", "reference": "Icthlarin_Mirror_Target", "displayName": "Icthlarin — Mirror Relay", "role": "talk"}]
+    },
+    {
+      "questId": "db-ciknQnYrkNHuOcQXhkA",
+      "objectiveKeys": ["Objective2", "Objective3", "Objective4", "Objective6", "Objective9"],
+      "destinationMode": "fixed",
+      "reason": "Each state explicitly talks to or returns ingredients to Doctor Fenkenstrain; the quest owns one stable Fenkenstrain location marker while his staged actor forms share that laboratory destination.",
+      "targets": [{"kind": "quest_marker", "reference": "Fenkenstrain", "displayName": "Doctor Fenkenstrain", "role": "talk-or-return"}]
+    },
+    {
+      "questId": "3MpWS0mD8A6yFVmjVAA2Qg",
+      "objectiveKey": "DR_Main_Objective_1",
+      "destinationMode": "fixed",
+      "reason": "The objective names the Wise Old Man in Dowdun Reach and the quest flow exposes DR_MQ_OldMan_Target as its exact interaction target; DR_MQ_OldMan is a colocated area/phase duplicate.",
+      "targets": [{"kind": "quest_marker", "reference": "DR_MQ_OldMan_Target", "displayName": "Wise Old Man — Dowdun Reach", "role": "talk"}]
+    },
+    {
+      "questId": "O3ruOkgGHBqwIheSH_7BBg",
+      "objectiveKey": "Objective1",
+      "destinationMode": "fixed",
+      "note": "Bring an Inspiring Ring of Runecrafting to this box.",
+      "reason": "The quest flow reveals JewelleryBox and the current registry contains one quest-owned Jewellery Box identity at exactly that target. All auto-discovered candidates were duplicate representations of the same interaction.",
+      "targets": [{"kind": "registry_landmark", "reference": "7743312F-4E17D80F-A455BE9C-0F55C7F7", "displayName": "Jewellery Box — Inspiring Ring of Runecrafting", "role": "use-ring"}]
+    },
+    {
+      "questId": "O3ruOkgGHBqwIheSH_7BBg",
+      "objectiveKey": "Objective2",
+      "destinationMode": "fixed",
+      "note": "Bring the standard Amulet of Magic, not the Inspiring variant.",
+      "reason": "The current world registry contains one quest-owned Jewellery Box identity matching the objective; the additional JewelleryBox candidate is its colocated authored target.",
+      "targets": [{"kind": "registry_landmark", "reference": "7743312F-4E17D80F-A455BE9C-0F55C7F7", "displayName": "Jewellery Box — Amulet of Magic", "role": "use-amulet"}]
+    },
+    {
+      "questId": "4G_ph0XQeA1Nc72_CVO6HQ",
+      "objectiveKey": "None",
+      "destinationMode": "area",
+      "note": "Build the home around Caratacus; the marker identifies the exact elder placement, not a mandatory building snap point.",
+      "reason": "The objective is player construction around the uniquely registered Caratacus the Elder placement.",
+      "targets": [{"kind": "registry_landmark", "reference": "57F6B9DA-420523CE-2261DB92-E304B9DC", "displayName": "Caratacus building site", "role": "build-around"}]
+    },
+    {
+      "questId": "sQ91eUA55bcQx0OQ0m59sg",
+      "objectiveKey": "Objective5",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly requires using the numbering book at the KotHaar Bouncer, and the registry contains one exact quest-owned Bouncer identity; the other candidate is its colocated quest target.",
+      "targets": [{"kind": "registry_landmark", "reference": "A13E380A-459F8CF7-13BBA1A7-927DDAD3", "displayName": "KotHaar Bouncer", "role": "answer"}]
+    },
+    {
+      "questId": "A3DOkkGZxXUHc82rPKHznA",
+      "objectiveKeys": ["Objective3", "Objective4", "Objective6"],
+      "destinationMode": "fixed",
+      "note": "The objective interaction is inside the Kalphite Hive; the world map marks the dungeon entrance.",
+      "reason": "Vault Guardian Prime, the magical barrier, and the Shortcut Chamber crystals are all interior Kalphite Hive interactions. Publishing interior transforms on the overworld map would be misleading.",
+      "targets": [{"kind": "dungeon_entrance", "reference": "KalphiteHive", "displayName": "Kalphite Hive entrance", "role": "enter"}]
+    },
+    {
+      "questId": "A3DOkkGZxXUHc82rPKHznA",
+      "objectiveKeys": ["CrystalShard.1", "CrystalShard.2"],
+      "destinationMode": "multiple",
+      "note": "The aggregate fragment count does not identify which guardian source remains, so all three proven sources stay visible.",
+      "reason": "The Crystal Helix fragments come from the damaged guardian inside the Hive, the dead guardian by the eggs, and the buried guardian at the ruins; these are the same three independently placed interactions established by the preceding search state.",
+      "targets": [
+        {"kind": "dungeon_entrance", "reference": "KalphiteHive", "displayName": "Damaged guardian — Kalphite Hive entrance", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_NPC_Quest_Contact_DeadVaultGuardian_UmS", "displayName": "Dead Vault Guardian — kalphite eggs", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_Contact_Buried_VaultGuardian", "displayName": "Buried Vault Guardian — ruined building", "role": "collect"}
+      ]
+    },
+    {
+      "questId": "NjeUO0TBeyQGzSCmu2b3bA",
+      "objectiveKey": "Objective2",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly returns to Anamcara in Alcarrid Camp; MoonSpriteShamanTarget1 is the exact quest interaction marker, while MoonSpriteShamanNPC1 is its colocated actor marker.",
+      "targets": [{"kind": "quest_marker", "reference": "MoonSpriteShamanTarget1", "displayName": "Anamcara — Alcarrid Camp", "role": "return"}]
+    },
+    {
+      "questId": "rI4VkUT_8837ayKcLgxWwQ",
+      "objectiveKey": "Objective2",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly returns to the Moon Sprite Shaman and the second quest owns one exact MoonSpriteShamanNPC2 destination at Anamcara's Alcarrid camp.",
+      "targets": [{"kind": "quest_marker", "reference": "MoonSpriteShamanNPC2", "displayName": "Anamcara — Alcarrid Camp", "role": "return"}]
+    },
+    {
+      "questId": "nIvEyEv-kvSwgqOLc5VopQ",
+      "objectiveKeys": ["ConvinceNoble.1", "ConvinceNoble.2"],
+      "destinationMode": "multiple",
+      "note": "The counter does not identify which freely ordered councillors remain, so all three councillor targets stay visible; Shangruuh is a separate return state.",
+      "reason": "The compiled Mark Day flow exposes three independent Noble targets for Brialka, Chirot, and Alabrais. TribeB_Taskgiver3_NPC is the quest giver and is not a persuasion target.",
+      "targets": [
+        {"kind": "quest_marker", "reference": "TribeB.Task3.Noble1", "displayName": "Brialka — Historian Councillor", "role": "convince"},
+        {"kind": "quest_marker", "reference": "TribeB.Task3.Noble2", "displayName": "Alabrais — Science Councillor", "role": "convince"},
+        {"kind": "quest_marker", "reference": "TribeB.Task3.Noble3", "displayName": "Chirot — Broker Councillor", "role": "convince"}
+      ]
+    },
+    {
+      "questId": "Xb1KUkU_wOIHvzahULr6yA",
+      "objectiveKeys": ["FindStatues.0", "FindStatues.1", "FindStatues.2"],
+      "destinationMode": "fixed",
+      "note": "All three slabs are inside the Dragonkin Vault, so the overworld map marks the vault entrance throughout the counter states.",
+      "reason": "The walkthrough and cooked flow place all three lyric slabs inside one dungeon. Interior slab coordinates and the Manafem quest giver are not valid overworld destinations while transcribing them.",
+      "targets": [{"kind": "dungeon_entrance", "reference": "DragonkinVault", "displayName": "Dragonkin Vault entrance", "role": "enter"}]
+    },
+    {
+      "questId": "yrRZnkmro-IvH_OmZ3f-5A",
+      "objectiveKeys": ["Return to the Wise old man after claimed bed", "Return to the Wise old man"],
+      "destinationMode": "fixed",
+      "reason": "Both states explicitly return to the Wise Old Man in Bramblemead; WiseOldManObjectiveDS is the exact Dragon Slayer interaction target, while WiseOldMan is its colocated actor/area duplicate.",
+      "targets": [{"kind": "quest_marker", "reference": "WiseOldManObjectiveDS", "displayName": "Wise Old Man — Bramblemead", "role": "talk"}]
+    },
+    {
+      "questId": "yrRZnkmro-IvH_OmZ3f-5A",
+      "objectiveKey": "Find and hunt a deer",
+      "destinationMode": "multiple",
+      "note": "Hunt any standard deer for an antler, then return it to the Wise Old Man. All current standard-deer spawns remain visible because the objective does not require one specific animal.",
+      "reason": "The walkthrough confirms the antler is obtained from ordinary deer in Bramblemead. Current-build deer spawns provide the resource locations and the exact quest-owned Wise Old Man target provides the hand-in.",
+      "targets": [
+        {"kind": "npc", "reference": "deer", "allowMultiple": true, "displayName": "Deer spawn", "role": "hunt"},
+        {"kind": "quest_marker", "reference": "WiseOldManObjectiveDS", "displayName": "Wise Old Man — antler hand-in", "role": "return"}
+      ]
+    },
+    {
+      "questId": "yrRZnkmro-IvH_OmZ3f-5A",
+      "objectiveKey": "Craft the summon horn",
+      "destinationMode": "multiple",
+      "note": "Mine a Dragon Tooth in the Stormtouched Highlands, chop Bloodwood Sap in the Bloodblight Swamp, supply five Bronze Bars, and craft the Challenge Horn at a Blacksmith's Bench. Ordinary bronze and player-built bench sources are dynamic.",
+      "reason": "Current-build world actors provide every fixed Dragon Tooth and Bloodwood Sap resource placement. The quest-authored HighlandsArea and BloodblightRuin candidates agree with the walkthrough's dragon-skull and southern-castle locations; Velgar's Rise is a later use destination and is excluded.",
+      "targets": [
+        {"kind": "world_actor_type", "reference": "BP_MiningRock_Dragon_Tooth", "displayName": "Dragon Tooth deposit", "role": "mine"},
+        {"kind": "quest_marker", "reference": "BloodblightRuin", "displayName": "Bloodwood Sap — southern Bloodblight ruins", "role": "search-and-chop"}
+      ]
+    },
+    {
+      "questId": "uftGB0es-CGrvXyPoxW31w",
+      "objectiveKeys": ["InteractedWithStone1", "InteractedWithStone2"],
+      "destinationMode": "multiple",
+      "note": "The aggregate count does not reveal which standing stones have been read, so all three exact clues remain visible.",
+      "reason": "These are progressed counter states of the same three-stone interaction established by the preceding objective; the current registry contains exactly those three stones in the authored area.",
+      "targets": [
+        {"kind": "registry_landmark", "reference": "727378D6-40266062-E871B38D-1F069AA6", "displayName": "Standing Stone — village clue", "role": "investigate"},
+        {"kind": "registry_landmark", "reference": "3509DF90-4B8870A6-F647E082-800F2459", "displayName": "Standing Stone — waterfall clue", "role": "investigate"},
+        {"kind": "registry_landmark", "reference": "80C5DC0C-4E6152BC-DEFD5395-B174BA49", "displayName": "Standing Stone — fortress clue", "role": "investigate"}
+      ]
+    },
+    {
+      "questId": "uftGB0es-CGrvXyPoxW31w",
+      "objectiveKeys": ["BreakTheThreeSeals", "BreakRemainingtwoSeals", "BreakTheFinalSeal"],
+      "destinationMode": "multiple",
+      "note": "The fragments can be collected in flexible order and the aggregate objective does not identify which remain. All three destinations stay visible: Emberwood Village, Vekchenven Kara beneath the waterfall, and Silverthorn Keep.",
+      "reason": "The three standing-stone clues resolve to grief in Emberwood Village, rage inside Vekchenven Kara at the Lake of Lost Souls waterfall, and despair inside Silverthorn Keep. Dungeon objectives use their authored overworld entrances.",
+      "targets": [
+        {"kind": "quest_marker", "reference": "VillageArea", "displayName": "Curse Fragment of Grief — Emberwood Village", "role": "collect"},
+        {"kind": "dungeon_entrance", "reference": "VekchenvenKara", "displayName": "Curse Fragment of Rage — Vekchenven Kara entrance", "role": "enter"},
+        {"kind": "dungeon_entrance", "reference": "SilverthornKeep", "displayName": "Curse Fragment of Despair — Silverthorn Keep entrance", "role": "enter"}
+      ]
+    },
+    {
+      "questId": "uftGB0es-CGrvXyPoxW31w",
+      "objectiveKey": "ChallangeImaru",
+      "destinationMode": "fixed",
+      "reason": "Once all fragments are collected, the flow reveals SlayImaruTarget at the Shattered Spire and hides all three fragment areas. Silverthorn Keep is a stale inferred dungeon candidate and is not part of this objective.",
+      "targets": [{"kind": "quest_marker", "reference": "SlayImaruTarget", "displayName": "Imaru — Shattered Spire", "role": "defeat"}]
+    },
+    {
+      "questId": "uftGB0es-CGrvXyPoxW31w",
+      "objectiveKey": "ReturnToDeath",
+      "destinationMode": "fixed",
+      "reason": "After Imaru is defeated, the flow hides SlayImaruTarget and reveals DeathTempleTarget for the head hand-in. Death's nearby actor representations are duplicates of this authored destination.",
+      "targets": [{"kind": "quest_marker", "reference": "DeathTempleTarget", "displayName": "Death — Forgotten Temple", "role": "return"}]
+    },
+    {
+      "questId": "Fv3Rt0Dn18PT1DepNzEqtQ",
+      "objectiveKey": "SpeakToDoric",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly names Doric in Fellhollow and DoricNPC is the exact quest-owned interaction target.",
+      "targets": [{"kind": "quest_marker", "reference": "DoricNPC", "displayName": "Doric — Fellhollow", "role": "talk"}]
+    },
+    {
+      "questId": "Fv3Rt0Dn18PT1DepNzEqtQ",
+      "objectiveKey": "FindSkeletonShortbow",
+      "destinationMode": "multiple",
+      "note": "The Undead Ranger's Bow recipe is inside Skekven Kara; the overworld map marks the vault entrance. Craft the bow, then return it to Doric.",
+      "reason": "Independent walkthroughs identify the Dragonkin Effigy inside Skekven Kara as the fixed recipe source. The current build supplies the exact Skekven Kara entrance and this quest's DoricNPC hand-in marker; unrelated global Doric phase copies are excluded.",
+      "targets": [
+        {"kind": "dungeon_entrance", "reference": "SkekvenKara", "displayName": "Undead Ranger's Bow — Skekven Kara entrance", "role": "enter"},
+        {"kind": "quest_marker", "reference": "DoricNPC", "displayName": "Doric — bow hand-in", "role": "return"}
+      ]
+    },
+    {
+      "questId": "Nw3wiUaB8siRIN2bStWJmw",
+      "objectiveKey": "AccessSW",
+      "destinationMode": "fixed",
+      "reason": "The current Regicide flow reveals exactly SW_Door for gaining access to the Scorned Wilderness, and the world contains one matching quest-owned Dragon Gate location.",
+      "targets": [{"kind": "quest_marker", "reference": "SW_Door", "displayName": "Dragon Gate — Scorned Wilderness access", "role": "enter"}]
+    },
+    {
+      "questId": "kPtTW0exXrqw2BqELR_bFA",
+      "objectiveKey": "EnterUmS",
+      "destinationMode": "fixed",
+      "reason": "The first objective reveals exactly Bastion_DoorToUmS_Target at the door inside the Bastion boss room. It is the authored transition into Umbral Sands.",
+      "targets": [{"kind": "quest_marker", "reference": "Bastion_DoorToUmS_Target", "displayName": "Door to Umbral Sands — Bastion", "role": "enter"}]
+    },
+    {
+      "questId": "kPtTW0exXrqw2BqELR_bFA",
+      "objectiveKey": "LookForLife",
+      "destinationMode": "area",
+      "reason": "Immediately after entry, the flow hides Bastion_DoorToUmS_Target and reveals only GarouCamp_A_Area. The guide sequence confirms the player searches for life toward the first Moon Garou camp rather than returning to the Bastion door.",
+      "targets": [{"kind": "quest_marker", "reference": "GarouCamp_A_Area", "displayName": "Signs of life — Alcarrid camp search area", "role": "search"}]
+    },
+    {
+      "questId": "Fv3Rt0Dn18PT1DepNzEqtQ",
+      "objectiveKey": "FindNecromancerStaff",
+      "destinationMode": "multiple",
+      "note": "The Necromancer's Staff recipe is inside Vekchenven Kara; the overworld map marks its entrance. Craft the staff, then return it to Doric.",
+      "reason": "The walkthrough identifies the fixed dragonkin-effigy recipe in Vekchenven Kara. The current world supplies that vault entrance and the quest-owned Doric hand-in marker.",
+      "targets": [
+        {"kind": "dungeon_entrance", "reference": "VekchenvenKara", "displayName": "Necromancer's Staff — Vekchenven Kara entrance", "role": "enter"},
+        {"kind": "quest_marker", "reference": "DoricNPC", "displayName": "Doric — staff hand-in", "role": "return"}
+      ]
+    },
+    {
+      "questId": "Fv3Rt0Dn18PT1DepNzEqtQ",
+      "objectiveKey": "FindShadowSword",
+      "destinationMode": "multiple",
+      "note": "The Shadow Sword recipe is a rare Zogre drop. Current standard Fellhollow Zogre spawns are shown together with Doric's hand-in location.",
+      "reason": "The walkthrough identifies Zogres in Fellhollow as the recipe source, including the Vekchenven Kara boss; the standard extracted Zogre placements cover the overworld hunt while the separate vault entrance is included for the interior boss route.",
+      "targets": [
+        {"kind": "npc", "reference": "zogre", "allowMultiple": true, "displayName": "Fellhollow Zogre spawn", "role": "hunt"},
+        {"kind": "dungeon_entrance", "reference": "VekchenvenKara", "displayName": "Zogre boss — Vekchenven Kara entrance", "role": "enter"},
+        {"kind": "quest_marker", "reference": "DoricNPC", "displayName": "Doric — sword hand-in", "role": "return"}
+      ]
+    },
+    {
+      "questId": "4QQuNkR6spTCXC6zj6VqxQ",
+      "objectiveKey": "BackToZanik",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly returns to Zanik and ZanikNPC is the quest-owned hand-in marker for this story state.",
+      "targets": [{"kind": "quest_marker", "reference": "ZanikNPC", "displayName": "Zanik", "role": "return"}]
+    },
+    {
+      "questId": "KLBpt02O2AA_kaa_A8Av9w",
+      "objectiveKey": "ReturnToNPC",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly says to speak to the mirror; the registry contains one exact quest-owned Magic Mirror identity at the Fellhollow relay.",
+      "targets": [{"kind": "registry_landmark", "reference": "7976CEBB-422FB482-F55B18A1-432B54A2", "displayName": "Magic Mirror", "role": "talk"}]
+    },
+    {
+      "questId": "Rov9uE687b2NkaKFCTFP3A",
+      "objectiveKey": "FindRecipe",
+      "destinationMode": "multiple",
+      "note": "Activate the four dragonkin seal statues around Doric's ruin, then enter Skekven Kara. The dwarven writing is inside, so the overworld map uses the vault entrance for that final interaction.",
+      "reason": "The current world contains four separately placed BP_NPC_Vault_WitherWard_Statue_Puzzle actors surrounding the Skekven Kara entrance. The quest flow keeps them under FindRecipe, and the interior BP_NPC_Vault_WitherWard_Statue advances the dwarven-writing state; per the dungeon policy its public marker is the exact Skekven Kara entrance.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_NPC_Vault_WitherWard_Statue_Puzzle1", "displayName": "Dragonkin seal statue 1", "role": "activate"},
+        {"kind": "world_actor", "reference": "BP_NPC_Vault_WitherWard_Statue_Puzzle2", "displayName": "Dragonkin seal statue 2", "role": "activate"},
+        {"kind": "world_actor", "reference": "BP_NPC_Vault_WitherWard_Statue_Puzzle3", "displayName": "Dragonkin seal statue 3", "role": "activate"},
+        {"kind": "world_actor", "reference": "BP_NPC_Vault_WitherWard_Statue_Puzzle4", "displayName": "Dragonkin seal statue 4", "role": "activate"},
+        {"kind": "dungeon_entrance", "reference": "SkekvenKara", "displayName": "Hidden dwarven writing — Skekven Kara entrance", "role": "enter"}
+      ]
+    },
+    {
+      "questId": "Rov9uE687b2NkaKFCTFP3A",
+      "objectiveKey": "LookForDoric",
+      "destinationMode": "fixed",
+      "reason": "The quest flow reveals DoricNPC for this state and the quest owns one exact Fellhollow Doric marker beside Skekven Kara. Generic name matching previously added Doric placements from unrelated regions.",
+      "targets": [{"kind": "quest_marker", "reference": "DoricNPC", "displayName": "Doric — Skekven Kara ruins", "role": "talk"}]
+    },
+    {
+      "questId": "Rov9uE687b2NkaKFCTFP3A",
+      "objectiveKey": "ReturnToDoric",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly returns the dwarven writing to Doric and DoricNPC is the quest-owned interaction target.",
+      "targets": [{"kind": "quest_marker", "reference": "DoricNPC", "displayName": "Doric — Skekven Kara ruins", "role": "return"}]
+    },
+    {
+      "questId": "rai6k0UuXT_GPEixJM0boQ",
+      "objectiveKey": "HuntBeast",
+      "destinationMode": "multiple",
+      "note": "The current build has five authored Nature Spirit spawn points. Hunt any three, then bring the Primordial Hearts to Vannaka.",
+      "reason": "Five exact BP_SpawnPoint_WitherBeast actors are placed in the current world at willow groves. The objective accepts three hearts rather than prescribing three particular spirits, so every authored source is a valid destination and the quest-owned VannakaNPC marker is the hand-in.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_SpawnPoint_WitherBeast", "displayName": "Nature Spirit — willow grove 1", "role": "hunt"},
+        {"kind": "world_actor", "reference": "BP_SpawnPoint_WitherBeast2", "displayName": "Nature Spirit — willow grove 2", "role": "hunt"},
+        {"kind": "world_actor", "reference": "BP_SpawnPoint_WitherBeast3", "displayName": "Nature Spirit — willow grove 3", "role": "hunt"},
+        {"kind": "world_actor", "reference": "BP_SpawnPoint_WitherBeast4", "displayName": "Nature Spirit — willow grove 4", "role": "hunt"},
+        {"kind": "world_actor", "reference": "BP_SpawnPoint_WitherBeast5", "displayName": "Nature Spirit — willow grove 5", "role": "hunt"},
+        {"kind": "quest_marker", "reference": "VannakaNPC", "displayName": "Vannaka — Primordial Heart hand-in", "role": "return"}
+      ]
+    },
+    {
+      "questId": "rai6k0UuXT_GPEixJM0boQ",
+      "objectiveKey": "BringHeart",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly brings the hearts to Vannaka and VannakaNPC is this quest's exact hand-in target.",
+      "targets": [{"kind": "quest_marker", "reference": "VannakaNPC", "displayName": "Vannaka", "role": "return"}]
+    },
+    {
+      "questId": "Kdj6N0dEw05JjoyDP0pNvw",
+      "objectiveKey": "Objective5",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly names Vannaka in Ghornfell and Vannaka_DogDays is the quest-owned purified-token hand-in target.",
+      "targets": [{"kind": "quest_marker", "reference": "Vannaka_DogDays", "displayName": "Vannaka — Ghornfell Highlands", "role": "return"}]
+    },
+    {
+      "questId": "bsfNlkgT8D_Y5HCdCf-Seg",
+      "objectiveKey": "Objective3",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly brings the blueprint to Doric in Ashien's Watch and Doric_GM is the quest-owned hand-in target for this state.",
+      "targets": [{"kind": "quest_marker", "reference": "Doric_GM", "displayName": "Doric — Ashien's Watch", "role": "return"}]
+    },
+    {
+      "questId": "yrRZnkmro-IvH_OmZ3f-5A",
+      "objectiveKey": "Investigate the castle",
+      "destinationMode": "fixed",
+      "reason": "The castle objective advances by reading Cathan's authored Castle journal. The current world contains one exact BP_LoreItem_CathanJournal_Castle_DS2 interaction inside the broad BMCastle quest area.",
+      "targets": [{"kind": "world_actor", "reference": "BP_LoreItem_CathanJournal_Castle_DS2", "displayName": "Cathan's Journal — Keep of Blue Flames", "role": "read"}]
+    },
+    {
+      "questId": "yrRZnkmro-IvH_OmZ3f-5A",
+      "objectiveKey": "Venture into Ghornfell",
+      "destinationMode": "area",
+      "note": "Cross into the authored Ghornfell search area; the earlier Wise Old Man marker is no longer an active destination.",
+      "reason": "The compiled objective reveals GhornfellArea after the Bramblemead conversation. WiseOldMan is retained in the flow only as the preceding phase's marker and is explicitly hidden during this transition.",
+      "targets": [{"kind": "quest_marker", "reference": "GhornfellArea", "displayName": "Ghornfell approach", "role": "travel"}]
+    },
+    {
+      "questId": "yrRZnkmro-IvH_OmZ3f-5A",
+      "objectiveKey": "Look for evidence of Cathan at the tower",
+      "destinationMode": "multiple",
+      "note": "Read Cathan's Ghornfell journal at Velgar's Rise and follow the local Cathan evidence. Both interactions belong to the same tower approach rather than the later boss arena.",
+      "reason": "The current world contains the unique BP_LoreItemDS5 actor bound to JOURNAL_Know_CathanJournal_Velgarslair inside the authored DragonsLairCathanArea. The nearby Dragon Slayer Cathan placement is independently distinguished from the Dowdun-gate and Fellhollow Cathan copies.",
+      "targets": [
+        {"kind": "world_actor", "reference": "BP_LoreItemDS5", "displayName": "Cathan's Journal — Velgar's Rise", "role": "read"},
+        {"kind": "npc", "reference": "ghost-of-cathan", "opaqueId": "cfbfee9192c1bd79b266", "displayName": "Cathan — Velgar's Rise", "role": "talk"}
+      ]
+    },
+    {
+      "questId": "yrRZnkmro-IvH_OmZ3f-5A",
+      "objectiveKey": "Challenge Velgar",
+      "destinationMode": "fixed",
+      "note": "Velgar is challenged inside the tower encounter; the overworld map marks the entrance to Velgar's Rise.",
+      "reason": "The objective's DragonsLairChallengeVelgar target is an interior encounter location. The extracted DungeonEntrance_DragonsLair actor is the corresponding overworld entrance and avoids publishing an interior transform.",
+      "targets": [{"kind": "dungeon_entrance", "reference": "DragonsLair", "displayName": "Velgar's Rise entrance", "role": "enter"}]
+    },
+    {
+      "questId": "yrRZnkmro-IvH_OmZ3f-5A",
+      "objectiveKey": "Return to the Wise old man after killing velgar",
+      "destinationMode": "fixed",
+      "reason": "The objective explicitly places the Wise Old Man outside Velgar's Lair and the compiled flow directly links WiseOldManObjective_Lair to this state.",
+      "targets": [{"kind": "quest_marker", "reference": "WiseOldManObjective_Lair", "displayName": "Wise Old Man — outside Velgar's Lair", "role": "return"}]
+    }
+  ]
+}
