@@ -13,7 +13,8 @@ from manager.zanik_manager.assets import AssetDeployer
 from manager.zanik_manager.cache import BundleCache
 from manager.zanik_manager.config import ConfigError, ConfigModel, content_hash
 from manager.zanik_manager.journal import JournalStore, OperationJournal
-from manager.zanik_manager.lifecycle import PterodactylProvider, ReleasePayload, safe_archive_name
+from manager.zanik_manager.lifecycle import (PterodactylProvider, ReleasePayload, is_exact_legacy_launcher,
+                                             safe_archive_name, validate_server_root)
 from manager.zanik_manager.profiles import ProfileStore, ServerProfile, is_local_origin, normalize_origin
 from manager.zanik_manager.pterodactyl import PterodactylClient, PterodactylError, Response
 from manager.zanik_manager.security import credential_target, redact
@@ -96,6 +97,18 @@ class ManagerTests(unittest.TestCase):
             payload = ReleasePayload(archive)
             self.assertEqual(len(payload.manifest()["files"]), len(required))
             with self.assertRaises(ValueError): safe_archive_name("../secret")
+
+    def test_server_root_and_exact_legacy_launcher(self):
+        root = "/home/container"
+        launcher = f'#!/bin/sh\nexec /bin/sh {root}/zanik/zanik-bootstrap.sh "$@"\n'.encode()
+        self.assertEqual(validate_server_root(root), root)
+        self.assertTrue(is_exact_legacy_launcher(launcher, root))
+        self.assertTrue(is_exact_legacy_launcher(launcher.replace(b"\n", b"\r\n"), root))
+        self.assertFalse(is_exact_legacy_launcher(launcher + b"echo injected\n", root))
+        self.assertFalse(is_exact_legacy_launcher(launcher.replace(b"/home/container", b"/tmp/other"), root))
+        for unsafe in ("home/container", "/", "/home", "/home/container/../other"):
+            with self.assertRaises(ValueError):
+                validate_server_root(unsafe)
 
     def test_asset_upload_parts_are_indexed_and_bounded(self):
         with tempfile.TemporaryDirectory() as temporary:

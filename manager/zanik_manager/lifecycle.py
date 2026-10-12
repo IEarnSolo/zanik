@@ -34,6 +34,22 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def validate_server_root(server_root: str) -> str:
+    root = server_root.rstrip("/")
+    path = PurePosixPath(root)
+    if not root.startswith("/") or ".." in path.parts or root in {"", "/", "/home"}:
+        raise ValueError("Server root must be a specific absolute path")
+    if str(path) != root:
+        raise ValueError("Server root must be normalized before use")
+    return root
+
+
+def is_exact_legacy_launcher(content: bytes, server_root: str) -> bool:
+    """Recognize only the two-line launcher shipped by pre-0.1 Zanik."""
+    expected = f'#!/bin/sh\nexec /bin/sh {server_root}/zanik/zanik-bootstrap.sh "$@"\n'.encode()
+    return len(content) <= 4096 and content.replace(b"\r\n", b"\n") == expected
+
+
 @dataclass(frozen=True)
 class PayloadEntry:
     path: str
@@ -152,7 +168,7 @@ class PterodactylProvider(ServerProvider):
             raise ValueError("Executable replacement requires explicit acknowledgement")
         journal = OperationJournal.create(profile_id, "install")
         self.journals.save(journal)
-        root = server_root.rstrip("/")
+        root = validate_server_root(server_root)
         stage = f"{root}/.zanik-manager/staging/{journal.operation_id}/release"
         timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         backup = f"{root}/zanik-backups/manager/{timestamp}-{journal.operation_id[:8]}"
@@ -219,8 +235,10 @@ class PterodactylProvider(ServerProvider):
                                                           str(PurePosixPath(original).relative_to(root)))])
                     journal.rollback.append({"kind": "restore-official", "from": original, "to": game})
                     self.journals.save(journal)
-                elif b"zanik-bootstrap.sh" in current and self.client.read_file(server_id, original).startswith(b"\x7fELF"):
-                    pass
+                elif is_exact_legacy_launcher(current, root):
+                    original_data = self.client.read_file(server_id, original)
+                    if not original_data.startswith(b"\x7fELF"):
+                        raise RuntimeError("The legacy launcher has no verified executable ELF at .zanik-original")
                 else:
                     raise RuntimeError("Unknown executable replacement state; refusing to guess")
                 launcher = self.client.read_file(server_id, f"{root}/zanik/scripts/compat-launcher.sh")
@@ -237,15 +255,17 @@ class PterodactylProvider(ServerProvider):
                      "installedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
             self.client.write_file(server_id, f"{root}/zanik/install-state.json", (json.dumps(state, separators=(",", ":")) + "\n").encode())
             self.client.chmod(server_id, f"{root}/zanik", [("install-state.json", 600)])
+            startup_action_required = mode == "wrapper" and not wrapper_adapter
             journal.state = "complete"; journal.completed_steps.append("installation-verified")
             if mode == "wrapper" and wrapper_adapter:
                 self.client.set_startup_variable(server_id, wrapper_adapter["key"], wrapper_adapter["value"])
                 journal.completed_steps.append("wrapper-startup-configured")
             self.journals.save(journal)
             self.client.write_file(server_id, remote_journal, json.dumps(asdict(journal), sort_keys=True).encode())
-            if stop_server:
+            if stop_server and not startup_action_required:
                 self.client.power(server_id, "start")
-            return {"installation": state, "backup": backup, "operationId": journal.operation_id}
+            return {"installation": state, "backup": backup, "operationId": journal.operation_id,
+                    "startupActionRequired": startup_action_required}
         except Exception as error:
             journal.state = "failed"; journal.error = str(error); self.journals.save(journal)
             raise
