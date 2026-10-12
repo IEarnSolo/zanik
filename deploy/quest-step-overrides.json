@@ -230,7 +230,7 @@
       "objectiveKey": "ObjectiveZero",
       "destinationMode": "fixed",
       "reason": "The objective names Postie Pete near Fellhollow. The Fellhollow BP_NPC_PostiePete placement is distinct from the Dowdun Postie Pete actor.",
-      "targets": [{"kind": "npc", "reference": "postie-pete", "opaqueId": "d63ae2ad16b258bf984f", "displayName": "Postie Pete (Fellhollow)", "role": "start"}]
+      "targets": [{"kind": "npc", "reference": "postie-pete", "actorType": "BP_NPC_PostiePete", "displayName": "Postie Pete (Fellhollow)", "role": "start"}]
     },
     {
       "questId": "4kbEAUJrs6mebhGkzFQxmA",
@@ -270,7 +270,7 @@
       "objectiveKey": "ObjectiveReturn",
       "destinationMode": "fixed",
       "reason": "The quest begins and ends with the Fellhollow Postie Pete, whose placement is distinct from the Dowdun actor.",
-      "targets": [{"kind": "npc", "reference": "postie-pete", "opaqueId": "d63ae2ad16b258bf984f", "displayName": "Postie Pete (Fellhollow)", "role": "return"}]
+      "targets": [{"kind": "npc", "reference": "postie-pete", "actorType": "BP_NPC_PostiePete", "displayName": "Postie Pete (Fellhollow)", "role": "return"}]
     },
     {
       "questId": "2kXJ3kWFS38kZfmPnvUFXw",
@@ -1101,7 +1101,7 @@
       "targets": [
         {"kind": "registry_landmark", "reference": "AC5081C9-4B94236F-7ADE1F89-5459FBDB", "displayName": "Bedraggled Spellbook — Emberwood windmill", "role": "collect"},
         {"kind": "npc", "reference": "edna", "displayName": "Edna — spectral silver thread", "role": "craft"},
-        {"kind": "npc", "reference": "green-dragon", "opaqueId": "3b26ef1bc5f72aa2c841", "displayName": "Nearby Green Dragon — dragon blood", "role": "hunt"},
+        {"kind": "npc", "reference": "green-dragon", "stateKey": "BP_SpawnPoint_LesserGreenDragon_C_UAID_00BE4395530E077702_1869020511", "displayName": "Nearby Green Dragon — dragon blood", "role": "hunt"},
         {"kind": "registry_landmark", "reference": "7976CEBB-422FB482-F55B18A1-432B54A2", "displayName": "Magic Mirror — reagent hand-in", "role": "return"}
       ]
     },
@@ -1170,7 +1170,7 @@
       "note": "Speak to Cathan on the Bleakfields cliff, then examine all three nearby standing stones to reveal the three curse-fragment routes.",
       "reason": "The nearest Ghost of Cathan placement is only 760 world units from the authored StandingStonesArea, and the current registry contains exactly three Standing Stone identities inside that same area. Quest flow and guide sequencing require Cathan followed by all three clues.",
       "targets": [
-        {"kind": "npc", "reference": "ghost-of-cathan", "opaqueId": "3f56e42c6827459a3d9b", "displayName": "Cathan — Bleakfields cliff", "role": "talk"},
+        {"kind": "npc", "reference": "ghost-of-cathan", "actorType": "BP_NPC_GhostCathan_Fellhollow", "displayName": "Cathan — Bleakfields cliff", "role": "talk"},
         {"kind": "registry_landmark", "reference": "727378D6-40266062-E871B38D-1F069AA6", "displayName": "Standing Stone — first curse clue", "role": "investigate"},
         {"kind": "registry_landmark", "reference": "3509DF90-4B8870A6-F647E082-800F2459", "displayName": "Standing Stone — second curse clue", "role": "investigate"},
         {"kind": "registry_landmark", "reference": "80C5DC0C-4E6152BC-DEFD5395-B174BA49", "displayName": "Standing Stone — third curse clue", "role": "investigate"}
@@ -1696,7 +1696,7 @@
       "reason": "The current world contains the unique BP_LoreItemDS5 actor bound to JOURNAL_Know_CathanJournal_Velgarslair inside the authored DragonsLairCathanArea. The nearby Dragon Slayer Cathan placement is independently distinguished from the Dowdun-gate and Fellhollow Cathan copies.",
       "targets": [
         {"kind": "world_actor", "reference": "BP_LoreItemDS5", "displayName": "Cathan's Journal — Velgar's Rise", "role": "read"},
-        {"kind": "npc", "reference": "ghost-of-cathan", "opaqueId": "cfbfee9192c1bd79b266", "displayName": "Cathan — Velgar's Rise", "role": "talk"}
+        {"kind": "npc", "reference": "ghost-of-cathan", "actorType": "BP_NPC_GhostCathan_Quest", "displayName": "Cathan — Velgar's Rise", "role": "talk"}
       ]
     },
     {

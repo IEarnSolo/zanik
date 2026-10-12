@@ -2,6 +2,21 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.1.2] - 2026-10-12
+
+### Added
+
+- A self-contained Windows client asset tool with pinned Python, UnrealAssetScout, and UE4SS components and their license notices.
+- Safe local mapping generation with collision refusal, recovery journaling, graceful client shutdown, and an offline `.usmap` override.
+- Targeted catalog and artwork generation, reviewed drift profiles, complete bundle manifests, and full web-asset reference validation.
+- A conventional asset ZIP plus checksum-indexed Pterodactyl parts below 90 MiB, with hash-identical atomic installation paths.
+
+### Changed
+
+- Linux dedicated-server containers are now explicitly inventory-only; complete web bundles are built from a licensed Windows client.
+- Recipe, building, quest, NPC, resource, item, plan, map, font, and icon generation no longer depends on developer-machine paths or the third-party save-editor dataset.
+- Reviewed quest relationships use stable game actor identities where generated opaque IDs were not portable between generators.
+
 ## [0.1.1] - 2026-10-12
 
 ### Fixed

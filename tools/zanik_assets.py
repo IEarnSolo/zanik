@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+from collections import defaultdict
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -17,7 +19,10 @@ import time
 import zipfile
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+BUNDLE_SET_SCHEMA_VERSION = 1
+DEFAULT_PART_BYTES = 90 * 1024 * 1024
+MAX_ENTRY_BYTES = 64 * 1024 * 1024
 REQUIRED = (
     "buildings/catalog.json",
     "buildings/catalog.tsv",
@@ -31,8 +36,6 @@ REQUIRED = (
     "resource-catalog.json",
     "resource-identities.tsv",
     "npc-identities.tsv",
-)
-OPTIONAL = (
     "world-map.jpg",
     "lodestone-icon.png",
     "nodestone-icon.png",
@@ -41,13 +44,23 @@ OPTIONAL = (
     "skills/attack.png",
     "quests/main-quest.svg",
 )
+OPTIONAL = (
+    "quests/side-quest.svg",
+)
 OPTIONAL_GROUPS = (
     "items/*.png",
     "npcs/*.png",
-    "recipe-icons/*.png",
     "resources/*.png",
     "buildings/*.png",
 )
+CATALOG_MINIMUMS = {
+    "buildings/catalog.json": {"pieces": 100},
+    "npc-catalog.json": {"types": 10, "nodes": 10},
+    "quest-catalog.json": {"quests": 10},
+    "quest-step-locations.json": {"quests": 10},
+    "recipe-unlocks.json": {"entries": 100},
+    "resource-catalog.json": {"types": 5, "nodes": 10},
+}
 ALLOWED_TOP_LEVEL = {
     "asset-manifest.json", "buildings", "items", "npcs", "quests", "recipe-icons",
     "resources", "skills", "world-map.jpg", "lodestone-icon.png", "nodestone-icon.png",
@@ -69,6 +82,14 @@ def digest(path: Path) -> str:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             value.update(block)
     return value.hexdigest()
+
+
+def clean_relative(value: str) -> str:
+    return value.replace("\\", "/").lstrip("/")
+
+
+def zip_member_is_link(member: zipfile.ZipInfo) -> bool:
+    return ((member.external_attr >> 16) & 0o170000) == 0o120000
 
 
 def game_build(game_root: Path) -> str:
@@ -108,6 +129,8 @@ def classify(source: Path) -> tuple[list[str], list[str]]:
 def validate_generated(source: Path) -> dict:
     missing_required, missing_optional = classify(source)
     errors: list[str] = []
+    warnings: list[str] = []
+    counts: dict[str, int] = {}
     if not source.is_dir():
         errors.append(f"generated asset root does not exist: {source}")
     for relative in REQUIRED:
@@ -122,6 +145,24 @@ def validate_generated(source: Path) -> dict:
                 value = json.loads(path.read_text(encoding="utf-8"))
                 if not isinstance(value, (dict, list)):
                     errors.append(f"required JSON has an unsupported root value: {relative}")
+                if isinstance(value, dict):
+                    for key in ("pieces", "types", "nodes", "quests", "entries"):
+                        rows = value.get(key)
+                        if isinstance(rows, list):
+                            counts[f"{relative}:{key}"] = len(rows)
+                            identifiers = [row.get("id") for row in rows if isinstance(row, dict) and row.get("id") is not None]
+                            if len(identifiers) != len(set(identifiers)):
+                                errors.append(f"catalog contains duplicate stable identifiers: {relative}:{key}")
+                            if key == "nodes":
+                                for row in rows:
+                                    if not isinstance(row, dict) or any(not isinstance(row.get(axis), (int, float)) or not math.isfinite(row[axis]) or not 0 <= row[axis] <= 1 for axis in ("x", "y")):
+                                        errors.append(f"catalog contains an invalid map coordinate: {relative}:{key}")
+                                        break
+                    for key, minimum in CATALOG_MINIMUMS.get(relative, {}).items():
+                        rows = value.get(key)
+                        if not isinstance(rows, list) or len(rows) < minimum:
+                            actual = len(rows) if isinstance(rows, list) else "missing"
+                            errors.append(f"catalog coverage is below the reviewed minimum: {relative}:{key}={actual} < {minimum}")
             elif path.suffix == ".tsv":
                 first = path.open(encoding="utf-8", errors="strict").readline().rstrip("\r\n")
                 if not first or ("\t" not in first and not first.startswith("#")):
@@ -130,11 +171,29 @@ def validate_generated(source: Path) -> dict:
             errors.append(f"required asset is invalid: {relative}: {error}")
     if missing_required:
         errors.extend(f"required asset is missing: {name}" for name in missing_required)
+    asset_references: set[str] = set()
+    absolute_pattern = re.compile(r"(?:[A-Za-z]:[\\/]|/(?:home|Users|tmp)/)")
+    for path in safe_files(source) if source.is_dir() else []:
+        relative = path.relative_to(source).as_posix()
+        if path.suffix.lower() not in {".json", ".tsv", ".html", ".js", ".css"}:
+            continue
+        try:
+            contents = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            continue
+        if absolute_pattern.search(contents):
+            errors.append(f"generated file contains a machine-local absolute path: {relative}")
+        asset_references.update(clean_relative(match) for match in re.findall(r"/assets/([A-Za-z0-9_./-]+)", contents))
+    missing_references = sorted(reference for reference in asset_references if not (source / reference).is_file())
+    errors.extend(f"web asset reference is unresolved: {reference}" for reference in missing_references)
     return {
         "valid": not errors,
         "missingRequired": missing_required,
         "missingOptional": missing_optional,
         "errors": errors,
+        "warnings": warnings,
+        "catalogCounts": counts,
+        "assetReferences": len(asset_references),
     }
 
 
@@ -207,21 +266,55 @@ def container_fingerprint(path: Path) -> dict:
     return record
 
 
-def manifest_for(root: Path, source: Path, files: list[Path], missing_optional: list[str]) -> dict:
+def manifest_for(root: Path, source: Path, files: list[Path], validation: dict,
+                 mapping_path: Path | None = None, tool_versions: dict | None = None,
+                 recipe_version: int = 1, profile: dict | None = None) -> dict:
     containers = container_paths(root)
     epoch = int(os.environ.get("SOURCE_DATE_EPOCH", str(int(time.time()))))
+    expected = (profile or {}).get("catalogProfile", {}).get("catalogCounts", {})
+    actual = validation.get("catalogCounts", {})
+    drift = [
+        {"catalog": key, "expected": value, "actual": actual.get(key)}
+        for key, value in sorted(expected.items()) if actual.get(key) != value
+    ]
+    warnings = list(validation.get("warnings", []))
+    warnings.extend(
+        f"unreviewed catalog drift: {item['catalog']} expected {item['expected']}, got {item['actual']}"
+        for item in drift
+    )
+    executable = root / "RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe"
+    categories: dict[str, int] = defaultdict(int)
+    for path in files:
+        relative = path.relative_to(source)
+        categories[relative.parts[0] if len(relative.parts) > 1 else "core"] += 1
     return {
         "schemaVersion": SCHEMA_VERSION,
         "gameBuild": game_build(root),
         "sourceKind": source_kind(containers),
         "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch)),
         "sourceContainers": [container_fingerprint(path) for path in containers],
+        "sourceExecutable": ({"name": executable.name, "size": executable.stat().st_size,
+                              "sha256": digest(executable)} if executable.is_file() else None),
+        "mappingSha256": digest(mapping_path) if mapping_path and mapping_path.is_file() else None,
+        "toolVersions": tool_versions or {},
+        "extractionRecipeVersion": recipe_version,
+        "compatibility": "compatible" if validation["valid"] and not drift else "incompatible",
+        "compatibilityProfile": {
+            "version": (profile or {}).get("catalogProfile", {}).get("version"),
+            "expectedCatalogCounts": expected,
+            "drift": drift,
+        },
+        "catalogCounts": validation.get("catalogCounts", {}),
+        "assetReferenceCount": validation.get("assetReferences", 0),
+        "generatedFileCount": len([path for path in files if path.name != "asset-manifest.json"]),
+        "fileCountsByCategory": dict(sorted(categories.items())),
         "files": [
             {"path": path.relative_to(source).as_posix(), "size": path.stat().st_size, "sha256": digest(path)}
             for path in files if path.name != "asset-manifest.json"
         ],
         "missingRequired": [],
-        "missingOptional": missing_optional,
+        "missingOptional": validation["missingOptional"],
+        "warnings": warnings,
     }
 
 
@@ -230,9 +323,12 @@ def build(args: argparse.Namespace) -> int:
     validation = validate_generated(source)
     if not validation["valid"]:
         raise SystemExit("generated assets are invalid:\n  - " + "\n  - ".join(validation["errors"]))
-    missing_optional = validation["missingOptional"]
     files = safe_files(source)
-    manifest = manifest_for(root, source, files, missing_optional)
+    tool_versions = json.loads(args.tool_versions) if getattr(args, "tool_versions", None) else {}
+    mapping = Path(args.mapping).resolve() if getattr(args, "mapping", None) else None
+    profile = json.loads(Path(args.profile).read_text(encoding="utf-8")) if getattr(args, "profile", None) else None
+    manifest = manifest_for(root, source, files, validation, mapping, tool_versions,
+                            getattr(args, "recipe_version", 1), profile)
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         info = zipfile.ZipInfo("asset-manifest.json", date_time=(1980, 1, 1, 0, 0, 0))
@@ -254,13 +350,34 @@ def validate_member(name: str) -> None:
         raise ValueError(f"unsafe or unsupported bundle entry: {name}")
 
 
-def validate_manifest_tree(root: Path) -> dict:
+def extract_archive(archive_path: Path, destination: Path, seen: set[str] | None = None) -> set[str]:
+    seen = seen if seen is not None else set()
+    with zipfile.ZipFile(archive_path) as archive:
+        for member in archive.infolist():
+            validate_member(member.filename)
+            if zip_member_is_link(member):
+                raise ValueError(f"bundle contains a symbolic link: {member.filename}")
+            if member.file_size > MAX_ENTRY_BYTES:
+                raise ValueError(f"bundle entry exceeds limit: {member.filename}")
+            normalized = Path(member.filename).as_posix().rstrip("/")
+            if not normalized:
+                continue
+            if normalized in seen:
+                raise ValueError(f"bundle set contains a duplicate path: {normalized}")
+            seen.add(normalized)
+        archive.extractall(destination)
+    return seen
+
+
+def validate_manifest_tree(root: Path, require_compatible: bool = False) -> dict:
     manifest_path = root / "asset-manifest.json"
     if not manifest_path.is_file():
         raise ValueError("asset bundle has no asset-manifest.json")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("schemaVersion") != SCHEMA_VERSION or manifest.get("missingRequired"):
         raise ValueError("asset bundle manifest is incompatible or incomplete")
+    if require_compatible and manifest.get("compatibility") != "compatible":
+        raise ValueError("asset bundle is marked incompatible by its reviewed catalog profile")
     records = manifest.get("files")
     if not isinstance(records, list) or not records:
         raise ValueError("asset bundle manifest has no file records")
@@ -285,12 +402,7 @@ def validate(args: argparse.Namespace) -> int:
         bundle = Path(args.bundle).resolve()
         with tempfile.TemporaryDirectory(prefix="zanik-assets-validate-") as temp_name:
             temp = Path(temp_name)
-            with zipfile.ZipFile(bundle) as archive:
-                for member in archive.infolist():
-                    validate_member(member.filename)
-                    if member.file_size > 64 * 1024 * 1024:
-                        raise ValueError(f"bundle entry exceeds limit: {member.filename}")
-                archive.extractall(temp)
+            extract_archive(bundle, temp)
             manifest = validate_manifest_tree(temp)
     else:
         generated = Path(args.generated_root).resolve()
@@ -314,6 +426,16 @@ def extract(args: argparse.Namespace) -> int:
         raise ValueError("client source requested but Windows client containers were not found")
     if not containers:
         raise ValueError("no supported game containers were found")
+    if detected == "linux-dedicated-server":
+        result = {
+            "sourceKind": detected,
+            "gameBuild": game_build(root),
+            "ready": False,
+            "missingRequired": list(REQUIRED),
+            "message": "the Linux dedicated server is inventory-only and cannot produce the complete Zanik web asset bundle; use a licensed game client",
+        }
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 4
     if not args.tool_path:
         result = {
             "sourceKind": detected,
@@ -353,39 +475,157 @@ def extract(args: argparse.Namespace) -> int:
     return 0
 
 
+def activate_tree(temp: Path, destination: Path) -> Path:
+    manifest = validate_manifest_tree(temp, require_compatible=True)
+    version = str(manifest.get("gameBuild", "unknown")).replace("/", "_")
+    manifest_hash = digest(temp / "asset-manifest.json")[:12]
+    target = destination / f"build-{version}-{manifest_hash}"
+    staged = destination / f".build-{version}-{manifest_hash}.new"
+    if staged.exists():
+        shutil.rmtree(staged)
+    shutil.copytree(temp, staged)
+    if target.exists():
+        shutil.rmtree(staged)
+    else:
+        staged.replace(target)
+    current = destination / "current"
+    new_link = destination / ".current.new"
+    if new_link.exists() or new_link.is_symlink():
+        new_link.unlink()
+    try:
+        new_link.symlink_to(target.name, target_is_directory=True)
+    except OSError as error:
+        if os.name != "nt" or getattr(error, "winerror", None) != 1314:
+            raise
+        # Ordinary Windows accounts cannot create symbolic links unless
+        # Developer Mode is enabled. A fully staged directory rename retains
+        # the same atomic activation and rollback behavior for local tests.
+        shutil.copytree(target, new_link)
+    if current.exists() and not current.is_symlink():
+        legacy = destination / f".current.legacy-{int(time.time())}"
+        current.replace(legacy)
+    new_link.replace(current)
+    return target
+
+
 def install(args: argparse.Namespace) -> int:
     bundle, destination = Path(args.bundle).resolve(), Path(args.destination).resolve()
     destination.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="zanik-assets-", dir=destination) as temp_name:
         temp = Path(temp_name)
-        with zipfile.ZipFile(bundle) as archive:
-            for member in archive.infolist():
-                validate_member(member.filename)
-                if member.file_size > 64 * 1024 * 1024:
-                    raise ValueError(f"bundle entry exceeds limit: {member.filename}")
-            archive.extractall(temp)
-        manifest = validate_manifest_tree(temp)
-        version = str(manifest.get("gameBuild", "unknown")).replace("/", "_")
-        manifest_hash = digest(temp / "asset-manifest.json")[:12]
-        target = destination / f"build-{version}-{manifest_hash}"
-        staged = destination / f".build-{version}-{manifest_hash}.new"
-        if staged.exists():
-            shutil.rmtree(staged)
-        shutil.copytree(temp, staged)
-        if target.exists():
-            shutil.rmtree(staged)
-        else:
-            staged.replace(target)
-        current = destination / "current"
-        new_link = destination / ".current.new"
-        if new_link.exists() or new_link.is_symlink():
-            new_link.unlink()
-        new_link.symlink_to(target.name, target_is_directory=True)
-        if current.exists() and not current.is_symlink():
-            legacy = destination / f".current.legacy-{int(time.time())}"
-            current.replace(legacy)
-        new_link.replace(current)
+        extract_archive(bundle, temp)
+        target = activate_tree(temp, destination)
     print(f"activated {target}")
+    return 0
+
+
+def write_part(output: Path, source: zipfile.ZipFile, members: list[zipfile.ZipInfo]) -> None:
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        for member in members:
+            info = zipfile.ZipInfo(member.filename, date_time=(1980, 1, 1, 0, 0, 0))
+            info.external_attr = 0o644 << 16
+            archive.writestr(info, source.read(member))
+
+
+def bundle_set(args: argparse.Namespace) -> int:
+    bundle = Path(args.bundle).resolve()
+    output = Path(args.output_dir).resolve()
+    maximum = int(args.max_part_bytes)
+    if maximum < 1024 * 1024:
+        raise ValueError("maximum part size must be at least 1 MiB")
+    if output.exists() and any(output.iterdir()):
+        raise ValueError(f"bundle-set output directory is not empty: {output}")
+    output.mkdir(parents=True, exist_ok=True)
+    records: list[dict] = []
+    with zipfile.ZipFile(bundle) as source:
+        members = [member for member in source.infolist() if not member.is_dir()]
+        groups: dict[str, list[zipfile.ZipInfo]] = defaultdict(list)
+        for member in members:
+            validate_member(member.filename)
+            top = Path(member.filename).parts[0]
+            group = "core" if top in REQUIRED or top in {"asset-manifest.json", "skills", "quests"} else top.replace(".", "-")
+            groups[group].append(member)
+        sequence = 0
+        for group in sorted(groups, key=lambda value: (value != "core", value)):
+            pending = sorted(groups[group], key=lambda member: member.filename)
+            while pending:
+                sequence += 1
+                selected: list[zipfile.ZipInfo] = []
+                raw = 0
+                while pending and (not selected or raw + pending[0].file_size <= maximum * 8 // 10):
+                    item = pending.pop(0)
+                    selected.append(item)
+                    raw += item.file_size
+                filename = f"part-{sequence:02d}-{group}.zip"
+                path = output / filename
+                write_part(path, source, selected)
+                if path.stat().st_size > maximum and len(selected) > 1:
+                    pending = selected[len(selected) // 2:] + pending
+                    selected = selected[:len(selected) // 2]
+                    write_part(path, source, selected)
+                if path.stat().st_size > maximum:
+                    raise ValueError(f"one logical asset part exceeds the configured limit: {filename}")
+                records.append({"name": filename, "size": path.stat().st_size, "sha256": digest(path),
+                                "files": [member.filename for member in selected]})
+    with zipfile.ZipFile(bundle) as source:
+        manifest_hash = hashlib.sha256(source.read("asset-manifest.json")).hexdigest()
+    index = {"schemaVersion": BUNDLE_SET_SCHEMA_VERSION, "assetManifestSha256": manifest_hash,
+             "sourceBundleSha256": digest(bundle), "parts": records,
+             "fileCount": sum(len(record["files"]) for record in records)}
+    (output / "bundle-index.json").write_text(json.dumps(index, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps({"output": str(output), "parts": len(records), "files": index["fileCount"]}, sort_keys=True))
+    return 0
+
+
+def install_set(args: argparse.Namespace) -> int:
+    index_path = Path(args.index).resolve()
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    if index.get("schemaVersion") != BUNDLE_SET_SCHEMA_VERSION or not isinstance(index.get("parts"), list):
+        raise ValueError("unsupported bundle-set index")
+    destination = Path(args.destination).resolve()
+    destination.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="zanik-assets-set-", dir=destination) as temp_name:
+        temp = Path(temp_name)
+        seen: set[str] = set()
+        expected_names: set[str] = set()
+        for record in index["parts"]:
+            name = record.get("name", "")
+            if Path(name).name != name or not name.endswith(".zip") or name in expected_names:
+                raise ValueError(f"unsafe or duplicate bundle-set part: {name}")
+            expected_names.add(name)
+            part = index_path.parent / name
+            if not part.is_file() or part.stat().st_size != record.get("size") or digest(part) != record.get("sha256"):
+                raise ValueError(f"bundle-set part is missing or corrupt: {name}")
+            before = set(seen)
+            extract_archive(part, temp, seen)
+            actual = sorted(seen - before)
+            if actual != sorted(record.get("files", [])):
+                raise ValueError(f"bundle-set part contents do not match its index: {name}")
+        extra = {path.name for path in index_path.parent.glob("part-*.zip")} - expected_names
+        if extra:
+            raise ValueError("bundle-set directory contains unexpected parts: " + ", ".join(sorted(extra)))
+        if len(seen) != index.get("fileCount"):
+            raise ValueError("bundle-set file count does not match its index")
+        if digest(temp / "asset-manifest.json") != index.get("assetManifestSha256"):
+            raise ValueError("bundle-set asset manifest does not match its index")
+        target = activate_tree(temp, destination)
+    print(f"activated {target}")
+    return 0
+
+
+def prepare_mappings(args: argparse.Namespace) -> int:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from windows_mapping import prepare
+    result = prepare(Path(args.game_root), Path(args.ue4ss_root), Path(args.output), Path(args.work_root), args.timeout)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
+def recover_mappings(args: argparse.Namespace) -> int:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from windows_mapping import recover
+    restored = recover(Path(args.journal))
+    print(json.dumps({"restored": restored}, sort_keys=True))
     return 0
 
 
@@ -404,6 +644,16 @@ def main() -> int:
     extraction.add_argument("--tool-path")
     extraction.add_argument("--usmap-path")
     extraction.set_defaults(run=extract)
+    mappings = commands.add_parser("prepare-mappings")
+    mappings.add_argument("--game-root", required=True)
+    mappings.add_argument("--ue4ss-root", required=True)
+    mappings.add_argument("--output", required=True)
+    mappings.add_argument("--work-root", required=True)
+    mappings.add_argument("--timeout", type=int, default=600)
+    mappings.set_defaults(run=prepare_mappings)
+    recovery = commands.add_parser("recover-mappings")
+    recovery.add_argument("--journal", required=True)
+    recovery.set_defaults(run=recover_mappings)
     identify = commands.add_parser("show-build")
     identify.add_argument("--game-root", required=True)
     identify.set_defaults(run=show_build)
@@ -411,12 +661,25 @@ def main() -> int:
     create.add_argument("--game-root", required=True)
     create.add_argument("--generated-root", required=True)
     create.add_argument("--output", required=True)
+    create.add_argument("--mapping")
+    create.add_argument("--tool-versions")
+    create.add_argument("--recipe-version", type=int, default=1)
+    create.add_argument("--profile")
     create.set_defaults(run=build)
     bundle = commands.add_parser("bundle")
     bundle.add_argument("--game-root", required=True)
     bundle.add_argument("--generated-root", required=True)
     bundle.add_argument("--output", required=True)
+    bundle.add_argument("--mapping")
+    bundle.add_argument("--tool-versions")
+    bundle.add_argument("--recipe-version", type=int, default=1)
+    bundle.add_argument("--profile")
     bundle.set_defaults(run=build)
+    parts = commands.add_parser("bundle-set")
+    parts.add_argument("--bundle", required=True)
+    parts.add_argument("--output-dir", required=True)
+    parts.add_argument("--max-part-bytes", type=int, default=DEFAULT_PART_BYTES)
+    parts.set_defaults(run=bundle_set)
     check = commands.add_parser("validate")
     source = check.add_mutually_exclusive_group(required=True)
     source.add_argument("--generated-root")
@@ -430,6 +693,10 @@ def main() -> int:
     install_bundle.add_argument("--bundle", required=True)
     install_bundle.add_argument("--destination", required=True)
     install_bundle.set_defaults(run=install)
+    install_bundle_set = commands.add_parser("install-bundle-set")
+    install_bundle_set.add_argument("--index", required=True)
+    install_bundle_set.add_argument("--destination", required=True)
+    install_bundle_set.set_defaults(run=install_set)
     args = parser.parse_args()
     return args.run(args)
 

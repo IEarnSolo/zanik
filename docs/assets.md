@@ -1,20 +1,64 @@
 # Local game assets
 
-Zanik's core download and Git repository contain no game containers, keys, extracted trees, or game-derived assets. The initializer inventories a locally licensed installation and classifies required generated catalogs, optional visual assets, and unavailable client-only inputs.
+Zanik does not distribute Dragonwilds containers, mappings, extracted trees, or generated game artwork. The Linux dedicated server is an inventory source only; it cannot create the complete web bundle. Build the bundle on a Windows PC that has a licensed Dragonwilds client, then upload it to the server.
 
-Try the Linux dedicated server first:
+## Build on Windows
 
-```sh
-/home/container/zanik/scripts/init-assets.sh --game-root /home/container
+Extract `zanik-asset-tools-windows-x86_64-VERSION.zip`, open PowerShell in that directory, close Dragonwilds, and run:
+
+```powershell
+.\init-assets.ps1 `
+  -GameRoot "E:\SteamLibrary\steamapps\common\RSDragonwilds" `
+  -OutputDirectory ".\output"
 ```
 
-The inventory is written to `/home/container/zanik/state/asset-inventory.json`. Extraction/conversion uses the separately published, checksum-pinned asset-tool bundle. A converter supplied with `--tool-path` receives `--game-root PATH --output PATH --source-kind KIND` and, when supplied, `--usmap-path PATH`. Its output must pass Zanik's required JSON/TSV and checksum validation before it can be bundled or atomically activated. The prior cache remains active on every failure.
+The archive includes its own Python runtime, UnrealAssetScout, UE4SS mapping dumper, licenses, recipes, and generators. It does not need system Python or Node.
 
-If required data is client-only, run `init-assets.ps1 -GameRoot PATH -ToolPath CONVERTER [-UsmapPath FILE]` from the Windows asset-tool bundle. It creates `zanik-assets-GAME_BUILD.zip`. Upload that file to `/home/container/` and install it with:
+By default the tool temporarily installs its pinned UE4SS loader, launches the official client through Steam, calls UE4SS's supported `DumpUSMAP(true)` operation, asks the game to close normally, and removes only its own verified files. It refuses to start when Dragonwilds is running or when an existing loader/UE4SS installation occupies a required path. It never overwrites an unknown collision. If an interrupted run leaves a recovery journal, rerun the command after closing the game; recovery completes before another extraction begins.
 
-```sh
-/home/container/zanik/scripts/init-assets.sh --game-root /home/container \
-  --install-bundle /home/container/zanik-assets-GAME_BUILD.zip
+An experienced operator may avoid the temporary loader and use a mapping already generated from the same client:
+
+```powershell
+.\init-assets.ps1 `
+  -GameRoot "E:\SteamLibrary\steamapps\common\RSDragonwilds" `
+  -OutputDirectory ".\output" `
+  -UsmapPath "C:\private\Mappings.usmap" `
+  -SkipGameLaunch
 ```
 
-`asset-manifest.json` records schema/build/source fingerprints, generated-file hashes, and missing required/optional assets, including absent optional icon groups. Runtime identity catalogs (`resource-identities.tsv` and `npc-identities.tsv`) are required bundle files alongside their public catalogs; the launcher reads them from the atomically activated asset directory. Optional images fall back to Zanik-owned placeholders and system fonts. Missing required catalogs disable only their dependent capability.
+`-KeepWork` retains the targeted intermediate exports for debugging and prints their location. Those files are game-derived: do not publish or commit them. `-CatalogsOnly` still keeps any artwork reachable from a generated runtime catalog so it cannot create broken URLs.
+
+The output contains:
+
+- `zanik-assets-CLIENT_BUILD.zip`, the conventional complete bundle;
+- `zanik-assets-CLIENT_BUILD-parts/bundle-index.json` and checksum-indexed logical ZIP parts, each below 90 MiB.
+
+The manifest records the client build, container and executable fingerprints, mapping hash, exact tool/recipe versions, catalog counts, every generated file hash, fallbacks, and reviewed compatibility profile. Build-ID differences are informational. Structural errors or unreviewed catalog-count drift mark the candidate incompatible, and the server refuses to activate it.
+
+## Install on Pterodactyl
+
+For the multipart form, upload the index and every part to:
+
+```text
+/home/container/zanik-assets-incoming/CLIENT_BUILD/
+```
+
+Then run in the server console or startup environment:
+
+```sh
+/home/container/zanik/scripts/init-assets.sh \
+  --game-root /home/container \
+  --install-bundle-set /home/container/zanik-assets-incoming/CLIENT_BUILD/bundle-index.json
+```
+
+For the full ZIP, upload it to `/home/container/zanik-assets-incoming/CLIENT_BUILD/` and run:
+
+```sh
+/home/container/zanik/scripts/init-assets.sh \
+  --game-root /home/container \
+  --install-bundle /home/container/zanik-assets-incoming/CLIENT_BUILD/zanik-assets-CLIENT_BUILD.zip
+```
+
+Both paths reject traversal, symlinks, missing or unexpected parts, duplicate paths, checksum mismatches, incomplete catalogs, unresolved web URLs, and incompatible manifests. Assembly and validation happen in a temporary tree; the previous active cache remains untouched on failure.
+
+Zanik-authored placeholders cover genuinely unavailable optional artwork. Missing required catalogs or static assets never produce a partially activated bundle.

@@ -5,6 +5,9 @@ import argparse
 import hashlib
 import json
 import shutil
+import binascii
+import struct
+import zlib
 from pathlib import Path
 
 EXPECTED = {"tabs": 8, "sections": 63, "references": 839, "pieces": 822}
@@ -62,6 +65,14 @@ def find_icon(icon_index, icon_asset):
         return None
     filename = asset_key(icon_asset) + ".png"
     return icon_index.get(filename.lower())
+
+
+def placeholder(path):
+    width = height = 32; row = bytes([0]) + bytes((117, 105, 82, 255)) * width
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", binascii.crc32(kind + data) & 0xffffffff)
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+                     + chunk(b"IDAT", zlib.compress(row * height, 9)) + chunk(b"IEND", b""))
 
 
 def main():
@@ -122,8 +133,7 @@ def main():
             shutil.copy2(source, args.output / assets[key]["icon"])
         else:
             missing_icons.append(key)
-    if missing_icons:
-        raise SystemExit(f"{len(missing_icons)} building icons were not exported: {', '.join(missing_icons)}")
+            placeholder(args.output / assets[key]["icon"])
 
     pieces = [assets[key] for key in sorted(unique)]
     canonical = {"schemaVersion": 1, "sourceAsset": catalogue_record["Package"], "counts": counts,
@@ -148,7 +158,7 @@ def main():
         out.write("# Generated from DA_BuildPieceCatalogue_Default. key<TAB>localized name<TAB>web icon filename<TAB>buildable actor class\n")
         for piece in pieces:
             out.write("{}\t{}\t{}\t{}\n".format(clean(piece["key"]), clean(piece["name"]), clean(piece["icon"]), clean(piece["actor"])))
-    print(json.dumps(counts, sort_keys=True))
+    print(json.dumps({**counts, "placeholderIcons": len(missing_icons)}, sort_keys=True))
 
 
 if __name__ == "__main__":

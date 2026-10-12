@@ -55,6 +55,8 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(PYTHON) tests/release_automation_test.py
 	sh tests/config_test.sh
 	$(PYTHON) tests/asset_tool_test.py
+	$(PYTHON) tests/windows_asset_pipeline_test.py
+	$(PYTHON) tests/windows_mapping_test.py
 	sh tests/installer_test.sh
 	$(NODE) tests/map_page_test.js
 	$(PYTHON) tests/http_core_test.py

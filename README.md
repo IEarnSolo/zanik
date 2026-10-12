@@ -18,7 +18,7 @@ scripts/install.sh --server-root /home/container --mode wrapper
 /home/container/zanik/bin/zanik-server --server-root /home/container -- GAME_ARGS
 ```
 
-No game-derived asset is included. Run `init-assets.sh` against the dedicated server first, or create a bundle with the separate Windows asset tool. Missing optional images use Zanik placeholders; catalog-dependent features report unavailable rather than returning broken data.
+No game-derived asset is included. The Linux dedicated server supports inventory only; create the complete server-installable bundle from a licensed Windows client with the self-contained Windows asset tool. It produces a full ZIP and sub-90 MiB Pterodactyl parts. Missing optional artwork uses Zanik placeholders; catalog-dependent features report unavailable rather than returning broken data.
 
 Read [installation](docs/installation.md), [configuration](docs/configuration.md), [assets](docs/assets.md), [security](docs/security.md), and [hosting](docs/hosting.md) before public deployment.
 

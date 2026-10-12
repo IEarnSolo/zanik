@@ -1,41 +1,75 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$GameRoot,
-    [string]$ToolPath,
+    [string]$OutputDirectory,
+    [string]$UsmapPath,
+    [switch]$KeepWork,
+    [switch]$CatalogsOnly,
+    [switch]$SkipGameLaunch,
     [string]$InstallBundle,
-    [string]$Destination,
-    [ValidateSet('auto','server','client')][string]$SourceKind = 'auto',
-    [string]$UsmapPath
+    [string]$Destination
 )
 $ErrorActionPreference = 'Stop'
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$AssetTool = Join-Path $Here 'tools\zanik_assets.py'
-if (-not (Test-Path -LiteralPath $AssetTool)) {
-    $AssetTool = Join-Path (Split-Path -Parent $Here) 'tools\zanik_assets.py'
+$Root = $Here
+if (-not (Test-Path -LiteralPath (Join-Path $Root 'tools\zanik_assets.py'))) {
+    $Root = Split-Path -Parent $Here
 }
+$EmbeddedPython = Join-Path $Root 'runtime\python.exe'
+$PythonCommand = Get-Command python -ErrorAction SilentlyContinue
+$Python = if (Test-Path -LiteralPath $EmbeddedPython) { $EmbeddedPython } elseif ($PythonCommand) { $PythonCommand.Source } else { $null }
+if (-not $Python) { throw 'The bundled Python runtime is missing. Re-download the Windows asset-tool archive.' }
+$AssetTool = Join-Path $Root 'tools\zanik_assets.py'
+if (-not $OutputDirectory) { $OutputDirectory = Join-Path $Here 'output' }
+$OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
+New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 if (-not $Destination) { $Destination = Join-Path $Here 'assets' }
 if ($InstallBundle) {
-    & python $AssetTool install-bundle --bundle $InstallBundle --destination $Destination
+    & $Python $AssetTool install-bundle --bundle $InstallBundle --destination $Destination
     exit $LASTEXITCODE
 }
-$Generated = Join-Path $GameRoot 'zanik-generated-web'
-$Inventory = Join-Path $Here 'asset-inventory.json'
-& python $AssetTool inventory --game-root $GameRoot --generated-root $Generated --output $Inventory
-if ($ToolPath) {
-    if (-not (Test-Path -LiteralPath $ToolPath -PathType Leaf)) { throw "Tool not found: $ToolPath" }
-    $ExtractArguments = @($AssetTool, 'extract', '--game-root', $GameRoot, '--output', $Generated, '--source-kind', $SourceKind, '--tool-path', $ToolPath)
-    if ($UsmapPath) { $ExtractArguments += @('--usmap-path', $UsmapPath) }
-    & python @ExtractArguments
+$GameRoot = [IO.Path]::GetFullPath($GameRoot)
+$Work = Join-Path ([IO.Path]::GetTempPath()) 'ZanikAssetWork'
+New-Item -ItemType Directory -Path $Work -Force | Out-Null
+$Generated = Join-Path $Work 'generated-web'
+$MappingWasGenerated = $false
+if (-not $UsmapPath) {
+    if ($SkipGameLaunch) { throw '-SkipGameLaunch requires -UsmapPath because cooked catalog assets need locally generated mappings.' }
+    $Ue4ss = Join-Path $Root 'third_party\ue4ss'
+    $UsmapPath = Join-Path $Work 'Mappings.usmap'
+    & $Python $AssetTool prepare-mappings --game-root $GameRoot --ue4ss-root $Ue4ss --output $UsmapPath --work-root (Join-Path $Work 'mapping')
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $MappingWasGenerated = $true
+} else {
+    $UsmapPath = [IO.Path]::GetFullPath($UsmapPath)
 }
-if (-not (Test-Path -LiteralPath $Generated)) {
-    $Hint = if ($ToolPath) { " Use the converter at '$ToolPath'." } else { '' }
-    throw "Inventory is saved at $Inventory, but no generated web tree exists at $Generated.$Hint See docs/assets.md."
+$Pipeline = Join-Path $Root 'tools\windows_asset_pipeline.py'
+$Recipe = Join-Path $Root 'asset-tools\extraction-recipes.json'
+$PipelineArguments = @($Pipeline, '--game-root', $GameRoot, '--output', $Generated, '--tool-root', $Root, '--usmap-path', $UsmapPath, '--recipe', $Recipe, '--work-root', $Work)
+if ($KeepWork) { $PipelineArguments += '--keep-work' }
+if ($CatalogsOnly) { Write-Warning '-CatalogsOnly retains artwork referenced by runtime catalogs and omits only unreachable exports.' }
+& $Python @PipelineArguments
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$Build = (& $Python $AssetTool show-build --game-root $GameRoot).Trim()
+if (-not $Build) { $Build = 'unknown' }
+$Bundle = Join-Path $OutputDirectory "zanik-assets-$Build.zip"
+$Versions = '{"python":"3.12.10-embed","unrealAssetScout":"0.5.0","ue4ss":"3.0.1-1165-g12ec45a0"}'
+& $Python $AssetTool bundle --game-root $GameRoot --generated-root $Generated --output $Bundle --mapping $UsmapPath --tool-versions $Versions --recipe-version 1 --profile $Recipe
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$Parts = Join-Path $OutputDirectory "zanik-assets-$Build-parts"
+$ResolvedOutput = [IO.Path]::GetFullPath($OutputDirectory).TrimEnd([IO.Path]::DirectorySeparatorChar)
+$ResolvedParts = [IO.Path]::GetFullPath($Parts)
+if (-not $ResolvedParts.StartsWith($ResolvedOutput + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Refusing to replace a bundle-parts directory outside the selected output directory.'
 }
-$Build = (& python $AssetTool show-build --game-root $GameRoot).Trim()
-$Bundle = Join-Path $Here "zanik-assets-$Build.zip"
-& python $AssetTool validate --generated-root $Generated
+if (Test-Path -LiteralPath $ResolvedParts) { Remove-Item -LiteralPath $ResolvedParts -Recurse -Force }
+& $Python $AssetTool bundle-set --bundle $Bundle --output-dir $Parts
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-& python $AssetTool bundle --game-root $GameRoot --generated-root $Generated --output $Bundle
+& $Python $AssetTool validate --bundle $Bundle
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-Write-Host "Created $Bundle. Upload it and run init-assets.sh --game-root SERVER_ROOT --install-bundle FILE."
+if ($MappingWasGenerated -and -not $KeepWork -and (Test-Path -LiteralPath $UsmapPath)) {
+    Remove-Item -LiteralPath $UsmapPath -Force
+}
+Write-Host "Created $Bundle"
+Write-Host "Created Pterodactyl bundle set at $Parts"
+Write-Host "Upload the part directory to /home/container/zanik-assets-incoming/$Build/ and install bundle-index.json."
