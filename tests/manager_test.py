@@ -195,6 +195,22 @@ class ManagerTests(unittest.TestCase):
             self.assertIn(b"ZANIK_COMPAT_LAUNCHER", client.files[game])
             self.assertEqual(client.files[game+".zanik-original"], b"\x7fELFofficial")
             self.assertEqual(result["installation"]["version"], "0.2.0")
+            original_launcher = client.files[game]
+            config_path = "/home/container/zanik/config/zanik.conf"
+            client.files[config_path] = b"FEATURE_MAP=false\n"
+            files["scripts/compat-launcher.sh"] = b"#!/bin/sh\n# ZANIK_COMPAT_LAUNCHER=1\n# updated\n"
+            files["VERSION"] = b"0.2.1\n"
+            with zipfile.ZipFile(archive, "w") as package:
+                for name, data in files.items(): package.writestr(name, data)
+            update = provider.install("profile", "dev", "/home/container", ReleasePayload(archive), "replace-executable", True)
+            self.assertEqual(update["installation"]["version"], "0.2.1")
+            self.assertNotEqual(client.files[game], original_launcher)
+            journal = provider.journals.load(provider.journals.root / f"{update['operationId']}.json")
+            provider.rollback(journal, "dev", "/home/container")
+            self.assertEqual(client.files[game], original_launcher)
+            self.assertEqual(client.files[config_path], b"FEATURE_MAP=false\n")
+            restored = json.loads(client.files["/home/container/zanik/install-state.json"])
+            self.assertEqual(restored["version"], "0.2.0")
             provider.uninstall("profile", "dev", "/home/container")
             self.assertEqual(client.files[game], b"\x7fELFofficial")
 

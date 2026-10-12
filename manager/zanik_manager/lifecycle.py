@@ -203,6 +203,8 @@ class PterodactylProvider(ServerProvider):
                 if self._exists(server_id, source) if relative != "assets" else self._directory_exists(server_id, source):
                     destination = f"zanik/{relative}"
                     self.client.rename(server_id, root, [(str(PurePosixPath(source).relative_to(root)), destination)])
+                    journal.rollback.append({"kind": "move", "from": f"{root}/{destination}", "to": source})
+                    self.journals.save(journal)
             if not self._exists(server_id, f"{root}/zanik/config/zanik.conf"):
                 example = self.client.read_file(server_id, f"{root}/zanik/config/zanik.conf.example")
                 self.client.write_file(server_id, f"{root}/zanik/config/zanik.conf", example)
@@ -223,6 +225,10 @@ class PterodactylProvider(ServerProvider):
                     original_data = self.client.read_file(server_id, original)
                     if not original_data.startswith(b"\x7fELF"):
                         raise RuntimeError("The preserved official executable is not a verified ELF file")
+                    self.client.upload(server_id, backup, "managed-launcher", current)
+                    journal.rollback.append({"kind": "restore-file", "from": f"{backup}/managed-launcher",
+                                             "to": game, "sha256": sha256(current), "mode": 755})
+                    self.journals.save(journal)
                 elif current.startswith(b"\x7fELF"):
                     if self._exists(server_id, original):
                         prior = self.client.read_file(server_id, original)
@@ -238,6 +244,10 @@ class PterodactylProvider(ServerProvider):
                     original_data = self.client.read_file(server_id, original)
                     if not original_data.startswith(b"\x7fELF"):
                         raise RuntimeError("The legacy launcher has no verified executable ELF at .zanik-original")
+                    self.client.upload(server_id, backup, "managed-launcher", current)
+                    journal.rollback.append({"kind": "restore-file", "from": f"{backup}/managed-launcher",
+                                             "to": game, "sha256": sha256(current), "mode": 755})
+                    self.journals.save(journal)
                 else:
                     raise RuntimeError("Unknown executable replacement state; refusing to guess")
                 launcher = self.client.read_file(server_id, f"{root}/zanik/scripts/compat-launcher.sh")
@@ -275,6 +285,18 @@ class PterodactylProvider(ServerProvider):
             self.client.power(server_id,"stop"); self._wait_offline(server_id)
         for action in reversed(journal.rollback):
             source=action["from"]; destination=action["to"]
+            if action.get("kind") == "restore-file":
+                data=self.client.read_file(server_id,source)
+                if sha256(data) != action["sha256"]:
+                    raise RuntimeError("Rollback backup hash mismatch")
+                if self._exists(server_id,destination):
+                    current=self.client.read_file(server_id,destination)
+                    if LAUNCHER_MARKER not in current:
+                        raise RuntimeError("Rollback found an unmanaged executable at the restoration target")
+                self.client.write_file(server_id,destination,data)
+                self.client.chmod(server_id,str(PurePosixPath(destination).parent),
+                                  [(PurePosixPath(destination).name,action.get("mode",600))])
+                continue
             if action.get("kind") == "restore-official":
                 if self._exists(server_id,destination):
                     current=self.client.read_file(server_id,destination)
