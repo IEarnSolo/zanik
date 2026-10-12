@@ -1,0 +1,44 @@
+{
+  "date": "2026-09-29",
+  "environment": "development",
+  "previousBuild": "25465077",
+  "installedBuild": "25501739",
+  "executableSha256": "d12145525d88f3828ebeac0aec3865f5b16ba4771861efe65108754a89bbb090",
+  "executableSize": 229648384,
+  "result": "repaired-and-validated",
+  "causes": [
+    "LD_PRELOAD inherited by bootstrap helper processes and caused port 29105 contention",
+    "resource compatibility rejected the new executable and retried without backoff",
+    "native symbols and Unreal globals relocated in the updated executable"
+  ],
+  "validation": {
+    "website": true,
+    "playerDataCompatibility": true,
+    "killHookCompatibility": true,
+    "mapProjectionCompatibility": true,
+    "lodestoneCompatibility": true,
+    "nodestones": 18,
+    "resourceCompatibility": true,
+    "resourceCatalogNodes": 31910,
+    "livePlayerCheck": "pending-no-online-player"
+  },
+  "productionChanged": true,
+  "production": {
+    "serverId": "ef68362b",
+    "websitePort": 29103,
+    "result": "updated-validated",
+    "knownPlayers": 5,
+    "lodestones": 48,
+    "nodestones": 18,
+    "resourceCatalogNodes": 31910,
+    "databaseBytes": 42288,
+    "livePlayerCheck": "pending-no-online-player"
+  },
+  "postUpdateCorrections": [{
+    "date": "2026-09-30",
+    "issue": "resource timer passed a resource component to UInGameTimeSubsystem::GetInGameTimeProvider",
+    "resolution": "resolve the live in-game time subsystem and call the member on its correct receiver",
+    "previousLogOccurrences": 95101,
+    "currentRecurringOccurrences": 0
+  }]
+}

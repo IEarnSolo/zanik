@@ -1,0 +1,113 @@
+# Local project/operator instructions
+# This file contains machine- and server-specific working context and can be
+# reconsidered later as a sanitized contributor guide.
+/AGENTS.MD
+
+# Credentials and local environment configuration
+/pterodactyl_api_key.txt
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*credentials*
+*secrets*
+
+# Local analysis, caches, toolchains, and scratch data
+/.tmp/
+/.tooling/
+/.tools-python/
+/.cache/
+/.pytest_cache/
+/.mypy_cache/
+/.ruff_cache/
+/.coverage
+/coverage/
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+node_modules/
+
+# Build products and generated dependency files
+/dist/
+/build/
+/out/
+/cmake-build-*/
+*.o
+*.obj
+*.d
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+*.exe
+*.pdb
+*.ilk
+
+# Server backups, game binaries, symbols, saves, captures, and research dumps
+/backups/
+/reference/
+*.debug
+*.sym
+*.bin
+*.sav
+*.lvl
+*.core
+core.*
+
+# Extracted game/web assets are intentionally excluded from the initial
+# repository. A future initialization step may generate these from a locally
+# installed copy of the game instead of redistributing them.
+/web/
+/deploy/resource-identities.tsv
+/deploy/resource-exclusions.tsv
+/deploy/npc-identities.tsv
+/deploy/npc-exclusions.tsv
+
+# Local Pterodactyl operator utilities contain installation-specific server
+# targeting and are not needed to compile or package the initial public mod.
+# They can be sanitized and added later if we want to publish these workflows.
+/deploy/ptero-*.ps1
+/deploy/read-dev-*.ps1
+/deploy/inspect-dev-gravestones.ps1
+/deploy/verify-dev-storage.ps1
+
+# Downloaded third-party analysis tools. Keep our source scripts in tools/.
+/tools/uas/
+/tools/uas-self/
+/tools/retoc/
+
+# Archives and packaged releases
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+*.tgz
+
+# Runtime state and logs
+*.log
+*.pid
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# IDE and operating-system metadata
+/.vs/
+/.vscode/
+/.idea/
+*.user
+*.suo
+*.swp
+*.tmp
+.DS_Store
+Thumbs.db
+desktop.ini

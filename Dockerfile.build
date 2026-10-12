@@ -1,0 +1,9 @@
+FROM debian:bookworm
+# Source is intentionally not copied into this image. build.sh bind-mounts the
+# complete repository at /source when the compiler runs. The allowlist-style
+# .dockerignore is safe only while this file contains no COPY or ADD
+# instructions; review .dockerignore before introducing either instruction.
+RUN apt-get update && apt-get install -y --no-install-recommends g++ make ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /source
+CMD ["sh", "-c", "make clean && make all"]

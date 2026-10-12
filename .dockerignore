@@ -1,0 +1,10 @@
+# Dockerfile.build creates only the compiler environment. Project source and
+# generated files are supplied later through the /source bind mount.
+#
+# This allowlist is safe only while Dockerfile.build contains no COPY or ADD
+# instructions. If either instruction is introduced, review this file and add
+# explicit ! exceptions for every required build-context input.
+**
+
+!Dockerfile.build
+!.dockerignore
