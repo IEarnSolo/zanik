@@ -34,7 +34,7 @@ tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owne
 python3 - "$ROOT/asset-tools/tools.lock.json" "$WORK" <<'PY'
 import json, pathlib, sys, urllib.request, hashlib
 lock=pathlib.Path(sys.argv[1]); work=pathlib.Path(sys.argv[2]); data=json.loads(lock.read_text())['tools']['retoc']
-for platform, suffix in [('linux-x86_64','tar.xz'),('windows-x86_64','zip')]:
+for platform, suffix in [('linux-x86_64','tar.gz'),('windows-x86_64','zip')]:
     record=data[platform]; target=work/f'retoc-{platform}.{suffix}'
     urllib.request.urlretrieve(record['url'], target)
     actual=hashlib.sha256(target.read_bytes()).hexdigest()
@@ -51,7 +51,7 @@ done
 install -m 0755 "$ROOT/scripts/init-assets.sh" "$WORK/asset-linux/init-assets.sh"
 install -m 0644 "$ROOT/scripts/init-assets.ps1" "$WORK/asset-windows/init-assets.ps1"
 normalize "$WORK/asset-linux"; normalize "$WORK/asset-windows"
-tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner -C "$WORK/asset-linux" -cJf "$OUT/zanik-asset-tools-linux-x86_64-$VERSION.tar.xz" .
+tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner -C "$WORK/asset-linux" -czf "$OUT/zanik-asset-tools-linux-x86_64-$VERSION.tar.gz" .
 (cd "$WORK/asset-windows" && find . -type f | LC_ALL=C sort | zip -X -q "$OUT/zanik-asset-tools-windows-x86_64-$VERSION.zip" -@)
 (cd "$OUT" && sha256sum zanik-*-$VERSION.* | LC_ALL=C sort > SHA256SUMS)
 python3 "$ROOT/tools/release_manifest.py" --directory "$OUT" --version "$VERSION" --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --source-date-epoch "$SOURCE_DATE_EPOCH" --output "$OUT/release-manifest.json"

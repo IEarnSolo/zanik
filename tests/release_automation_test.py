@@ -41,7 +41,7 @@ threading.Thread(target=server.serve_forever, daemon=True).start()
 base = f"http://127.0.0.1:{server.server_port}"
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary); version = "0.1.0"
-    names = [f"zanik-server-linux-x86_64-{version}.zip", f"zanik-server-linux-x86_64-{version}.tar.gz", f"zanik-asset-tools-linux-x86_64-{version}.tar.xz", f"zanik-asset-tools-windows-x86_64-{version}.zip"]
+    names = [f"zanik-server-linux-x86_64-{version}.zip", f"zanik-server-linux-x86_64-{version}.tar.gz", f"zanik-asset-tools-linux-x86_64-{version}.tar.gz", f"zanik-asset-tools-windows-x86_64-{version}.zip"]
     for index, name in enumerate(names): (root / name).write_bytes(f"archive-{index}".encode())
     (root / "SHA256SUMS").write_text("checksums\n"); (root / "release-manifest.json").write_text("{}\n")
     assert len(gitlab.publish(root, version, base + "/api/v4", "355", "job-token")) == 6

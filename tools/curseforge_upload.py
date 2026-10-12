@@ -85,7 +85,7 @@ def main() -> int:
     token = os.environ.get("CURSEFORGE_API_TOKEN", "")
     files = {
         "primary": args.directory / f"zanik-server-linux-x86_64-{args.version}.zip",
-        "linux": args.directory / f"zanik-asset-tools-linux-x86_64-{args.version}.tar.xz",
+        "linux": args.directory / f"zanik-asset-tools-linux-x86_64-{args.version}.tar.gz",
         "windows": args.directory / f"zanik-asset-tools-windows-x86_64-{args.version}.zip",
     }
     report = {"schemaVersion": 1, "tag": args.tag, "version": args.version, "status": "validating", "files": {}}
