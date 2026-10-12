@@ -59,4 +59,4 @@ validate-release:
       artifacts: true
   script:
     - python3 tools/validate_release.py --directory dist/release
-    - sha256sum --check dist/release/SHA256SUMS
+    - cd dist/release && sha256sum --check SHA256SUMS
