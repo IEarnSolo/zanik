@@ -62,5 +62,11 @@ with tempfile.TemporaryDirectory() as name:
         raise AssertionError("incomplete targeted export was accepted")
     except RuntimeError as error:
         assert "omitted 1 building records" in str(error)
+    try:
+        pipeline.validate_reviewed_counts({"jsonFiles": 10, "worldPartitionCells": 5},
+                                          {"jsonFiles": 11, "worldPartitionCells": 5})
+        raise AssertionError("reviewed export-count drift was accepted")
+    except RuntimeError as error:
+        assert "jsonFiles expected 11, got 10" in str(error)
 
 print("windows asset pipeline tests passed")
