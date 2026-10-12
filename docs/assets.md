@@ -17,4 +17,4 @@ If required data is client-only, run `init-assets.ps1 -GameRoot PATH -ToolPath C
   --install-bundle /home/container/zanik-assets-GAME_BUILD.zip
 ```
 
-`asset-manifest.json` records schema/build/source fingerprints, generated-file hashes, and missing required/optional assets. Optional images fall back to Zanik-owned placeholders and system fonts. Missing required catalogs disable only their dependent capability.
+`asset-manifest.json` records schema/build/source fingerprints, generated-file hashes, and missing required/optional assets. Runtime identity catalogs (`resource-identities.tsv` and `npc-identities.tsv`) are required bundle files alongside their public catalogs; the launcher reads them from the atomically activated asset directory. Optional images fall back to Zanik-owned placeholders and system fonts. Missing required catalogs disable only their dependent capability.

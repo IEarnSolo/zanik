@@ -28,6 +28,9 @@ REQUIRED = (
     "quest-step-locations.json",
     "recipe-unlocks.json",
     "recipe-runtime-catalog.tsv",
+    "resource-catalog.json",
+    "resource-identities.tsv",
+    "npc-identities.tsv",
 )
 OPTIONAL = (
     "world-map.jpg",
@@ -44,7 +47,7 @@ ALLOWED_TOP_LEVEL = {
     "gravestone-icon.png", "Jancient-Regular.ttf", "npc-catalog.json", "plan-items.tsv",
     "quest-catalog.json", "quest-runtime-catalog.tsv", "quest-step-locations.json",
     "recipe-unlocks.json", "recipe-runtime-catalog.tsv", "recipe-runtime-catalog-history.tsv",
-    "resource-catalog.json", "resource-identities.tsv",
+    "resource-catalog.json", "resource-identities.tsv", "npc-identities.tsv",
 }
 CONTAINER_NAMES = (
     "global.utoc", "global.ucas", "RSDragonwilds-LinuxServer.utoc",

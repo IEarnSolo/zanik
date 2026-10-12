@@ -85,6 +85,8 @@ zanik_export_runtime(){
   export DW_COMPATIBILITY_FILE=${DW_COMPATIBILITY_FILE:-$server_root/zanik/compatibility.tsv}
   export DW_UPDATE_STATE=${DW_UPDATE_STATE:-$server_root/zanik/state/update-status.json}
   export DW_ASSET_MANIFEST=${DW_ASSET_MANIFEST:-$server_root/zanik/assets/current/asset-manifest.json}
+  export DW_RESOURCE_IDENTITIES=${DW_RESOURCE_IDENTITIES:-$server_root/zanik/assets/current/resource-identities.tsv}
+  export DW_NPC_IDENTITIES=${DW_NPC_IDENTITIES:-$server_root/zanik/assets/current/npc-identities.tsv}
   export ZANIK_INSTALL_MODE=$install_mode
   export ZANIK_CONFIG_VALID=1
   export ZANIK_FEATURE_PLAYER_STATUS=$CFG_FEATURE_PLAYER_STATUS
