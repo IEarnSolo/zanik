@@ -116,27 +116,49 @@ class PterodactylProvider(ServerProvider):
             if component == "/":
                 continue
             parent = current
-            try:
-                self.client.create_folder(server_id, parent, component)
-            except PterodactylError as error:
-                if error.status not in {409, 422}:
+            gateway_failures = 0
+            while True:
+                try:
+                    self.client.create_folder(server_id, parent, component)
+                    break
+                except PterodactylError as error:
+                    if error.status in {409, 422}:
+                        break
+                    if error.status == 522 or (error.status in {500, 502, 503, 504} and gateway_failures < 5):
+                        if self.client.cancelled():
+                            raise PterodactylError("Operation cancelled while waiting for the panel", error.status)
+                        gateway_failures += 1
+                        time.sleep(self.client.retry_seconds)
+                        continue
                     raise
             current = str(PurePosixPath(parent) / component)
 
+    def _entry(self, server_id: str, path: str) -> dict | None:
+        posix = PurePosixPath(path)
+        failures = 0
+        while True:
+            try:
+                for item in self.client.list_files(server_id, str(posix.parent)):
+                    if item.get("name") == posix.name:
+                        return item
+                return None
+            except PterodactylError as error:
+                if error.status == 404:
+                    return None
+                if error.status == 522 or (error.status in {500, 502, 503, 504} and failures < 5):
+                    failures += 1
+                    time.sleep(self.client.retry_seconds)
+                    continue
+                raise
+
     def _exists(self, server_id: str, path: str) -> bool:
-        try:
-            self.client.read_file(server_id, path)
-            return True
-        except PterodactylError as error:
-            if error.status == 404:
-                return False
-            raise
+        return self._entry(server_id, path) is not None
 
     def _upload_payload(self, server_id: str, stage: str, payload: ReleasePayload, journal: OperationJournal) -> None:
         directories = sorted({str(PurePosixPath(stage) / PurePosixPath(name).parent) for name in payload.entries})
         for directory in directories:
             self._mkdir(server_id, directory)
-        modes: list[tuple[str, int]] = []
+        modes: dict[str, list[tuple[str, int]]] = {}
         for name, entry in payload.entries.items():
             directory = str(PurePosixPath(stage) / PurePosixPath(name).parent)
             data = payload.read(name)
@@ -144,8 +166,9 @@ class PterodactylProvider(ServerProvider):
             remote = str(PurePosixPath(stage) / name)
             if sha256(self.client.read_file(server_id, remote)) != entry.sha256:
                 raise RuntimeError(f"Remote verification failed for {name}")
-            modes.append((name, entry.mode))
-        self.client.chmod(server_id, stage, modes)
+            modes.setdefault(directory, []).append((PurePosixPath(name).name, entry.mode))
+        for directory, files in modes.items():
+            self.client.chmod(server_id, directory, files)
         journal.completed_steps.append("payload-uploaded-and-verified")
         self.journals.save(journal)
 
@@ -213,25 +236,27 @@ class PterodactylProvider(ServerProvider):
             self._mkdir(server_id, f"{root}/zanik-data")
             if not self._exists(server_id, f"{root}/zanik-data/console-admin.key"):
                 self.client.write_file(server_id, f"{root}/zanik-data/console-admin.key", secrets.token_hex(32).encode())
-            self.client.chmod(server_id, root, [("zanik/config/zanik.conf", 600), ("zanik/admins.txt", 600),
-                                                ("zanik-data/console-admin.key", 600)])
+            self.client.chmod(server_id, root, [("zanik/config/zanik.conf", 0o600), ("zanik/admins.txt", 0o600),
+                                                ("zanik-data/console-admin.key", 0o600)])
 
             game = f"{root}/{GAME_RELATIVE}"
             official = game
+            official_data = None
             if mode == "replace-executable":
                 original = game + ".zanik-original"
-                current = self.client.read_file(server_id, game)
+                current = self.client.download_file(server_id, game)
                 if LAUNCHER_MARKER in current:
-                    original_data = self.client.read_file(server_id, original)
+                    original_data = self.client.download_file(server_id, original)
                     if not original_data.startswith(b"\x7fELF"):
                         raise RuntimeError("The preserved official executable is not a verified ELF file")
+                    official_data = original_data
                     self.client.upload(server_id, backup, "managed-launcher", current)
                     journal.rollback.append({"kind": "restore-file", "from": f"{backup}/managed-launcher",
-                                             "to": game, "sha256": sha256(current), "mode": 755})
+                                             "to": game, "sha256": sha256(current), "mode": 0o755})
                     self.journals.save(journal)
                 elif current.startswith(b"\x7fELF"):
                     if self._exists(server_id, original):
-                        prior = self.client.read_file(server_id, original)
+                        prior = self.client.download_file(server_id, original)
                         if not prior.startswith(b"\x7fELF"):
                             raise RuntimeError("Existing .zanik-original is not a verified ELF file")
                         self.client.rename(server_id, root, [(str(PurePosixPath(original).relative_to(root)),
@@ -241,20 +266,22 @@ class PterodactylProvider(ServerProvider):
                     journal.rollback.append({"kind": "restore-official", "from": original, "to": game})
                     self.journals.save(journal)
                 elif is_exact_legacy_launcher(current, root):
-                    original_data = self.client.read_file(server_id, original)
+                    original_data = self.client.download_file(server_id, original)
                     if not original_data.startswith(b"\x7fELF"):
                         raise RuntimeError("The legacy launcher has no verified executable ELF at .zanik-original")
+                    official_data = original_data
                     self.client.upload(server_id, backup, "managed-launcher", current)
                     journal.rollback.append({"kind": "restore-file", "from": f"{backup}/managed-launcher",
-                                             "to": game, "sha256": sha256(current), "mode": 755})
+                                             "to": game, "sha256": sha256(current), "mode": 0o755})
                     self.journals.save(journal)
                 else:
                     raise RuntimeError("Unknown executable replacement state; refusing to guess")
                 launcher = self.client.read_file(server_id, f"{root}/zanik/scripts/compat-launcher.sh")
                 self.client.write_file(server_id, game, launcher)
-                self.client.chmod(server_id, str(PurePosixPath(game).parent), [(PurePosixPath(game).name, 755)])
+                self.client.chmod(server_id, str(PurePosixPath(game).parent), [(PurePosixPath(game).name, 0o755)])
                 official = original
-            official_data = self.client.read_file(server_id, official)
+            if official_data is None:
+                official_data = self.client.download_file(server_id, official)
             version = self.client.read_file(server_id, f"{root}/zanik/VERSION").decode().strip()
             state = {"schemaVersion": 1, "version": version, "mode": mode, "serverRoot": root,
                      "officialExecutable": official, "officialSha256": sha256(official_data),
@@ -263,7 +290,7 @@ class PterodactylProvider(ServerProvider):
                      "launcherSha256": payload.entries["bin/zanik-server"].sha256,
                      "installedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
             self.client.write_file(server_id, f"{root}/zanik/install-state.json", (json.dumps(state, separators=(",", ":")) + "\n").encode())
-            self.client.chmod(server_id, f"{root}/zanik", [("install-state.json", 600)])
+            self.client.chmod(server_id, f"{root}/zanik", [("install-state.json", 0o600)])
             startup_action_required = mode == "wrapper" and not wrapper_adapter
             journal.state = "complete"; journal.completed_steps.append("installation-verified")
             if mode == "wrapper" and wrapper_adapter:
@@ -295,7 +322,7 @@ class PterodactylProvider(ServerProvider):
                         raise RuntimeError("Rollback found an unmanaged executable at the restoration target")
                 self.client.write_file(server_id,destination,data)
                 self.client.chmod(server_id,str(PurePosixPath(destination).parent),
-                                  [(PurePosixPath(destination).name,action.get("mode",600))])
+                                  [(PurePosixPath(destination).name,action.get("mode",0o600))])
                 continue
             if action.get("kind") == "restore-official":
                 if self._exists(server_id,destination):
@@ -312,13 +339,8 @@ class PterodactylProvider(ServerProvider):
         self.client.power(server_id,"start")
 
     def _directory_exists(self, server_id: str, path: str) -> bool:
-        try:
-            self.client.list_files(server_id, path)
-            return True
-        except PterodactylError as error:
-            if error.status == 404:
-                return False
-            raise
+        entry = self._entry(server_id, path)
+        return entry is not None and not entry.get("is_file", False)
 
     def diagnose(self, server_id: str, server_root: str, deep: bool = False) -> dict:
         self.preflight(server_id, "doctor")
@@ -335,7 +357,8 @@ class PterodactylProvider(ServerProvider):
         for name, (field, relative) in targets.items():
             path = state["officialExecutable"] if relative is None else f"{root}/zanik/{relative}"
             try:
-                valid = sha256(self.client.read_file(server_id, path)) == state.get(field)
+                reader = self.client.download_file if name == "official" else self.client.read_file
+                valid = sha256(reader(server_id, path)) == state.get(field)
             except Exception:
                 valid = False
             result["checks"][name] = valid; result["healthy"] &= valid
@@ -381,7 +404,7 @@ class PterodactylProvider(ServerProvider):
         self.client.rename(server_id, f"{root}/zanik/config", [("zanik.conf", "zanik.conf.manager-old"),
                                                                ("zanik.conf.manager-new", "zanik.conf")])
         self.client.delete(server_id, f"{root}/zanik/config", ["zanik.conf.manager-old"])
-        self.client.chmod(server_id, f"{root}/zanik/config", [("zanik.conf", 600)])
+        self.client.chmod(server_id, f"{root}/zanik/config", [("zanik.conf", 0o600)])
         return {"sha256": sha256(content), "backup": f"{backup_dir}/zanik.conf"}
 
     def uninstall(self, profile_id: str, server_id: str, server_root: str, purge_data: bool = False) -> dict:
@@ -396,8 +419,8 @@ class PterodactylProvider(ServerProvider):
         self._mkdir(server_id, backup)
         game = f"{root}/{GAME_RELATIVE}"
         if state.get("mode") == "replace-executable":
-            launcher = self.client.read_file(server_id, game)
-            original = self.client.read_file(server_id, game + ".zanik-original")
+            launcher = self.client.download_file(server_id, game)
+            original = self.client.download_file(server_id, game + ".zanik-original")
             if LAUNCHER_MARKER not in launcher or not original.startswith(b"\x7fELF"):
                 raise RuntimeError("Executable state is not a verified Zanik replacement; refusing uninstall")
             self.client.rename(server_id, root, [(str(PurePosixPath(game).relative_to(root)),

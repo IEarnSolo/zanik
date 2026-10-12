@@ -103,6 +103,42 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(json.loads(calls[3][2])["root"], "/")
         self.assertEqual(api_file_path("/home/container/zanik"), "/zanik")
 
+    def test_pterodactyl_large_file_download_uses_signed_url(self):
+        calls = []
+        def transport(method, url, headers, body, timeout):
+            calls.append((method, url, headers))
+            if "/files/download" in url:
+                return Response(200, b'{"attributes":{"url":"https://node.example/signed"}}', {})
+            return Response(200, b"\x7fELFlarge", {})
+        client = PterodactylClient("https://panel.example", "secret", transport)
+        data = client.download_file("dev", "/home/container/game")
+        self.assertEqual(data, b"\x7fELFlarge")
+        self.assertIn("file=%2Fgame", calls[0][1])
+        self.assertEqual(calls[1][1], "https://node.example/signed")
+        self.assertNotIn("Authorization", calls[1][2])
+
+    def test_pterodactyl_formats_unix_modes_as_octal(self):
+        calls = []
+        def transport(method, url, headers, body, timeout):
+            calls.append(json.loads(body)); return Response(204, b"", {})
+        PterodactylClient("https://panel.example", "secret", transport).chmod(
+            "dev", "/home/container/zanik/bin", [("zanik-server", 0o755), ("state", 0o600)])
+        self.assertEqual(calls[0]["files"], [{"file":"zanik-server","mode":"755"},
+                                               {"file":"state","mode":"600"}])
+
+    def test_idempotent_directory_creation_retries_gateway_failure(self):
+        class Client:
+            retry_seconds = 0
+            cancelled = staticmethod(lambda: False)
+            def __init__(self): self.calls = []
+            def create_folder(self, server, root, name):
+                self.calls.append((root, name))
+                if len(self.calls) == 1: raise PterodactylError("gateway", 504)
+        client = Client()
+        with tempfile.TemporaryDirectory() as temporary:
+            PterodactylProvider(client, JournalStore(Path(temporary)))._mkdir("dev", "/home/container/zanik")
+        self.assertEqual(client.calls[:2], [("/", "zanik"), ("/", "zanik")])
+
     def test_release_payload_manifest_and_traversal(self):
         with tempfile.TemporaryDirectory() as temporary:
             archive = Path(temporary) / "server.zip"
@@ -163,10 +199,20 @@ class ManagerTests(unittest.TestCase):
             def read_file(self, _, path):
                 if path not in self.files: raise PterodactylError("not found", 404)
                 return self.files[path]
+            def download_file(self, server, path): return self.read_file(server, path)
             def list_files(self, _, path):
                 if path not in self.directories and not any(name.startswith(path.rstrip('/') + '/') for name in self.files):
                     raise PterodactylError("not found", 404)
-                return []
+                prefix=path.rstrip('/')+'/'
+                result=[]
+                names=set()
+                for name in self.files:
+                    if name.startswith(prefix) and '/' not in name[len(prefix):]:
+                        names.add(name[len(prefix):]); result.append({"name":name[len(prefix):],"is_file":True})
+                for name in self.directories:
+                    if name.startswith(prefix) and name != path and '/' not in name[len(prefix):] and name[len(prefix):] not in names:
+                        result.append({"name":name[len(prefix):],"is_file":False})
+                return result
             def chmod(self, *args): pass
             def set_startup_variable(self, *args): pass
             def rename(self, _, root, pairs):
