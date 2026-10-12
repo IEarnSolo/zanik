@@ -732,8 +732,25 @@ void Handle(int fd) {
         auto onlinePlayers = playerStore->Online().size();auto playerRecipes=DomEngine::GetPlayerRecipeDiagnostics();auto playerQuests=DomEngine::GetPlayerQuestDiagnostics();
         bool playerCompatible = DomEngine::g_Engine && DomEngine::g_Engine->IsInitialized();
         bool mapCompatible = playerCompatible && DomEngine::g_Engine->IsMapProjectionAvailable();
+        const bool recipeSettingsCompatible=recipeSettings.readable&&recipeSettings.writable&&recipeSettings.restricted&&recipeSettings.lastSaveSucceeded&&recipeSettings.malformed==0;
+        auto featureState=[](bool enabled,bool compatible){return std::string("\"")+(enabled?(compatible?"compatible":"incompatible"):"disabled")+"\"";};
+        const bool npcCompatible=npcs.catalogCompatibility==1&&npcs.registryCompatibility==1&&npcs.identityCompatibility==1&&npcs.transformCompatibility==1&&npcs.lifecycleCompatibility==1;
+        const std::string featureStates=std::string("{")+
+            "\"playerStatus\":"+featureState(ZanikConfig::PlayerStatus(),playerCompatible)+
+            ",\"killTracking\":"+featureState(ZanikConfig::KillTracking(),d.hookCompatibility==1)+
+            ",\"map\":"+featureState(ZanikConfig::Map(),mapCompatible)+
+            ",\"resourceTracking\":"+featureState(ZanikConfig::ResourceTracking(),resources.compatibility==1)+
+            ",\"npcTracking\":"+featureState(ZanikConfig::NpcTracking(),npcCompatible)+
+            ",\"playerRecipeTracking\":"+featureState(ZanikConfig::PlayerRecipeTracking(),playerRecipes.compatibility==1)+
+            ",\"playerQuestTracking\":"+featureState(ZanikConfig::PlayerQuestTracking(),playerQuests.compatibility==1)+
+            ",\"adminRead\":"+featureState(ZanikConfig::AdminRead(),adminAuthorizationCompatible&&adminConsoleCompatible)+
+            ",\"adminRecipeSettings\":"+featureState(ZanikConfig::AdminRecipeSettings(),recipeSettingsCompatible&&recipeCatalog.compatibility==1)+
+            ",\"adminTeleport\":"+featureState(ZanikConfig::AdminTeleport(),adminTeleport.compatibility==1)+
+            ",\"adminStorageMutation\":"+featureState(ZanikConfig::AdminStorageMutation(),adminStorage.compatibility==1)+
+            ",\"adminGravestoneMutation\":"+featureState(ZanikConfig::AdminGravestoneMutation(),adminGraves.compatibility==1)+
+            ",\"qolAutoCompost\":"+featureState(ZanikConfig::QolAutoCompost(),false)+"}";
         Respond(fd, 200, "application/json; charset=utf-8",
-            "{\"website\":true,\"configuration\":{\"valid\":"+std::string(!std::getenv("ZANIK_CONFIG_VALID")||std::strcmp(std::getenv("ZANIK_CONFIG_VALID"),"0")!=0?"true":"false")+",\"installMode\":\""+JsonEscape(std::getenv("ZANIK_INSTALL_MODE")?std::getenv("ZANIK_INSTALL_MODE"):"legacy")+"\"},\"features\":"+ZanikConfig::Json()+",\"featureStates\":"+ZanikConfig::StateJson()+",\"assets\":"+AssetManifestJson()+",\"playerDataCompatibility\":" +
+            "{\"website\":true,\"configuration\":{\"valid\":"+std::string(!std::getenv("ZANIK_CONFIG_VALID")||std::strcmp(std::getenv("ZANIK_CONFIG_VALID"),"0")!=0?"true":"false")+",\"installMode\":\""+JsonEscape(std::getenv("ZANIK_INSTALL_MODE")?std::getenv("ZANIK_INSTALL_MODE"):"legacy")+"\"},\"features\":"+ZanikConfig::Json()+",\"featureStates\":"+featureStates+",\"assets\":"+AssetManifestJson()+",\"playerDataCompatibility\":" +
             std::string(playerCompatible ? "true" : "false") +
             ",\"killHookCompatibility\":" + std::to_string(d.hookCompatibility) +
             ",\"regionCompatibility\":" + std::to_string(d.regionCompatibility) +
@@ -767,7 +784,7 @@ void Handle(int fd) {
             ",\"recipeUnlockDependencyEdges\":" + std::to_string(recipeCatalog.dependencyEdges) +
             ",\"recipeUnlockCycles\":" + std::to_string(recipeCatalog.cycles) +
             ",\"recipeUnlockCatalogGenerated\":" + std::to_string(recipeCatalog.generated) +
-            ",\"recipeUnlockSettingsCompatibility\":" + std::to_string(recipeSettings.readable&&recipeSettings.writable&&recipeSettings.restricted&&recipeSettings.lastSaveSucceeded&&recipeSettings.malformed==0?1:-1) +
+            ",\"recipeUnlockSettingsCompatibility\":" + std::to_string(recipeSettingsCompatible?1:-1) +
             ",\"recipeUnlockHiddenRoutes\":" + std::to_string(recipeSettings.disabled) +
             ",\"playerRecipeCompatibility\":"+std::to_string(playerRecipes.compatibility)+
             ",\"playerRecipeCatalogCompatibility\":"+std::to_string(playerRecipes.catalogCompatibility)+
