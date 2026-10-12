@@ -24,19 +24,26 @@ def remove_tree(path: Path) -> None:
         if isinstance(error[1], FileNotFoundError):
             return
         raise error[1]
-    for attempt in range(5):
+    for attempt in range(20):
         try:
             shutil.rmtree(path, onerror=handle_error)
             return
         except FileNotFoundError:
             return
         except OSError:
-            if attempt == 4:
+            if attempt == 19:
                 raise
-            time.sleep(0.2 * (attempt + 1))
+            time.sleep(0.5)
 
 
-def validate_catalog_export(json_root: Path) -> None:
+def validate_reviewed_counts(actual: dict[str, int], expected: dict[str, int]) -> None:
+    drift = [f"{key} expected {value}, got {actual.get(key)}"
+             for key, value in expected.items() if actual.get(key) != value]
+    if drift:
+        raise RuntimeError("reviewed export counts changed: " + "; ".join(drift))
+
+
+def validate_catalog_export(json_root: Path, expected_counts: dict[str, int] | None = None) -> None:
     from generate_building_catalog import REMOVED_RUNTIME_PIECES, asset_key
     try:
         catalogue_path = next(json_root.rglob("DA_BuildPieceCatalogue_Default.json"))
@@ -54,7 +61,9 @@ def validate_catalog_export(json_root: Path) -> None:
                     required.add(key)
     found: set[str] = set()
     cells = 0
+    json_files = 0
     for path in json_root.rglob("*.json"):
+        json_files += 1
         normalized = path.as_posix()
         if "L_World/_Generated_/" in normalized:
             cells += 1
@@ -72,6 +81,9 @@ def validate_catalog_export(json_root: Path) -> None:
         raise RuntimeError(f"targeted export omitted {len(missing)} building records; first: {missing[0]}")
     if cells < 1100:
         raise RuntimeError(f"targeted export contains only {cells} world-partition cells; expected at least 1100")
+    if expected_counts:
+        actual = {"jsonFiles": json_files, "worldPartitionCells": cells}
+        validate_reviewed_counts(actual, expected_counts)
 
 
 def run(command: list[str], label: str, *, quiet: bool = False) -> None:
@@ -129,6 +141,10 @@ def extract(args: argparse.Namespace) -> int:
     recipe = json.loads(args.recipe.read_text(encoding="utf-8"))
     if recipe.get("schemaVersion") != RECIPE_VERSION:
         raise ValueError("unsupported extraction recipe")
+    from zanik_assets import game_build
+    catalog_profile = recipe.get("catalogProfile", {})
+    reviewed_counts = (catalog_profile.get("exportCounts", {})
+                       if str(game_build(game)) == str(catalog_profile.get("clientBuild")) else None)
     uas = locate(tools, "uas.exe")
     mapping = args.usmap_path.resolve()
     if not mapping.is_file(): raise ValueError(f"mapping file does not exist: {mapping}")
@@ -151,7 +167,7 @@ def extract(args: argparse.Namespace) -> int:
                 if json_root.exists(): remove_tree(json_root)
                 run(common + ["-f", recipe["jsonFilter"], "export", "Json", "-b", "-o", str(json_root), "-c", "-r", "-l", str(temporary / f"json-export-{attempt}.log")], f"Exporting targeted catalog data (attempt {attempt}/3)", quiet=True)
                 try:
-                    validate_catalog_export(json_root)
+                    validate_catalog_export(json_root, reviewed_counts)
                     last_export_error = None
                     break
                 except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:
@@ -190,7 +206,12 @@ def extract(args: argparse.Namespace) -> int:
         print(json.dumps({"output": str(output), "work": str(temporary) if keep else None, "ready": True}, sort_keys=True))
         return 0
     finally:
-        if not keep and temporary.exists(): remove_tree(temporary)
+        if not keep and temporary.exists():
+            try:
+                remove_tree(temporary)
+            except OSError as error:
+                print(f"[Zanik] WARNING: temporary exports could not be removed: {temporary} ({error})", file=sys.stderr)
+                print("[Zanik] These files are game-derived and must not be redistributed; remove them after filesystem activity settles.", file=sys.stderr)
 
 
 def main() -> int:

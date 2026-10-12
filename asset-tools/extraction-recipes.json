@@ -12,6 +12,11 @@
   ],
   "catalogProfile": {
     "version": "client-25741633-reviewed-1",
+    "clientBuild": "25741633",
+    "exportCounts": {
+      "jsonFiles": 17212,
+      "worldPartitionCells": 1104
+    },
     "catalogCounts": {
       "buildings/catalog.json:pieces": 822,
       "npc-catalog.json:nodes": 2926,
