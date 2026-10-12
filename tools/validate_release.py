@@ -13,7 +13,7 @@ WINDOWS_ASSET_REQUIRED={'init-assets.ps1','runtime/python.exe','runtime/LICENSE.
     'tools/windows_mapping.py','tools/windows_asset_pipeline.py','tools/generate_web_assets.py',
     'tools/generate_world_catalogs.py','deploy/quest-overrides.json','deploy/quest-step-overrides.json'}
 MANAGER_REQUIRED={'ZanikManager.exe','runtime/pythonw.exe','app/zanik_manager/app.py','app/zanik_manager/pterodactyl.py',
-    'config/zanik-config.schema.json','asset-tools/init-assets.ps1','payload/server.zip','payload/asset-tools.zip',
+    'config/zanik-config.schema.json','asset-tools/init-assets.ps1','payload/server.zip',
     'payload/server-payload.json','payload/payloads.json','README.md','LICENSE','LICENSE-LGPL-3.0.txt','THIRD_PARTY_NOTICES.md','tools.lock.json'}
 MANAGER_RUNTIME_REQUIRED={'runtime/Lib/site-packages/PySide6/QtCore.pyd','runtime/Lib/site-packages/PySide6/QtGui.pyd',
     'runtime/Lib/site-packages/PySide6/QtWidgets.pyd','runtime/Lib/site-packages/PySide6/Qt6Core.dll',
@@ -58,23 +58,26 @@ def inspect(path):
                     if any(marker in data for marker in BANNED_CONTENT): raise SystemExit(f'credential marker in {path.name}: {name}')
             if path.name.startswith('zanik-manager-windows-'):
                 payloads=json.loads(archive.read('payload/payloads.json'))
-                for nested,field in (('payload/server.zip','serverSha256'),('payload/asset-tools.zip','assetToolsSha256')):
-                    data=archive.read(nested)
-                    if hashlib.sha256(data).hexdigest()!=payloads[field]: raise SystemExit(f'manager nested payload hash mismatch: {nested}')
+                data=archive.read('payload/server.zip')
+                if hashlib.sha256(data).hexdigest()!=payloads['serverSha256']: raise SystemExit('manager nested server payload hash mismatch')
                 version=payloads.get('version')
-                siblings={'payload/server.zip':path.parent/f'zanik-server-linux-x86_64-{version}.zip',
-                          'payload/asset-tools.zip':path.parent/f'zanik-asset-tools-windows-x86_64-{version}.zip'}
-                for nested,sibling in siblings.items():
-                    if not sibling.is_file() or hashlib.sha256(archive.read(nested)).hexdigest()!=hashlib.sha256(sibling.read_bytes()).hexdigest():
-                        raise SystemExit(f'manager does not contain the published sibling payload: {nested}')
+                sibling=path.parent/f'zanik-server-linux-x86_64-{version}.zip'
+                if not sibling.is_file() or hashlib.sha256(data).hexdigest()!=hashlib.sha256(sibling.read_bytes()).hexdigest():
+                    raise SystemExit('manager does not contain the published sibling server payload')
+                asset_sibling=path.parent/f'zanik-asset-tools-windows-x86_64-{version}.zip'
+                if not asset_sibling.is_file(): raise SystemExit('standalone Windows asset-tool sibling is missing')
+                with zipfile.ZipFile(asset_sibling) as standalone:
+                    standalone_files={clean(item.filename):(item.file_size,hashlib.sha256(standalone.read(item)).hexdigest()) for item in standalone.infolist() if not item.is_dir()}
+                manager_files={record['path']:(record['size'],record['sha256']) for record in payloads.get('assetToolsFiles',[])}
+                if standalone_files!=manager_files: raise SystemExit('manager asset-tool tree differs from the published standalone archive')
+                for name,(size,digest) in manager_files.items():
+                    member='asset-tools/'+name
+                    if member not in entries or len(archive.read(member))!=size or hashlib.sha256(archive.read(member)).hexdigest()!=digest:
+                        raise SystemExit(f'manager asset-tool tree mismatch: {name}')
                 with zipfile.ZipFile(io.BytesIO(archive.read('payload/server.zip'))) as nested:
                     nested_names={clean(item.filename) for item in nested.infolist() if not item.is_dir()}
                     missing=REQUIRED-nested_names
                     if missing: raise SystemExit(f'manager server payload missing: {sorted(missing)}')
-                with zipfile.ZipFile(io.BytesIO(archive.read('payload/asset-tools.zip'))) as nested:
-                    nested_names={clean(item.filename) for item in nested.infolist() if not item.is_dir()}
-                    missing=WINDOWS_ASSET_REQUIRED-nested_names
-                    if missing: raise SystemExit(f'manager asset payload missing: {sorted(missing)}')
     return entries
 
 p=argparse.ArgumentParser(); p.add_argument('--directory',required=True); p.add_argument('--tag'); p.add_argument('--commit'); a=p.parse_args(); root=Path(a.directory)

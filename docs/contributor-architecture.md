@@ -16,5 +16,5 @@
 - Maintain an ignored `.tmp/release-implementation.md` checklist while changing release automation.
 - Maintain an ignored `.tmp/windows-extractor-implementation.md` checklist while changing or validating the Windows asset pipeline.
 - Zanik Manager is a portable PySide6 Windows application. Keep hosting operations behind the provider interface, keep Pterodactyl credentials exclusively in Windows Credential Manager, and make every remote mutation journaled, hash-verified, recoverable, and explicitly scoped to one selected server.
-- The manager archive embeds the exact server ZIP and Windows asset-tool ZIP published beside it. Release validation must prove those nested payload hashes and reject credentials, game assets, mappings, raw exports, operator files, or developer-machine paths.
+- The manager archive embeds the exact server ZIP and the file-identical extracted contents of the Windows asset-tool ZIP published beside it. Release validation must prove both payloads and reject credentials, game assets, mappings, raw exports, operator files, or developer-machine paths.
 - Maintain an ignored `.tmp/windows-manager-implementation.md` checklist while changing or validating the manager.
