@@ -70,7 +70,8 @@ class ReleasePayload:
                 data = package.read(item)
                 mode = (item.external_attr >> 16) & 0o777 or 0o644
                 self.entries[name] = PayloadEntry(name, len(data), sha256(data), mode)
-        required = {"bin/libzanik.so", "bin/zanik-server", "scripts/compat-launcher.sh", "config/zanik.conf.example", "VERSION"}
+        required = {"bin/libzanik.so", "bin/zanik-server", "scripts/compat-launcher.sh",
+                    "config/zanik.conf.example", "compatibility/compatibility.tsv", "VERSION"}
         missing = required - set(self.entries)
         if missing:
             raise ValueError(f"Server payload is missing {', '.join(sorted(missing))}")
@@ -236,10 +237,15 @@ class PterodactylProvider(ServerProvider):
                 self.client.write_file(server_id, f"{root}/zanik/config/zanik.conf", example)
             if not self._exists(server_id, f"{root}/zanik/admins.txt"):
                 self.client.write_file(server_id, f"{root}/zanik/admins.txt", b"")
+            compatibility = self.client.read_file(server_id, f"{root}/zanik/compatibility/compatibility.tsv")
+            self.client.write_file(server_id, f"{root}/zanik/compatibility.tsv", compatibility)
+            if sha256(self.client.read_file(server_id, f"{root}/zanik/compatibility.tsv")) != sha256(compatibility):
+                raise RuntimeError("Installed runtime compatibility manifest did not verify")
             self._mkdir(server_id, f"{root}/zanik-data")
             if not self._exists(server_id, f"{root}/zanik-data/console-admin.key"):
                 self.client.write_file(server_id, f"{root}/zanik-data/console-admin.key", secrets.token_hex(32).encode())
             self.client.chmod(server_id, root, [("zanik/config/zanik.conf", 0o600), ("zanik/admins.txt", 0o600),
+                                                ("zanik/compatibility.tsv", 0o644),
                                                 ("zanik-data/console-admin.key", 0o600)])
 
             game = f"{root}/{GAME_RELATIVE}"
