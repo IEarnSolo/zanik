@@ -28,6 +28,17 @@ class Response:
 
 
 Transport = Callable[[str, str, dict[str, str], bytes | None, float], Response]
+CONTAINER_ROOT = "/home/container"
+
+
+def api_file_path(path: str) -> str:
+    """Translate the host-visible server root to Pterodactyl's virtual file root."""
+    normalized = path.replace("\\", "/").rstrip("/") or "/"
+    if normalized == CONTAINER_ROOT:
+        return "/"
+    if normalized.startswith(CONTAINER_ROOT + "/"):
+        return normalized[len(CONTAINER_ROOT):]
+    return normalized
 
 
 def urllib_transport(method: str, url: str, headers: dict[str, str], body: bytes | None, timeout: float) -> Response:
@@ -130,30 +141,30 @@ class PterodactylClient:
 
     def list_files(self, server_id: str, directory: str = "/") -> list[dict]:
         return [row.get("attributes", row) for row in self.request("GET", f"/api/client/servers/{server_id}/files/list",
-                                                                    query={"directory": directory}).json().get("data", [])]
+                                                                    query={"directory": api_file_path(directory)}).json().get("data", [])]
 
     def read_file(self, server_id: str, path: str) -> bytes:
-        return self.request("GET", f"/api/client/servers/{server_id}/files/contents", query={"file": path}).body
+        return self.request("GET", f"/api/client/servers/{server_id}/files/contents", query={"file": api_file_path(path)}).body
 
     def write_file(self, server_id: str, path: str, content: bytes) -> None:
-        self.request("POST", f"/api/client/servers/{server_id}/files/write", query={"file": path}, raw=content)
+        self.request("POST", f"/api/client/servers/{server_id}/files/write", query={"file": api_file_path(path)}, raw=content)
 
     def create_folder(self, server_id: str, root: str, name: str) -> None:
-        self.request("POST", f"/api/client/servers/{server_id}/files/create-folder", data={"root": root, "name": name})
+        self.request("POST", f"/api/client/servers/{server_id}/files/create-folder", data={"root": api_file_path(root), "name": name})
 
     def rename(self, server_id: str, root: str, pairs: list[tuple[str, str]]) -> None:
         self.request("PUT", f"/api/client/servers/{server_id}/files/rename",
-                     data={"root": root, "files": [{"from": source, "to": target} for source, target in pairs]})
+                     data={"root": api_file_path(root), "files": [{"from": source, "to": target} for source, target in pairs]})
 
     def delete(self, server_id: str, root: str, files: list[str]) -> None:
-        self.request("POST", f"/api/client/servers/{server_id}/files/delete", data={"root": root, "files": files})
+        self.request("POST", f"/api/client/servers/{server_id}/files/delete", data={"root": api_file_path(root), "files": files})
 
     def chmod(self, server_id: str, root: str, files: list[tuple[str, int]]) -> None:
         self.request("POST", f"/api/client/servers/{server_id}/files/chmod",
-                     data={"root": root, "files": [{"file": path, "mode": str(mode)} for path, mode in files]})
+                     data={"root": api_file_path(root), "files": [{"file": path, "mode": str(mode)} for path, mode in files]})
 
     def decompress(self, server_id: str, root: str, file: str) -> None:
-        self.request("POST", f"/api/client/servers/{server_id}/files/decompress", data={"root": root, "file": file})
+        self.request("POST", f"/api/client/servers/{server_id}/files/decompress", data={"root": api_file_path(root), "file": file})
 
     def upload(self, server_id: str, directory: str, filename: str, content: bytes) -> None:
         details = self.request("GET", f"/api/client/servers/{server_id}/files/upload").json().get("attributes", {})
@@ -166,7 +177,7 @@ class PterodactylClient:
                   f"Content-Type: {content_type}\r\n\r\n").encode()
         suffix = f"\r\n--{boundary}--\r\n".encode()
         separator = "&" if "?" in url else "?"
-        response = self.transport("POST", url + separator + urllib.parse.urlencode({"directory": directory}),
+        response = self.transport("POST", url + separator + urllib.parse.urlencode({"directory": api_file_path(directory)}),
                                   {"Content-Type": f"multipart/form-data; boundary={boundary}"},
                                   prefix + content + suffix, 300.0)
         if response.status < 200 or response.status >= 300:

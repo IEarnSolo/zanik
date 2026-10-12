@@ -16,7 +16,7 @@ from manager.zanik_manager.journal import JournalStore, OperationJournal
 from manager.zanik_manager.lifecycle import (PterodactylProvider, ReleasePayload, is_exact_legacy_launcher,
                                              safe_archive_name, validate_server_root)
 from manager.zanik_manager.profiles import ProfileStore, ServerProfile, is_local_origin, normalize_origin
-from manager.zanik_manager.pterodactyl import PterodactylClient, PterodactylError, Response
+from manager.zanik_manager.pterodactyl import PterodactylClient, PterodactylError, Response, api_file_path
 from manager.zanik_manager.security import credential_target, redact
 from manager.zanik_manager.support import create_support_bundle
 from tools.prune_pyside_runtime import KEEP_FILES, prune
@@ -86,6 +86,22 @@ class ManagerTests(unittest.TestCase):
         client = PterodactylClient("https://panel.example", "secret", lambda *args: Response(500, b'token=leak', {}))
         with self.assertRaises(PterodactylError) as raised: client.servers()
         self.assertNotIn("leak", str(raised.exception))
+
+    def test_pterodactyl_translates_container_paths_to_virtual_root(self):
+        calls = []
+        def transport(method, url, headers, body, timeout):
+            calls.append((method, url, body))
+            return Response(200, b'{"data":[]}', {})
+        client = PterodactylClient("https://panel.example", "secret", transport)
+        client.list_files("dev", "/home/container")
+        client.read_file("dev", "/home/container/zanik/install-state.json")
+        client.create_folder("dev", "/home/container/zanik", "assets")
+        client.rename("dev", "/home/container", [("zanik-new", "zanik")])
+        self.assertIn("directory=%2F", calls[0][1])
+        self.assertIn("file=%2Fzanik%2Finstall-state.json", calls[1][1])
+        self.assertEqual(json.loads(calls[2][2]), {"root": "/zanik", "name": "assets"})
+        self.assertEqual(json.loads(calls[3][2])["root"], "/")
+        self.assertEqual(api_file_path("/home/container/zanik"), "/zanik")
 
     def test_release_payload_manifest_and_traversal(self):
         with tempfile.TemporaryDirectory() as temporary:
