@@ -51,6 +51,7 @@ test-core: $(OUT)
 	$(PYTHON) tests/recipe_category_navigation_test.py
 	$(PYTHON) tests/recipe_npc_building_compatibility_test.py
 	$(PYTHON) tests/recipe_tree_wiki_links_test.py
+	$(PYTHON) tests/gitlab_pipeline_monitor_test.py
 	$(NODE) tests/map_page_test.js
 	$(PYTHON) tests/http_core_test.py
 	sh tests/updater_test.sh
