@@ -87,6 +87,7 @@ find "$WORK/manager/app" -type f -name '*.pyc' -delete
 unzip -q "$WORK/python-embed-windows-x86_64.zip" -d "$WORK/manager/runtime"
 unzip -q "$WORK/pyside6-essentials-windows-x86_64.whl" -d "$WORK/manager/runtime/Lib/site-packages"
 unzip -q "$WORK/shiboken6-windows-x86_64.whl" -d "$WORK/manager/runtime/Lib/site-packages"
+python3 "$ROOT/tools/prune_pyside_runtime.py" "$WORK/manager/runtime/Lib/site-packages"
 cat > "$WORK/manager/runtime/python312._pth" <<'EOF'
 python312.zip
 .
@@ -98,6 +99,7 @@ cp -p "$SERVER_ZIP" "$WORK/manager/payload/server.zip"
 cp -p "$OUT/zanik-asset-tools-windows-x86_64-$VERSION.zip" "$WORK/manager/payload/asset-tools.zip"
 cp -p "$ROOT/config/zanik-config.schema.json" "$WORK/manager/config/zanik-config.schema.json"
 cp -p "$ROOT/manager/README.md" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/manager/tools.lock.json" "$WORK/manager/"
+cp -p /usr/share/common-licenses/LGPL-3 "$WORK/manager/LICENSE-LGPL-3.0.txt"
 x86_64-w64-mingw32-gcc -municode -mwindows -Os -s "$ROOT/manager/launcher.c" -o "$WORK/manager/ZanikManager.exe"
 if [ -n "${WINDOWS_SIGNING_CERT_BASE64:-}" ]; then
   [ -n "${WINDOWS_SIGNING_CERT_PASSWORD:-}" ] || { printf 'WINDOWS_SIGNING_CERT_PASSWORD is required when signing\n' >&2; exit 1; }
