@@ -7,3 +7,6 @@
 - Game assets and containers never enter Git or core releases. Asset bundles are locally generated, fingerprinted, validated, and atomically activated.
 - Keep clean-clone tests asset-free. Validate every release archive after clean extraction for layout, modes, checksums, credentials, raw game files, operator files, and research data.
 - Maintain `.tmp/distribution-implementation.md` during distribution work; it is local, ignored, and must never be committed.
+- Treat `VERSION` as authoritative and publish stable releases only from matching protected `vMAJOR.MINOR.PATCH` tags. Tagged archives must pass clean extraction and checksum validation before durable publication.
+- Use GitLab Generic Packages and Releases for permanent binaries; pipeline artifacts are handoff and secondary retention only. Never add release or CurseForge credentials to Git or job output.
+- Maintain an ignored `.tmp/release-implementation.md` checklist while changing release automation.

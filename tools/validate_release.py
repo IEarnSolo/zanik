@@ -5,7 +5,7 @@ from pathlib import Path
 BANNED_NAMES={'.env','.env.gitlab','admins.txt','console-admin.key','pterodactyl_api_key.txt','AGENTS.MD'}
 BANNED_SUFFIXES={'.pak','.utoc','.ucas','.sav','.db','.pem','.p12','.pfx'}
 BANNED_CONTENT=(b'PTERODACTYL_API_KEY=',b'GITLAB_TOKEN=',b'-----BEGIN PRIVATE KEY-----')
-REQUIRED={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','config/zanik.conf.example','compatibility/compatibility.tsv','LICENSE','README.md'}
+REQUIRED={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','config/zanik.conf.example','compatibility/compatibility.tsv','LICENSE','README.md','CHANGELOG.md','docs/releasing.md'}
 EXECUTABLE={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh'}
 
 def clean(name): return name.lstrip('./').replace('\\','/')
@@ -40,12 +40,16 @@ def inspect(path):
                     if any(marker in data for marker in BANNED_CONTENT): raise SystemExit(f'credential marker in {path.name}: {name}')
     return entries
 
-p=argparse.ArgumentParser(); p.add_argument('--directory',required=True); a=p.parse_args(); root=Path(a.directory)
+p=argparse.ArgumentParser(); p.add_argument('--directory',required=True); p.add_argument('--tag'); p.add_argument('--commit'); a=p.parse_args(); root=Path(a.directory)
 archives=sorted([*root.glob('zanik-server-*'),*root.glob('zanik-asset-tools-*')])
 archives=[p for p in archives if p.suffix in {'.zip','.gz','.xz'}]
 if len(archives)!=4: raise SystemExit(f'expected four release archives, found {len(archives)}')
 for archive in archives: inspect(archive)
 manifest=json.loads((root/'release-manifest.json').read_text())
+if manifest.get('schemaVersion') != 2: raise SystemExit('release manifest schema must be 2')
+if a.tag is not None and manifest.get('tag') != a.tag: raise SystemExit('release manifest tag mismatch')
+if a.commit is not None and manifest.get('commit') != a.commit: raise SystemExit('release manifest commit mismatch')
+if not isinstance(manifest.get('sourceDateEpoch'),int) or not manifest.get('buildTimestamp'): raise SystemExit('release manifest provenance is incomplete')
 for record in manifest['files']:
     path=root/record['name']; actual=hashlib.sha256(path.read_bytes()).hexdigest()
     if actual!=record['sha256'] or path.stat().st_size!=record['size']: raise SystemExit(f'manifest mismatch: {path.name}')

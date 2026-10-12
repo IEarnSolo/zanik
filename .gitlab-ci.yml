@@ -3,11 +3,12 @@ stages:
   - build
   - package
   - validate
+  - release
+  - distribute
 
 default:
   image: debian:bookworm-slim
-  tags:
-    - docker
+  tags: [docker]
   interruptible: true
   before_script:
     - apt-get update
@@ -22,6 +23,13 @@ test-core:
     - make clean
     - make test-core
 
+verify-release-tag:
+  stage: test
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - python3 tools/release_contract.py --tag "$CI_COMMIT_TAG" --require-clean
+
 build-linux:
   stage: build
   script:
@@ -32,31 +40,120 @@ build-linux:
     name: "zanik-${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}"
     expose_as: "Zanik Linux binaries"
     expire_in: 30 days
-    paths:
-      - dist/libdwstatus.so
-      - dist/zanik-compat-analyzer
-      - dist/SHA256SUMS
+    paths: [dist/libdwstatus.so, dist/zanik-compat-analyzer, dist/SHA256SUMS]
 
-package-release:
+.package-release-base:
   stage: package
   needs:
     - job: build-linux
       artifacts: true
   script:
     - chmod +x scripts/*.sh scripts/zanik-server
-    - SOURCE_DATE_EPOCH="$(date -d "$CI_COMMIT_TIMESTAMP" +%s)" scripts/package-release.sh dist/release
+    - RELEASE_TAG="${CI_COMMIT_TAG:-}" RELEASE_COMMIT="$CI_COMMIT_SHA" SOURCE_DATE_EPOCH="$(date -d "$CI_COMMIT_TIMESTAMP" +%s)" scripts/package-release.sh dist/release
+
+package-release:
+  extends: .package-release-base
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: on_success
   artifacts:
     name: "zanik-release-${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}"
     expose_as: "Validated release candidates"
     expire_in: 30 days
-    paths:
-      - dist/release/
+    paths: [dist/release/]
+
+package-release-tag:
+  extends: .package-release-base
+  rules:
+    - if: $CI_COMMIT_TAG
+  artifacts:
+    name: "zanik-release-${CI_COMMIT_TAG}"
+    expose_as: "Permanent tagged release candidate"
+    expire_in: never
+    paths: [dist/release/]
 
 validate-release:
   stage: validate
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: on_success
   needs:
     - job: package-release
       artifacts: true
   script:
     - python3 tools/validate_release.py --directory dist/release
     - cd dist/release && sha256sum --check SHA256SUMS
+
+validate-release-tag:
+  stage: validate
+  rules:
+    - if: $CI_COMMIT_TAG
+  needs:
+    - job: package-release-tag
+      artifacts: true
+  script:
+    - python3 tools/validate_release.py --directory dist/release --tag "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA"
+    - python3 tools/release_contract.py --tag "$CI_COMMIT_TAG"
+    - cd dist/release && sha256sum --check SHA256SUMS
+
+publish-gitlab-packages:
+  stage: release
+  rules:
+    - if: $CI_COMMIT_TAG
+  needs:
+    - job: package-release-tag
+      artifacts: true
+    - job: validate-release-tag
+      artifacts: false
+  script:
+    - VERSION="$(tr -d '\r\n' < VERSION)"
+    - python3 tools/publish_gitlab_package.py --directory dist/release --version "$VERSION" --links-output dist/release/assets-links.json
+  artifacts:
+    expire_in: never
+    paths: [dist/release/assets-links.json, dist/release/release-notes.md]
+
+create-gitlab-release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/cli:latest
+  before_script: []
+  variables:
+    GLAB_ENABLE_CI_AUTOLOGIN: "true"
+  rules:
+    - if: $CI_COMMIT_TAG
+  needs:
+    - job: publish-gitlab-packages
+      artifacts: true
+  script:
+    - VERSION="$(tr -d '\r\n' < VERSION)"
+    - glab release create "$CI_COMMIT_TAG" --name "Zanik $VERSION" --notes-file dist/release/release-notes.md --ref "$CI_COMMIT_SHA" --assets-links="$(cat dist/release/assets-links.json)"
+
+publish-curseforge:
+  stage: distribute
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: manual
+      allow_failure: true
+  manual_confirmation: "Submit this validated release to CurseForge moderation?"
+  resource_group: curseforge-production
+  environment:
+    name: curseforge-production
+  needs:
+    - job: package-release-tag
+      artifacts: true
+    - job: create-gitlab-release
+      artifacts: false
+  script:
+    - |
+      VERSION="$(tr -d '\r\n' < VERSION)"
+      set -- --directory dist/release --version "$VERSION" --tag "$CI_COMMIT_TAG" --changelog dist/release/release-notes.md --report dist/release/curseforge-upload.json
+      if [ -n "${CURSEFORGE_PRIMARY_FILE_ID:-}" ]; then set -- "$@" --primary-file-id "$CURSEFORGE_PRIMARY_FILE_ID"; fi
+      old_ifs=$IFS; IFS=,
+      for role in ${CURSEFORGE_SKIP_CHILDREN:-}; do [ -n "$role" ] && set -- "$@" --skip-child "$role"; done
+      IFS=$old_ifs
+      python3 tools/curseforge_upload.py "$@"
+  artifacts:
+    when: always
+    expire_in: never
+    paths: [dist/release/curseforge-upload.json]
