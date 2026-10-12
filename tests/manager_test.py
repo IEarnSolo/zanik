@@ -174,6 +174,19 @@ class ManagerTests(unittest.TestCase):
             self.assertEqual(index["bundleSha256"],content_hash(bundle.read_bytes()))
             self.assertTrue(all(part.stat().st_size < 500 for part in parts))
 
+    def test_remote_asset_verification_uses_large_file_download_route(self):
+        class Client:
+            def download_file(self, server, path): return b"asset-bytes"
+            def read_file(self, server, path): raise AssertionError("text endpoint must not verify assets")
+        class Provider:
+            client = Client()
+        with tempfile.TemporaryDirectory() as temporary:
+            tree=Path(temporary); (tree/"world-map.jpg").write_bytes(b"asset-bytes")
+            progress=[]
+            AssetDeployer(Provider())._verify_remote_tree("dev","/stage",tree,
+                                                          lambda current,total,path:progress.append((current,total,path)))
+            self.assertEqual(progress,[(1,1,"world-map.jpg")])
+
     def test_pyside_pruner_keeps_only_declared_runtime(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary)

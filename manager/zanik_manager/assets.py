@@ -121,7 +121,7 @@ class AssetDeployer:
                 self.provider.client.write_file(server_id, f"{stage}/bundle-index.json", json.dumps(index_data, sort_keys=True).encode())
                 for part in parts:
                     self.provider.client.upload(server_id, stage, part.name, part.read_bytes())
-                    remote_hash = sha256(self.provider.client.read_file(server_id, f"{stage}/{part.name}"))
+                    remote_hash = sha256(self.provider.client.download_file(server_id, f"{stage}/{part.name}"))
                     if remote_hash != sha256(part.read_bytes()):
                         raise RuntimeError(f"Remote part verification failed for {part.name}")
                     self.provider.client.decompress(server_id, stage, part.name)
@@ -141,7 +141,7 @@ class AssetDeployer:
                     self.provider._mkdir(server_id, directory)
                     data = path.read_bytes()
                     self.provider.client.upload(server_id, directory, path.name, data)
-                    if sha256(self.provider.client.read_file(server_id, str(PurePosixPath(stage) / relative))) != sha256(data):
+                    if sha256(self.provider.client.download_file(server_id, str(PurePosixPath(stage) / relative))) != sha256(data):
                         raise RuntimeError(f"Remote asset verification failed for {relative}")
                     progress(index, len(files), relative)
             current = f"{root}/zanik/assets/current"
@@ -188,7 +188,7 @@ class AssetDeployer:
         files=sorted(path for path in tree.rglob("*") if path.is_file())
         for index,path in enumerate(files,1):
             relative=path.relative_to(tree).as_posix()
-            actual=sha256(self.provider.client.read_file(server_id, str(PurePosixPath(stage)/relative)))
+            actual=sha256(self.provider.client.download_file(server_id, str(PurePosixPath(stage)/relative)))
             if actual != sha256(path.read_bytes()):
                 raise RuntimeError(f"Remote asset verification failed for {relative}")
             progress(index,len(files),relative)
