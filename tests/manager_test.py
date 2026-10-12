@@ -143,7 +143,7 @@ class ManagerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             archive = Path(temporary) / "server.zip"
             required = ["bin/libzanik.so", "bin/zanik-server", "bin/zanik-compat-analyzer", "scripts/compat-launcher.sh",
-                        "config/zanik.conf.example", "VERSION"]
+                        "config/zanik.conf.example", "compatibility/compatibility.tsv", "VERSION"]
             with zipfile.ZipFile(archive, "w") as package:
                 for name in required: package.writestr(name, b"0.2.0" if name == "VERSION" else b"payload")
             payload = ReleasePayload(archive)
@@ -245,7 +245,7 @@ class ManagerTests(unittest.TestCase):
             root = Path(temporary); archive = root / "server.zip"
             files = {"bin/libzanik.so": b"library", "bin/zanik-server": b"launcher", "bin/zanik-compat-analyzer": b"analyzer",
                      "scripts/compat-launcher.sh": b"#!/bin/sh\n# ZANIK_COMPAT_LAUNCHER=1\n", "config/zanik.conf.example": b"FEATURE_MAP=true\n",
-                     "config/zanik-config.schema.json": b"{}", "VERSION": b"0.2.0\n"}
+                     "config/zanik-config.schema.json": b"{}", "compatibility/compatibility.tsv": b"sha\toffsets\n", "VERSION": b"0.2.0\n"}
             with zipfile.ZipFile(archive, "w") as package:
                 for name, data in files.items(): package.writestr(name, data)
             client=FakeClient(); provider=PterodactylProvider(client, JournalStore(root/"journals"))
@@ -254,6 +254,7 @@ class ManagerTests(unittest.TestCase):
             self.assertIn(b"ZANIK_COMPAT_LAUNCHER", client.files[game])
             self.assertEqual(client.files[game+".zanik-original"], b"\x7fELFofficial")
             self.assertEqual(result["installation"]["version"], "0.2.0")
+            self.assertEqual(client.files["/home/container/zanik/compatibility.tsv"], b"sha\toffsets\n")
             original_launcher = client.files[game]
             config_path = "/home/container/zanik/config/zanik.conf"
             client.files[config_path] = b"FEATURE_MAP=false\n"

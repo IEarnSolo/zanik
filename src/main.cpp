@@ -894,11 +894,13 @@ void Run() {
     auto nextDiscovery = std::chrono::steady_clock::now();
     auto nextSync = std::chrono::steady_clock::now();
     bool nativeKillHookInstalled = false;
+    bool nativeKillHookAttempted = false;
     bool adminTeleportInitialized = false;
     bool adminStorageInitialized = false;
     bool adminStorageAttempted = false;
     bool resourceTrackingInitialized = false;
     bool npcTrackingInitialized = false;
+    bool npcTrackingAttempted = false;
     bool playerRecipeTrackingAttempted=false;
     bool playerQuestTrackingAttempted=false;
     auto nextResourceInit = std::chrono::steady_clock::now();
@@ -910,7 +912,8 @@ void Run() {
             DomEngine::g_Engine->Initialize();
             nextDiscovery = now + std::chrono::seconds(5);
         }
-        if (ZanikConfig::KillTracking() && DomEngine::g_Engine->IsInitialized() && !nativeKillHookInstalled) {
+        if (ZanikConfig::KillTracking() && DomEngine::g_Engine->IsInitialized() && !nativeKillHookAttempted) {
+            nativeKillHookAttempted = true;
             nativeKillHookInstalled = DomEngine::InstallNativeKillHook(
                 DomEngine::g_Engine->GetModuleBase(), DomEngine::g_Engine->GetModuleEnd());
             LogMessage(nativeKillHookInstalled ? "Native AI kill hook installed" :
@@ -933,7 +936,8 @@ void Run() {
             nextResourceInit=now+std::chrono::seconds(5);
         }
         if(ZanikConfig::ResourceTracking()&&mainWorldReady&&resourceTrackingInitialized&&now>=nextResourceRefresh){DomEngine::RefreshResourceStates();nextResourceRefresh=now+std::chrono::seconds(2);}
-        if(ZanikConfig::NpcTracking()&&mainWorldReady&&!npcTrackingInitialized&&now>=nextNpcInit){
+        if(ZanikConfig::NpcTracking()&&mainWorldReady&&!npcTrackingAttempted&&now>=nextNpcInit){
+            npcTrackingAttempted=true;
             npcTrackingInitialized=DomEngine::InitializeNpcTracking(DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());
             nextNpcInit=now+std::chrono::seconds(5);
         }
