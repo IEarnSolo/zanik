@@ -41,6 +41,13 @@ OPTIONAL = (
     "skills/attack.png",
     "quests/main-quest.svg",
 )
+OPTIONAL_GROUPS = (
+    "items/*.png",
+    "npcs/*.png",
+    "recipe-icons/*.png",
+    "resources/*.png",
+    "buildings/*.png",
+)
 ALLOWED_TOP_LEVEL = {
     "asset-manifest.json", "buildings", "items", "npcs", "quests", "recipe-icons",
     "resources", "skills", "world-map.jpg", "lodestone-icon.png", "nodestone-icon.png",
@@ -94,6 +101,7 @@ def container_paths(game_root: Path) -> list[Path]:
 def classify(source: Path) -> tuple[list[str], list[str]]:
     missing_required = [name for name in REQUIRED if not (source / name).is_file()]
     missing_optional = [name for name in OPTIONAL if not (source / name).is_file()]
+    missing_optional.extend(pattern for pattern in OPTIONAL_GROUPS if not any(source.glob(pattern)))
     return missing_required, missing_optional
 
 

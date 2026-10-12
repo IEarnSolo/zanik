@@ -22,6 +22,7 @@ with tempfile.TemporaryDirectory() as name:
     subprocess.run(['python3',str(TOOL),'install-bundle','--bundle',str(first),'--destination',str(destination)],check=True)
     current=destination/'current'; manifest=json.loads((current/'asset-manifest.json').read_text())
     assert manifest['sourceKind']=='linux-dedicated-server' and not manifest['missingRequired']
+    assert 'npcs/*.png' in manifest['missingOptional'] and 'items/*.png' in manifest['missingOptional']
     previous=current.resolve()
     bad=root/'bad.zip'
     with zipfile.ZipFile(bad,'w') as z: z.writestr('../escape','bad')
