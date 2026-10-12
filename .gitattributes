@@ -1,0 +1,22 @@
+# Keep repository text deterministic across Windows and Linux development.
+* text=auto eol=lf
+
+# Windows command interpreters conventionally require CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Never apply text conversion to binary artifacts.
+*.dll binary
+*.exe binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.zip binary
+*.7z binary
+*.gz binary
+*.xz binary
+*.pak binary
+*.utoc binary
+*.ucas binary
