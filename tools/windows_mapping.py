@@ -66,14 +66,23 @@ def game_processes(executable: Path) -> list[int]:
     if os.name != "nt":
         return []
     command = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
-               "$p=Get-CimInstance Win32_Process -Filter \"Name='RSDragonwilds-Win64-Shipping.exe'\";"
-               "$p|ForEach-Object{if($_.ExecutablePath){\"$($_.ProcessId)`t$($_.ExecutablePath)\"}}"]
+               "$p=Get-Process -Name 'RSDragonwilds-Win64-Shipping' -ErrorAction SilentlyContinue;"
+               "$p|ForEach-Object{$path='';try{$path=$_.Path}catch{};\"$($_.Id)`t$path\"}"]
     completed = subprocess.run(command, capture_output=True, text=True, check=False)
     result: list[int] = []
     for line in completed.stdout.splitlines():
         fields = line.split("\t", 1)
-        if len(fields) == 2 and Path(fields[1]).resolve() == executable.resolve():
-            result.append(int(fields[0]))
+        if len(fields) != 2:
+            continue
+        try:
+            process_id = int(fields[0])
+        except ValueError:
+            continue
+        # Get-Process is available to ordinary desktop users.  Path may still be
+        # withheld by Windows, but the exact executable name uniquely identifies
+        # the client and is safer than treating a permission error as "not running".
+        if not fields[1] or Path(fields[1]).resolve() == executable.resolve():
+            result.append(process_id)
     return result
 
 
@@ -126,7 +135,14 @@ def recover(journal_path: Path) -> bool:
             if installed_files.get(path) == value:
                 continue
             lowered = path.casefold()
-            if path not in installed_files and (lowered.endswith(".log") or lowered.endswith(".usmap")):
+            runtime_generated = {
+                "imgui.ini",
+                "liveview/filters.meta.json",
+                "watches/watches.meta.json",
+            }
+            if path not in installed_files and (
+                    lowered.endswith(".log") or lowered.endswith(".usmap")
+                    or lowered in runtime_generated):
                 continue
             unexpected.append(path)
         if unexpected:
@@ -159,13 +175,31 @@ def configure_staging(staging: Path) -> None:
     settings = staging / OWNED_DIRECTORY / "UE4SS-settings.ini"
     text = settings.read_text(encoding="utf-8", errors="strict")
     replacements = {
-        "GuiConsoleEnabled = 1": "GuiConsoleEnabled = 0",
-        "GuiConsoleEnabled = 0": "GuiConsoleEnabled = 0",
-        "GuiConsoleVisible = 1": "GuiConsoleVisible = 0",
+        # The Dragonwilds-compatible UE4SS build requires its normal console and
+        # hot-reload initialization path.  The console is temporary and closes
+        # with the client after the mapping is copied.
+        "EnableHotReloadSystem = 0": "EnableHotReloadSystem = 1",
+        "GuiConsoleEnabled = 1": "GuiConsoleEnabled = 1",
+        "GuiConsoleEnabled = 0": "GuiConsoleEnabled = 1",
+        "GuiConsoleVisible = 1": "GuiConsoleVisible = 1",
+        "GuiConsoleVisible = 0": "GuiConsoleVisible = 1",
+        "EnableDumping = 1": "EnableDumping = 0",
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
+    if "[EngineVersionOverride]" not in text:
+        raise RuntimeError("the pinned UE4SS settings have no engine-version override section")
+    text, major_count = re.subn(r"(?m)^MajorVersion\s*=.*$", "MajorVersion = 5", text)
+    text, minor_count = re.subn(r"(?m)^MinorVersion\s*=.*$", "MinorVersion = 6", text)
+    if major_count != 1 or minor_count != 1:
+        raise RuntimeError("the pinned UE4SS settings have ambiguous engine-version fields")
     settings.write_text(text, encoding="utf-8")
+    # UE4SS rewrites this UI state while running.  Exclude the archive's copy so
+    # any exact-name replacement is clearly runtime-generated and can be removed
+    # without weakening verification for installed binaries or scripts.
+    imgui_state = staging / OWNED_DIRECTORY / "imgui.ini"
+    if imgui_state.exists():
+        imgui_state.unlink()
     mods = staging / OWNED_DIRECTORY / "Mods"
     for child in list(mods.iterdir()):
         if child.name not in {"mods.txt", "mods.json"}:
@@ -176,9 +210,8 @@ def configure_staging(staging: Path) -> None:
     zanik = mods / "ZanikMappings" / "Scripts"
     zanik.mkdir(parents=True)
     (zanik / "main.lua").write_text(
-        "ExecuteAsync(function()\n"
-        "    Sleep(15000)\n"
-        "    DumpUSMAP(true)\n"
+        "ExecuteWithDelay(15000, function()\n"
+        "    DumpUSMAP()\n"
         "end)\n", encoding="utf-8")
     (mods / "mods.txt").write_text("ZanikMappings : 1\n", encoding="utf-8")
     if (mods / "mods.json").exists():
@@ -239,6 +272,19 @@ def steam_launch(game_root: Path) -> tuple[Path, str]:
             if steam.is_file():
                 return steam.resolve(), app_id.group(1)
     raise ValueError("could not discover the Dragonwilds Steam launcher and app id")
+
+
+def launch_steam_app(steam: Path, app_id: str) -> None:
+    """Ask the running Steam client to launch the app through its URL protocol.
+
+    Starting a second steam.exe process with ``-applaunch`` is not reliably
+    forwarded to an already-running client on all Windows configurations.  The
+    registered URL protocol is the supported desktop handoff and avoids that
+    silent no-op.
+    """
+    if os.name != "nt":
+        raise RuntimeError("Steam client launch is supported only on Windows")
+    os.startfile(f"steam://rungameid/{app_id}")
 
 
 def stable_mapping(binary_dir: Path, executable: Path, timeout_seconds: int) -> Path:
@@ -317,7 +363,7 @@ def prepare(game_root: Path, ue4ss_root: Path, output: Path, work_root: Path,
         directory_staging.replace(owned)
         journal["state"] = "installed"
         write_journal(journal_path, journal)
-        subprocess.Popen([str(steam), "-applaunch", app_id], cwd=steam.parent)
+        launch_steam_app(steam, app_id)
         deadline = time.monotonic() + 120
         process_ids: list[int] = []
         while time.monotonic() < deadline and not process_ids:
