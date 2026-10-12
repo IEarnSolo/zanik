@@ -2,7 +2,7 @@
 
 All notable changes to Zanik are documented here.
 
-## [0.1.1] - Unreleased
+## [0.1.1] - 2026-10-12
 
 ### Fixed
 

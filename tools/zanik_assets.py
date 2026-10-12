@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -93,6 +94,39 @@ def classify(source: Path) -> tuple[list[str], list[str]]:
     return missing_required, missing_optional
 
 
+def validate_generated(source: Path) -> dict:
+    missing_required, missing_optional = classify(source)
+    errors: list[str] = []
+    if not source.is_dir():
+        errors.append(f"generated asset root does not exist: {source}")
+    for relative in REQUIRED:
+        path = source / relative
+        if not path.is_file():
+            continue
+        if path.is_symlink() or path.stat().st_size == 0:
+            errors.append(f"required asset is empty or a symlink: {relative}")
+            continue
+        try:
+            if path.suffix == ".json":
+                value = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(value, (dict, list)):
+                    errors.append(f"required JSON has an unsupported root value: {relative}")
+            elif path.suffix == ".tsv":
+                first = path.open(encoding="utf-8", errors="strict").readline().rstrip("\r\n")
+                if not first or ("\t" not in first and not first.startswith("#")):
+                    errors.append(f"required TSV has no header or records: {relative}")
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            errors.append(f"required asset is invalid: {relative}: {error}")
+    if missing_required:
+        errors.extend(f"required asset is missing: {name}" for name in missing_required)
+    return {
+        "valid": not errors,
+        "missingRequired": missing_required,
+        "missingOptional": missing_optional,
+        "errors": errors,
+    }
+
+
 def source_kind(paths: list[Path]) -> str:
     names = {path.name for path in paths}
     if any("LinuxServer" in name for name in names):
@@ -106,7 +140,7 @@ def inventory(args: argparse.Namespace) -> int:
     root = Path(args.game_root).resolve()
     source = Path(args.generated_root).resolve() if args.generated_root else root / "zanik-generated-web"
     containers = container_paths(root)
-    missing_required, missing_optional = classify(source)
+    validation = validate_generated(source)
     result = {
         "schemaVersion": SCHEMA_VERSION,
         "gameRoot": str(root),
@@ -114,9 +148,10 @@ def inventory(args: argparse.Namespace) -> int:
         "sourceKind": source_kind(containers),
         "containers": [{"name": path.name, "size": path.stat().st_size} for path in containers],
         "generatedRoot": str(source),
-        "missingRequired": missing_required,
-        "missingOptional": missing_optional,
-        "ready": not missing_required,
+        "missingRequired": validation["missingRequired"],
+        "missingOptional": validation["missingOptional"],
+        "validationErrors": validation["errors"],
+        "ready": validation["valid"],
     }
     output = json.dumps(result, indent=2, sort_keys=True) + "\n"
     if args.output:
@@ -145,6 +180,22 @@ def safe_files(source: Path) -> list[Path]:
     return sorted(files, key=lambda value: value.relative_to(source).as_posix())
 
 
+def container_fingerprint(path: Path) -> dict:
+    size = path.stat().st_size
+    record = {"name": path.name, "size": size}
+    if size <= 512 * 1024 * 1024:
+        record["sha256"] = digest(path)
+    else:
+        value = hashlib.sha256()
+        with path.open("rb") as stream:
+            value.update(stream.read(1024 * 1024))
+            stream.seek(max(0, size - 1024 * 1024))
+            value.update(stream.read(1024 * 1024))
+        value.update(str(size).encode("ascii"))
+        record["sampledSha256"] = value.hexdigest()
+    return record
+
+
 def manifest_for(root: Path, source: Path, files: list[Path], missing_optional: list[str]) -> dict:
     containers = container_paths(root)
     epoch = int(os.environ.get("SOURCE_DATE_EPOCH", str(int(time.time()))))
@@ -153,10 +204,7 @@ def manifest_for(root: Path, source: Path, files: list[Path], missing_optional: 
         "gameBuild": game_build(root),
         "sourceKind": source_kind(containers),
         "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch)),
-        "sourceContainers": [
-            {"name": path.name, "size": path.stat().st_size, "sha256": digest(path) if path.stat().st_size <= 512 * 1024 * 1024 else None}
-            for path in containers
-        ],
+        "sourceContainers": [container_fingerprint(path) for path in containers],
         "files": [
             {"path": path.relative_to(source).as_posix(), "size": path.stat().st_size, "sha256": digest(path)}
             for path in files if path.name != "asset-manifest.json"
@@ -168,9 +216,10 @@ def manifest_for(root: Path, source: Path, files: list[Path], missing_optional: 
 
 def build(args: argparse.Namespace) -> int:
     root, source, output = Path(args.game_root).resolve(), Path(args.generated_root).resolve(), Path(args.output).resolve()
-    missing_required, missing_optional = classify(source)
-    if missing_required:
-        raise SystemExit("required generated assets are missing:\n  - " + "\n  - ".join(missing_required))
+    validation = validate_generated(source)
+    if not validation["valid"]:
+        raise SystemExit("generated assets are invalid:\n  - " + "\n  - ".join(validation["errors"]))
+    missing_optional = validation["missingOptional"]
     files = safe_files(source)
     manifest = manifest_for(root, source, files, missing_optional)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -194,6 +243,105 @@ def validate_member(name: str) -> None:
         raise ValueError(f"unsafe or unsupported bundle entry: {name}")
 
 
+def validate_manifest_tree(root: Path) -> dict:
+    manifest_path = root / "asset-manifest.json"
+    if not manifest_path.is_file():
+        raise ValueError("asset bundle has no asset-manifest.json")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("schemaVersion") != SCHEMA_VERSION or manifest.get("missingRequired"):
+        raise ValueError("asset bundle manifest is incompatible or incomplete")
+    records = manifest.get("files")
+    if not isinstance(records, list) or not records:
+        raise ValueError("asset bundle manifest has no file records")
+    seen: set[str] = set()
+    for record in records:
+        relative = record.get("path", "") if isinstance(record, dict) else ""
+        validate_member(relative)
+        if relative in seen:
+            raise ValueError(f"duplicate asset manifest record: {relative}")
+        seen.add(relative)
+        path = root / relative
+        if not path.is_file() or path.is_symlink() or digest(path) != record.get("sha256"):
+            raise ValueError(f"asset checksum mismatch: {relative}")
+    validation = validate_generated(root)
+    if not validation["valid"]:
+        raise ValueError("asset bundle contents are invalid: " + "; ".join(validation["errors"]))
+    return manifest
+
+
+def validate(args: argparse.Namespace) -> int:
+    if args.bundle:
+        bundle = Path(args.bundle).resolve()
+        with tempfile.TemporaryDirectory(prefix="zanik-assets-validate-") as temp_name:
+            temp = Path(temp_name)
+            with zipfile.ZipFile(bundle) as archive:
+                for member in archive.infolist():
+                    validate_member(member.filename)
+                    if member.file_size > 64 * 1024 * 1024:
+                        raise ValueError(f"bundle entry exceeds limit: {member.filename}")
+                archive.extractall(temp)
+            manifest = validate_manifest_tree(temp)
+    else:
+        generated = Path(args.generated_root).resolve()
+        result = validate_generated(generated)
+        if not result["valid"]:
+            raise ValueError("generated assets are invalid: " + "; ".join(result["errors"]))
+        manifest = result
+    print(json.dumps(manifest, indent=2, sort_keys=True))
+    return 0
+
+
+def extract(args: argparse.Namespace) -> int:
+    root = Path(args.game_root).resolve()
+    output = Path(args.output).resolve()
+    containers = container_paths(root)
+    detected = source_kind(containers)
+    requested = args.source_kind
+    if requested == "server" and detected != "linux-dedicated-server":
+        raise ValueError("server source requested but Linux dedicated-server containers were not found")
+    if requested == "client" and detected != "windows-client":
+        raise ValueError("client source requested but Windows client containers were not found")
+    if not containers:
+        raise ValueError("no supported game containers were found")
+    if not args.tool_path:
+        result = {
+            "sourceKind": detected,
+            "gameBuild": game_build(root),
+            "ready": False,
+            "missingRequired": list(REQUIRED),
+            "message": "inventory completed; extraction requires the platform asset converter",
+        }
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 3
+    tool = Path(args.tool_path).resolve()
+    if not tool.is_file():
+        raise ValueError(f"asset converter does not exist: {tool}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="zanik-extract-", dir=output.parent) as temp_name:
+        staged = Path(temp_name) / "generated"
+        command = [str(tool), "--game-root", str(root), "--output", str(staged), "--source-kind", detected]
+        if args.usmap_path:
+            command.extend(("--usmap-path", str(Path(args.usmap_path).resolve())))
+        completed = subprocess.run(command, check=False)
+        if completed.returncode:
+            raise RuntimeError(f"asset converter failed with exit code {completed.returncode}")
+        validation = validate_generated(staged)
+        if not validation["valid"]:
+            raise ValueError("converter output is incomplete: " + "; ".join(validation["errors"]))
+        replacement = output.with_name(output.name + ".new")
+        if replacement.exists():
+            shutil.rmtree(replacement)
+        shutil.copytree(staged, replacement)
+        previous = output.with_name(output.name + ".previous")
+        if output.exists():
+            if previous.exists():
+                shutil.rmtree(previous)
+            output.replace(previous)
+        replacement.replace(output)
+    print(json.dumps({"sourceKind": detected, "gameBuild": game_build(root), "output": str(output), "ready": True}, sort_keys=True))
+    return 0
+
+
 def install(args: argparse.Namespace) -> int:
     bundle, destination = Path(args.bundle).resolve(), Path(args.destination).resolve()
     destination.mkdir(parents=True, exist_ok=True)
@@ -205,23 +353,18 @@ def install(args: argparse.Namespace) -> int:
                 if member.file_size > 64 * 1024 * 1024:
                     raise ValueError(f"bundle entry exceeds limit: {member.filename}")
             archive.extractall(temp)
-        manifest_path = temp / "asset-manifest.json"
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if manifest.get("schemaVersion") != SCHEMA_VERSION or manifest.get("missingRequired"):
-            raise ValueError("asset bundle manifest is incompatible or incomplete")
-        for record in manifest.get("files", []):
-            path = temp / record["path"]
-            if not path.is_file() or digest(path) != record["sha256"]:
-                raise ValueError(f"asset checksum mismatch: {record['path']}")
+        manifest = validate_manifest_tree(temp)
         version = str(manifest.get("gameBuild", "unknown")).replace("/", "_")
-        target = destination / f"build-{version}"
-        staged = destination / f".build-{version}.new"
+        manifest_hash = digest(temp / "asset-manifest.json")[:12]
+        target = destination / f"build-{version}-{manifest_hash}"
+        staged = destination / f".build-{version}-{manifest_hash}.new"
         if staged.exists():
             shutil.rmtree(staged)
         shutil.copytree(temp, staged)
         if target.exists():
-            shutil.rmtree(target)
-        staged.replace(target)
+            shutil.rmtree(staged)
+        else:
+            staged.replace(target)
         current = destination / "current"
         new_link = destination / ".current.new"
         if new_link.exists() or new_link.is_symlink():
@@ -243,6 +386,13 @@ def main() -> int:
     scan.add_argument("--generated-root")
     scan.add_argument("--output")
     scan.set_defaults(run=inventory)
+    extraction = commands.add_parser("extract")
+    extraction.add_argument("--game-root", required=True)
+    extraction.add_argument("--output", required=True)
+    extraction.add_argument("--source-kind", choices=("auto", "server", "client"), default="auto")
+    extraction.add_argument("--tool-path")
+    extraction.add_argument("--usmap-path")
+    extraction.set_defaults(run=extract)
     identify = commands.add_parser("show-build")
     identify.add_argument("--game-root", required=True)
     identify.set_defaults(run=show_build)
@@ -251,10 +401,24 @@ def main() -> int:
     create.add_argument("--generated-root", required=True)
     create.add_argument("--output", required=True)
     create.set_defaults(run=build)
+    bundle = commands.add_parser("bundle")
+    bundle.add_argument("--game-root", required=True)
+    bundle.add_argument("--generated-root", required=True)
+    bundle.add_argument("--output", required=True)
+    bundle.set_defaults(run=build)
+    check = commands.add_parser("validate")
+    source = check.add_mutually_exclusive_group(required=True)
+    source.add_argument("--generated-root")
+    source.add_argument("--bundle")
+    check.set_defaults(run=validate)
     activate = commands.add_parser("install")
     activate.add_argument("--bundle", required=True)
     activate.add_argument("--destination", required=True)
     activate.set_defaults(run=install)
+    install_bundle = commands.add_parser("install-bundle")
+    install_bundle.add_argument("--bundle", required=True)
+    install_bundle.add_argument("--destination", required=True)
+    install_bundle.set_defaults(run=install)
     args = parser.parse_args()
     return args.run(args)
 
