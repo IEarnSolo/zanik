@@ -2,6 +2,17 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.1.1] - Unreleased
+
+### Fixed
+
+- Safely migrate development servers that use Zanik's legacy Pterodactyl executable-replacement launcher without overwriting the preserved official ELF.
+- Report enabled features as compatible or incompatible from their live subsystem diagnostics, while retaining an explicit disabled state for gated features.
+
+### Changed
+
+- Expanded development-server and asset-initialization validation for the post-0.1.0 packaging layout.
+
 ## [0.1.0] - 2026-10-12
 
 ### Added

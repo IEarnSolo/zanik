@@ -23,16 +23,52 @@ game=$(zanik_game_path "$server_root")
 [ -s "$game" ] || { zanik_log "Official server executable not found: $game"; exit 1; }
 [ -x "$game" ] || { zanik_log "Official server executable is not executable: $game"; exit 1; }
 original=$game.zanik-original
-if [ "$mode" = wrapper ] && grep -q 'ZANIK_COMPAT_LAUNCHER=1' "$game" 2>/dev/null; then
-  [ -x "$original" ] || { zanik_log 'Existing Zanik launcher has no preserved original executable'; exit 1; }
-  mv "$game" "$game.zanik-mode-change"
-  mv "$original" "$game"
-  rm -f "$game.zanik-mode-change"
+
+is_elf(){
+  [ -f "$1" ] && [ -x "$1" ] && [ "$(od -An -tx1 -N4 "$1" 2>/dev/null | tr -d ' \n')" = 7f454c46 ]
+}
+is_legacy_zanik_launcher(){
+  [ -f "$1" ] || return 1
+  [ "$(wc -c < "$1")" -le 4096 ] || return 1
+  expected=$(printf 'exec /bin/sh %s/zanik/zanik-bootstrap.sh "$@"' "$server_root")
+  grep -Fx '#!/bin/sh' "$1" >/dev/null 2>&1 && grep -Fx "$expected" "$1" >/dev/null 2>&1
+}
+
+launcher_kind=official
+if grep -q 'ZANIK_COMPAT_LAUNCHER=1' "$game" 2>/dev/null; then
+  launcher_kind=current
+elif is_legacy_zanik_launcher "$game"; then
+  launcher_kind=legacy
+fi
+if [ "$launcher_kind" != official ] && ! is_elf "$original"; then
+  zanik_log 'Existing Zanik launcher has no verified executable ELF at .zanik-original; refusing migration'
+  exit 1
+fi
+if [ "$launcher_kind" = official ] && [ -e "$original" ] && ! is_elf "$game"; then
+  zanik_log 'Executable replacement state is ambiguous; refusing to overwrite either file'
+  exit 1
 fi
 install_dir=$server_root/zanik
 data_dir=$server_root/zanik-data
 mkdir -p "$install_dir/bin" "$install_dir/lib" "$install_dir/config" "$install_dir/state" "$install_dir/assets" "$install_dir/docs" "$install_dir/tools" "$install_dir/scripts" "$data_dir"
 chmod 700 "$data_dir"
+
+if [ "$launcher_kind" = legacy ]; then
+  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+  migration_backup=$data_dir/update-history/$stamp-legacy-migration
+  mkdir -p "$migration_backup"
+  cp -p "$game" "$migration_backup/legacy-launcher"
+  cp -p "$original" "$migration_backup/official-original"
+  [ ! -f "$server_root/zanik/zanik-bootstrap.sh" ] || cp -p "$server_root/zanik/zanik-bootstrap.sh" "$migration_backup/zanik-bootstrap.sh"
+  zanik_log "Verified legacy Zanik launcher; migration backup created at $migration_backup"
+fi
+
+if [ "$mode" = wrapper ] && [ "$launcher_kind" != official ]; then
+  mv "$game" "$game.zanik-mode-change"
+  mv "$original" "$game"
+  rm -f "$game.zanik-mode-change"
+  launcher_kind=official
+fi
 
 copy_required(){ [ -f "$1" ] || { zanik_log "Release payload is missing $1"; exit 1; }; cp -p "$1" "$2"; }
 copy_required "$SOURCE_DIR/bin/libzanik.so" "$install_dir/bin/libzanik.so"
@@ -51,8 +87,12 @@ chmod 600 "$install_dir/config/zanik.conf" "$install_dir/admins.txt"
 zanik_make_secret "$data_dir/console-admin.key"
 
 if [ "$mode" = replace-executable ]; then
-  if grep -q 'ZANIK_COMPAT_LAUNCHER=1' "$game" 2>/dev/null; then
+  if [ "$launcher_kind" = current ]; then
     [ -x "$original" ] || { zanik_log 'Existing Zanik launcher has no preserved original executable'; exit 1; }
+  elif [ "$launcher_kind" = legacy ]; then
+    cp -p "$install_dir/scripts/compat-launcher.sh" "$game.tmp"
+    chmod 755 "$game.tmp"
+    mv "$game.tmp" "$game"
   else
     if [ -e "$original" ]; then
       stamp=$(date -u +%Y%m%dT%H%M%SZ)

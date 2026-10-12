@@ -37,7 +37,7 @@ cp "$RELEASE/config/zanik.conf.example" "$SERVER/zanik/config/zanik.conf"
 "$RELEASE/scripts/install.sh" --server-root "$SERVER" --mode replace-executable --acknowledge-core-file-replacement
 grep -q 'ZANIK_COMPAT_LAUNCHER=1' "$GAME"
 [ -x "$GAME.zanik-original" ]
-printf '#!/bin/sh\n# steam-new\nexit 0\n' > "$GAME"; chmod +x "$GAME"
+printf '\177ELFsteam-new\n' > "$GAME"; chmod +x "$GAME"
 "$RELEASE/scripts/install.sh" --server-root "$SERVER" --mode replace-executable --acknowledge-core-file-replacement
 grep -q 'steam-new' "$GAME.zanik-original"
 find "$SERVER/zanik-data/update-history" -name official-before-steam-update | grep -q .
@@ -49,4 +49,30 @@ grep -q 'steam-new' "$GAME"
 "$RELEASE/scripts/install.sh" --server-root "$SERVER" --mode wrapper
 "$SERVER/zanik/scripts/uninstall.sh" --server-root "$SERVER" --purge-data
 [ ! -e "$SERVER/zanik-data" ]
+
+# Safely migrate the exact pre-0.1.0 Pterodactyl launcher without replacing
+# the preserved ELF with that shell script.
+LEGACY_SERVER=$TMP/legacy-server
+mkdir -p "$LEGACY_SERVER/RSDragonwilds/Binaries/Linux" "$LEGACY_SERVER/zanik"
+LEGACY_GAME=$LEGACY_SERVER/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping
+printf '\177ELFlegacy-official\n' > "$LEGACY_GAME.zanik-original"; chmod +x "$LEGACY_GAME.zanik-original"
+printf '#!/bin/sh\nexec /bin/sh %s/zanik/zanik-bootstrap.sh "$@"\n' "$LEGACY_SERVER" > "$LEGACY_GAME"; chmod +x "$LEGACY_GAME"
+printf '#!/bin/sh\nexit 0\n' > "$LEGACY_SERVER/zanik/zanik-bootstrap.sh"
+LEGACY_SHA=$(sha256sum "$LEGACY_GAME.zanik-original" | awk '{print $1}')
+"$RELEASE/scripts/install.sh" --server-root "$LEGACY_SERVER" --mode replace-executable --acknowledge-core-file-replacement
+grep -q 'ZANIK_COMPAT_LAUNCHER=1' "$LEGACY_GAME"
+[ "$(sha256sum "$LEGACY_GAME.zanik-original" | awk '{print $1}')" = "$LEGACY_SHA" ]
+find "$LEGACY_SERVER/zanik-data/update-history" -name legacy-launcher | grep -q .
+"$LEGACY_SERVER/zanik/scripts/uninstall.sh" --server-root "$LEGACY_SERVER"
+[ "$(sha256sum "$LEGACY_GAME" | awk '{print $1}')" = "$LEGACY_SHA" ]
+
+# A similar but unrecognized script must fail closed.
+AMBIG=$TMP/ambiguous-server
+mkdir -p "$AMBIG/RSDragonwilds/Binaries/Linux"
+AMBIG_GAME=$AMBIG/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping
+printf '#!/bin/sh\nexec /some/other/launcher "$@"\n' > "$AMBIG_GAME"; chmod +x "$AMBIG_GAME"
+printf '\177ELFreal-original\n' > "$AMBIG_GAME.zanik-original"; chmod +x "$AMBIG_GAME.zanik-original"
+if "$RELEASE/scripts/install.sh" --server-root "$AMBIG" --mode replace-executable --acknowledge-core-file-replacement >/dev/null 2>&1; then exit 1; fi
+grep -q '/some/other/launcher' "$AMBIG_GAME"
+grep -q 'real-original' "$AMBIG_GAME.zanik-original"
 echo 'installer lifecycle tests passed'
