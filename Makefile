@@ -34,7 +34,7 @@ clean:
 
 test: test-core
 
-test-core: $(OUT)
+test-core: $(OUT) dist/zanik-compat-analyzer
 	mkdir -p dist
 	$(CXX) $(CXXFLAGS) tests/status_test.cpp src/status.o src/player_store.o src/recipe_snapshot_store.o src/quest_snapshot_store.o src/engine/engine_core.o \
 		src/engine/uobject.o src/engine/players.o src/engine/kills.o src/engine/resources.o src/engine/npcs.o src/engine/admin_teleport.o src/utils/memory.o \
