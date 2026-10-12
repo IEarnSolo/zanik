@@ -8,7 +8,8 @@ mkdir -p "$test_root/zanik/state" "$test_root/zanik-data" \
 cp "$root/deploy/zanik-bootstrap.sh" "$test_root/zanik/"
 cp "$root/deploy/compatibility.tsv" "$test_root/zanik/"
 cp "$root/dist/libdwstatus.so" "$test_root/libdwstatus.so"
-cp /bin/true "$test_root/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping.zanik-original"
+printf '#!/bin/sh\nexit 0\n' >"$test_root/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping.zanik-original"
+chmod +x "$test_root/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping.zanik-original"
 cat >"$test_root/steamapps/appmanifest_4019830.acf" <<EOF
 "AppState"
 {
@@ -45,7 +46,9 @@ cp "$root/deploy/zanik-bootstrap.sh" "$test_root/zanik/"
 cp "$root/deploy/zanik-entrypoint.sh" "$test_root/zanik/launcher.sh"
 cp "$root/deploy/compatibility.tsv" "$test_root/zanik/"
 cp "$root/dist/libdwstatus.so" "$test_root/libdwstatus.so"
-cp /bin/true "$test_root/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping.zanik-original"
+printf '#!/bin/sh\nexit 0\n' >"$test_root/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping.zanik-original"
+chmod +x "$test_root/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping.zanik-original"
+original_hash=$(sha256sum "$test_root/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping.zanik-original" | awk '{print $1}')
 printf old-symbols >"$test_root/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping.sym"
 printf database >"$test_root/zanik-data/players.db"
 cat >"$test_root/steamapps/appmanifest_4019830.acf" <<EOF
@@ -62,7 +65,8 @@ cat >"$test_root/steamcmd/steamcmd.sh" <<'EOF'
 #!/bin/sh
 case " $* " in
   *" +app_update "*)
-    cp /bin/false "$FAKE_ROOT/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping"
+    printf '#!/bin/sh\nexit 1\n' >"$FAKE_ROOT/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping"
+    chmod +x "$FAKE_ROOT/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping"
     printf new-symbols >"$FAKE_ROOT/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping.sym"
     printf '%s\n' '"AppState"' '{' '"buildid" "2"' '}' >"$FAKE_ROOT/steamapps/appmanifest_4019830.acf" ;;
   *) printf '%s\n' '"public"' '"buildid" "2"' ;;
@@ -73,6 +77,6 @@ FAKE_ROOT="$test_root" ZANIK_ROOT="$test_root" ZANIK_VALIDATE_ATTEMPTS=1 \
   ZANIK_STATUS_PORT=39105 "$test_root/zanik/zanik-bootstrap.sh"
 grep -q '"lastResult":"rolled-back-after-validation"' \
   "$test_root/zanik/state/update-status.json"
-test "$("$test_root/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping.zanik-original"; echo $?)" = 0
+test "$(sha256sum "$test_root/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping.zanik-original" | awk '{print $1}')" = "$original_hash"
 test "$(find "$test_root/zanik-data/update-history" -name '*.md' | wc -l)" = 1
 test "$(find "$test_root/zanik-data/update-history" -name '*.json' | wc -l)" = 1

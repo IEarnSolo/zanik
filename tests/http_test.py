@@ -4,7 +4,6 @@
 import json
 import os
 import pathlib
-import shutil
 import socket
 import subprocess
 import time
@@ -22,10 +21,7 @@ data_file = root / "dist" / "http-test-players.db"
 data_file.unlink(missing_ok=True)
 env.update(LD_PRELOAD=str(library), DW_STATUS_PORT=str(port), DW_STATUS_DATA=str(data_file),
            DW_WEB_ROOT=str(root / "web"), DW_STATUS_TEST_HOST="1")
-server_stub = root / "dist" / "RSDragonwildsServer-Linux-Shipping-http-test"
-shutil.copy2("/bin/sleep", server_stub)
-server_stub.chmod(0o755)
-process = subprocess.Popen([str(server_stub), "20"], env=env,
+process = subprocess.Popen(["/bin/sleep", "20"], env=env,
                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 base = f"http://127.0.0.1:{port}"
 
@@ -156,7 +152,7 @@ try:
     with urllib.request.urlopen(base + "/player?id=abc123", timeout=3) as response:
         page = response.read().decode()
         assert "Current skill levels" in page
-        assert "level.textContent" in page
+        assert "levelNumber.textContent = String(skill.level)" in page
         assert "Current location:" in page
         assert "Last known location:" in page
 
@@ -182,9 +178,16 @@ try:
     with urllib.request.urlopen(base + "/api/update-status", timeout=3) as response:
         update = json.loads(response.read())
         assert update["website"] is True
-        assert set(update) == {"website", "playerDataCompatibility",
-                               "killHookCompatibility", "regionCompatibility",
-                               "lodestoneCompatibility", "updater"}
+        assert {
+            "website", "playerDataCompatibility", "killHookCompatibility",
+            "regionCompatibility", "mapProjectionCompatibility",
+            "lodestoneCompatibility", "resourceCompatibility",
+            "npcCatalogCompatibility", "playerRecipeCompatibility",
+            "playerQuestCompatibility", "adminAuthorizationStorage",
+            "adminTeleportCompatibility", "adminStorageCompatibility",
+            "adminGravestoneCompatibility", "updater",
+        } <= set(update)
+        assert not any("pointer" in key.lower() or "address" in key.lower() for key in update)
 
     with urllib.request.urlopen(base + "/api/lodestone-diagnostics", timeout=3) as response:
         diagnostics = json.loads(response.read())
@@ -216,4 +219,3 @@ finally:
         process.kill()
         process.wait()
     data_file.unlink(missing_ok=True)
-    server_stub.unlink(missing_ok=True)

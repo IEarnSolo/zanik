@@ -48,6 +48,7 @@ node_modules/
 *.exe
 *.pdb
 *.ilk
+/qol/compost_test
 
 # Server backups, game binaries, symbols, saves, captures, and research dumps
 /backups/

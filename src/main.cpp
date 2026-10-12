@@ -286,6 +286,15 @@ void Handle(int fd) {
         return;
     }
     const std::string& path=request.path;const std::string& query=request.query;
+    static const std::unordered_set<std::string> postRoutes={
+        "/api/admin/claim","/api/admin/console-claim","/api/admin/recipe-unlock-settings",
+        "/api/admin/logout","/api/admin/teleport","/api/admin/player-teleport",
+        "/api/admin/storage/teleport","/api/admin/storage/mutate",
+        "/api/admin/gravestone/mutate","/api/admin/gravestone/teleport"
+    };
+    if(request.method=="POST"&&!postRoutes.count(path)){
+        Respond(fd,405,"application/json; charset=utf-8","{\"error\":\"Method not allowed\"}");return;
+    }
     auto requirePost=[&](){if(request.method!="POST"){Respond(fd,405,"application/json; charset=utf-8","{\"error\":\"Method not allowed\"}");return false;}return true;};
     auto authenticate=[&](AdminSession&s,std::string&raw){raw=Cookie(request,AdminCookieName());bool removed=false;if(raw.empty()||!adminStore->Authenticate(raw,s,&removed)){Respond(fd,removed?403:401,"application/json; charset=utf-8",Status::ErrorJson(removed?"Authorization removed":"Authentication required"));return false;}return true;};
     if (path == "/") {

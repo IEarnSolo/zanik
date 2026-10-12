@@ -107,10 +107,33 @@ The output is `dist/libdwstatus.so`. After a game update, recheck the offsets
 and validation in `src/engine/` before rebuilding; the game exposes no stable
 official player API used by this mod.
 
-Run local checks with `make test` and `python3 tests/http_test.py`. The HTTP
-smoke test preloads the library into a harmless `sleep` process, so it expects
-503 for game data. A live Dragonwilds server is required to verify real player
-discovery and the Pterodactyl allocation.
+## Tests
+
+The test suite has two modes so ordinary development and CI do not require
+redistributing extracted game data:
+
+```sh
+# Default: source, native, QoL, browser, HTTP, and updater tests only.
+make test
+
+# Explicit opt-in: tests that inspect locally extracted game-derived inputs.
+make test-assets
+
+# Run both modes.
+make test-all
+```
+
+`make test` is an alias for `make test-core` and is the appropriate GitLab CI
+job for a clean clone. Its HTTP test uses an empty temporary web root and
+checks that missing optional assets fail safely. `make test-assets` first runs
+a preflight check and lists any required ignored inputs that are missing. Those
+inputs are intentionally not tracked; a future mod initialization/extraction
+step can populate them for an asset-enabled runner.
+
+Both HTTP smoke tests preload the library into a harmless `sleep` process, so
+they expect live game data to be unavailable. A live Dragonwilds server is
+still required to verify real player discovery, native hooks, performance
+budgets, and the Pterodactyl allocation.
 
 ## Source and license
 
