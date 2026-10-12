@@ -11,6 +11,13 @@ Zanik's Windows asset-tool bundle contains:
   Python Software Foundation License Version 2. The upstream `LICENSE.txt` is
   included in the runtime directory.
 
+Zanik Manager additionally contains:
+
+- [PySide6 Essentials and Shiboken 6.8.3](https://pypi.org/project/PySide6-Essentials/6.8.3/),
+  the official Qt for Python bindings, under LGPL-3.0-only, GPL-2.0-only,
+  GPL-3.0-only, or a commercial Qt license. The dynamically linked libraries
+  and upstream license files are preserved in the portable runtime.
+
 Zanik does not distribute RuneScape: Dragonwilds game files, extracted assets,
 encryption keys, or a copy of the game. Asset tools operate only on a user's
 locally licensed installation.

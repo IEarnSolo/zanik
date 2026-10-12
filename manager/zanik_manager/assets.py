@@ -1,0 +1,194 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+import zipfile
+from pathlib import Path, PurePosixPath
+
+from .cache import BundleCache, CachedBundle
+from .lifecycle import PterodactylProvider, safe_archive_name, sha256
+
+
+def game_root_id(path: Path) -> str:
+    return hashlib.sha256(str(path.resolve()).lower().encode()).hexdigest()[:16]
+
+
+def discover_steam_game_roots() -> list[Path]:
+    candidates: list[Path] = []
+    try:
+        import winreg
+        for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            for key_name in (r"Software\Valve\Steam", r"Software\WOW6432Node\Valve\Steam"):
+                try:
+                    with winreg.OpenKey(hive, key_name) as key:
+                        root = Path(winreg.QueryValueEx(key, "SteamPath")[0])
+                        candidates.append(root / "steamapps" / "common" / "RSDragonwilds")
+                except OSError:
+                    pass
+    except ImportError:
+        pass
+    for drive in "CDEFG":
+        candidates.append(Path(f"{drive}:/SteamLibrary/steamapps/common/RSDragonwilds"))
+    unique = []
+    for path in candidates:
+        if path.is_dir() and path not in unique:
+            unique.append(path)
+    return unique
+
+
+class AssetExtractor:
+    def __init__(self, tool_root: Path, cache: BundleCache):
+        self.tool_root = tool_root
+        self.cache = cache
+
+    def extract(self, game_root: Path, output: Path, event=lambda event: None,
+                usmap: Path | None = None, keep_work: bool = False) -> CachedBundle:
+        script = self.tool_root / "init-assets.ps1"
+        if not script.exists():
+            raise FileNotFoundError("The bundled Windows asset extractor is missing")
+        command = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
+                   str(script), "-GameRoot", str(game_root), "-OutputDirectory", str(output)]
+        if usmap:
+            command += ["-UsmapPath", str(usmap), "-SkipGameLaunch"]
+        if keep_work:
+            command.append("-KeepWork")
+        event({"phase": "extract", "message": "Starting the Windows client asset extractor"})
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                   encoding="utf-8", errors="replace")
+        assert process.stdout
+        for line in process.stdout:
+            line = line.rstrip()
+            if line.startswith("ZANIK_EVENT "):
+                try:
+                    event(json.loads(line[12:]))
+                    continue
+                except json.JSONDecodeError:
+                    pass
+            event({"phase": "extract", "message": line})
+        code = process.wait()
+        if code:
+            raise RuntimeError(f"Asset extractor failed with exit code {code}")
+        bundles = sorted(output.glob("zanik-assets-*.zip"), key=lambda path: path.stat().st_mtime, reverse=True)
+        bundles = [path for path in bundles if "-parts" not in path.name]
+        if not bundles:
+            raise RuntimeError("Asset extraction completed without producing a bundle")
+        with zipfile.ZipFile(bundles[0]) as archive:
+            manifest = json.loads(archive.read("asset-manifest.json"))
+        return self.cache.add(bundles[0], game_root_id(game_root), manifest)
+
+
+class AssetDeployer:
+    def __init__(self, provider: PterodactylProvider):
+        self.provider = provider
+
+    def activate(self, profile_id: str, server_id: str, server_root: str, bundle: Path,
+                 progress=lambda current, total, path: None) -> dict:
+        self.provider.preflight(server_id, "assets")
+        root = server_root.rstrip("/")
+        with tempfile.TemporaryDirectory(prefix="zanik-manager-assets-") as temporary:
+            tree = Path(temporary) / "tree"
+            tree.mkdir()
+            with zipfile.ZipFile(bundle) as archive:
+                for item in archive.infolist():
+                    if item.is_dir():
+                        continue
+                    name = safe_archive_name(item.filename)
+                    target = tree / name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(archive.read(item))
+            manifest = json.loads((tree / "asset-manifest.json").read_text(encoding="utf-8"))
+            if manifest.get("compatible") is False:
+                raise RuntimeError("The selected asset bundle is marked incompatible")
+            expected = {entry["path"]: entry["sha256"] for entry in manifest.get("files", [])}
+            for name, digest in expected.items():
+                target = tree / safe_archive_name(name)
+                if not target.is_file() or sha256(target.read_bytes()) != digest:
+                    raise RuntimeError(f"Bundle validation failed for {name}")
+            journal = self.provider.journals
+            from .journal import OperationJournal
+            operation = OperationJournal.create(profile_id, "activate-assets")
+            journal.save(operation)
+            stage = f"{root}/.zanik-manager/staging/{operation.operation_id}/assets"
+            self.provider._mkdir(server_id, stage)
+            files = sorted(path for path in tree.rglob("*") if path.is_file())
+            used_archives = False
+            try:
+                parts, index_data = self._make_parts(bundle, Path(temporary) / "parts")
+                self.provider.client.write_file(server_id, f"{stage}/bundle-index.json", json.dumps(index_data, sort_keys=True).encode())
+                for part in parts:
+                    self.provider.client.upload(server_id, stage, part.name, part.read_bytes())
+                    remote_hash = sha256(self.provider.client.read_file(server_id, f"{stage}/{part.name}"))
+                    if remote_hash != sha256(part.read_bytes()):
+                        raise RuntimeError(f"Remote part verification failed for {part.name}")
+                    self.provider.client.decompress(server_id, stage, part.name)
+                    self.provider.client.delete(server_id, stage, [part.name])
+                self.provider.client.delete(server_id, stage, ["bundle-index.json"])
+                self._verify_remote_tree(server_id, stage, tree, progress)
+                used_archives = True
+            except Exception:
+                # Some Pterodactyl versions acknowledge archive extraction without
+                # doing it. Recreate the stage and use the slower verified path.
+                operation.completed_steps.append("archive-upload-fallback")
+                self.provider.client.delete(server_id, str(PurePosixPath(stage).parent), [PurePosixPath(stage).name])
+                self.provider._mkdir(server_id, stage)
+                for index, path in enumerate(files, 1):
+                    relative = path.relative_to(tree).as_posix()
+                    directory = str(PurePosixPath(stage) / PurePosixPath(relative).parent)
+                    self.provider._mkdir(server_id, directory)
+                    data = path.read_bytes()
+                    self.provider.client.upload(server_id, directory, path.name, data)
+                    if sha256(self.provider.client.read_file(server_id, str(PurePosixPath(stage) / relative))) != sha256(data):
+                        raise RuntimeError(f"Remote asset verification failed for {relative}")
+                    progress(index, len(files), relative)
+            current = f"{root}/zanik/assets/current"
+            previous = f"{root}/zanik/assets/previous"
+            if self.provider._directory_exists(server_id, previous):
+                self.provider.client.delete(server_id, f"{root}/zanik/assets", ["previous"])
+            if self.provider._directory_exists(server_id, current):
+                self.provider.client.rename(server_id, f"{root}/zanik/assets", [("current", "previous")])
+                operation.rollback.append({"from": previous, "to": current})
+            self.provider.client.rename(server_id, root, [(str(PurePosixPath(stage).relative_to(root)), "zanik/assets/current")])
+            operation.state = "complete"; operation.completed_steps.append("assets-activated"); journal.save(operation)
+            return {"operationId": operation.operation_id, "manifest": manifest,
+                    "bundleSha256": sha256(bundle.read_bytes()), "fileCount": len(files), "archiveUpload": used_archives}
+
+    @staticmethod
+    def _make_parts(bundle: Path, output: Path, limit: int = 90 * 1024 * 1024) -> tuple[list[Path], dict]:
+        output.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(bundle) as source:
+            members = [item for item in source.infolist() if not item.is_dir()]
+            groups=[]; current=[]; estimated=0
+            for item in members:
+                if item.compress_size > limit:
+                    raise RuntimeError(f"A single asset exceeds the upload part limit: {item.filename}")
+                safety=min(1024 * 1024, max(64, limit // 20))
+                if current and estimated + item.compress_size > limit - safety:
+                    groups.append(current); current=[]; estimated=0
+                current.append(item); estimated += item.compress_size
+            if current: groups.append(current)
+            records=[]; parts=[]; queue=list(groups)
+            while queue:
+                group=queue.pop(0); candidate=output/"candidate.zip"
+                with zipfile.ZipFile(candidate, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as target:
+                    for item in group: target.writestr(item, source.read(item))
+                if candidate.stat().st_size >= limit and len(group)>1:
+                    candidate.unlink(); middle=len(group)//2; queue[0:0]=[group[:middle],group[middle:]]; continue
+                if candidate.stat().st_size >= limit:
+                    candidate.unlink(); raise RuntimeError(f"A single generated asset part exceeds the upload limit: {group[0].filename}")
+                part=output/f"assets-{len(parts)+1:03d}.zip"; candidate.replace(part)
+                parts.append(part); records.append({"name":part.name,"sha256":sha256(part.read_bytes()),
+                                                    "size":part.stat().st_size,"files":[safe_archive_name(item.filename) for item in group]})
+        return parts, {"schemaVersion":1,"bundle":bundle.name,"bundleSha256":sha256(bundle.read_bytes()),"parts":records}
+
+    def _verify_remote_tree(self, server_id: str, stage: str, tree: Path, progress) -> None:
+        files=sorted(path for path in tree.rglob("*") if path.is_file())
+        for index,path in enumerate(files,1):
+            relative=path.relative_to(tree).as_posix()
+            actual=sha256(self.provider.client.read_file(server_id, str(PurePosixPath(stage)/relative)))
+            if actual != sha256(path.read_bytes()):
+                raise RuntimeError(f"Remote asset verification failed for {relative}")
+            progress(index,len(files),relative)

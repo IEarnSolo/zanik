@@ -1,5 +1,7 @@
 # Pterodactyl installation
 
+The easiest path is the portable Windows [Zanik Manager](manager.md), which performs the file, power, configuration, diagnostic, and asset workflows through a normal Client API key. The commands below remain supported for manual and advanced use.
+
 Stop the server and upload the extracted archive to `/home/container/zanik-release/`. Copy no individual library into the game directory.
 
 Preferred mode:

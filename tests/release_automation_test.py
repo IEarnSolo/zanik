@@ -14,11 +14,12 @@ gitlab = module("publish_gitlab_package", "tools/publish_gitlab_package.py")
 
 current_version = contract.read_version(ROOT / "VERSION")
 contract.validate(f"v{current_version}", current_version)
-assert "Windows client asset tool" in contract.release_notes(ROOT / "CHANGELOG.md", current_version)
+assert "Zanik Manager" in contract.release_notes(ROOT / "CHANGELOG.md", current_version)
 package_script = (ROOT / "scripts/package-release.sh").read_text()
 assert "python-embed-windows-x86_64" in package_script
 assert "unreal-asset-scout-windows-x86_64" in package_script
 assert "ue4ss-windows-x86_64" in package_script
+assert "zanik-manager-windows-x86_64-$VERSION.zip" in package_script
 assert "zanik-asset-tools-linux-x86_64-$VERSION.tar.gz" in package_script
 for tag in (current_version, "v0.1", "v1.2.3-rc1", "v9.9.9"):
     try:
@@ -46,11 +47,11 @@ threading.Thread(target=server.serve_forever, daemon=True).start()
 base = f"http://127.0.0.1:{server.server_port}"
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary); version = "0.1.0"
-    names = [f"zanik-server-linux-x86_64-{version}.zip", f"zanik-server-linux-x86_64-{version}.tar.gz", f"zanik-asset-tools-linux-x86_64-{version}.tar.gz", f"zanik-asset-tools-windows-x86_64-{version}.zip"]
+    names = [f"zanik-server-linux-x86_64-{version}.zip", f"zanik-server-linux-x86_64-{version}.tar.gz", f"zanik-asset-tools-linux-x86_64-{version}.tar.gz", f"zanik-asset-tools-windows-x86_64-{version}.zip", f"zanik-manager-windows-x86_64-{version}.zip"]
     for index, name in enumerate(names): (root / name).write_bytes(f"archive-{index}".encode())
     (root / "SHA256SUMS").write_text("checksums\n"); (root / "release-manifest.json").write_text("{}\n")
-    assert len(gitlab.publish(root, version, base + "/api/v4", "355", "job-token")) == 6
-    assert len(Handler.store) == 6
+    assert len(gitlab.publish(root, version, base + "/api/v4", "355", "job-token")) == 7
+    assert len(Handler.store) == 7
     gitlab.publish(root, version, base + "/api/v4", "355", "job-token")
     (root / names[0]).write_bytes(b"different")
     try: gitlab.publish(root, version, base + "/api/v4", "355", "job-token"); raise AssertionError("conflict accepted")
@@ -62,7 +63,7 @@ with tempfile.TemporaryDirectory() as temporary:
     assert json.loads(report.read_text())["status"] == "validated"
     subprocess.run(command, check=True, env=env)
     result = json.loads(report.read_text())
-    assert result["status"] == "submitted" and len(Handler.curse) == 3
+    assert result["status"] == "submitted" and len(Handler.curse) == 4
     assert "test-secret-token" not in report.read_text()
 server.shutdown(); server.server_close()
 print("release automation tests passed")

@@ -79,7 +79,7 @@ def main() -> int:
     parser.add_argument("--project-id", default=os.environ.get("CURSEFORGE_PROJECT_ID", ""))
     parser.add_argument("--base-url", default="https://www.curseforge.com")
     parser.add_argument("--primary-file-id", type=int)
-    parser.add_argument("--skip-child", action="append", choices=("linux", "windows"), default=[])
+    parser.add_argument("--skip-child", action="append", choices=("linux", "windows", "manager"), default=[])
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     token = os.environ.get("CURSEFORGE_API_TOKEN", "")
@@ -87,6 +87,7 @@ def main() -> int:
         "primary": args.directory / f"zanik-server-linux-x86_64-{args.version}.zip",
         "linux": args.directory / f"zanik-asset-tools-linux-x86_64-{args.version}.tar.gz",
         "windows": args.directory / f"zanik-asset-tools-windows-x86_64-{args.version}.zip",
+        "manager": args.directory / f"zanik-manager-windows-x86_64-{args.version}.zip",
     }
     report = {"schemaVersion": 1, "tag": args.tag, "version": args.version, "status": "validating", "files": {}}
     try:
@@ -116,11 +117,13 @@ def main() -> int:
             write_report(args.report, report)
         else:
             report["files"]["primary"].update(status="reused", fileId=primary_id)
-        for role, label in (("linux", "Linux x86_64"), ("windows", "Windows x86_64")):
+        for role, label in (("linux", "Asset Tools - Linux x86_64"),
+                            ("windows", "Asset Tools - Windows x86_64"),
+                            ("manager", "Zanik Manager - Recommended Windows Download")):
             if role in args.skip_child:
                 report["files"][role]["status"] = "skipped"
                 continue
-            metadata = {"changelog": changelog, "changelogType": "markdown", "displayName": f"Zanik Asset Tools {label} {args.version}", "parentFileID": primary_id, "releaseType": "release", "isMarkedForManualRelease": False}
+            metadata = {"changelog": changelog, "changelogType": "markdown", "displayName": f"{label} {args.version}", "parentFileID": primary_id, "releaseType": "release", "isMarkedForManualRelease": False}
             file_id = upload(args.base_url, args.project_id, token, metadata, files[role])
             report["files"][role].update(status="uploaded", fileId=file_id)
             write_report(args.report, report)

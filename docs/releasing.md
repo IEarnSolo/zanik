@@ -15,6 +15,8 @@ For CurseForge, create these project CI/CD variables:
 
 Never enable CI debug tracing on a job with the CurseForge token.
 
+Optional Windows signing uses protected, masked variables `WINDOWS_SIGNING_CERT_BASE64` and `WINDOWS_SIGNING_CERT_PASSWORD`. Omit both for the documented unsigned portable release. Never store a certificate or password in the repository.
+
 ## Release procedure
 
 1. Update `VERSION` and the matching `CHANGELOG.md` section.
@@ -37,4 +39,4 @@ Branch artifacts expire after 30 days. Tagged packages and GitLab Releases are t
 
 The job uploads the server ZIP first, then records its CurseForge file ID before uploading the two asset-tool children. Its `curseforge-upload.json` artifact is retained even on failure.
 
-Do not blindly retry an upload after a timeout or partial failure. Inspect the report and the CurseForge project. For recovery, run the manual job with `CURSEFORGE_PRIMARY_FILE_ID` set to the recorded primary ID. Set `CURSEFORGE_SKIP_CHILDREN` to `linux`, `windows`, or `linux,windows` for child files already accepted. These recovery values are non-secret and apply only to that manual run.
+Do not blindly retry an upload after a timeout or partial failure. Inspect the report and the CurseForge project. For recovery, run the manual job with `CURSEFORGE_PRIMARY_FILE_ID` set to the recorded primary ID. Set `CURSEFORGE_SKIP_CHILDREN` to any comma-separated combination of `linux`, `windows`, and `manager` for child files already accepted. These recovery values are non-secret and apply only to that manual run.

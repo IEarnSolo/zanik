@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "properties": {
+    "STATUS_PORT": {"type": "integer", "default": 29105, "minimum": 1, "maximum": 65535, "category": "networking", "title": "Web status port", "description": "TCP port used by the Zanik web interface.", "restartRequired": true},
+    "PUBLIC_BASE_URL": {"type": "string", "default": "http://127.0.0.1:29105", "pattern": "^https?://", "category": "networking", "title": "Public base URL", "description": "Address used when Zanik creates console login links.", "restartRequired": true},
+    "ADMIN_COOKIE_NAME": {"type": "string", "default": "zanik_admin", "pattern": "^[A-Za-z0-9_]{1,64}$", "category": "administration", "title": "Administrator cookie name", "description": "Browser cookie name for administrator sessions.", "restartRequired": true},
+    "FEATURE_PLAYER_STATUS": {"type": "boolean", "default": true, "category": "read-only", "title": "Player status", "description": "Track connected players and status information.", "restartRequired": true},
+    "FEATURE_KILL_TRACKING": {"type": "boolean", "default": true, "category": "read-only", "title": "Kill tracking", "description": "Record player kill information.", "restartRequired": true},
+    "FEATURE_MAP": {"type": "boolean", "default": true, "category": "read-only", "title": "Map and catalogs", "description": "Serve the map and generated catalogs.", "restartRequired": true},
+    "FEATURE_RESOURCE_TRACKING": {"type": "boolean", "default": true, "category": "read-only", "title": "Resource tracking", "description": "Track world resource state.", "restartRequired": true},
+    "FEATURE_NPC_TRACKING": {"type": "boolean", "default": true, "category": "read-only", "title": "NPC tracking", "description": "Track supported NPC state.", "restartRequired": true},
+    "FEATURE_PLAYER_RECIPE_TRACKING": {"type": "boolean", "default": true, "category": "read-only", "title": "Player recipes", "description": "Track player recipe unlocks.", "restartRequired": true},
+    "FEATURE_PLAYER_QUEST_TRACKING": {"type": "boolean", "default": true, "category": "read-only", "title": "Player quests", "description": "Track player quest progress.", "restartRequired": true},
+    "FEATURE_ADMIN_READ": {"type": "boolean", "default": true, "category": "administration", "title": "Read-only administration", "description": "Allow authenticated administrators to inspect server data.", "restartRequired": true},
+    "FEATURE_ADMIN_RECIPE_SETTINGS": {"type": "boolean", "default": false, "category": "mutation", "title": "Recipe administration", "description": "Allow administrators to change recipe unlock settings.", "restartRequired": true, "dangerous": true},
+    "FEATURE_ADMIN_TELEPORT": {"type": "boolean", "default": false, "category": "mutation", "title": "Administrator teleport", "description": "Allow player, lodestone, storage, and gravestone teleports.", "restartRequired": true, "dangerous": true},
+    "FEATURE_ADMIN_STORAGE_MUTATION": {"type": "boolean", "default": false, "category": "mutation", "title": "Storage mutation", "description": "Allow authenticated storage changes.", "restartRequired": true, "dangerous": true},
+    "FEATURE_ADMIN_GRAVESTONE_MUTATION": {"type": "boolean", "default": false, "category": "mutation", "title": "Gravestone mutation", "description": "Allow authenticated gravestone changes.", "restartRequired": true, "dangerous": true},
+    "FEATURE_QOL_AUTO_COMPOST": {"type": "boolean", "default": false, "category": "qol", "title": "Automatic compost equipment", "description": "Enable the automatic compost QoL behavior.", "restartRequired": true, "dangerous": true}
+  },
+  "required": ["STATUS_PORT", "PUBLIC_BASE_URL", "ADMIN_COOKIE_NAME", "FEATURE_PLAYER_STATUS", "FEATURE_KILL_TRACKING", "FEATURE_MAP", "FEATURE_RESOURCE_TRACKING", "FEATURE_NPC_TRACKING", "FEATURE_PLAYER_RECIPE_TRACKING", "FEATURE_PLAYER_QUEST_TRACKING", "FEATURE_ADMIN_READ", "FEATURE_ADMIN_RECIPE_SETTINGS", "FEATURE_ADMIN_TELEPORT", "FEATURE_ADMIN_STORAGE_MUTATION", "FEATURE_ADMIN_GRAVESTONE_MUTATION", "FEATURE_QOL_AUTO_COMPOST"],
+  "additionalProperties": false
+}

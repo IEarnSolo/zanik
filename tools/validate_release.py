@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
-import argparse, hashlib, json, re, tarfile, tempfile, zipfile
+import argparse, hashlib, io, json, re, tarfile, tempfile, zipfile
 from pathlib import Path
 
 BANNED_NAMES={'.env','.env.gitlab','admins.txt','console-admin.key','pterodactyl_api_key.txt','AGENTS.MD'}
 BANNED_SUFFIXES={'.pak','.utoc','.ucas','.usmap','.sav','.db','.pem','.p12','.pfx'}
 BANNED_CONTENT=(b'PTERODACTYL_API_KEY=',b'GITLAB_TOKEN=',b'-----BEGIN PRIVATE KEY-----')
-REQUIRED={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','config/zanik.conf.example','compatibility/compatibility.tsv','LICENSE','README.md','CHANGELOG.md','docs/releasing.md'}
+REQUIRED={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','config/zanik.conf.example','config/zanik-config.schema.json','compatibility/compatibility.tsv','LICENSE','README.md','CHANGELOG.md','docs/releasing.md'}
 EXECUTABLE={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh'}
 WINDOWS_ASSET_REQUIRED={'init-assets.ps1','runtime/python.exe','runtime/LICENSE.txt','third_party/uas/uas.exe',
     'third_party/uas/LICENSE.txt','third_party/ue4ss/dwmapi.dll','third_party/ue4ss/ue4ss/UE4SS.dll',
     'third_party/ue4ss/ue4ss/LICENSE','asset-tools/extraction-recipes.json','tools/zanik_assets.py',
     'tools/windows_mapping.py','tools/windows_asset_pipeline.py','tools/generate_web_assets.py',
     'tools/generate_world_catalogs.py','deploy/quest-overrides.json','deploy/quest-step-overrides.json'}
+MANAGER_REQUIRED={'ZanikManager.exe','runtime/pythonw.exe','app/zanik_manager/app.py','app/zanik_manager/pterodactyl.py',
+    'config/zanik-config.schema.json','asset-tools/init-assets.ps1','payload/server.zip','payload/asset-tools.zip',
+    'payload/server-payload.json','payload/payloads.json','README.md','LICENSE','THIRD_PARTY_NOTICES.md','tools.lock.json'}
 
 def clean(name): return name.lstrip('./').replace('\\','/')
 def names(path):
@@ -30,6 +33,9 @@ def inspect(path):
     if path.name.startswith('zanik-asset-tools-windows-'):
         missing=WINDOWS_ASSET_REQUIRED-entries
         if missing: raise SystemExit(f'{path.name} missing portable extractor files: {sorted(missing)}')
+    if path.name.startswith('zanik-manager-windows-'):
+        missing=MANAGER_REQUIRED-entries
+        if missing: raise SystemExit(f'{path.name} missing portable manager files: {sorted(missing)}')
     if path.name.endswith(('.tar.gz','.tar.xz')):
         with tarfile.open(path) as archive:
             for member in archive.getmembers():
@@ -46,12 +52,31 @@ def inspect(path):
                 if not member.is_dir() and member.file_size <= 1024*1024:
                     data=archive.read(member)
                     if any(marker in data for marker in BANNED_CONTENT): raise SystemExit(f'credential marker in {path.name}: {name}')
+            if path.name.startswith('zanik-manager-windows-'):
+                payloads=json.loads(archive.read('payload/payloads.json'))
+                for nested,field in (('payload/server.zip','serverSha256'),('payload/asset-tools.zip','assetToolsSha256')):
+                    data=archive.read(nested)
+                    if hashlib.sha256(data).hexdigest()!=payloads[field]: raise SystemExit(f'manager nested payload hash mismatch: {nested}')
+                version=payloads.get('version')
+                siblings={'payload/server.zip':path.parent/f'zanik-server-linux-x86_64-{version}.zip',
+                          'payload/asset-tools.zip':path.parent/f'zanik-asset-tools-windows-x86_64-{version}.zip'}
+                for nested,sibling in siblings.items():
+                    if not sibling.is_file() or hashlib.sha256(archive.read(nested)).hexdigest()!=hashlib.sha256(sibling.read_bytes()).hexdigest():
+                        raise SystemExit(f'manager does not contain the published sibling payload: {nested}')
+                with zipfile.ZipFile(io.BytesIO(archive.read('payload/server.zip'))) as nested:
+                    nested_names={clean(item.filename) for item in nested.infolist() if not item.is_dir()}
+                    missing=REQUIRED-nested_names
+                    if missing: raise SystemExit(f'manager server payload missing: {sorted(missing)}')
+                with zipfile.ZipFile(io.BytesIO(archive.read('payload/asset-tools.zip'))) as nested:
+                    nested_names={clean(item.filename) for item in nested.infolist() if not item.is_dir()}
+                    missing=WINDOWS_ASSET_REQUIRED-nested_names
+                    if missing: raise SystemExit(f'manager asset payload missing: {sorted(missing)}')
     return entries
 
 p=argparse.ArgumentParser(); p.add_argument('--directory',required=True); p.add_argument('--tag'); p.add_argument('--commit'); a=p.parse_args(); root=Path(a.directory)
 archives=sorted([*root.glob('zanik-server-*'),*root.glob('zanik-asset-tools-*')])
 archives=[p for p in archives if p.suffix in {'.zip','.gz','.xz'}]
-if len(archives)!=4: raise SystemExit(f'expected four release archives, found {len(archives)}')
+if len(archives)!=5: raise SystemExit(f'expected five release archives, found {len(archives)}')
 for archive in archives: inspect(archive)
 manifest=json.loads((root/'release-manifest.json').read_text())
 if manifest.get('schemaVersion') != 2: raise SystemExit('release manifest schema must be 2')
