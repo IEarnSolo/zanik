@@ -3,9 +3,11 @@ import importlib.util
 import json
 import re
 import tempfile
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
 spec = importlib.util.spec_from_file_location("windows_asset_pipeline", ROOT / "tools/windows_asset_pipeline.py")
 pipeline = importlib.util.module_from_spec(spec); spec.loader.exec_module(pipeline)
 
@@ -40,5 +42,25 @@ with tempfile.TemporaryDirectory() as name:
     try: pipeline.remove_tree(transient)
     finally: pipeline.shutil.rmtree = original
     assert not transient.exists()
+    retry = root / "retry"; retry.mkdir(); attempts = []
+    def busy(path, onerror=None):
+        attempts.append(path)
+        if len(attempts) == 1: raise OSError("directory not empty")
+        original(path, onerror=onerror)
+    pipeline.shutil.rmtree = busy
+    try: pipeline.remove_tree(retry)
+    finally: pipeline.shutil.rmtree = original
+    assert len(attempts) == 2 and not retry.exists()
+    incomplete = root / "incomplete"; incomplete.mkdir()
+    (incomplete / "DA_BuildPieceCatalogue_Default.json").write_text(json.dumps([{
+        "Properties": {"Pages": [{"Collection": [{"Collection": [
+            {"AssetPathName": "/Game/DA_RequiredPiece.DA_RequiredPiece"}
+        ]}]}]}
+    }]))
+    try:
+        pipeline.validate_catalog_export(incomplete)
+        raise AssertionError("incomplete targeted export was accepted")
+    except RuntimeError as error:
+        assert "omitted 1 building records" in str(error)
 
 print("windows asset pipeline tests passed")

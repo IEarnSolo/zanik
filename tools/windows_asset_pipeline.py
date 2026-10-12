@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import re
+import time
 
 
 RECIPE_VERSION = 1
@@ -23,10 +24,54 @@ def remove_tree(path: Path) -> None:
         if isinstance(error[1], FileNotFoundError):
             return
         raise error[1]
+    for attempt in range(5):
+        try:
+            shutil.rmtree(path, onerror=handle_error)
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            if attempt == 4:
+                raise
+            time.sleep(0.2 * (attempt + 1))
+
+
+def validate_catalog_export(json_root: Path) -> None:
+    from generate_building_catalog import REMOVED_RUNTIME_PIECES, asset_key
     try:
-        shutil.rmtree(path, onerror=handle_error)
-    except FileNotFoundError:
-        pass
+        catalogue_path = next(json_root.rglob("DA_BuildPieceCatalogue_Default.json"))
+    except StopIteration as error:
+        raise RuntimeError("targeted export omitted the building catalogue") from error
+    records = json.loads(catalogue_path.read_text(encoding="utf-8"))
+    if not isinstance(records, list) or not records:
+        raise RuntimeError("targeted export produced a malformed building catalogue")
+    required: set[str] = set()
+    for page in records[0].get("Properties", {}).get("Pages", []):
+        for section in page.get("Collection", []):
+            for reference in section.get("Collection", []):
+                key = asset_key(reference.get("AssetPathName", ""))
+                if key and key not in REMOVED_RUNTIME_PIECES:
+                    required.add(key)
+    found: set[str] = set()
+    cells = 0
+    for path in json_root.rglob("*.json"):
+        normalized = path.as_posix()
+        if "L_World/_Generated_/" in normalized:
+            cells += 1
+        if path.stem not in required:
+            continue
+        try:
+            values = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        for value in values if isinstance(values, list) else []:
+            if value.get("Type") == "BuildingPieceData" and value.get("Name") in required:
+                found.add(value["Name"])
+    missing = sorted(required - found)
+    if missing:
+        raise RuntimeError(f"targeted export omitted {len(missing)} building records; first: {missing[0]}")
+    if cells < 1100:
+        raise RuntimeError(f"targeted export contains only {cells} world-partition cells; expected at least 1100")
 
 
 def run(command: list[str], label: str, *, quiet: bool = False) -> None:
@@ -101,7 +146,19 @@ def extract(args: argparse.Namespace) -> int:
             if not json_root.is_dir() or not texture_root.is_dir():
                 raise ValueError("resume work directory has no completed JSON and texture exports")
         else:
-            run(common + ["-f", recipe["jsonFilter"], "export", "Json", "-b", "-o", str(json_root), "-c", "-r", "-l", str(temporary / "json-export.log")], "Exporting targeted catalog data", quiet=True)
+            last_export_error: Exception | None = None
+            for attempt in range(1, 4):
+                if json_root.exists(): remove_tree(json_root)
+                run(common + ["-f", recipe["jsonFilter"], "export", "Json", "-b", "-o", str(json_root), "-c", "-r", "-l", str(temporary / f"json-export-{attempt}.log")], f"Exporting targeted catalog data (attempt {attempt}/3)", quiet=True)
+                try:
+                    validate_catalog_export(json_root)
+                    last_export_error = None
+                    break
+                except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:
+                    last_export_error = error
+                    print(f"[Zanik] Catalog export attempt {attempt} was incomplete: {error}", flush=True)
+            if last_export_error is not None:
+                raise RuntimeError(f"targeted catalog export remained incomplete after three attempts: {last_export_error}")
             texture_names = referenced_textures(json_root, recipe["requiredTextureAssets"])
             if not texture_names: raise RuntimeError("no web texture references were discovered in the targeted JSON export")
             for index, expression in enumerate(filter_chunks(texture_names), 1):
