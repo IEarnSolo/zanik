@@ -81,7 +81,7 @@ def inspect(path):
     return entries
 
 p=argparse.ArgumentParser(); p.add_argument('--directory',required=True); p.add_argument('--tag'); p.add_argument('--commit'); a=p.parse_args(); root=Path(a.directory)
-archives=sorted([*root.glob('zanik-server-*'),*root.glob('zanik-asset-tools-*')])
+archives=sorted([*root.glob('zanik-server-*'),*root.glob('zanik-asset-tools-*'),*root.glob('zanik-manager-*')])
 archives=[p for p in archives if p.suffix in {'.zip','.gz','.xz'}]
 if len(archives)!=5: raise SystemExit(f'expected five release archives, found {len(archives)}')
 for archive in archives: inspect(archive)

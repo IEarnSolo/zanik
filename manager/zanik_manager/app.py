@@ -6,7 +6,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
+from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
@@ -100,7 +100,7 @@ class AddServerDialog(QDialog):
 class MainWindow(QMainWindow):
     activity_signal = Signal(str)
 
-    def __init__(self):
+    def __init__(self, prompt_first_run: bool = True):
         super().__init__(); self.setWindowTitle("Zanik Manager"); self.resize(980, 680)
         self.paths = ensure_layout(); self.store = ProfileStore(self.paths["root"] / "profiles.json")
         self.vault = CredentialVault(); self.profiles = self.store.load(); self.current_config_hash = ""
@@ -115,7 +115,7 @@ class MainWindow(QMainWindow):
         self._servers_tab(); self._assets_tab(); self._config_tab(); self._doctor_tab(); self._activity_tab()
         self.activity_signal.connect(self.log)
         self.reload_profiles()
-        if not self.profiles:
+        if prompt_first_run and not self.profiles:
             self.add_server()
 
     def _servers_tab(self):
@@ -372,8 +372,11 @@ class MainWindow(QMainWindow):
 
 def main() -> int:
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
+    smoke_test = "--smoke-test" in sys.argv
     application = QApplication(sys.argv); application.setApplicationName("Zanik Manager")
-    window = MainWindow(); window.show()
+    window = MainWindow(prompt_first_run=not smoke_test); window.show()
+    if smoke_test:
+        QTimer.singleShot(250, application.quit)
     return application.exec()
 
 
