@@ -1,4 +1,5 @@
 #include "engine/dom_engine.h"
+#include "feature_config.h"
 #include "status.h"
 #include "player_store.h"
 #include "admin_store.h"
@@ -53,6 +54,9 @@ std::string StorePath() {
     const char* raw = std::getenv("DW_STATUS_DATA");
     return raw && *raw ? raw : "/home/container/zanik-data/players.db";
 }
+
+std::string ZanikRoot(){const char* raw=std::getenv("DW_ZANIK_ROOT");return raw&&*raw?raw:"/home/container/zanik";}
+std::string DataRoot(){const char* raw=std::getenv("DW_DATA_ROOT");return raw&&*raw?raw:"/home/container/zanik-data";}
 
 std::string WebRoot() {
     const char* raw = std::getenv("DW_WEB_ROOT");
@@ -194,6 +198,19 @@ std::string UpdateStateJson() {
     return json;
 }
 
+std::string AssetManifestJson() {
+    const char* raw=std::getenv("DW_ASSET_MANIFEST");
+    std::ifstream input(raw&&*raw?raw:(WebRoot()+"/asset-manifest.json"));
+    if(!input)return "null";std::ostringstream value;value<<input.rdbuf();std::string json=value.str();
+    while(!json.empty()&&std::isspace(static_cast<unsigned char>(json.back())))json.pop_back();
+    if(json.size()>1024*1024||json.empty()||json.front()!='{'||json.back()!='}')return "null";return json;
+}
+
+const std::string& PlaceholderImage() {
+    static const std::string value=R"SVG(<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"><rect width="128" height="128" fill="#17221f"/><path d="M20 96 48 62l18 20 16-18 26 32z" fill="#789487"/><circle cx="91" cy="38" r="12" fill="#9ee8c0"/></svg>)SVG";
+    return value;
+}
+
 void SendAll(int fd, const std::string& bytes) {
     size_t sent = 0;
     while (sent < bytes.size()) {
@@ -297,42 +314,48 @@ void Handle(int fd) {
     }
     auto requirePost=[&](){if(request.method!="POST"){Respond(fd,405,"application/json; charset=utf-8","{\"error\":\"Method not allowed\"}");return false;}return true;};
     auto authenticate=[&](AdminSession&s,std::string&raw){raw=Cookie(request,AdminCookieName());bool removed=false;if(raw.empty()||!adminStore->Authenticate(raw,s,&removed)){Respond(fd,removed?403:401,"application/json; charset=utf-8",Status::ErrorJson(removed?"Authorization removed":"Authentication required"));return false;}return true;};
+    auto disabled=[&](){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Feature disabled by server operator"));};
+    auto unavailable=[&](){Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Feature disabled by server operator"));};
+    if(path.rfind("/assets/",0)==0&&(path.find("..")!=std::string::npos||path.find('\\')!=std::string::npos)){
+        Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));return;
+    }
     if (path == "/") {
-        Respond(fd, 200, "text/html; charset=utf-8", kWebPage);
+        if(!ZanikConfig::PlayerStatus())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", kWebPage);
     } else if (path == "/player") {
-        Respond(fd, 200, "text/html; charset=utf-8", kPlayerPage);
+        if(!ZanikConfig::PlayerStatus())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", kPlayerPage);
     } else if (path == "/players") {
-        Respond(fd, 200, "text/html; charset=utf-8", kPlayersPage);
+        if(!ZanikConfig::PlayerStatus())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", kPlayersPage);
     } else if (path == "/kills") {
-        Respond(fd, 200, "text/html; charset=utf-8", kKillsPage);
+        if(!ZanikConfig::KillTracking())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", kKillsPage);
     } else if (path == "/map") {
-        Respond(fd, 200, "text/html; charset=utf-8", kMapPage);
+        if(!ZanikConfig::Map())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", kMapPage);
     } else if (path == "/recipe-unlocks") {
         Respond(fd, 200, "text/html; charset=utf-8", kRecipeUnlocksPage);
     } else if(path=="/admin/recipe-unlocks"){
-        AdminSession s;std::string raw;if(!authenticate(s,raw))return;Respond(fd,200,"text/html; charset=utf-8",kRecipeUnlockSettingsPage,PersistentAdminCookie(raw));
+        AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(!ZanikConfig::AdminRecipeSettings()){disabled();return;}Respond(fd,200,"text/html; charset=utf-8",kRecipeUnlockSettingsPage,PersistentAdminCookie(raw));
     } else if(path=="/admin/claim"){
         Respond(fd,200,"text/html; charset=utf-8",R"HTML(<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Zanik admin login</title><style>body{font:16px system-ui;background:#101816;color:#eef7f1;display:grid;place-items:center;min-height:100vh}main{max-width:32rem;padding:2rem;background:#1b2925;border:1px solid #789487;border-radius:.8rem}a{color:#9ee8c0}</style><main><h1>Zanik administration</h1><p id="status">Redeeming private login link…</p><p><a href="/map">Open map</a></p></main><script>(async()=>{const s=document.getElementById('status'),p=new URLSearchParams(location.hash.slice(1)),token=p.get('token');history.replaceState(null,'',location.pathname);if(!token){s.textContent='This login link is missing its token.';return}try{const r=await fetch('/api/admin/claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})}),j=await r.json();if(!r.ok)throw Error(j.error||'Login failed');s.textContent='Signed in as '+j.characterName+'. Redirecting to the map…';setTimeout(()=>location.replace('/map'),600)}catch(e){s.textContent=e.message}})()</script>)HTML");
     } else if(path=="/api/admin/claim"){
-        if(!requirePost())return;std::string raw;AdminSession s;std::string token=JsonValue(request.body,"token");
+        if(!requirePost())return;if(!ZanikConfig::AdminRead()){disabled();return;}std::string raw;AdminSession s;std::string token=JsonValue(request.body,"token");
         if(token.size()!=64||!adminStore->RedeemClaim(token,raw,s))Respond(fd,401,"application/json; charset=utf-8",Status::ErrorJson("Invalid, expired, or used login link"));
         else Respond(fd,200,"application/json; charset=utf-8","{\"authenticated\":true,\"characterId\":\""+JsonEscape(s.publicId)+"\",\"characterName\":\""+JsonEscape(s.characterName)+"\",\"csrf\":\""+s.csrf+"\"}",PersistentAdminCookie(raw));
     } else if(path=="/api/admin/console-claim"){
-        if(!requirePost())return;auto key=request.headers.find("x-zanik-console-key");std::string secret=ConsoleSecret();if(secret.empty()||key==request.headers.end()||key->second!=secret){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Console authorization required"));return;}
+        if(!requirePost())return;if(!ZanikConfig::AdminRead()){disabled();return;}auto key=request.headers.find("x-zanik-console-key");std::string secret=ConsoleSecret();if(secret.empty()||key==request.headers.end()||key->second!=secret){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Console authorization required"));return;}
         std::string id=request.body;while(!id.empty()&&(id.back()=='\r'||id.back()=='\n'||id.back()==' '||id.back()=='\t'))id.pop_back();auto begin=id.find_first_not_of(" \t");if(begin!=std::string::npos&&begin)id.erase(0,begin);if(id.empty()){auto ids=adminStore->AllowedIds();if(ids.size()!=1){Respond(fd,409,"application/json; charset=utf-8",Status::ErrorJson("Specify a public character ID"));return;}id=ids.front();}
         StoredPlayer p;if(!playerStore->Find(id,p)||p.identity.rfind("character:",0)!=0||!adminStore->IsAllowed(id)){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Character is not authorized"));return;}std::string token=adminStore->CreateClaim(id,p.identity.substr(10),p.name);if(token.empty()){Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Could not create claim"));return;}std::string url=PublicBaseUrl()+"/admin/claim#token="+token;Respond(fd,200,"application/json; charset=utf-8","{\"url\":\""+JsonEscape(url)+"\",\"expiresIn\":300,\"characterName\":\""+JsonEscape(p.name)+"\"}");
     } else if(path=="/api/admin/session"){
-        AdminSession s;std::string raw;if(!authenticate(s,raw))return;StoredPlayer p;bool online=playerStore->Find(s.publicId,p)&&p.online;Respond(fd,200,"application/json; charset=utf-8","{\"authenticated\":true,\"characterId\":\""+JsonEscape(s.publicId)+"\",\"characterName\":\""+JsonEscape(s.characterName)+"\",\"online\":"+(online?"true":"false")+",\"csrf\":\""+s.csrf+"\"}",PersistentAdminCookie(raw));
+        AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(!ZanikConfig::AdminRead()){disabled();return;}StoredPlayer p;bool online=playerStore->Find(s.publicId,p)&&p.online;Respond(fd,200,"application/json; charset=utf-8","{\"authenticated\":true,\"characterId\":\""+JsonEscape(s.publicId)+"\",\"characterName\":\""+JsonEscape(s.characterName)+"\",\"online\":"+(online?"true":"false")+",\"csrf\":\""+s.csrf+"\",\"features\":"+ZanikConfig::Json()+"}",PersistentAdminCookie(raw));
     } else if(path=="/api/recipe-unlock-settings"){
         Respond(fd,200,"application/json; charset=utf-8",recipeSettingsStore->Json());
     } else if(path=="/api/admin/recipe-unlock-settings"){
         AdminSession s;std::string raw;if(!authenticate(s,raw))return;
+        if(!ZanikConfig::AdminRecipeSettings()){disabled();return;}
         if(request.method=="GET"){std::string body=recipeSettingsStore->Json();if(!body.empty()&&body.back()=='}')body.pop_back();body+=",\"csrf\":\""+s.csrf+"\"}";Respond(fd,200,"application/json; charset=utf-8",body);return;}
         if(!requirePost())return;if(JsonValue(request.body,"csrf")!=s.csrf){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Invalid CSRF token"));return;}const std::string enabledValue=JsonValue(request.body,"enabled");const bool enabled=enabledValue=="true";std::string catalog;if((enabledValue!="true"&&enabledValue!="false")||ReadRecipeCatalogHealth(&catalog).compatibility!=1){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Invalid recipe setting"));return;}auto validKey=[&](const std::string&key){std::string id=key;auto dot=key.rfind('.');if(dot!=std::string::npos){const std::string route=key.substr(dot+1);if(route.empty()||route.size()>3||route.find_first_not_of("0123456789")!=std::string::npos||std::stoi(route)>=100)return false;id=key.substr(0,dot);}return !id.empty()&&catalog.find("\"id\":\""+id+"\"")!=std::string::npos;};if(JsonValue(request.body,"bulk")=="true"){const auto ids=JsonStringArray(request.body,"ids");if(ids.empty()||ids.size()>4096||!std::all_of(ids.begin(),ids.end(),validKey)){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Invalid recipe settings"));return;}if(!recipeSettingsStore->SetManyEnabled(ids,enabled)){Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Recipe settings could not be saved"));return;}adminStore->Audit(s,"bulk:"+std::to_string(ids.size()),enabled?"recipe-routes-enabled":"recipe-routes-disabled");Respond(fd,200,"application/json; charset=utf-8",recipeSettingsStore->Json());return;}const std::string id=JsonValue(request.body,"id"),route=JsonValue(request.body,"route"),key=route.empty()?id:id+"."+route;if(!validKey(key)){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Invalid recipe setting"));return;}if(!recipeSettingsStore->SetEnabled(key,enabled)){Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Recipe settings could not be saved"));return;}adminStore->Audit(s,key,enabled?"recipe-route-enabled":"recipe-route-disabled");Respond(fd,200,"application/json; charset=utf-8",recipeSettingsStore->Json());
     } else if(path=="/api/admin/logout"){
         if(!requirePost())return;AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(JsonValue(request.body,"csrf")!=s.csrf){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Invalid CSRF token"));return;}adminStore->Logout(raw);Respond(fd,200,"application/json; charset=utf-8","{\"authenticated\":false}","Set-Cookie: "+AdminCookieName()+"=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0\r\n");
     } else if(path=="/api/admin/teleport"){
-        if(!requirePost())return;AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(JsonValue(request.body,"csrf")!=s.csrf){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Invalid CSRF token"));return;}std::string destination=JsonValue(request.body,"lodestoneId");
+        if(!requirePost())return;AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(!ZanikConfig::AdminTeleport()){disabled();return;}if(JsonValue(request.body,"csrf")!=s.csrf){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Invalid CSRF token"));return;}std::string destination=JsonValue(request.body,"lodestoneId");
         if(destination.size()!=16||destination.find_first_not_of("0123456789abcdefABCDEF")!=std::string::npos){adminStore->Audit(s,destination,"invalid-destination");Respond(fd,409,"application/json; charset=utf-8",Status::ErrorJson("Invalid lodestone"));return;}
         std::vector<DomEngine::LodestoneInfo> current;bool destinationFound=false;if(DomEngine::ReadLodestones(current))for(const auto&l:current)if(l.id==destination){destinationFound=true;break;}if(!destinationFound){adminStore->Audit(s,destination,"stale-destination");Respond(fd,409,"application/json; charset=utf-8",Status::ErrorJson("Lodestone no longer exists"));return;}
         auto now=std::chrono::steady_clock::now();std::string rateKey=adminStore->SessionHashPrefix(raw);auto rate=adminTeleportRate.find(rateKey);if(rate!=adminTeleportRate.end()&&now-rate->second<std::chrono::seconds(3)){adminStore->Audit(s,destination,"rate-limited");Respond(fd,429,"application/json; charset=utf-8",Status::ErrorJson("Please wait before teleporting again"));return;}adminTeleportRate[rateKey]=now;
@@ -345,6 +368,7 @@ void Handle(int fd) {
         adminStore->Audit(s,destination,"queued");Respond(fd,202,"application/json; charset=utf-8","{\"accepted\":true,\"status\":\"queued\"}");
     } else if(path=="/api/admin/player-teleport"){
         if(!requirePost())return;AdminSession s;std::string raw;if(!authenticate(s,raw))return;
+        if(!ZanikConfig::AdminTeleport()){disabled();return;}
         if(JsonValue(request.body,"csrf")!=s.csrf){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Invalid CSRF token"));return;}
         const std::string action=JsonValue(request.body,"action"),targetId=JsonValue(request.body,"playerId");
         if((action!="to-player"&&action!="player-to-me")||targetId.empty()||targetId.size()>128||targetId==s.publicId){
@@ -377,6 +401,7 @@ void Handle(int fd) {
         AdminSession s;std::string raw;if(!authenticate(s,raw))return;std::string body=DomEngine::GetAdminStorageRecipesJson();if(body.empty())Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Recipe compatibility unavailable"));else Respond(fd,200,"application/json; charset=utf-8",body);
     } else if(path=="/api/admin/storage/teleport"){
         if(!requirePost())return;AdminSession s;std::string raw;if(!authenticate(s,raw))return;
+        if(!ZanikConfig::AdminTeleport()){disabled();return;}
         if(JsonValue(request.body,"csrf")!=s.csrf){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Invalid CSRF token"));return;}
         const std::string targetId=JsonValue(request.body,"playerId"),chestId=JsonValue(request.body,"chestId");
         auto validOpaque=[](const std::string&v){return v.size()==16&&v.find_first_not_of("0123456789abcdefABCDEF")==std::string::npos;};
@@ -393,7 +418,7 @@ void Handle(int fd) {
         }
         adminStore->Audit(s,chestId,"storage-teleport-queued");Respond(fd,202,"application/json; charset=utf-8","{\"accepted\":true,\"status\":\"queued\"}");
     } else if(path=="/api/admin/storage/mutate"){
-        if(!requirePost())return;AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(JsonValue(request.body,"csrf")!=s.csrf){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Invalid CSRF token"));return;}
+        if(!requirePost())return;AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(!ZanikConfig::AdminStorageMutation()){disabled();return;}if(JsonValue(request.body,"csrf")!=s.csrf){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Invalid CSRF token"));return;}
         const std::string operation=JsonValue(request.body,"operation"),targetId=JsonValue(request.body,"playerId"),chestId=JsonValue(request.body,"chestId"),itemId=JsonValue(request.body,"itemId"),destinationChestId=JsonValue(request.body,"destinationChestId"),customName=JsonValue(request.body,"name");std::string catalogId=JsonValue(request.body,"catalogId");if(operation=="add_recipe")catalogId=JsonValue(request.body,"recipeId");int quantity=0,destinationSlot=-1;const auto itemIds=JsonStringArray(request.body,"itemIds");
         auto validOpaque=[](const std::string&v){return v.size()==16&&v.find_first_not_of("0123456789abcdefABCDEF")==std::string::npos;};
         const bool slotOperation=operation=="slot_move",batchOperation=operation=="move_batch"||operation=="copy_batch"||operation=="organize_batch",deleteBatch=operation=="delete_batch";bool valid=targetId.size()>0&&validOpaque(chestId);
@@ -420,28 +445,28 @@ void Handle(int fd) {
         std::string body=DomEngine::GetPlayerGravestonesJson(player.identity.substr(10),player.name);
         if(body.empty())Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Gravestone compatibility unavailable"));else Respond(fd,200,"application/json; charset=utf-8",body);
     } else if(path=="/api/admin/gravestone/mutate"){
-        if(!requirePost())return;AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(JsonValue(request.body,"csrf")!=s.csrf){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Invalid CSRF token"));return;}
+        if(!requirePost())return;AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(!ZanikConfig::AdminGravestoneMutation()){disabled();return;}if(JsonValue(request.body,"csrf")!=s.csrf){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Invalid CSRF token"));return;}
         const std::string operation=JsonValue(request.body,"action"),ownerId=JsonValue(request.body,"playerId"),graveId=JsonValue(request.body,"graveId"),itemId=JsonValue(request.body,"itemId");int quantity=0;JsonInteger(request.body,"quantity",quantity);auto opaque=[](const std::string&v){return v.size()==16&&v.find_first_not_of("0123456789abcdefABCDEF")==std::string::npos;};
         const bool itemAction=operation=="claim_item_owner"||operation=="claim_item_self"||operation=="delete_item";if(ownerId.empty()||!opaque(graveId)||(itemAction&&(!opaque(itemId)||quantity<1))){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Invalid gravestone request"));return;}StoredPlayer owner;if(!playerStore->Find(ownerId,owner)||owner.identity.rfind("character:",0)!=0){Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Player not found"));return;}
         const std::string rateKey=adminStore->SessionHashPrefix(raw);auto now=std::chrono::steady_clock::now();auto rate=adminGravestoneRate.find(rateKey);if(rate!=adminGravestoneRate.end()&&now-rate->second<std::chrono::milliseconds(400)){Respond(fd,429,"application/json; charset=utf-8",Status::ErrorJson("Please wait before changing a gravestone again"));return;}adminGravestoneRate[rateKey]=now;std::string result;bool ok=DomEngine::SubmitAdminGravestoneMutation(operation,s.characterGuid,s.publicId,owner.identity.substr(10),ownerId,graveId,itemId,quantity,rateKey,result);adminStore->Audit(s,graveId,"gravestone:"+operation+":"+(itemId.empty()?"all":itemId)+":"+std::to_string(quantity)+":"+(ok?"accepted":"rejected")+":"+result);if(ok)Respond(fd,200,"application/json; charset=utf-8","{\"updated\":true,\"message\":\""+JsonEscape(result)+"\"}");else{auto d=DomEngine::GetAdminGravestoneDiagnostics();Respond(fd,d.compatibility==1?409:503,"application/json; charset=utf-8",Status::ErrorJson(result));}
     } else if(path=="/api/admin/gravestone/teleport"){
-        if(!requirePost())return;AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(JsonValue(request.body,"csrf")!=s.csrf){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Invalid CSRF token"));return;}const std::string ownerId=JsonValue(request.body,"playerId"),graveId=JsonValue(request.body,"graveId");StoredPlayer admin,owner;if(!playerStore->Find(s.publicId,admin)||!admin.online){Respond(fd,409,"application/json; charset=utf-8",Status::ErrorJson("Linked character is offline"));return;}if(!playerStore->Find(ownerId,owner)||owner.identity.rfind("character:",0)!=0){Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Player not found"));return;}uintptr_t actor=0;FVector3d where{};if(!DomEngine::ResolveAdminGravestoneLocation(owner.identity.substr(10),graveId,actor,where)){Respond(fd,409,"application/json; charset=utf-8",Status::ErrorJson("Gravestone is no longer available"));return;}const std::string rateKey=adminStore->SessionHashPrefix(raw);auto now=std::chrono::steady_clock::now();auto rate=adminTeleportRate.find(rateKey);if(rate!=adminTeleportRate.end()&&now-rate->second<std::chrono::seconds(3)){Respond(fd,429,"application/json; charset=utf-8",Status::ErrorJson("Please wait before teleporting again"));return;}adminTeleportRate[rateKey]=now;if(!DomEngine::QueueAdminGravestoneTeleport(s.characterGuid,s.publicId,owner.identity.substr(10),ownerId,graveId,rateKey)){auto diagnostics=DomEngine::GetAdminTeleportDiagnostics();const bool unavailable=diagnostics.compatibility!=1||diagnostics.groundTraceCompatibility!=1||diagnostics.storagePipelineCompatibility!=1||diagnostics.nativeCaptureCompatibility!=1||diagnostics.nativeTemplateAvailable!=1;Respond(fd,unavailable?503:409,"application/json; charset=utf-8",Status::ErrorJson(unavailable?"Gravestone teleport compatibility unavailable":"A teleport is already pending"));return;}adminStore->Audit(s,graveId,"gravestone-teleport-queued");Respond(fd,202,"application/json; charset=utf-8","{\"accepted\":true,\"status\":\"queued\"}");
+        if(!requirePost())return;AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(!ZanikConfig::AdminTeleport()){disabled();return;}if(JsonValue(request.body,"csrf")!=s.csrf){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Invalid CSRF token"));return;}const std::string ownerId=JsonValue(request.body,"playerId"),graveId=JsonValue(request.body,"graveId");StoredPlayer admin,owner;if(!playerStore->Find(s.publicId,admin)||!admin.online){Respond(fd,409,"application/json; charset=utf-8",Status::ErrorJson("Linked character is offline"));return;}if(!playerStore->Find(ownerId,owner)||owner.identity.rfind("character:",0)!=0){Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Player not found"));return;}uintptr_t actor=0;FVector3d where{};if(!DomEngine::ResolveAdminGravestoneLocation(owner.identity.substr(10),graveId,actor,where)){Respond(fd,409,"application/json; charset=utf-8",Status::ErrorJson("Gravestone is no longer available"));return;}const std::string rateKey=adminStore->SessionHashPrefix(raw);auto now=std::chrono::steady_clock::now();auto rate=adminTeleportRate.find(rateKey);if(rate!=adminTeleportRate.end()&&now-rate->second<std::chrono::seconds(3)){Respond(fd,429,"application/json; charset=utf-8",Status::ErrorJson("Please wait before teleporting again"));return;}adminTeleportRate[rateKey]=now;if(!DomEngine::QueueAdminGravestoneTeleport(s.characterGuid,s.publicId,owner.identity.substr(10),ownerId,graveId,rateKey)){auto diagnostics=DomEngine::GetAdminTeleportDiagnostics();const bool unavailable=diagnostics.compatibility!=1||diagnostics.groundTraceCompatibility!=1||diagnostics.storagePipelineCompatibility!=1||diagnostics.nativeCaptureCompatibility!=1||diagnostics.nativeTemplateAvailable!=1;Respond(fd,unavailable?503:409,"application/json; charset=utf-8",Status::ErrorJson(unavailable?"Gravestone teleport compatibility unavailable":"A teleport is already pending"));return;}adminStore->Audit(s,graveId,"gravestone-teleport-queued");Respond(fd,202,"application/json; charset=utf-8","{\"accepted\":true,\"status\":\"queued\"}");
     } else if (path == "/assets/world-map.jpg") {
         std::string asset;
         if(ReadWebAsset("world-map.jpg",asset))Respond(fd,200,"image/jpeg",asset);
-        else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Map asset unavailable"));
+        else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path == "/assets/lodestone-icon.png") {
         std::string asset;
         if(ReadWebAsset("lodestone-icon.png",asset))Respond(fd,200,"image/png",asset);
-        else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Lodestone icon unavailable"));
+        else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path == "/assets/nodestone-icon.png") {
         std::string asset;
         if(ReadWebAsset("nodestone-icon.png",asset))Respond(fd,200,"image/png",asset);
-        else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Nodestone icon unavailable"));
+        else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path == "/assets/gravestone-icon.png") {
         std::string asset;
         if(ReadWebAsset("gravestone-icon.png",asset))Respond(fd,200,"image/png",asset);
-        else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Gravestone icon unavailable"));
+        else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path == "/assets/Jancient-Regular.ttf") {
         std::string asset;
         if(ReadWebAsset("Jancient-Regular.ttf",asset))Respond(fd,200,"font/ttf",asset);
@@ -449,44 +474,48 @@ void Handle(int fd) {
     } else if (path.rfind("/assets/resources/",0)==0) {
         std::string asset;
         if(ReadResourceAsset(path.substr(18),asset))Respond(fd,200,"image/png",asset);
-        else Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Resource icon unavailable"));
+        else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path.rfind("/assets/items/",0)==0) {
         std::string asset;
         if(ReadItemAsset(path.substr(14),asset))Respond(fd,200,"image/png",asset);
-        else Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Item icon unavailable"));
+        else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path.rfind("/assets/skills/",0)==0) {
         std::string asset;
         if(ReadSkillAsset(path.substr(15),asset))Respond(fd,200,"image/png",asset);
-        else Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Skill icon unavailable"));
+        else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path.rfind("/assets/buildings/",0)==0) {
         std::string asset;
         if(ReadBuildingAsset(path.substr(18),asset))Respond(fd,200,"image/png",asset);
-        else Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Building icon unavailable"));
+        else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path.rfind("/assets/npcs/",0)==0) {
         std::string asset;
         if(ReadNpcAsset(path.substr(13),asset))Respond(fd,200,"image/png",asset);
-        else Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("NPC icon unavailable"));
+        else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path.rfind("/assets/recipe-icons/",0)==0) {
         std::string asset;
         if(ReadRecipeIconAsset(path.substr(21),asset))Respond(fd,200,"image/png",asset);
-        else Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Recipe icon unavailable"));
+        else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path.rfind("/assets/quests/",0)==0) {
-        std::string asset;const std::string name=path.substr(15);if(ReadQuestAsset(name,asset))Respond(fd,200,name.size()>=4&&name.substr(name.size()-4)==".svg"?"image/svg+xml":"image/png",asset);else Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Quest icon unavailable"));
+        std::string asset;const std::string name=path.substr(15);if(ReadQuestAsset(name,asset))Respond(fd,200,name.size()>=4&&name.substr(name.size()-4)==".svg"?"image/svg+xml":"image/png",asset);else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path == "/api/quests/catalog") {
-        std::string asset;if(ReadWebAsset("quest-catalog.json",asset))Respond(fd,200,"application/json; charset=utf-8",asset);else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Quest catalog unavailable"));
+        if(!ZanikConfig::PlayerQuestTracking()){unavailable();return;}std::string asset;if(ReadWebAsset("quest-catalog.json",asset))Respond(fd,200,"application/json; charset=utf-8",asset);else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Quest catalog unavailable"));
     } else if (path == "/api/map/resources/catalog") {
+        if(!ZanikConfig::ResourceTracking()){unavailable();return;}
         std::string asset;
         if(ReadWebAsset("resource-catalog.json",asset))Respond(fd,200,"application/json; charset=utf-8",asset);
         else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Resource catalog unavailable"));
     } else if (path == "/api/map/resources/state") {
+        if(!ZanikConfig::ResourceTracking()){unavailable();return;}
         std::vector<DomEngine::ResourceStateInfo> states;double rate=0;std::int64_t timestamp=0;
         if(!DomEngine::ReadResourceStates(states,rate,timestamp))Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Resource state unavailable"));
         else Respond(fd,200,"application/json; charset=utf-8",Status::MapResourceStatesJson(states,rate,timestamp));
     } else if (path == "/api/map/npcs/catalog") {
+        if(!ZanikConfig::NpcTracking()){unavailable();return;}
         std::string asset;
         if(ReadWebAsset("npc-catalog.json",asset))Respond(fd,200,"application/json; charset=utf-8",asset);
         else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("NPC catalog unavailable"));
     } else if (path == "/api/map/npcs/state") {
+        if(!ZanikConfig::NpcTracking()){unavailable();return;}
         std::vector<DomEngine::NpcStateInfo> states;double rate=0;std::int64_t timestamp=0;
         if(!DomEngine::ReadNpcStates(states,rate,timestamp))Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("NPC state unavailable"));
         else Respond(fd,200,"application/json; charset=utf-8",Status::MapNpcStatesJson(states,rate,timestamp));
@@ -495,10 +524,11 @@ void Handle(int fd) {
         if(health.compatibility==1)Respond(fd,200,"application/json; charset=utf-8",catalog);
         else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Recipe unlock catalog unavailable"));
     } else if (path == "/api/players") {
-        Respond(fd, 200, "application/json; charset=utf-8", Status::PlayersJson(playerStore->Online()));
+        if(!ZanikConfig::PlayerStatus())unavailable();else Respond(fd, 200, "application/json; charset=utf-8", Status::PlayersJson(playerStore->Online()));
     } else if (path == "/api/known-players") {
-        Respond(fd, 200, "application/json; charset=utf-8", Status::PlayersJson(playerStore->All()));
+        if(!ZanikConfig::PlayerStatus())unavailable();else Respond(fd, 200, "application/json; charset=utf-8", Status::PlayersJson(playerStore->All()));
     } else if (path == "/api/map/players") {
+        if(!ZanikConfig::Map()){unavailable();return;}
         if(!DomEngine::g_Engine||!DomEngine::g_Engine->IsInitialized()||
            !DomEngine::g_Engine->IsMapProjectionAvailable()) {
             Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Live map unavailable"));
@@ -546,6 +576,7 @@ void Handle(int fd) {
                 labels,DomEngine::g_Engine->GetMapAssetVersion(),timestamp));
         }
     } else if (path == "/api/player") {
+        if(!ZanikConfig::PlayerStatus()){unavailable();return;}
         std::string id = QueryValue(query, "id");
         if (id.empty()) {
             Respond(fd, 400, "application/json; charset=utf-8", Status::ErrorJson("Player id required"));
@@ -558,6 +589,7 @@ void Handle(int fd) {
             }
         }
     } else if (path == "/api/player-recipes") {
+        if(!ZanikConfig::PlayerRecipeTracking()){unavailable();return;}
         const std::string id=QueryValue(query,"id");StoredPlayer player;
         if(id.empty()){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Player id required"));}
         else if(!playerStore->Find(id,player)||player.identity.rfind("character:",0)!=0){Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Player not found"));}
@@ -567,11 +599,12 @@ void Handle(int fd) {
     } else if (path == "/api/quests/steps") {
         std::string asset;if(ReadWebAsset("quest-step-locations.json",asset))Respond(fd,200,"application/json; charset=utf-8",asset);else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Quest step locations unavailable"));
     } else if (path == "/api/player-quests") {
+        if(!ZanikConfig::PlayerQuestTracking()){unavailable();return;}
         const std::string id=QueryValue(query,"id");StoredPlayer player;if(id.empty())Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Player id required"));else if(!playerStore->Find(id,player)||player.identity.rfind("character:",0)!=0)Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Player not found"));else{auto d=DomEngine::GetPlayerQuestDiagnostics();StoredQuestSnapshot snapshot;bool found=questSnapshotStore&&questSnapshotStore->Find(player.identity.substr(10),snapshot);if(d.compatibility!=1)Respond(fd,503,"application/json; charset=utf-8","{\"error\":\"Player quest tracking is unavailable for this game build\",\"captured\":false,\"online\":"+std::string(player.online?"true":"false")+"}");else if(!found||!snapshot.complete)Respond(fd,503,"application/json; charset=utf-8","{\"error\":\"Quest data has not been captured for this character yet\",\"captured\":false,\"online\":"+std::string(player.online?"true":"false")+"}");else if(snapshot.catalogFingerprint!=DomEngine::GetPlayerQuestCatalogFingerprint())Respond(fd,503,"application/json; charset=utf-8","{\"error\":\"This character's quest snapshot is incompatible with the current catalog\",\"captured\":false,\"online\":"+std::string(player.online?"true":"false")+"}");else{size_t done=0,activeCount=0;for(const auto&q:snapshot.quests){done+=q.status=="completed";activeCount+=q.status=="in_progress";}std::ostringstream out;out<<"{\"captured\":true,\"online\":"<<(player.online?"true":"false")<<",\"capturedAt\":"<<snapshot.capturedAt<<",\"catalogFingerprint\":\""<<JsonEscape(snapshot.catalogFingerprint)<<"\",\"counts\":{\"total\":"<<snapshot.quests.size()<<",\"completed\":"<<done<<",\"inProgress\":"<<activeCount<<",\"notStarted\":"<<(snapshot.quests.size()-done-activeCount)<<"},\"quests\":[";for(size_t i=0;i<snapshot.quests.size();++i){if(i)out<<',';const auto&q=snapshot.quests[i];out<<"{\"id\":\""<<JsonEscape(q.id)<<"\",\"status\":\""<<JsonEscape(q.status)<<"\",\"objective\":\""<<JsonEscape(q.objective)<<"\",\"completedObservedAt\":"<<q.completedObservedAt<<'}';}out<<"]}";Respond(fd,200,"application/json; charset=utf-8",out.str());}}
     } else if (path == "/api/quest-tracker-diagnostics") {
         auto d=DomEngine::GetPlayerQuestDiagnostics();std::ostringstream out;out<<"{\"enabled\":"<<d.enabled<<",\"compatibility\":"<<d.compatibility<<",\"catalogCompatibility\":"<<d.catalogCompatibility<<",\"componentCompatibility\":"<<d.componentCompatibility<<",\"queryCompatibility\":"<<d.queryCompatibility<<",\"objectiveCompatibility\":"<<d.objectiveCompatibility<<",\"catalogEntries\":"<<d.catalogEntries<<",\"resolvedEntries\":"<<d.resolvedEntries<<",\"snapshots\":"<<d.snapshots<<",\"scansCompleted\":"<<d.scansCompleted<<",\"queryFailures\":"<<d.queryFailures<<",\"snapshotChanges\":"<<d.snapshotChanges<<",\"persistenceFailures\":"<<d.persistenceFailures<<",\"cacheHits\":"<<d.cacheHits<<",\"cacheMisses\":"<<d.cacheMisses<<",\"invalidIdentities\":"<<d.invalidIdentities<<",\"lastScan\":"<<d.lastScan<<",\"lastQueryMicroseconds\":"<<d.lastQueryMicroseconds<<",\"maximumQueryMicroseconds\":"<<d.maximumQueryMicroseconds<<",\"slowQueries\":"<<d.slowQueries<<'}';Respond(fd,200,"application/json; charset=utf-8",out.str());
     } else if (path == "/api/kills") {
-        Respond(fd, 200, "application/json; charset=utf-8",
+        if(!ZanikConfig::KillTracking()){unavailable();return;}Respond(fd, 200, "application/json; charset=utf-8",
                 Status::KillSummaryJson(playerStore->All()));
     } else if (path == "/api/kill-leaderboard") {
         Respond(fd, 200, "application/json; charset=utf-8",
@@ -700,7 +733,7 @@ void Handle(int fd) {
         bool playerCompatible = DomEngine::g_Engine && DomEngine::g_Engine->IsInitialized();
         bool mapCompatible = playerCompatible && DomEngine::g_Engine->IsMapProjectionAvailable();
         Respond(fd, 200, "application/json; charset=utf-8",
-            "{\"website\":true,\"playerDataCompatibility\":" +
+            "{\"website\":true,\"configuration\":{\"valid\":"+std::string(!std::getenv("ZANIK_CONFIG_VALID")||std::strcmp(std::getenv("ZANIK_CONFIG_VALID"),"0")!=0?"true":"false")+",\"installMode\":\""+JsonEscape(std::getenv("ZANIK_INSTALL_MODE")?std::getenv("ZANIK_INSTALL_MODE"):"legacy")+"\"},\"features\":"+ZanikConfig::Json()+",\"featureStates\":"+ZanikConfig::StateJson()+",\"assets\":"+AssetManifestJson()+",\"playerDataCompatibility\":" +
             std::string(playerCompatible ? "true" : "false") +
             ",\"killHookCompatibility\":" + std::to_string(d.hookCompatibility) +
             ",\"regionCompatibility\":" + std::to_string(d.regionCompatibility) +
@@ -800,23 +833,23 @@ void Handle(int fd) {
 
 void Run() {
     const char* testHost=std::getenv("DW_STATUS_TEST_HOST");
-    const bool storageTickReady=testHost&&std::strcmp(testHost,"1")==0?false:DomEngine::InitializeAdminStorageHookEarly();
-    if(!testHost||std::strcmp(testHost,"1")!=0)LogMessage(storageTickReady?"Admin storage game-thread dispatcher installed before world startup":"Admin storage game-thread dispatcher compatibility unavailable");
+    const bool needsAdminDispatcher=ZanikConfig::AdminTeleport()||ZanikConfig::AdminStorageMutation()||ZanikConfig::AdminGravestoneMutation();
+    const bool storageTickReady=needsAdminDispatcher&&(!testHost||std::strcmp(testHost,"1")!=0)&&DomEngine::InitializeAdminStorageHookEarly();
+    if((!testHost||std::strcmp(testHost,"1")!=0)&&needsAdminDispatcher)LogMessage(storageTickReady?"Admin storage game-thread dispatcher installed before world startup":"Admin storage game-thread dispatcher compatibility unavailable");
     int port = Port();
     if (!port) { LogMessage("DW_STATUS_PORT is required (1-65535)"); return; }
     Mem::Init();
     DomEngine::g_Engine = new DomEngine::Engine();
     playerStore = std::make_unique<PlayerStore>(StorePath());
     playerStore->Load();
-    adminStore = std::make_unique<AdminStore>("/home/container/zanik/admins.txt",
-                                              "/home/container/zanik-data/admin-sessions.db");
+    adminStore = std::make_unique<AdminStore>(ZanikRoot()+"/admins.txt",DataRoot()+"/admin-sessions.db");
     adminStore->Load();
     const char* recipeSettingsPath=std::getenv("DW_RECIPE_UNLOCK_SETTINGS");
-    recipeSettingsStore=std::make_unique<RecipeSettingsStore>(recipeSettingsPath&&*recipeSettingsPath?recipeSettingsPath:"/home/container/zanik-data/recipe-unlock-settings.db");
+    recipeSettingsStore=std::make_unique<RecipeSettingsStore>(recipeSettingsPath&&*recipeSettingsPath?recipeSettingsPath:DataRoot()+"/recipe-unlock-settings.db");
     recipeSettingsStore->Load();
-    recipeSnapshotStore=std::make_unique<RecipeSnapshotStore>("/home/container/zanik-data/player-recipe-snapshots.db");
+    recipeSnapshotStore=std::make_unique<RecipeSnapshotStore>(DataRoot()+"/player-recipe-snapshots.db");
     recipeSnapshotStore->Load();
-    questSnapshotStore=std::make_unique<QuestSnapshotStore>("/home/container/zanik-data/player-quest-snapshots.db");questSnapshotStore->Load();
+    questSnapshotStore=std::make_unique<QuestSnapshotStore>(DataRoot()+"/player-quest-snapshots.db");questSnapshotStore->Load();
     // Migrate names confirmed from records created before native FText lookup.
     // Future internal names are migrated automatically when first observed.
     playerStore->RenameEnemy("AI GiantRat Character", "Giant Rat");
@@ -857,34 +890,34 @@ void Run() {
             DomEngine::g_Engine->Initialize();
             nextDiscovery = now + std::chrono::seconds(5);
         }
-        if (DomEngine::g_Engine->IsInitialized() && !nativeKillHookInstalled) {
+        if (ZanikConfig::KillTracking() && DomEngine::g_Engine->IsInitialized() && !nativeKillHookInstalled) {
             nativeKillHookInstalled = DomEngine::InstallNativeKillHook(
                 DomEngine::g_Engine->GetModuleBase(), DomEngine::g_Engine->GetModuleEnd());
             LogMessage(nativeKillHookInstalled ? "Native AI kill hook installed" :
                                               "Native AI kill hook signature mismatch");
         }
-        if(DomEngine::g_Engine->IsInitialized()&&!adminTeleportInitialized){
+        if(ZanikConfig::AdminTeleport()&&DomEngine::g_Engine->IsInitialized()&&!adminTeleportInitialized){
             adminTeleportInitialized=DomEngine::InitializeAdminTeleport(DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());
             LogMessage(adminTeleportInitialized?"Admin lodestone teleport game-thread hook installed":"Admin lodestone teleport compatibility unavailable");
         }
-        if(DomEngine::g_Engine->IsInitialized()&&!adminStorageAttempted){adminStorageAttempted=true;adminStorageInitialized=DomEngine::InitializeAdminStorage(DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());LogMessage(adminStorageInitialized?"Admin storage mutation compatibility verified":"Admin storage mutation compatibility unavailable");const bool graves=DomEngine::InitializeAdminGravestones(DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());LogMessage(graves?"Admin gravestone compatibility verified":"Admin gravestone compatibility unavailable");}
-        if(DomEngine::g_Engine->IsInitialized()&&!playerRecipeTrackingAttempted){playerRecipeTrackingAttempted=true;const bool recipes=DomEngine::InitializePlayerRecipeTracking(WebRoot()+"/recipe-runtime-catalog.tsv",DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());LogMessage(recipes?"Player recipe tracking compatibility verified":"Player recipe tracking compatibility unavailable");}
-        if(DomEngine::g_Engine->IsInitialized()&&!playerQuestTrackingAttempted){playerQuestTrackingAttempted=true;const bool quests=DomEngine::InitializePlayerQuestTracking(WebRoot()+"/quest-runtime-catalog.tsv",DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());LogMessage(quests?"Player quest tracking compatibility verified":"Player quest tracking unavailable or waiting for quest objects");}
-        if(DomEngine::g_Engine->IsInitialized()&&playerQuestTrackingAttempted)DomEngine::RefreshPlayerQuestTrackingCompatibility();
+        if((ZanikConfig::AdminStorageMutation()||ZanikConfig::AdminGravestoneMutation()||ZanikConfig::AdminTeleport())&&DomEngine::g_Engine->IsInitialized()&&!adminStorageAttempted){adminStorageAttempted=true;adminStorageInitialized=DomEngine::InitializeAdminStorage(DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());LogMessage(adminStorageInitialized?"Admin storage compatibility verified":"Admin storage compatibility unavailable");if(ZanikConfig::AdminGravestoneMutation()){const bool graves=DomEngine::InitializeAdminGravestones(DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());LogMessage(graves?"Admin gravestone compatibility verified":"Admin gravestone compatibility unavailable");}}
+        if(ZanikConfig::PlayerRecipeTracking()&&DomEngine::g_Engine->IsInitialized()&&!playerRecipeTrackingAttempted){playerRecipeTrackingAttempted=true;const bool recipes=DomEngine::InitializePlayerRecipeTracking(WebRoot()+"/recipe-runtime-catalog.tsv",DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());LogMessage(recipes?"Player recipe tracking compatibility verified":"Player recipe tracking compatibility unavailable");}
+        if(ZanikConfig::PlayerQuestTracking()&&DomEngine::g_Engine->IsInitialized()&&!playerQuestTrackingAttempted){playerQuestTrackingAttempted=true;const bool quests=DomEngine::InitializePlayerQuestTracking(WebRoot()+"/quest-runtime-catalog.tsv",DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());LogMessage(quests?"Player quest tracking compatibility verified":"Player quest tracking unavailable or waiting for quest objects");}
+        if(ZanikConfig::PlayerQuestTracking()&&DomEngine::g_Engine->IsInitialized()&&playerQuestTrackingAttempted)DomEngine::RefreshPlayerQuestTrackingCompatibility();
         uintptr_t activeWorld=DomEngine::g_Engine->IsInitialized()?DomEngine::g_Engine->GetWorld():0;
         const bool mainWorldReady=activeWorld&&DomEngine::g_Engine->GetObjectName(activeWorld).find("L_World")!=std::string::npos;
-        if(mainWorldReady&&!resourceTrackingInitialized&&now>=nextResourceInit){
+        if(ZanikConfig::ResourceTracking()&&mainWorldReady&&!resourceTrackingInitialized&&now>=nextResourceInit){
             resourceTrackingInitialized=DomEngine::InitializeResourceTracking(
                 DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());
             LogMessage(resourceTrackingInitialized?"World resource tracking initialized":"World resource tracking compatibility unavailable");
             nextResourceInit=now+std::chrono::seconds(5);
         }
-        if(mainWorldReady&&resourceTrackingInitialized&&now>=nextResourceRefresh){DomEngine::RefreshResourceStates();nextResourceRefresh=now+std::chrono::seconds(2);}
-        if(mainWorldReady&&!npcTrackingInitialized&&now>=nextNpcInit){
+        if(ZanikConfig::ResourceTracking()&&mainWorldReady&&resourceTrackingInitialized&&now>=nextResourceRefresh){DomEngine::RefreshResourceStates();nextResourceRefresh=now+std::chrono::seconds(2);}
+        if(ZanikConfig::NpcTracking()&&mainWorldReady&&!npcTrackingInitialized&&now>=nextNpcInit){
             npcTrackingInitialized=DomEngine::InitializeNpcTracking(DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());
             nextNpcInit=now+std::chrono::seconds(5);
         }
-        if(mainWorldReady&&npcTrackingInitialized)DomEngine::RefreshNpcStates();
+        if(ZanikConfig::NpcTracking()&&mainWorldReady&&npcTrackingInitialized)DomEngine::RefreshNpcStates();
         if (nativeKillHookInstalled) {
             auto events = DomEngine::DrainNativeKillEvents();
             for (const auto& event : events) {
@@ -896,16 +929,16 @@ void Run() {
                     LogMessage("Recorded native kill: " + event.enemy);
             }
         }
-        if (DomEngine::g_Engine->IsInitialized() && now >= nextSync) {
+        if (ZanikConfig::PlayerStatus() && DomEngine::g_Engine->IsInitialized() && now >= nextSync) {
             uintptr_t gameState = DomEngine::g_Engine->GetGameState();
             if (gameState && DomEngine::g_Engine->IsA(gameState, "DominionGameStateBase")) {
                 auto livePlayers=DomEngine::g_Engine->GetAllPlayers();
                 DomEngine::UpdateKillPlayerCache(livePlayers);
-                DomEngine::UpdatePlayerRecipeTargets(livePlayers);
-                DomEngine::UpdatePlayerQuestTargets(livePlayers);
+                if(ZanikConfig::PlayerRecipeTracking())DomEngine::UpdatePlayerRecipeTargets(livePlayers);
+                if(ZanikConfig::PlayerQuestTracking())DomEngine::UpdatePlayerQuestTargets(livePlayers);
                 playerStore->Sync(livePlayers);
-                if(recipeSnapshotStore)recipeSnapshotStore->Sync(DomEngine::ReadPlayerRecipeSnapshots());
-                if(questSnapshotStore&&!questSnapshotStore->Sync(DomEngine::ReadPlayerQuestSnapshots()))DomEngine::RecordPlayerQuestPersistenceFailure();
+                if(ZanikConfig::PlayerRecipeTracking()&&recipeSnapshotStore)recipeSnapshotStore->Sync(DomEngine::ReadPlayerRecipeSnapshots());
+                if(ZanikConfig::PlayerQuestTracking()&&questSnapshotStore&&!questSnapshotStore->Sync(DomEngine::ReadPlayerQuestSnapshots()))DomEngine::RecordPlayerQuestPersistenceFailure();
             } else DomEngine::UpdateKillPlayerCache({});
             nextSync = now + std::chrono::seconds(2);
         }

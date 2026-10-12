@@ -1,0 +1,23 @@
+# Zanik configuration. Values are parsed as data; this file is never sourced.
+# Unknown keys and malformed values disable Zanik while still launching the game.
+
+STATUS_PORT=29105
+PUBLIC_BASE_URL=http://127.0.0.1:29105
+ADMIN_COOKIE_NAME=zanik_admin
+
+# Read-only features default on.
+FEATURE_PLAYER_STATUS=true
+FEATURE_KILL_TRACKING=true
+FEATURE_MAP=true
+FEATURE_RESOURCE_TRACKING=true
+FEATURE_NPC_TRACKING=true
+FEATURE_PLAYER_RECIPE_TRACKING=true
+FEATURE_PLAYER_QUEST_TRACKING=true
+FEATURE_ADMIN_READ=true
+
+# State-changing and gameplay features default off.
+FEATURE_ADMIN_RECIPE_SETTINGS=false
+FEATURE_ADMIN_TELEPORT=false
+FEATURE_ADMIN_STORAGE_MUTATION=false
+FEATURE_ADMIN_GRAVESTONE_MUTATION=false
+FEATURE_QOL_AUTO_COMPOST=false

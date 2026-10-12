@@ -1,142 +1,39 @@
-# Dragonwilds player status
+# Zanik
 
-A public, read-only player page for a Linux RuneScape: Dragonwilds dedicated
-server. The mod loads with `LD_PRELOAD` and exposes only:
+Zanik is a Linux x86-64 server-side mod for RuneScape: Dragonwilds. It exposes player, world, recipe, quest, resource, NPC, and map information through a web interface and provides separately gated administrative and quality-of-life features. Players do not install anything.
 
-| Request | Result |
-| --- | --- |
-| `GET /` | Player status webpage |
-| `GET /api/players` | Currently online player summaries |
-| `GET /players` | Every player recorded by the server |
-| `GET /api/known-players` | Online and offline player summaries |
-| `GET /player?id=PUBLIC_ID` | Persistent player skill details webpage |
-| `GET /api/player?id=PUBLIC_ID` | Status, last seen time, skill levels, and XP |
-| `GET /kills` | Persistent enemy kill totals and leaderboard |
-| `GET /api/kills` | Enemy kill totals |
-| `GET /api/kill-leaderboard` | Per-player kill totals |
-| `GET /api/kill-tracker-diagnostics` | Hook compatibility and concise event counters |
-| `GET /api/update-status` | Runtime and guarded-updater compatibility status |
-| `GET /api/quests/catalog` | Public playable main/side quest catalog |
-| `GET /api/player-quests?id=...` | Persisted public quest progress for one player |
-| `GET /api/quest-tracker-diagnostics` | Quest catalog, runtime query, persistence, and timing health |
+Zanik is a native `LD_PRELOAD` library. The recommended installation leaves the official game executable untouched and starts it through `zanik-server`. Executable replacement remains available only for hosting panels whose egg cannot change its startup command; it is explicitly non-recommended.
 
-Names are the game's player display names. The API returns HTTP 503 with
-`{"error":"Server data unavailable"}` while the game is loading or if the
-expected game structures cannot be validated. No admin actions, account IDs,
-positions, or stats are exposed. Other paths return 404; other methods return
-405. The page refreshes every 10 seconds and uses text nodes for names.
+## Choose an installation
 
-Online names link to their individual detail pages. The Players tab lists all
-players observed since persistence was installed. Skill levels use the current
-Dragonwilds 1–99 XP thresholds, including the level 93–99 curve, and the detail
-API also returns raw XP for verification. Online records refresh every two
-seconds and are saved whenever names, XP, or the named map region changes.
-Offline pages show the last saved skills, last-seen time, and last known
-region. Coordinates and movement history are not exposed.
+- Can edit the startup command: use **wrapper mode** (recommended).
+- Cannot edit the executable path, such as a fixed Pterodactyl egg: use the acknowledged **replace-executable mode** after reading the warning.
+- Hosting on Windows: the server loader is not supported yet. The Windows asset tool can create an asset bundle for a Linux server.
 
-Persistent player data is stored at `/home/container/zanik-data/players.db`, with complete per-character recipe snapshots in `/home/container/zanik-data/player-recipe-snapshots.db` and quest snapshots in `/home/container/zanik-data/player-quest-snapshots.db`. Account
-identifiers are used only as private keys in that server-side file. Public URLs
-and APIs receive an opaque derived ID rather than the account identifier.
-
-Direct player kills are captured from the native AI death notification. The
-hook records the AI victim and the fatal attacker while both objects are still
-valid, accepts only attackers that resolve to a connected player object, and
-uses a bounded queue with duplicate suppression. AI-versus-AI, environmental,
-despawn, and unresolved deaths are ignored. The hook is enabled only for the
-exact supported executable SHA-256 and a unique instruction signature; the
-Kills page reports tracking as unavailable when either check fails. Historical
-totals remain readable. Multiplayer attribution is implemented through exact
-player object matching but has not yet been live-tested.
-
-## Install in Pterodactyl
-
-1. Back up your server files and test on a nonproduction server first. Request
-   **one additional TCP allocation** from the panel administrator. Keep the
-   existing Dragonwilds UDP allocation.
-2. Stop the server and upload these files to the panel paths shown:
-
-   - `dist/libdwstatus.so` → `/home/container/libdwstatus.so`
-   - `deploy/zanik-launcher.sh` →
-     `/home/container/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping`
-
-3. Before replacing the game executable, rename the official file to:
-
-   `/home/container/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping.zanik-original`
-
-   Make the replacement launcher executable (`0755`). Keep `Extra Arguments`
-   at its normal value; the development server uses
-   `-log -unattended -NoCrashDialog`. The checked-in launcher uses TCP port
-   `29105`; edit `DW_STATUS_PORT` for a different allocation.
-
-   The panel's file editor creates new files with mode `0644`. Deployment via
-   the API preserves executable mode by copying an existing executable, writing
-   the launcher into that copy, and renaming it into place.
-4. Restart the server. The Pterodactyl console should show
-   `Public status page listening on TCP port PORT`. Open
-   `http://SERVER_IP:PORT/` and `http://SERVER_IP:PORT/api/players`.
-5. During startup the API should return 503. Once the world loads, verify zero
-   players, then join and leave to confirm count and names update. If it stays
-   at 503, check the game version and engine discovery messages in the console.
-
-After a Steam update replaces the launcher, preserve the new official binary
-as `.zanik-original` and reinstall the launcher before starting the server.
-
-The development server uses `deploy/zanik-bootstrap.sh` with Pterodactyl's
-`AUTO_UPDATE` disabled. It queries Steam build metadata on each restart and
-runs SteamCMD, backups, repair, analysis, and update reporting only when the
-public build ID changes. Reports are retained under
-`/home/container/zanik-data/update-history/`; ordinary restarts only append an
-operational log entry.
-
-The page is intentionally public over plain HTTP for this first release.
-Do not put a private world password or other sensitive data in display names.
-For a future HTTPS domain, place a reverse proxy in front of this TCP port.
-
-## Build from source
-
-The distributed `.so` was built using Debian Bookworm with GCC 12. Its highest
-required glibc version is 2.36. To reproduce it on a Linux host with Docker:
+Download `zanik-server-linux-x86_64-VERSION.zip`, extract it, then run:
 
 ```sh
-chmod +x build.sh
-./build.sh
+chmod +x scripts/*.sh bin/zanik-server
+scripts/install.sh --server-root /home/container --mode wrapper
+/home/container/zanik/bin/zanik-server --server-root /home/container -- GAME_ARGS
 ```
 
-Or, on Debian Bookworm with `g++` and `make` installed, run `make clean all`.
-The output is `dist/libdwstatus.so`. After a game update, recheck the offsets
-and validation in `src/engine/` before rebuilding; the game exposes no stable
-official player API used by this mod.
+No game-derived asset is included. Run `init-assets.sh` against the dedicated server first, or create a bundle with the separate Windows asset tool. Missing optional images use Zanik placeholders; catalog-dependent features report unavailable rather than returning broken data.
 
-## Tests
+Read [installation](docs/installation.md), [configuration](docs/configuration.md), [assets](docs/assets.md), [security](docs/security.md), and [hosting](docs/hosting.md) before public deployment.
 
-The test suite has two modes so ordinary development and CI do not require
-redistributing extracted game data:
+## Safe defaults
+
+Public/read-only tracking is enabled by default. Teleports, storage and gravestone mutation, recipe-unlock administration, and every gameplay-changing QoL feature are disabled until the operator explicitly opts in. Disabled native features do not install their hook, scanner, dispatcher, or periodic task.
+
+## Build and test
 
 ```sh
-# Default: source, native, QoL, browser, HTTP, and updater tests only.
-make test
-
-# Explicit opt-in: tests that inspect locally extracted game-derived inputs.
-make test-assets
-
-# Run both modes.
-make test-all
+make clean all
+make test-core       # clean-clone, asset-free tests
+make test-assets     # opt-in tests using ignored local game inputs
 ```
 
-`make test` is an alias for `make test-core` and is the appropriate GitLab CI
-job for a clean clone. Its HTTP test uses an empty temporary web root and
-checks that missing optional assets fail safely. `make test-assets` first runs
-a preflight check and lists any required ignored inputs that are missing. Those
-inputs are intentionally not tracked; a future mod initialization/extraction
-step can populate them for an asset-enabled runner.
+CI builds and validates server `.tar.gz`/`.zip` archives and separate Linux and Windows asset-tool archives. See [contributor architecture](docs/contributor-architecture.md).
 
-Both HTTP smoke tests preload the library into a harmless `sleep` process, so
-they expect live game data to be unavailable. A live Dragonwilds server is
-still required to verify real player discovery, native hooks, performance
-budgets, and the Pterodactyl allocation.
-
-## Source and license
-
-The engine discovery layer is adapted from
-[RSDWServerAPI](https://github.com/dkoz/RSDWServerAPI) under MIT terms. See
-[UPSTREAM.md](UPSTREAM.md) and [LICENSE](LICENSE).
+The engine discovery layer is adapted from RSDWServerAPI under MIT terms. See [UPSTREAM.md](UPSTREAM.md), [LICENSE](LICENSE), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

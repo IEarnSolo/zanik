@@ -52,8 +52,12 @@ test-core: $(OUT)
 	$(PYTHON) tests/recipe_npc_building_compatibility_test.py
 	$(PYTHON) tests/recipe_tree_wiki_links_test.py
 	$(PYTHON) tests/gitlab_pipeline_monitor_test.py
+	sh tests/config_test.sh
+	$(PYTHON) tests/asset_tool_test.py
+	sh tests/installer_test.sh
 	$(NODE) tests/map_page_test.js
 	$(PYTHON) tests/http_core_test.py
+	$(PYTHON) tests/feature_gate_http_test.py
 	sh tests/updater_test.sh
 
 test-assets:
@@ -70,4 +74,10 @@ test-all:
 	$(MAKE) test-core
 	$(MAKE) test-assets
 
-.PHONY: all clean test test-core test-assets test-all
+package: all
+	sh scripts/package-release.sh
+
+validate-package: package
+	$(PYTHON) tools/validate_release.py --directory dist/release
+
+.PHONY: all clean test test-core test-assets test-all package validate-package

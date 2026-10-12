@@ -1,6 +1,8 @@
 stages:
   - test
   - build
+  - package
+  - validate
 
 default:
   image: debian:bookworm-slim
@@ -9,7 +11,7 @@ default:
   interruptible: true
   before_script:
     - apt-get update
-    - apt-get install --yes --no-install-recommends ca-certificates curl g++ make nodejs python3
+    - apt-get install --yes --no-install-recommends ca-certificates curl g++ make nodejs python3 unzip xz-utils zip
 
 variables:
   DEBIAN_FRONTEND: noninteractive
@@ -34,3 +36,27 @@ build-linux:
       - dist/libdwstatus.so
       - dist/zanik-compat-analyzer
       - dist/SHA256SUMS
+
+package-release:
+  stage: package
+  needs:
+    - job: build-linux
+      artifacts: true
+  script:
+    - chmod +x scripts/*.sh scripts/zanik-server
+    - SOURCE_DATE_EPOCH="$(date -d "$CI_COMMIT_TIMESTAMP" +%s)" scripts/package-release.sh dist/release
+  artifacts:
+    name: "zanik-release-${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}"
+    expose_as: "Validated release candidates"
+    expire_in: 30 days
+    paths:
+      - dist/release/
+
+validate-release:
+  stage: validate
+  needs:
+    - job: package-release
+      artifacts: true
+  script:
+    - python3 tools/validate_release.py --directory dist/release
+    - sha256sum --check dist/release/SHA256SUMS

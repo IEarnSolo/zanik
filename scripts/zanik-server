@@ -1,0 +1,80 @@
+#!/bin/sh
+set -u
+
+SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ZANIK_DIR=$(CDPATH= cd -- "$SELF_DIR/.." && pwd)
+. "$ZANIK_DIR/lib/zanik-common.sh"
+
+server_root=${ZANIK_SERVER_ROOT:-$(CDPATH= cd -- "$ZANIK_DIR/.." && pwd)}
+config_path=${ZANIK_CONFIG:-$ZANIK_DIR/config/zanik.conf}
+install_mode=${ZANIK_INSTALL_MODE:-wrapper}
+env_STATUS_PORT=${ZANIK_STATUS_PORT-}
+env_PUBLIC_BASE_URL=${ZANIK_PUBLIC_BASE_URL-}
+env_ADMIN_COOKIE_NAME=${ZANIK_ADMIN_COOKIE_NAME-}
+env_FEATURE_PLAYER_STATUS=${ZANIK_FEATURE_PLAYER_STATUS-}
+env_FEATURE_KILL_TRACKING=${ZANIK_FEATURE_KILL_TRACKING-}
+env_FEATURE_MAP=${ZANIK_FEATURE_MAP-}
+env_FEATURE_RESOURCE_TRACKING=${ZANIK_FEATURE_RESOURCE_TRACKING-}
+env_FEATURE_NPC_TRACKING=${ZANIK_FEATURE_NPC_TRACKING-}
+env_FEATURE_PLAYER_RECIPE_TRACKING=${ZANIK_FEATURE_PLAYER_RECIPE_TRACKING-}
+env_FEATURE_PLAYER_QUEST_TRACKING=${ZANIK_FEATURE_PLAYER_QUEST_TRACKING-}
+env_FEATURE_ADMIN_READ=${ZANIK_FEATURE_ADMIN_READ-}
+env_FEATURE_ADMIN_RECIPE_SETTINGS=${ZANIK_FEATURE_ADMIN_RECIPE_SETTINGS-}
+env_FEATURE_ADMIN_TELEPORT=${ZANIK_FEATURE_ADMIN_TELEPORT-}
+env_FEATURE_ADMIN_STORAGE_MUTATION=${ZANIK_FEATURE_ADMIN_STORAGE_MUTATION-}
+env_FEATURE_ADMIN_GRAVESTONE_MUTATION=${ZANIK_FEATURE_ADMIN_GRAVESTONE_MUTATION-}
+env_FEATURE_QOL_AUTO_COMPOST=${ZANIK_FEATURE_QOL_AUTO_COMPOST-}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --config) [ $# -ge 2 ] || { zanik_log '--config requires a path'; exit 2; }; config_path=$2; shift 2;;
+    --server-root) [ $# -ge 2 ] || { zanik_log '--server-root requires a path'; exit 2; }; server_root=$2; shift 2;;
+    --) shift; break;;
+    *) zanik_log "Unknown launcher option: $1"; exit 2;;
+  esac
+done
+
+game=$(zanik_game_path "$server_root")
+if [ "$install_mode" = replace-executable ]; then game=$game.zanik-original; fi
+[ -x "$game" ] || { zanik_log "Official server executable not found or not executable: $game"; exit 1; }
+
+zanik_defaults
+if ! zanik_load_config "$config_path"; then
+  zanik_log 'Configuration is invalid; starting the official server without Zanik.'
+  export ZANIK_CONFIG_VALID=0
+  exec "$game" "$@"
+fi
+apply_override(){
+  [ -z "$2" ] && return 0
+  if ! zanik_set_config "$1" "$2"; then
+    zanik_log "Invalid ZANIK_$1 override; starting the official server without Zanik."
+    return 1
+  fi
+}
+if ! apply_override STATUS_PORT "$env_STATUS_PORT" ||
+   ! apply_override PUBLIC_BASE_URL "$env_PUBLIC_BASE_URL" ||
+   ! apply_override ADMIN_COOKIE_NAME "$env_ADMIN_COOKIE_NAME" ||
+   ! apply_override FEATURE_PLAYER_STATUS "$env_FEATURE_PLAYER_STATUS" ||
+   ! apply_override FEATURE_KILL_TRACKING "$env_FEATURE_KILL_TRACKING" ||
+   ! apply_override FEATURE_MAP "$env_FEATURE_MAP" ||
+   ! apply_override FEATURE_RESOURCE_TRACKING "$env_FEATURE_RESOURCE_TRACKING" ||
+   ! apply_override FEATURE_NPC_TRACKING "$env_FEATURE_NPC_TRACKING" ||
+   ! apply_override FEATURE_PLAYER_RECIPE_TRACKING "$env_FEATURE_PLAYER_RECIPE_TRACKING" ||
+   ! apply_override FEATURE_PLAYER_QUEST_TRACKING "$env_FEATURE_PLAYER_QUEST_TRACKING" ||
+   ! apply_override FEATURE_ADMIN_READ "$env_FEATURE_ADMIN_READ" ||
+   ! apply_override FEATURE_ADMIN_RECIPE_SETTINGS "$env_FEATURE_ADMIN_RECIPE_SETTINGS" ||
+   ! apply_override FEATURE_ADMIN_TELEPORT "$env_FEATURE_ADMIN_TELEPORT" ||
+   ! apply_override FEATURE_ADMIN_STORAGE_MUTATION "$env_FEATURE_ADMIN_STORAGE_MUTATION" ||
+   ! apply_override FEATURE_ADMIN_GRAVESTONE_MUTATION "$env_FEATURE_ADMIN_GRAVESTONE_MUTATION" ||
+   ! apply_override FEATURE_QOL_AUTO_COMPOST "$env_FEATURE_QOL_AUTO_COMPOST"; then
+  export ZANIK_CONFIG_VALID=0
+  exec "$game" "$@"
+fi
+
+mkdir -p "$server_root/zanik-data" "$ZANIK_DIR/state"
+chmod 700 "$server_root/zanik-data"
+zanik_make_secret "$server_root/zanik-data/console-admin.key" || { zanik_log 'Could not create console secret; starting without Zanik.'; exec "$game" "$@"; }
+DW_CONSOLE_SECRET=$(tr -d '\r\n' < "$server_root/zanik-data/console-admin.key"); export DW_CONSOLE_SECRET
+zanik_export_runtime "$server_root" "$install_mode"
+export LD_PRELOAD="$ZANIK_DIR/bin/libzanik.so${LD_PRELOAD:+:$LD_PRELOAD}"
+exec "$game" "$@"

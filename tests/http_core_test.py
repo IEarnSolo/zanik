@@ -81,8 +81,11 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
 
         expect_error(base, "/api/quests/catalog", 503, "Quest catalog unavailable")
         expect_error(base, "/api/map/npcs/catalog", 503, "NPC catalog unavailable")
-        expect_error(base, "/assets/world-map.jpg", 503, "Map asset unavailable")
-        expect_error(base, "/assets/skills/attack.png", 404, "Skill icon unavailable")
+        with get(base, "/assets/world-map.jpg") as response:
+            assert response.headers.get_content_type() == "image/svg+xml"
+            assert b"<svg" in response.read()
+        with get(base, "/assets/skills/attack.png") as response:
+            assert response.headers.get_content_type() == "image/svg+xml"
         expect_error(base, "/assets/skills/../attack.png", 404)
 
         with get(base, "/api/diagnostics/player-skills") as response:
@@ -95,6 +98,16 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             diagnostics = json.loads(response.read())
             assert diagnostics["items"] == 0
             assert diagnostics["compatibility"] != 1
+        with get(base, "/api/update-status") as response:
+            update = json.loads(response.read())
+            assert update["configuration"]["valid"] is True
+            assert update["features"]["playerStatus"] is True
+            assert update["features"]["adminTeleport"] is False
+            assert update["features"]["adminStorageMutation"] is False
+            assert update["features"]["adminGravestoneMutation"] is False
+            assert update["features"]["qolAutoCompost"] is False
+            assert update["featureStates"]["adminTeleport"] == "disabled"
+            assert update["assets"] is None
         with get(base, "/api/quest-tracker-diagnostics") as response:
             diagnostics = json.loads(response.read())
             assert "catalogCompatibility" in diagnostics
