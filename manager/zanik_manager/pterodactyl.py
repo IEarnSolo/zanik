@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import http.client
 import mimetypes
 import time
 import urllib.error
@@ -50,6 +51,25 @@ def urllib_transport(method: str, url: str, headers: dict[str, str], body: bytes
         return Response(error.code, error.read(4096), dict(error.headers))
     except urllib.error.URLError as error:
         raise PterodactylError(f"Could not reach the panel: {error.reason}") from error
+
+
+def direct_transport(method: str, url: str, headers: dict[str, str], body: bytes | None, timeout: float) -> Response:
+    """Send a signed node request without urllib redirect or proxy rewriting."""
+    parsed = urllib.parse.urlsplit(url)
+    connection_type = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    connection = connection_type(parsed.hostname, parsed.port, timeout=timeout)
+    target = urllib.parse.urlunsplit(("", "", parsed.path or "/", parsed.query, ""))
+    request_headers = dict(headers)
+    if body is not None:
+        request_headers["Content-Length"] = str(len(body))
+    try:
+        connection.request(method, target, body=body, headers=request_headers)
+        reply = connection.getresponse()
+        return Response(reply.status, reply.read(4096), dict(reply.headers))
+    except OSError as error:
+        raise PterodactylError(f"Could not reach the server node: {error}") from error
+    finally:
+        connection.close()
 
 
 class PterodactylClient:
@@ -146,6 +166,18 @@ class PterodactylClient:
     def read_file(self, server_id: str, path: str) -> bytes:
         return self.request("GET", f"/api/client/servers/{server_id}/files/contents", query={"file": api_file_path(path)}).body
 
+    def download_file(self, server_id: str, path: str) -> bytes:
+        details = self.request("GET", f"/api/client/servers/{server_id}/files/download",
+                               query={"file": api_file_path(path)}).json().get("attributes", {})
+        url = details.get("url")
+        if not url:
+            raise PterodactylError("Panel did not return a file download URL")
+        response = self.transport("GET", url, {"Accept": "application/octet-stream",
+                                                "User-Agent": "Zanik-Manager/0.2.0"}, None, 300.0)
+        if response.status < 200 or response.status >= 300:
+            raise PterodactylError(f"File download failed with HTTP {response.status}", response.status)
+        return response.body
+
     def write_file(self, server_id: str, path: str, content: bytes) -> None:
         self.request("POST", f"/api/client/servers/{server_id}/files/write", query={"file": api_file_path(path)}, raw=content)
 
@@ -161,7 +193,8 @@ class PterodactylClient:
 
     def chmod(self, server_id: str, root: str, files: list[tuple[str, int]]) -> None:
         self.request("POST", f"/api/client/servers/{server_id}/files/chmod",
-                     data={"root": api_file_path(root), "files": [{"file": path, "mode": str(mode)} for path, mode in files]})
+                     data={"root": api_file_path(root),
+                           "files": [{"file": path, "mode": format(mode, "o")} for path, mode in files]})
 
     def decompress(self, server_id: str, root: str, file: str) -> None:
         self.request("POST", f"/api/client/servers/{server_id}/files/decompress", data={"root": api_file_path(root), "file": file})
@@ -177,8 +210,10 @@ class PterodactylClient:
                   f"Content-Type: {content_type}\r\n\r\n").encode()
         suffix = f"\r\n--{boundary}--\r\n".encode()
         separator = "&" if "?" in url else "?"
-        response = self.transport("POST", url + separator + urllib.parse.urlencode({"directory": api_file_path(directory)}),
-                                  {"Content-Type": f"multipart/form-data; boundary={boundary}"},
-                                  prefix + content + suffix, 300.0)
+        upload_transport = direct_transport if self.transport is urllib_transport else self.transport
+        response = upload_transport("POST", url + separator + urllib.parse.urlencode({"directory": api_file_path(directory)}),
+                                    {"Accept": "*/*", "Content-Type": f"multipart/form-data; boundary={boundary}",
+                                     "User-Agent": "Zanik-Manager/0.2.0"},
+                                    prefix + content + suffix, 300.0)
         if response.status < 200 or response.status >= 300:
             raise PterodactylError(f"File upload failed with HTTP {response.status}", response.status)
