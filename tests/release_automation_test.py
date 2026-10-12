@@ -15,6 +15,9 @@ gitlab = module("publish_gitlab_package", "tools/publish_gitlab_package.py")
 assert contract.read_version(ROOT / "VERSION") == "0.1.0"
 contract.validate("v0.1.0", "0.1.0")
 assert "Linux x86-64" in contract.release_notes(ROOT / "CHANGELOG.md", "0.1.0")
+package_script = (ROOT / "scripts/package-release.sh").read_text()
+assert "retoc-linux-x86_64.tar.xz" in package_script
+assert "zanik-asset-tools-linux-x86_64-$VERSION.tar.gz" in package_script
 for tag in ("0.1.0", "v0.1", "v1.2.3-rc1", "v0.1.1"):
     try:
         contract.validate(tag, "0.1.0"); raise AssertionError(tag)
