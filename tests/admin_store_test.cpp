@@ -15,6 +15,15 @@ int main(){
     struct stat st{};assert(stat(db.c_str(),&st)==0);assert((st.st_mode&0777)==0600);
     auto health=store.Diagnostics();assert(health.allowlistReadable&&health.sessionStorageReadable&&health.sessionStorageWritable&&health.sessionStorageRestricted&&health.lastSaveSucceeded);assert(health.allowedCharacters==1&&health.activeSessions==1&&health.malformedSessionRecords==0);
     AdminStore reloaded(allow,db);assert(reloaded.Load());assert(reloaded.Authenticate(token,session));
-    assert(reloaded.Logout(token));assert(!reloaded.Authenticate(token,session));
+    reloaded.Audit(session,"safe-destination","accepted");
+    {std::ifstream audit(std::string(dir)+"/admin-audit.log");std::string contents((std::istreambuf_iterator<char>(audit)),{});assert(contents.find(token)==std::string::npos);assert(contents.find(claim)==std::string::npos);}
+    usleep(1100000);
+    {std::ofstream out(allow);out<<"# removed\n";}
+    bool removed=false;assert(!reloaded.Authenticate(token,session,&removed));assert(removed);
+    usleep(1100000);
+    {std::ofstream out(allow);out<<"player-public-id\n";}
+    auto secondClaim=reloaded.CreateClaim("player-public-id","character-guid","Test Character");assert(!secondClaim.empty());
+    std::string secondToken;assert(reloaded.RedeemClaim(secondClaim,secondToken,session));
+    assert(reloaded.Logout(secondToken));assert(!reloaded.Authenticate(secondToken,session));
     return 0;
 }

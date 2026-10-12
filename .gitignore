@@ -10,6 +10,7 @@
 !.env.example
 !/.env.gitlab.example
 /.env.gitlab
+/config/zanik.conf
 *.key
 *.pem
 *.p12
@@ -67,6 +68,8 @@ core.*
 # repository. A future initialization step may generate these from a locally
 # installed copy of the game instead of redistributing them.
 /web/
+/zanik-generated-web/
+/asset-inventory.json
 /deploy/resource-identities.tsv
 /deploy/resource-exclusions.tsv
 /deploy/npc-identities.tsv
