@@ -8,6 +8,7 @@ All notable changes to Zanik are documented here.
 
 - Safely migrate development servers that use Zanik's legacy Pterodactyl executable-replacement launcher without overwriting the preserved official ELF.
 - Report enabled features as compatible or incompatible from their live subsystem diagnostics, while retaining an explicit disabled state for gated features.
+- Preserve the `zanik-admin <public-character-id>` Pterodactyl console login proxy in the canonical launcher.
 
 ### Changed
 
