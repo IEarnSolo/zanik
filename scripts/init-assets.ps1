@@ -29,7 +29,7 @@ if ($InstallBundle) {
     exit $LASTEXITCODE
 }
 $GameRoot = [IO.Path]::GetFullPath($GameRoot)
-$Work = Join-Path ([IO.Path]::GetTempPath()) ("ZanikAssetWork-" + [Guid]::NewGuid().ToString('N'))
+$Work = Join-Path ([IO.Path]::GetTempPath()) ("zw-" + [Guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Path $Work -Force | Out-Null
 $Generated = Join-Path $Work 'generated-web'
 $MappingWasGenerated = $false
