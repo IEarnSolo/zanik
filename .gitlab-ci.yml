@@ -64,7 +64,23 @@ package-release:
     name: "zanik-release-${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}"
     expose_as: "Validated release candidates"
     expire_in: 30 days
-    paths: [dist/release/]
+    paths:
+      - dist/release/zanik-server-*
+      - dist/release/zanik-asset-tools-*
+      - dist/release/SHA256SUMS
+      - dist/release/release-manifest.json
+
+package-manager:
+  extends: .package-release-base
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: on_success
+  artifacts:
+    name: "zanik-manager-${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}"
+    expose_as: "Zanik Manager for Windows"
+    expire_in: 30 days
+    paths: [dist/release/zanik-manager-windows-x86_64-*.zip]
 
 package-release-tag:
   extends: .package-release-base
@@ -74,7 +90,22 @@ package-release-tag:
     name: "zanik-release-${CI_COMMIT_TAG}"
     expose_as: "Permanent tagged release candidate"
     expire_in: never
-    paths: [dist/release/]
+    paths:
+      - dist/release/zanik-server-*
+      - dist/release/zanik-asset-tools-*
+      - dist/release/SHA256SUMS
+      - dist/release/release-manifest.json
+      - dist/release/release-notes.md
+
+package-manager-tag:
+  extends: .package-release-base
+  rules:
+    - if: $CI_COMMIT_TAG
+  artifacts:
+    name: "zanik-manager-${CI_COMMIT_TAG}"
+    expose_as: "Permanent Zanik Manager for Windows"
+    expire_in: never
+    paths: [dist/release/zanik-manager-windows-x86_64-*.zip]
 
 validate-release:
   stage: validate
@@ -84,6 +115,8 @@ validate-release:
     - when: on_success
   needs:
     - job: package-release
+      artifacts: true
+    - job: package-manager
       artifacts: true
   script:
     - python3 tools/validate_release.py --directory dist/release
@@ -96,6 +129,8 @@ validate-release-tag:
   needs:
     - job: package-release-tag
       artifacts: true
+    - job: package-manager-tag
+      artifacts: true
   script:
     - python3 tools/validate_release.py --directory dist/release --tag "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA"
     - python3 tools/release_contract.py --tag "$CI_COMMIT_TAG"
@@ -107,6 +142,8 @@ publish-gitlab-packages:
     - if: $CI_COMMIT_TAG
   needs:
     - job: package-release-tag
+      artifacts: true
+    - job: package-manager-tag
       artifacts: true
     - job: validate-release-tag
       artifacts: false
@@ -144,6 +181,8 @@ publish-curseforge:
     name: curseforge-production
   needs:
     - job: package-release-tag
+      artifacts: true
+    - job: package-manager-tag
       artifacts: true
     - job: create-gitlab-release
       artifacts: false
