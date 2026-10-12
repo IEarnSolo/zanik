@@ -30,5 +30,15 @@ with tempfile.TemporaryDirectory() as name:
     chunks = pipeline.filter_chunks(names, maximum=55)
     assert len(chunks) > 1
     assert all(any(re.search(chunk, f"/x/{item}.uasset", re.I) for chunk in chunks) for item in names)
+    transient = root / "transient"; transient.mkdir(); (transient / "gone.txt").write_text("gone")
+    original = pipeline.shutil.rmtree
+    def raced(path, onerror=None):
+        (Path(path) / "gone.txt").unlink()
+        if onerror: onerror(None, str(Path(path) / "gone.txt"), (FileNotFoundError, FileNotFoundError(), None))
+        Path(path).rmdir()
+    pipeline.shutil.rmtree = raced
+    try: pipeline.remove_tree(transient)
+    finally: pipeline.shutil.rmtree = original
+    assert not transient.exists()
 
 print("windows asset pipeline tests passed")
