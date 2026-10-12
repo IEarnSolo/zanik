@@ -697,6 +697,7 @@ void Handle(int fd) {
             ",\"scanInProgress\":"+std::to_string(d.scanInProgress)+",\"scannedObjects\":"+std::to_string(d.scannedObjects)+
             ",\"totalObjects\":"+std::to_string(d.totalObjects)+",\"completedScans\":"+std::to_string(d.completedScans)+
             ",\"lastScanMilliseconds\":"+std::to_string(d.lastScanMilliseconds)+",\"maximumSliceMicroseconds\":"+std::to_string(d.maximumSliceMicroseconds)+
+            ",\"slowSliceCount\":"+std::to_string(d.slowSliceCount)+
             ",\"lastGenerationWorkMicroseconds\":"+std::to_string(d.lastGenerationWorkMicroseconds)+
             ",\"lastFinalizationMicroseconds\":"+std::to_string(d.lastFinalizationMicroseconds)+
             ",\"maximumFinalizationMicroseconds\":"+std::to_string(d.maximumFinalizationMicroseconds)+
@@ -770,6 +771,8 @@ void Handle(int fd) {
             ",\"npcDungeonExclusionCompatibility\":" + std::to_string(npcs.dungeonExclusionCompatibility) +
             ",\"npcLastGenerationWorkMicroseconds\":" + std::to_string(npcs.lastGenerationWorkMicroseconds) +
             ",\"npcLastFinalizationMicroseconds\":" + std::to_string(npcs.lastFinalizationMicroseconds) +
+            ",\"npcMaximumSliceMicroseconds\":" + std::to_string(npcs.maximumSliceMicroseconds) +
+            ",\"npcSlowSliceCount\":" + std::to_string(npcs.slowSliceCount) +
             ",\"npcLastDutyCycleBasisPoints\":" + std::to_string(npcs.lastDutyCycleBasisPoints) +
             ",\"npcInvalidObjectSlots\":" + std::to_string(npcs.invalidObjectSlots) +
             ",\"npcChangedObjectSlots\":" + std::to_string(npcs.changedObjectSlots) +

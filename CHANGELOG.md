@@ -12,6 +12,7 @@ All notable changes to Zanik are documented here.
 ### Changed
 
 - Expanded development-server and asset-initialization validation for the post-0.1.0 packaging layout.
+- Reduced NPC scanner and live-refresh slices to a 400-microsecond budget, capped each pass at 128 objects, and exposed slow-slice counters in diagnostics.
 
 ## [0.1.0] - 2026-10-12
 

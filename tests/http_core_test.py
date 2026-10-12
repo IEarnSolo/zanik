@@ -116,6 +116,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             diagnostics = json.loads(response.read())
             assert "catalogCompatibility" in diagnostics
             assert "maximumSliceMicroseconds" in diagnostics
+            assert "slowSliceCount" in diagnostics
             assert not any("pointer" in key.lower() or "address" in key.lower() for key in diagnostics)
 
         for path, message in (

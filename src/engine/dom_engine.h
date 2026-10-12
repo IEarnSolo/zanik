@@ -416,6 +416,7 @@ struct NpcDiagnostics {
     std::uint64_t completedScans = 0;
     std::uint64_t lastScanMilliseconds = 0;
     std::uint64_t maximumSliceMicroseconds = 0;
+    std::uint64_t slowSliceCount = 0;
     std::uint64_t lastGenerationWorkMicroseconds = 0;
     std::uint64_t lastFinalizationMicroseconds = 0;
     std::uint64_t maximumFinalizationMicroseconds = 0;
