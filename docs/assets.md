@@ -8,9 +8,9 @@ Try the Linux dedicated server first:
 /home/container/zanik/scripts/init-assets.sh --game-root /home/container
 ```
 
-The inventory is written to `/home/container/zanik/state/asset-inventory.json`. Extraction/conversion uses the separately published, checksum-pinned asset-tool bundle. A non-redistributable converter may be supplied with `--tool-path`; Zanik invokes it as `TOOL --game-root PATH --output PATH`. Generated input must be placed in `SERVER_ROOT/zanik-generated-web`; the command then validates, bundles, and atomically activates it while retaining the prior cache on failure.
+The inventory is written to `/home/container/zanik/state/asset-inventory.json`. Extraction/conversion uses the separately published, checksum-pinned asset-tool bundle. A converter supplied with `--tool-path` receives `--game-root PATH --output PATH --source-kind KIND` and, when supplied, `--usmap-path PATH`. Its output must pass Zanik's required JSON/TSV and checksum validation before it can be bundled or atomically activated. The prior cache remains active on every failure.
 
-If required data is client-only, run `init-assets.ps1 -GameRoot PATH` from the Windows asset-tool bundle. It creates `zanik-assets-GAME_BUILD.zip`. Upload that file to `/home/container/` and install it with:
+If required data is client-only, run `init-assets.ps1 -GameRoot PATH -ToolPath CONVERTER [-UsmapPath FILE]` from the Windows asset-tool bundle. It creates `zanik-assets-GAME_BUILD.zip`. Upload that file to `/home/container/` and install it with:
 
 ```sh
 /home/container/zanik/scripts/init-assets.sh --game-root /home/container \

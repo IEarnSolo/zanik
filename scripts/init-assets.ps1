@@ -3,7 +3,9 @@ param(
     [Parameter(Mandatory = $true)][string]$GameRoot,
     [string]$ToolPath,
     [string]$InstallBundle,
-    [string]$Destination
+    [string]$Destination,
+    [ValidateSet('auto','server','client')][string]$SourceKind = 'auto',
+    [string]$UsmapPath
 )
 $ErrorActionPreference = 'Stop'
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -13,7 +15,7 @@ if (-not (Test-Path -LiteralPath $AssetTool)) {
 }
 if (-not $Destination) { $Destination = Join-Path $Here 'assets' }
 if ($InstallBundle) {
-    & python $AssetTool install --bundle $InstallBundle --destination $Destination
+    & python $AssetTool install-bundle --bundle $InstallBundle --destination $Destination
     exit $LASTEXITCODE
 }
 $Generated = Join-Path $GameRoot 'zanik-generated-web'
@@ -21,7 +23,9 @@ $Inventory = Join-Path $Here 'asset-inventory.json'
 & python $AssetTool inventory --game-root $GameRoot --generated-root $Generated --output $Inventory
 if ($ToolPath) {
     if (-not (Test-Path -LiteralPath $ToolPath -PathType Leaf)) { throw "Tool not found: $ToolPath" }
-    & $ToolPath --game-root $GameRoot --output $Generated
+    $ExtractArguments = @($AssetTool, 'extract', '--game-root', $GameRoot, '--output', $Generated, '--source-kind', $SourceKind, '--tool-path', $ToolPath)
+    if ($UsmapPath) { $ExtractArguments += @('--usmap-path', $UsmapPath) }
+    & python @ExtractArguments
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 if (-not (Test-Path -LiteralPath $Generated)) {
@@ -30,6 +34,8 @@ if (-not (Test-Path -LiteralPath $Generated)) {
 }
 $Build = (& python $AssetTool show-build --game-root $GameRoot).Trim()
 $Bundle = Join-Path $Here "zanik-assets-$Build.zip"
-& python $AssetTool build --game-root $GameRoot --generated-root $Generated --output $Bundle
+& python $AssetTool validate --generated-root $Generated
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& python $AssetTool bundle --game-root $GameRoot --generated-root $Generated --output $Bundle
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Created $Bundle. Upload it and run init-assets.sh --game-root SERVER_ROOT --install-bundle FILE."
