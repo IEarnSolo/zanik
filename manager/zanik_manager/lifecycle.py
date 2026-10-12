@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 
 from .config import content_hash
 from .journal import JournalStore, OperationJournal
-from .pterodactyl import PterodactylClient, PterodactylError
+from .pterodactyl import PterodactylClient, PterodactylError, api_file_path
 from .provider import ServerProvider
 
 GAME_RELATIVE = "RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping"
@@ -111,12 +111,11 @@ class PterodactylProvider(ServerProvider):
         return root.rstrip("/") + "/" + relative.lstrip("/")
 
     def _mkdir(self, server_id: str, path: str) -> None:
-        current = ""
-        for component in PurePosixPath(path).parts:
+        current = "/"
+        for component in PurePosixPath(api_file_path(path)).parts:
             if component == "/":
-                current = "/"
                 continue
-            parent = current or "/"
+            parent = current
             try:
                 self.client.create_folder(server_id, parent, component)
             except PterodactylError as error:
