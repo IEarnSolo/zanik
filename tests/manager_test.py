@@ -18,6 +18,7 @@ from manager.zanik_manager.profiles import ProfileStore, ServerProfile, is_local
 from manager.zanik_manager.pterodactyl import PterodactylClient, PterodactylError, Response
 from manager.zanik_manager.security import credential_target, redact
 from manager.zanik_manager.support import create_support_bundle
+from tools.prune_pyside_runtime import KEEP_FILES, prune
 
 class ManagerTests(unittest.TestCase):
     def test_origin_and_http_policy_helpers(self):
@@ -107,6 +108,16 @@ class ManagerTests(unittest.TestCase):
             self.assertGreaterEqual(len(parts),2)
             self.assertEqual(index["bundleSha256"],content_hash(bundle.read_bytes()))
             self.assertTrue(all(part.stat().st_size < 500 for part in parts))
+
+    def test_pyside_pruner_keeps_only_declared_runtime(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            for name in KEEP_FILES|{"PySide6/Qt6Qml.dll","PySide6/designer.exe"}:
+                path=root/name; path.parent.mkdir(parents=True,exist_ok=True); path.write_bytes(b"x")
+            prune(root)
+            self.assertFalse((root/"PySide6/Qt6Qml.dll").exists())
+            self.assertFalse((root/"PySide6/designer.exe").exists())
+            self.assertTrue(all((root/name).is_file() for name in KEEP_FILES))
 
     def test_replacement_install_and_uninstall_against_synthetic_server(self):
         class FakeClient:
