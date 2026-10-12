@@ -36,4 +36,6 @@ make test-assets     # opt-in tests using ignored local game inputs
 
 CI builds and validates server `.tar.gz`/`.zip` archives and separate Linux and Windows asset-tool archives. See [contributor architecture](docs/contributor-architecture.md).
 
+Stable releases are built from matching `vMAJOR.MINOR.PATCH` tags and published as permanent GitLab packages. See [releasing](docs/releasing.md) and [CurseForge distribution](docs/curseforge.md).
+
 The engine discovery layer is adapted from RSDWServerAPI under MIT terms. See [UPSTREAM.md](UPSTREAM.md), [LICENSE](LICENSE), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

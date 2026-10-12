@@ -8,6 +8,8 @@ mkdir -p "$OUT"
 OUT=$(CDPATH= cd -- "$OUT" && pwd)
 WORK=$OUT/.work
 SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-315532800}; export SOURCE_DATE_EPOCH
+RELEASE_TAG=${RELEASE_TAG:-}
+RELEASE_COMMIT=${RELEASE_COMMIT:-}
 rm -rf "$WORK"
 mkdir -p "$WORK/server/bin" "$WORK/server/lib" "$WORK/server/config" "$WORK/server/compatibility" "$WORK/server/scripts" "$WORK/server/tools" "$WORK/server/docs"
 
@@ -19,8 +21,8 @@ install -m 0644 "$ROOT/config/zanik.conf.example" "$WORK/server/config/zanik.con
 install -m 0644 "$ROOT/deploy/compatibility.tsv" "$WORK/server/compatibility/compatibility.tsv"
 for file in install update uninstall doctor init-assets compat-launcher; do install -m 0755 "$ROOT/scripts/$file.sh" "$WORK/server/scripts/$file.sh"; done
 install -m 0644 "$ROOT/tools/zanik_assets.py" "$WORK/server/tools/zanik_assets.py"
-install -m 0644 "$ROOT/VERSION" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/README.md" "$WORK/server/"
-for file in installation.md linux.md pterodactyl.md docker.md upgrades.md uninstall.md configuration.md assets.md security.md hosting.md curseforge.md contributor-architecture.md; do install -m 0644 "$ROOT/docs/$file" "$WORK/server/docs/$file"; done
+install -m 0644 "$ROOT/VERSION" "$ROOT/CHANGELOG.md" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/README.md" "$WORK/server/"
+for file in installation.md linux.md pterodactyl.md docker.md upgrades.md uninstall.md configuration.md assets.md security.md hosting.md curseforge.md releasing.md contributor-architecture.md; do install -m 0644 "$ROOT/docs/$file" "$WORK/server/docs/$file"; done
 
 normalize(){ find "$1" -type f -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +; find "$1" -type d -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +; }
 normalize "$WORK/server"
@@ -52,5 +54,8 @@ normalize "$WORK/asset-linux"; normalize "$WORK/asset-windows"
 tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner -C "$WORK/asset-linux" -cJf "$OUT/zanik-asset-tools-linux-x86_64-$VERSION.tar.xz" .
 (cd "$WORK/asset-windows" && find . -type f | LC_ALL=C sort | zip -X -q "$OUT/zanik-asset-tools-windows-x86_64-$VERSION.zip" -@)
 (cd "$OUT" && sha256sum zanik-*-$VERSION.* | LC_ALL=C sort > SHA256SUMS)
-python3 "$ROOT/tools/release_manifest.py" --directory "$OUT" --version "$VERSION" --output "$OUT/release-manifest.json"
+python3 "$ROOT/tools/release_manifest.py" --directory "$OUT" --version "$VERSION" --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --source-date-epoch "$SOURCE_DATE_EPOCH" --output "$OUT/release-manifest.json"
+if [ -n "$RELEASE_TAG" ]; then
+  python3 "$ROOT/tools/release_contract.py" --tag "$RELEASE_TAG" --notes-output "$OUT/release-notes.md"
+fi
 rm -rf "$WORK"
