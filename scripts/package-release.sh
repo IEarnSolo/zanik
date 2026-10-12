@@ -34,7 +34,7 @@ tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owne
 python3 - "$ROOT/asset-tools/tools.lock.json" "$WORK" <<'PY'
 import json, pathlib, sys, urllib.request, hashlib
 lock=pathlib.Path(sys.argv[1]); work=pathlib.Path(sys.argv[2]); data=json.loads(lock.read_text())['tools']['retoc']
-for platform, suffix in [('linux-x86_64','tar.gz'),('windows-x86_64','zip')]:
+for platform, suffix in [('linux-x86_64','tar.xz'),('windows-x86_64','zip')]:
     record=data[platform]; target=work/f'retoc-{platform}.{suffix}'
     urllib.request.urlretrieve(record['url'], target)
     actual=hashlib.sha256(target.read_bytes()).hexdigest()
