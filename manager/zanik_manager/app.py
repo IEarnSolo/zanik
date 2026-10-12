@@ -270,9 +270,12 @@ class MainWindow(QMainWindow):
                                                      ReleasePayload(archive), selected, selected == "replace-executable",
                                                      wrapper_adapter=adapter if selected == "wrapper" else None)
         def done(result):
-            profile.install_mode = selected; self.store.save(self.profiles); self.log(f"Installation complete; backup: {result['backup']}")
+            profile.install_mode = selected; self.store.save(self.profiles)
             if selected == "wrapper" and not adapter:
-                QMessageBox.information(self, "Startup action required", f"Set the egg startup executable to:\n{profile.server_root}/zanik/bin/zanik-server --server-root {profile.server_root} --\n\nThen start the server and run Doctor.")
+                self.log(f"Files installed; startup action remains. Backup: {result['backup']}")
+                QMessageBox.information(self, "Startup action required", f"The server remains stopped and installation is not yet active. Set the egg startup executable to:\n{profile.server_root}/zanik/bin/zanik-server --server-root {profile.server_root} --\n\nThen start the server and run Doctor to verify it.")
+            else:
+                self.log(f"Installation complete; backup: {result['backup']}")
         self.run_async(action, done)
 
     def uninstall(self):
