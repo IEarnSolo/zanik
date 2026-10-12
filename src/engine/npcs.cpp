@@ -36,7 +36,7 @@ std::atomic<int> lifecycleCompat{0},respawnCompat{0},dungeonCompat{0},loadedActo
 std::atomic<std::uint64_t> ambiguous{0},rejected{0};
 std::atomic<std::int64_t> lastSample{0};
 std::atomic<int> scanActive{0},scanProgress{0},scanTotal{0};
-std::atomic<std::uint64_t> completedScans{0},lastScanMs{0},maxSliceUs{0};
+std::atomic<std::uint64_t> completedScans{0},lastScanMs{0},maxSliceUs{0},slowSliceCount{0};
 std::atomic<std::uint64_t> lastGenerationWorkUs{0},lastFinalizeUs{0},maxFinalizeUs{0};
 std::atomic<std::uint64_t> lastLiveRefreshUs{0},maxLiveRefreshUs{0};
 std::atomic<std::uint64_t> classCacheHits{0},classCacheMisses{0},invalidObjectSlots{0},changedObjectSlots{0};
@@ -115,7 +115,7 @@ void RefreshCachedLiveActors(){
     struct Update{size_t node;bool live;double x,y;};std::vector<Update> updates;updates.reserve(cached.size());
     auto started=std::chrono::steady_clock::now();
     for(const auto& entry:cached){
-        if(updates.size()>=512||std::chrono::steady_clock::now()-started>=std::chrono::microseconds(1500))break;
+        if(updates.size()>=128||std::chrono::steady_clock::now()-started>=std::chrono::microseconds(400))break;
         FVector3d loc{};double x=0,y=0;bool live=g_Engine->IsObjectLive(entry.first)&&ReadLocation(entry.first,loc)&&g_Engine->ProjectWorldToMap(loc,x,y);
         updates.push_back({entry.second,live,x,y});
     }
@@ -154,11 +154,11 @@ void RefreshNpcStates(){
         scanCursor=0;scanSeen=0;scanWorkUs=0;scanCandidates.clear();scanLoadedSpawnPoints.clear();scanTotal=std::max(0,g_Engine->GetObjectCount());
         scanProgress=0;scanStarted=sliceStarted;scanActive=1;
     }
-    // This runs on the same worker as the tiny HTTP server. Never consume more
-    // than two milliseconds or 512 object slots in one pass; the next loop
-    // resumes at scanCursor after servicing pending sockets.
-    constexpr int MaxObjectsPerSlice=512;
-    constexpr auto SliceBudget=std::chrono::microseconds(2000);
+    // This runs on the same worker as the tiny HTTP server. Keep each pass
+    // comfortably below the shared one-millisecond hard ceiling; the next
+    // loop resumes at scanCursor after servicing pending sockets.
+    constexpr int MaxObjectsPerSlice=128;
+    constexpr auto SliceBudget=std::chrono::microseconds(400);
     int processed=0;
     while(scanCursor<scanTotal.load()&&processed<MaxObjectsPerSlice&&
           std::chrono::steady_clock::now()-sliceStarted<SliceBudget){
@@ -202,6 +202,7 @@ void RefreshNpcStates(){
     scanProgress=scanCursor;
     auto sliceUs=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-sliceStarted).count());
     scanWorkUs+=sliceUs;
+    if(sliceUs>=1000)++slowSliceCount;
     auto prior=maxSliceUs.load();while(sliceUs>prior&&!maxSliceUs.compare_exchange_weak(prior,sliceUs)){}
     if(scanCursor<scanTotal.load())return;
     const auto finalizeStarted=std::chrono::steady_clock::now();
@@ -287,7 +288,7 @@ bool ReadNpcStates(std::vector<NpcStateInfo>& out,double& rate,std::int64_t& upd
 NpcDiagnostics GetNpcDiagnostics(){return {enabled.load(),catalogCompat.load(),registryCompat.load(),identityCompat.load(),
     transformCompat.load(),lifecycleCompat.load(),respawnCompat.load(),dungeonCompat.load(),static_cast<int>(catalog.size()),
     loadedActors.load(),matchedLive.load(),deadCount.load(),inactiveCount.load(),unloadedCount.load(),loadedSpawnPointCount.load(),ambiguous.load(),rejected.load(),lastSample.load(),
-    scanActive.load(),scanProgress.load(),scanTotal.load(),completedScans.load(),lastScanMs.load(),maxSliceUs.load(),
+    scanActive.load(),scanProgress.load(),scanTotal.load(),completedScans.load(),lastScanMs.load(),maxSliceUs.load(),slowSliceCount.load(),
     lastGenerationWorkUs.load(),lastFinalizeUs.load(),maxFinalizeUs.load(),lastLiveRefreshUs.load(),maxLiveRefreshUs.load(),
     classCacheHits.load(),classCacheMisses.load(),invalidObjectSlots.load(),changedObjectSlots.load(),
     lastDutyBasisPoints.load(),ScanIdleMilliseconds};}
