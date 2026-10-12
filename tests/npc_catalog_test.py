@@ -20,6 +20,11 @@ for black_knight in ('black knight warrior','black knight guardian','elite black
 assert all(t.get('icon') for t in catalog['types'] if t['name'].lower() in ('black knight warrior','black knight guardian','elite black knight','black knight sniper','black knight titan','sergeant blister','houndmaster rexiton'))
 exclusions=(ROOT/'deploy/npc-exclusions.tsv').read_text().lower()
 assert 'blackdragon' in exclusions and 'outside-playable-map' in exclusions
+identity_header=(ROOT/'deploy/npc-identities.tsv').read_text(encoding='utf-8').splitlines()[0].split('\t')
+assert identity_header[0]=='# zanik-npc-identities'
+assert identity_header[1]=='1'
+assert int(identity_header[2])==2926
+assert len(identity_header[3])==64
 assert not any('Post Box' in t['name'] or 'Library Book' in t['name'] for t in catalog['types'])
 assert len(catalog['contentFingerprint'])==64
 assert catalog['version']=='npcs-'+catalog['contentFingerprint'][:12]

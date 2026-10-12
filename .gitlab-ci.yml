@@ -1,0 +1,36 @@
+stages:
+  - test
+  - build
+
+default:
+  image: debian:bookworm-slim
+  tags:
+    - docker
+  interruptible: true
+  before_script:
+    - apt-get update
+    - apt-get install --yes --no-install-recommends ca-certificates curl g++ make nodejs python3
+
+variables:
+  DEBIAN_FRONTEND: noninteractive
+
+test-core:
+  stage: test
+  script:
+    - make clean
+    - make test-core
+
+build-linux:
+  stage: build
+  script:
+    - make clean
+    - make all
+    - sha256sum dist/libdwstatus.so dist/zanik-compat-analyzer > dist/SHA256SUMS
+  artifacts:
+    name: "zanik-${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}"
+    expose_as: "Zanik Linux binaries"
+    expire_in: 30 days
+    paths:
+      - dist/libdwstatus.so
+      - dist/zanik-compat-analyzer
+      - dist/SHA256SUMS
