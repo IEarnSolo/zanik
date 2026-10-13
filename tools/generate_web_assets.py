@@ -15,6 +15,11 @@ import zlib
 
 
 SKILLS = ("agility", "artisan", "attack", "construction", "cooking", "farming", "fishing", "magic", "mining", "ranged", "runecrafting", "woodcutting")
+MAP_SIZE = 4096
+# The exported landmass uses transparency for ocean pixels. Some transparent
+# texels contain white RGB values, so saving it directly as JPEG creates white
+# seams. This color matches the ocean used by Zanik's original web map.
+MAP_OCEAN_RGB = (79, 107, 110)
 
 
 def png_chunk(kind: bytes, data: bytes) -> bytes:
@@ -63,10 +68,21 @@ def svg(path: Path, main: bool) -> None:
 
 
 def convert_map(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
     command = (
         "Add-Type -AssemblyName System.Drawing; "
-        "$image=[System.Drawing.Image]::FromFile($env:ZANIK_MAP_SOURCE); "
-        "try{$image.Save($env:ZANIK_MAP_DESTINATION,[System.Drawing.Imaging.ImageFormat]::Jpeg)}finally{$image.Dispose()}"
+        "$source=[System.Drawing.Image]::FromFile($env:ZANIK_MAP_SOURCE); "
+        f"$output=[System.Drawing.Bitmap]::new({MAP_SIZE},{MAP_SIZE},[System.Drawing.Imaging.PixelFormat]::Format24bppRgb); "
+        "$graphics=[System.Drawing.Graphics]::FromImage($output); "
+        "try{"
+        f"$graphics.Clear([System.Drawing.Color]::FromArgb({MAP_OCEAN_RGB[0]},{MAP_OCEAN_RGB[1]},{MAP_OCEAN_RGB[2]})); "
+        "$graphics.CompositingMode=[System.Drawing.Drawing2D.CompositingMode]::SourceOver; "
+        "$graphics.CompositingQuality=[System.Drawing.Drawing2D.CompositingQuality]::HighQuality; "
+        "$graphics.InterpolationMode=[System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic; "
+        "$graphics.PixelOffsetMode=[System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality; "
+        f"$graphics.DrawImage($source,[System.Drawing.Rectangle]::new(0,0,{MAP_SIZE},{MAP_SIZE}),0,0,$source.Width,$source.Height,[System.Drawing.GraphicsUnit]::Pixel); "
+        "$output.Save($env:ZANIK_MAP_DESTINATION,[System.Drawing.Imaging.ImageFormat]::Jpeg)"
+        "}finally{$graphics.Dispose();$output.Dispose();$source.Dispose()}"
     )
     environment = os.environ.copy(); environment["ZANIK_MAP_SOURCE"] = str(source.resolve()); environment["ZANIK_MAP_DESTINATION"] = str(destination.resolve())
     completed = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],

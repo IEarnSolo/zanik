@@ -51,6 +51,7 @@ if (-not $UsmapPath) {
 }
 $Pipeline = Join-Path $Root 'tools\windows_asset_pipeline.py'
 $Recipe = Join-Path $Root 'asset-tools\extraction-recipes.json'
+$RecipeVersion = (Get-Content -LiteralPath $Recipe -Raw | ConvertFrom-Json).schemaVersion
 $PipelineArguments = @($Pipeline, '--game-root', $GameRoot, '--output', $Generated, '--tool-root', $Root, '--usmap-path', $UsmapPath, '--recipe', $Recipe, '--work-root', $Work)
 if ($KeepWork) { $PipelineArguments += '--keep-work' }
 if ($CatalogsOnly) { Write-Warning '-CatalogsOnly retains artwork referenced by runtime catalogs and omits only unreachable exports.' }
@@ -62,7 +63,7 @@ if (-not $Build) { $Build = 'unknown' }
 $Bundle = Join-Path $OutputDirectory "zanik-assets-$Build.zip"
 $Versions = '{"python":"3.12.10-embed","unrealAssetScout":"0.5.0","ue4ss":"3.0.1-1135-gf6d5f942"}'
 Write-ZanikEvent 'bundle' 'Validating and packaging the complete asset bundle'
-& $Python $AssetTool bundle --game-root $GameRoot --generated-root $Generated --output $Bundle --mapping $UsmapPath --tool-versions $Versions --recipe-version 1 --profile $Recipe
+& $Python $AssetTool bundle --game-root $GameRoot --generated-root $Generated --output $Bundle --mapping $UsmapPath --tool-versions $Versions --recipe-version $RecipeVersion --profile $Recipe
 if ($LASTEXITCODE -ne 0) { throw "Asset bundling failed with exit code $LASTEXITCODE" }
 $Parts = Join-Path $OutputDirectory "zanik-assets-$Build-parts"
 $ResolvedOutput = [IO.Path]::GetFullPath($OutputDirectory).TrimEnd([IO.Path]::DirectorySeparatorChar)

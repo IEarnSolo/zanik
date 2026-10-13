@@ -1,4 +1,4 @@
-import hashlib, json, os, subprocess, sys, tempfile, zipfile
+import hashlib, json, os, shutil, subprocess, sys, tempfile, zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,13 +10,22 @@ REQUIRED = ("buildings/catalog.json", "buildings/catalog.tsv", "npc-catalog.json
             "nodestone-icon.png", "gravestone-icon.png", "Jancient-Regular.ttf", "skills/attack.png",
             "quests/main-quest.svg")
 
+
+def fake_jpeg(width, height):
+    # Validation reads only the standard SOF0 dimensions; image decoding is not
+    # required for these asset-tool tests.
+    return (b"\xff\xd8\xff\xc0\x00\x11\x08" + height.to_bytes(2, "big") +
+            width.to_bytes(2, "big") + b"\x03\x01\x11\x00\x02\x11\x00\x03\x11\x00\xff\xd9")
+
 with tempfile.TemporaryDirectory() as name:
     root = Path(name); game = root / "game"; generated = game / "zanik-generated-web"; destination = root / "assets"
     paks = game / "RSDragonwilds/Content/Paks"; paks.mkdir(parents=True)
     (paks / "RSDragonwilds-LinuxServer.utoc").write_bytes(b"container")
     for item in REQUIRED:
         path = generated / item; path.parent.mkdir(parents=True, exist_ok=True)
-        if path.suffix == ".tsv":
+        if item == "world-map.jpg":
+            path.write_bytes(fake_jpeg(4096, 4096))
+        elif path.suffix == ".tsv":
             path.write_text("# schema=1\tid\n")
         else:
             shapes = {"buildings/catalog.json": ("pieces", 100), "npc-catalog.json": ("types", 10),
@@ -33,6 +42,10 @@ with tempfile.TemporaryDirectory() as name:
     subprocess.run([sys.executable, str(TOOL), "build", "--game-root", str(game), "--generated-root", str(generated), "--output", str(second)], check=True, env=env)
     assert hashlib.sha256(first.read_bytes()).digest() == hashlib.sha256(second.read_bytes()).digest()
     subprocess.run([sys.executable, str(TOOL), "validate", "--generated-root", str(generated)], check=True)
+    wrong_map = root / "wrong-map"; shutil.copytree(generated, wrong_map)
+    (wrong_map / "world-map.jpg").write_bytes(fake_jpeg(6144, 6144))
+    rejected_map = subprocess.run([sys.executable, str(TOOL), "validate", "--generated-root", str(wrong_map)], capture_output=True)
+    assert rejected_map.returncode and b"expected 4096x4096" in rejected_map.stderr
     subprocess.run([sys.executable, str(TOOL), "validate", "--bundle", str(first)], check=True)
     subprocess.run([sys.executable, str(TOOL), "install-bundle", "--bundle", str(first), "--destination", str(destination)], check=True)
     current = destination / "current"; manifest = json.loads((current / "asset-manifest.json").read_text())

@@ -21,8 +21,10 @@ import zipfile
 
 SCHEMA_VERSION = 2
 BUNDLE_SET_SCHEMA_VERSION = 1
+EXTRACTION_RECIPE_VERSION = 2
 DEFAULT_PART_BYTES = 90 * 1024 * 1024
 MAX_ENTRY_BYTES = 64 * 1024 * 1024
+WORLD_MAP_DIMENSIONS = (4096, 4096)
 REQUIRED = (
     "buildings/catalog.json",
     "buildings/catalog.tsv",
@@ -126,6 +128,44 @@ def classify(source: Path) -> tuple[list[str], list[str]]:
     return missing_required, missing_optional
 
 
+def jpeg_dimensions(path: Path) -> tuple[int, int]:
+    """Read JPEG dimensions without adding an image-library runtime dependency."""
+    start_of_frame = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+    with path.open("rb") as stream:
+        if stream.read(2) != b"\xff\xd8":
+            raise ValueError("missing JPEG start marker")
+        while True:
+            value = stream.read(1)
+            if not value:
+                break
+            if value != b"\xff":
+                continue
+            while value == b"\xff":
+                value = stream.read(1)
+            if not value:
+                break
+            marker = value[0]
+            if marker in {0x01, *range(0xD0, 0xDA)}:
+                continue
+            size_bytes = stream.read(2)
+            if len(size_bytes) != 2:
+                break
+            size = int.from_bytes(size_bytes, "big")
+            if size < 2:
+                raise ValueError("invalid JPEG segment length")
+            if marker in start_of_frame:
+                frame = stream.read(5)
+                if len(frame) != 5:
+                    break
+                height = int.from_bytes(frame[1:3], "big")
+                width = int.from_bytes(frame[3:5], "big")
+                if not width or not height:
+                    raise ValueError("invalid JPEG dimensions")
+                return width, height
+            stream.seek(size - 2, os.SEEK_CUR)
+    raise ValueError("JPEG has no supported frame header")
+
+
 def validate_generated(source: Path) -> dict:
     missing_required, missing_optional = classify(source)
     errors: list[str] = []
@@ -171,6 +211,17 @@ def validate_generated(source: Path) -> dict:
             errors.append(f"required asset is invalid: {relative}: {error}")
     if missing_required:
         errors.extend(f"required asset is missing: {name}" for name in missing_required)
+    world_map = source / "world-map.jpg"
+    if world_map.is_file() and not world_map.is_symlink() and world_map.stat().st_size:
+        try:
+            dimensions = jpeg_dimensions(world_map)
+            if dimensions != WORLD_MAP_DIMENSIONS:
+                errors.append(
+                    f"world map has unexpected dimensions: {dimensions[0]}x{dimensions[1]} "
+                    f"(expected {WORLD_MAP_DIMENSIONS[0]}x{WORLD_MAP_DIMENSIONS[1]})"
+                )
+        except (OSError, ValueError) as error:
+            errors.append(f"world map is not a valid JPEG: {error}")
     asset_references: set[str] = set()
     absolute_pattern = re.compile(r"(?:[A-Za-z]:[\\/]|/(?:home|Users|tmp)/)")
     for path in safe_files(source) if source.is_dir() else []:
@@ -268,7 +319,7 @@ def container_fingerprint(path: Path) -> dict:
 
 def manifest_for(root: Path, source: Path, files: list[Path], validation: dict,
                  mapping_path: Path | None = None, tool_versions: dict | None = None,
-                 recipe_version: int = 1, profile: dict | None = None) -> dict:
+                 recipe_version: int = EXTRACTION_RECIPE_VERSION, profile: dict | None = None) -> dict:
     containers = container_paths(root)
     epoch = int(os.environ.get("SOURCE_DATE_EPOCH", str(int(time.time()))))
     expected = (profile or {}).get("catalogProfile", {}).get("catalogCounts", {})
@@ -663,7 +714,7 @@ def main() -> int:
     create.add_argument("--output", required=True)
     create.add_argument("--mapping")
     create.add_argument("--tool-versions")
-    create.add_argument("--recipe-version", type=int, default=1)
+    create.add_argument("--recipe-version", type=int, default=EXTRACTION_RECIPE_VERSION)
     create.add_argument("--profile")
     create.set_defaults(run=build)
     bundle = commands.add_parser("bundle")
@@ -672,7 +723,7 @@ def main() -> int:
     bundle.add_argument("--output", required=True)
     bundle.add_argument("--mapping")
     bundle.add_argument("--tool-versions")
-    bundle.add_argument("--recipe-version", type=int, default=1)
+    bundle.add_argument("--recipe-version", type=int, default=EXTRACTION_RECIPE_VERSION)
     bundle.add_argument("--profile")
     bundle.set_defaults(run=build)
     parts = commands.add_parser("bundle-set")
