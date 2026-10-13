@@ -47,7 +47,9 @@ $MarkerPath = Join-Path $Work '.zanik-asset-work.json'
 $StateOrder = @{ created = 0; mappings = 1; exports = 2; generating = 3; generated = 4; bundled = 5; parts = 6; complete = 7 }
 function Write-JsonAtomic([string]$Path, [object]$Value) {
     $Temporary = $Path + '.new'
-    $Value | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $Temporary -Encoding utf8
+    $Json = ($Value | ConvertTo-Json -Depth 8) + [Environment]::NewLine
+    $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [IO.File]::WriteAllText($Temporary, $Json, $Utf8NoBom)
     Move-Item -LiteralPath $Temporary -Destination $Path -Force
 }
 function Set-ExtractionStage([string]$Stage) {
@@ -100,7 +102,7 @@ if ($StateOrder[$Journal.stage] -lt $StateOrder['mappings'] -and -not $UsmapPath
 if ($StateOrder[$Journal.stage] -lt $StateOrder['generated']) {
 $PipelineWorkspace = Join-Path $Work 'pipeline'
 $PipelineArguments = @($Pipeline, '--game-root', $GameRoot, '--output', $Generated, '--tool-root', $Root, '--usmap-path', $UsmapPath, '--recipe', $Recipe, '--work-root', $Work, '--stage-journal', $JournalPath)
-if ($Journal.stage -in @('exports', 'generating')) { $PipelineArguments += @('--resume-work', $PipelineWorkspace) }
+if (($Resume -and (Test-Path -LiteralPath $PipelineWorkspace -PathType Container)) -or $Journal.stage -in @('exports', 'generating')) { $PipelineArguments += @('--resume-work', $PipelineWorkspace) }
 else { $PipelineArguments += @('--workspace', $PipelineWorkspace) }
 if ($KeepWork) { $PipelineArguments += '--keep-work' }
 if ($CatalogsOnly) { Write-Warning '-CatalogsOnly retains artwork referenced by runtime catalogs and omits only unreachable exports.' }

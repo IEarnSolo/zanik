@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,28 @@ import time
 
 RECIPE_VERSION = 4
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
+EXPORT_CHECKPOINT = "export-checkpoint.json"
+
+
+def sha256(path: Path) -> str:
+    value = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            value.update(block)
+    return value.hexdigest()
+
+
+def read_operational_json(path: Path) -> dict:
+    value = json.loads(path.read_text(encoding="utf-8-sig"))
+    if not isinstance(value, dict):
+        raise ValueError(f"operational JSON must contain an object: {path}")
+    return value
+
+
+def write_json_atomic(path: Path, value: dict) -> None:
+    temporary = path.with_suffix(path.suffix + ".new")
+    temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
 
 
 def remove_tree(path: Path) -> None:
@@ -101,12 +124,10 @@ def run(command: list[str], label: str, *, quiet: bool = False) -> None:
 def update_stage(path: Path | None, stage: str) -> None:
     if path is None:
         return
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = read_operational_json(path)
     value["stage"] = stage
     value["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    temporary = path.with_suffix(path.suffix + ".new")
-    temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    temporary.replace(path)
+    write_json_atomic(path, value)
 
 
 def locate(root: Path, name: str) -> Path:
@@ -176,12 +197,102 @@ def filter_chunks(targets: list[str], maximum: int = 28000) -> list[str]:
     return ["(?:" + "|".join(chunk) + r")\.uasset$" for chunk in chunks if chunk]
 
 
+def _uas_manifest(path: Path, mode: str) -> dict:
+    if not path.is_file():
+        raise RuntimeError(f"completed export is missing UnrealAssetScout manifest: {path}")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"completed export has an invalid UnrealAssetScout manifest: {path}") from error
+    if not isinstance(value, dict) or value.get("schema") != 2 or value.get("mode") != mode:
+        raise RuntimeError(f"completed export has an unexpected UnrealAssetScout manifest: {path}")
+    return value
+
+
+def verified_export_checkpoint(temporary: Path, recipe: dict, reviewed_counts: dict[str, int] | None,
+                               mapping: Path, stage_journal: Path | None) -> dict:
+    if not mapping.is_file():
+        raise RuntimeError(f"resume workspace is missing its generated mapping: {mapping}")
+    json_root = temporary / "json"; texture_root = temporary / "textures"; font_root = temporary / "font"
+    if not json_root.is_dir() or not texture_root.is_dir() or not font_root.is_dir():
+        raise RuntimeError("resume workspace does not contain completed JSON, texture, and font exports")
+    validate_catalog_export(json_root, reviewed_counts)
+    json_manifest = json_root / ".uas-manifest.json"
+    _uas_manifest(json_manifest, "json")
+    targets = referenced_textures(json_root, recipe["requiredTextureAssets"])
+    expected_batches = [f"batch-{index:02d}" for index, _ in enumerate(filter_chunks(targets), 1)]
+    actual_batches = sorted(path.name for path in texture_root.iterdir() if path.is_dir())
+    if actual_batches != expected_batches:
+        missing = sorted(set(expected_batches) - set(actual_batches))
+        extra = sorted(set(actual_batches) - set(expected_batches))
+        raise RuntimeError(f"texture export batches do not match the extraction recipe (missing={missing}, extra={extra})")
+    batches = []
+    texture_pngs = 0
+    for name in expected_batches:
+        batch = texture_root / name
+        manifest = batch / ".uas-manifest.json"
+        _uas_manifest(manifest, "textures")
+        images = list(batch.rglob("*.png"))
+        if not images:
+            raise RuntimeError(f"completed texture export batch is empty: {name}")
+        texture_pngs += len(images)
+        batches.append({"name": name, "manifestSha256": sha256(manifest), "pngFiles": len(images)})
+    if texture_pngs != len(targets):
+        raise RuntimeError(f"completed texture exports contain {texture_pngs} PNGs for {len(targets)} targets")
+    font_manifest = font_root / ".uas-manifest.json"
+    _uas_manifest(font_manifest, "raw")
+    fonts = list(font_root.rglob("Jancient.ufont"))
+    if len(fonts) != 1 or not fonts[0].is_file():
+        raise RuntimeError(f"completed font export must contain exactly one Jancient.ufont; found {len(fonts)}")
+    json_files = sum(1 for _ in json_root.rglob("*.json"))
+    world_cells = sum(1 for path in json_root.rglob("*.json") if "L_World/_Generated_/" in path.as_posix())
+    journal_fingerprints = read_operational_json(stage_journal).get("fingerprints", {}) if stage_journal else {}
+    return {
+        "schemaVersion": 1,
+        "stage": "exports",
+        "jsonFiles": json_files,
+        "worldPartitionCells": world_cells,
+        "json": {"manifestSha256": sha256(json_manifest)},
+        "textureTargets": len(targets),
+        "texturePngs": texture_pngs,
+        "textureBatches": batches,
+        "font": {"manifestSha256": sha256(font_manifest), "path": "Jancient.ufont"},
+        "mappingSha256": sha256(mapping),
+        "recipeSha256": sha256(Path(recipe["_path"])),
+        "fingerprints": journal_fingerprints,
+    }
+
+
+def recover_or_create_export_checkpoint(temporary: Path, recipe: dict,
+                                        reviewed_counts: dict[str, int] | None,
+                                        mapping: Path, stage_journal: Path | None) -> dict:
+    checkpoint_path = temporary / EXPORT_CHECKPOINT
+    actual = verified_export_checkpoint(temporary, recipe, reviewed_counts, mapping, stage_journal)
+    if checkpoint_path.is_file():
+        recorded = read_operational_json(checkpoint_path)
+        if recorded != actual:
+            raise RuntimeError("retained export checkpoint no longer matches the verified export workspace")
+    else:
+        write_json_atomic(checkpoint_path, actual)
+    return actual
+
+
+def reset_partial_generation(temporary: Path) -> None:
+    """Remove reproducible output while preserving expensive verified exports."""
+    for name in ("web", "internal"):
+        path = temporary / name
+        if path.exists():
+            remove_tree(path)
+    (temporary / "internal").mkdir(parents=True, exist_ok=True)
+
+
 def extract(args: argparse.Namespace) -> int:
     game = args.game_root.resolve(); output = args.output.resolve(); tools = args.tool_root.resolve()
     paks = game / "RSDragonwilds/Content/Paks"; executable = game / GAME_EXE
     if not paks.is_dir() or not executable.is_file():
         raise ValueError("the selected directory is not a complete Windows Dragonwilds client")
     recipe = json.loads(args.recipe.read_text(encoding="utf-8"))
+    recipe["_path"] = str(args.recipe.resolve())
     if recipe.get("schemaVersion") != RECIPE_VERSION:
         raise ValueError("unsupported extraction recipe")
     from zanik_assets import game_build
@@ -211,8 +322,8 @@ def extract(args: argparse.Namespace) -> int:
         internal.mkdir(parents=True, exist_ok=True)
         common = [str(uas), "-p", str(paks), "-g", recipe["engine"], "-u", str(mapping)]
         if args.resume_work:
-            if not json_root.is_dir() or not texture_root.is_dir():
-                raise ValueError("resume work directory has no completed JSON and texture exports")
+            recover_or_create_export_checkpoint(temporary, recipe, reviewed_counts, mapping, stage_journal)
+            update_stage(stage_journal, "exports")
         else:
             last_export_error: Exception | None = None
             for attempt in range(1, 4):
@@ -233,7 +344,9 @@ def extract(args: argparse.Namespace) -> int:
                 batch = texture_root / f"batch-{index:02d}"
                 run(common + ["-f", expression, "export", "Textures", "-o", str(batch), "-c", "-r", "-l", str(temporary / f"texture-export-{index:02d}.log")], f"Exporting targeted web textures ({index})", quiet=True)
             run(common + ["-f", recipe["fontFilter"], "export", "Raw", "-o", str(font_root), "-c", "-r", "-l", str(temporary / "font-export.log")], "Exporting the web font", quiet=True)
+            recover_or_create_export_checkpoint(temporary, recipe, reviewed_counts, mapping, stage_journal)
             update_stage(stage_journal, "exports")
+        reset_partial_generation(temporary)
         update_stage(stage_journal, "generating")
         scripts = Path(__file__).resolve().parent; repo = scripts.parent; py = sys.executable
         run([py, str(scripts / "generate_building_catalog.py"), str(json_root), str(texture_root), str(web / "buildings"), "--catalogue-root", str(json_root)], "Generating building catalog")

@@ -100,7 +100,8 @@ with tempfile.TemporaryDirectory() as name:
     assert (replacement_parts / "bundle-index.json").is_file() and not (replacement_parts / "old.txt").exists()
 
     work = root / "owned-work"; work.mkdir()
-    (work / ".zanik-asset-work.json").write_text(json.dumps({"schemaVersion": 1, "owner": "Zanik asset extractor"}))
+    (work / ".zanik-asset-work.json").write_text(
+        json.dumps({"schemaVersion": 1, "owner": "Zanik asset extractor"}), encoding="utf-8-sig")
     nested = work / "nested"; nested.mkdir(); locked = nested / "readonly.txt"; locked.write_text("temporary")
     locked.chmod(0o400)
     subprocess.run([sys.executable, str(TOOL), "cleanup-work", "--work-root", str(work)], check=True)

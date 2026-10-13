@@ -32,6 +32,8 @@ By default the tool temporarily installs its pinned UE4SS loader, launches the o
 
 Catalog export, generation, ZIP packaging, multipart packaging, and cleanup are journaled. Zanik Manager keeps interrupted work under `%LOCALAPPDATA%\Zanik Manager\asset-work\` and offers **Resume extraction** or **Discard generated work**. A packaging retry reuses the validated generated tree instead of reopening the game. Cleanup problems after both bundle forms validate are warnings; Manager retries verified Zanik-owned cleanup later.
 
+Operational journals are compatible with Windows PowerShell 5.1 and PowerShell 7. On resume, Zanik validates the reviewed JSON counts, every expected UnrealAssetScout texture-batch manifest, the font, mapping, recipe, and source fingerprints before reusing exports. A stale outer stage is repaired only when that complete checkpoint validates; missing or changed exports fail closed without launching the game or deleting retained work.
+
 Recipe routes require positive cooked evidence. The extractor includes the base and plugin progression tables and never interprets a missing provider as “available from the start.” The reviewed provider-less set is shown as **Unlock trigger not yet identified**; any unreviewed route drift makes the candidate incompatible.
 
 An experienced operator may avoid the temporary loader and use a mapping already generated from the same client:
@@ -51,6 +53,7 @@ Allow roughly 10–30 minutes and at least 10 GiB of free space for a normal ext
 ## Extraction troubleshooting
 
 - If extraction stops before packaging, leave the reported work directory intact. In Zanik Manager, reopen **Assets** and select **Resume extraction**. For standalone use, rerun the same command with the original `-WorkDirectory PATH -Resume` arguments.
+- A resume message may report an older stage than the files actually reached if the process stopped while updating its journal. Zanik re-derives the effective export stage from validated UnrealAssetScout manifests rather than repeating extraction or trusting the stage string alone.
 - If a complete ZIP and multipart set were produced but cleanup was deferred, the bundles are still valid. Manager retries only the ownership-marked workspace at startup; **Discard generated work** performs the same bounded safe cleanup on demand.
 - If the game or its existing loader changed after a checkpoint, discard the old work and start a new extraction. Zanik deliberately refuses to combine mismatched game, recipe, mapping, or tool inputs.
 - If a generated catalog or icon count drifts, do not bypass compatibility validation. Preserve the work directory and Activity output for review.

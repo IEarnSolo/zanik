@@ -483,7 +483,7 @@ def cleanup_work(args: argparse.Namespace) -> int:
     if not marker.is_file():
         raise SystemExit(f"refusing to clean an unmarked asset workspace: {root}")
     try:
-        metadata = json.loads(marker.read_text(encoding="utf-8"))
+        metadata = json.loads(marker.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError) as error:
         raise SystemExit(f"refusing to clean an invalid asset workspace: {error}") from error
     if metadata.get("schemaVersion") != 1 or metadata.get("owner") != "Zanik asset extractor":

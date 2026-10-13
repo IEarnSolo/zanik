@@ -211,8 +211,8 @@ class AssetExtractor:
         if not journal.is_file() or not marker.is_file():
             return None
         try:
-            ownership = json.loads(marker.read_text(encoding="utf-8"))
-            value = json.loads(journal.read_text(encoding="utf-8"))
+            ownership = json.loads(marker.read_text(encoding="utf-8-sig"))
+            value = json.loads(journal.read_text(encoding="utf-8-sig"))
         except (OSError, UnicodeError, json.JSONDecodeError):
             return None
         if ownership.get("owner") != "Zanik asset extractor" or value.get("schemaVersion") != 1:
