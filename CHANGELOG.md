@@ -2,6 +2,18 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.5] - 2026-10-13
+
+### Added
+
+- Automatically mirror each new validated stable release from the authoritative GitLab pipeline to the public GitHub repository with retry-safe asset digest checks.
+- Add a complete first-class self-hosted Linux installation, upgrade, diagnostics, and Windows-to-Linux asset-transfer workflow alongside Zanik Manager.
+
+### Changed
+
+- Require source branches and annotated release tags to be pushed to GitLab first and then to the public GitHub mirror.
+- Mark automatic compost equipment as incomplete and keep `FEATURE_QOL_AUTO_COMPOST` disabled until its native server integration and validation are complete.
+
 ## [0.2.4] - 2026-10-13
 
 ### Added
