@@ -101,6 +101,40 @@ class AssetExtractor:
         embedded = self.tool_root / "runtime" / "python.exe"
         return str(embedded if embedded.is_file() else Path(sys.executable))
 
+    def toolchain_summary(self, game_root: Path) -> str:
+        version = "unknown"
+        payload = self.tool_root.parent / "payload" / "server-payload.json"
+        recipe_path = self.tool_root / "asset-tools" / "extraction-recipes.json"
+        lock_path = self.tool_root / "asset-tools" / "tools.lock.json"
+        try:
+            version = str(json.loads(payload.read_text(encoding="utf-8")).get("version", version))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            pass
+        try:
+            recipe = str(json.loads(recipe_path.read_text(encoding="utf-8")).get("schemaVersion", "unknown"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            recipe = "unknown"
+        try:
+            tools = json.loads(lock_path.read_text(encoding="utf-8")).get("tools", {})
+            uas = str(tools.get("unreal-asset-scout-windows-x86_64", {}).get("version", "unknown"))
+            python_version = str(tools.get("python-embed-windows-x86_64", {}).get("version", "unknown"))
+            ue4ss = str(tools.get("ue4ss-windows-x86_64", {}).get("version", "unknown"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            uas = python_version = ue4ss = "unknown"
+        game_build = "unknown"
+        tool = self.tool_root / "tools" / "zanik_assets.py"
+        try:
+            completed = subprocess.run(
+                [self._python(), str(tool), "show-build", "--game-root", str(game_root)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+            )
+            if completed.returncode == 0 and completed.stdout.strip():
+                game_build = completed.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            pass
+        return (f"Zanik Manager/extractor {version} · recipe {recipe} · game {game_build} · "
+                f"UnrealAssetScout {uas} · UE4SS {ue4ss} · Python {python_version}")
+
     def mapping_preflight(self, game_root: Path, recovery_root: Path) -> dict:
         tool = self.tool_root / "tools" / "zanik_assets.py"
         completed = subprocess.run(
@@ -122,11 +156,12 @@ class AssetExtractor:
     def extract(self, game_root: Path, output: Path, event=lambda event: None,
                 usmap: Path | None = None, keep_work: bool = False,
                 preserve_existing_loader: bool = False,
-                recovery_root: Path | None = None) -> CachedBundle:
+                recovery_root: Path | None = None, work_root: Path | None = None,
+                resume: bool = False) -> CachedBundle:
         script = self.tool_root / "init-assets.ps1"
         if not script.exists():
             raise FileNotFoundError("The bundled Windows asset extractor is missing")
-        if not usmap and dragonwilds_is_running():
+        if not resume and not usmap and dragonwilds_is_running():
             raise RuntimeError(
                 "Dragonwilds is already running. Close the game before extraction, then try again. "
                 "Zanik Manager will launch and close it automatically while generating mappings."
@@ -141,6 +176,11 @@ class AssetExtractor:
             command.append("-PreserveExistingLoader")
         if recovery_root:
             command += ["-RecoveryDirectory", str(recovery_root)]
+        if work_root:
+            command += ["-WorkDirectory", str(work_root)]
+        if resume:
+            command.append("-Resume")
+        event({"phase": "extract", "message": self.toolchain_summary(game_root)})
         event({"phase": "extract", "message": "Starting the Windows client asset extractor"})
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                    encoding="utf-8", errors="replace")
@@ -164,6 +204,43 @@ class AssetExtractor:
         with zipfile.ZipFile(bundles[0]) as archive:
             manifest = json.loads(archive.read("asset-manifest.json"))
         return self.cache.add(bundles[0], game_root_id(game_root), manifest)
+
+    def resumable(self, work_root: Path) -> dict | None:
+        journal = work_root / "extraction-journal.json"
+        marker = work_root / ".zanik-asset-work.json"
+        if not journal.is_file() or not marker.is_file():
+            return None
+        try:
+            ownership = json.loads(marker.read_text(encoding="utf-8"))
+            value = json.loads(journal.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return None
+        if ownership.get("owner") != "Zanik asset extractor" or value.get("schemaVersion") != 1:
+            return None
+        return {"stage": str(value.get("stage", "unknown")), "updatedAt": str(value.get("updatedAt", ""))}
+
+    def discard(self, work_root: Path) -> None:
+        tool = self.tool_root / "tools" / "zanik_assets.py"
+        pending = work_root.parent / f"pending-cleanup-{work_root.name}.json"
+        completed = subprocess.run(
+            [self._python(), str(tool), "cleanup-work", "--work-root", str(work_root),
+             "--pending-journal", str(pending)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180,
+        )
+        if completed.returncode:
+            raise RuntimeError("Could not safely discard the extraction workspace: " +
+                               (completed.stderr or completed.stdout).strip())
+
+    def cleanup_completed(self, parent: Path) -> list[str]:
+        cleaned: list[str] = []
+        if not parent.is_dir():
+            return cleaned
+        for work_root in sorted(path for path in parent.iterdir() if path.is_dir()):
+            status = self.resumable(work_root)
+            if status and status.get("stage") == "complete":
+                self.discard(work_root)
+                cleaned.append(work_root.name)
+        return cleaned
 
 
 class AssetDeployer:

@@ -427,7 +427,11 @@ class PterodactylProvider(ServerProvider):
             result["assets"] = {"installed": True,
                                 "compatible": compatibility not in {False, "incompatible"},
                                 "compatibility": compatibility,
-                                "gameBuild": manifest.get("gameBuild") or manifest.get("clientBuild")}
+                                "gameBuild": manifest.get("gameBuild") or manifest.get("clientBuild"),
+                                "extractionStage": manifest.get("extractionStage"),
+                                "buildingIconSources": manifest.get("buildingIconSources", {}),
+                                "recipeRouteCoverage": manifest.get("recipeRouteCoverage", {}),
+                                "cleanupWarnings": manifest.get("cleanupWarnings", [])}
             result["healthy"] &= result["assets"]["compatible"]
             if deep:
                 try:

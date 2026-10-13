@@ -38,8 +38,15 @@ with tempfile.TemporaryDirectory() as name:
                 value["nodes"] = [{"id": f"node-{index}", "x": 0.5, "y": 0.5} for index in range(10)]
             path.write_text(json.dumps(value) + "\n")
     first = root / "one.zip"; second = root / "two.zip"; env = dict(os.environ, SOURCE_DATE_EPOCH="1")
-    subprocess.run([sys.executable, str(TOOL), "build", "--game-root", str(game), "--generated-root", str(generated), "--output", str(first)], check=True, env=env)
-    subprocess.run([sys.executable, str(TOOL), "build", "--game-root", str(game), "--generated-root", str(generated), "--output", str(second)], check=True, env=env)
+    tool_lock = root / "tools.lock.json"
+    tool_lock.write_text(json.dumps({"tools": {
+        "python-embed-windows-x86_64": {"version": "3.12.10"},
+        "unreal-asset-scout-windows-x86_64": {"version": "0.5.0"},
+    }}))
+    subprocess.run([sys.executable, str(TOOL), "build", "--game-root", str(game), "--generated-root", str(generated),
+                    "--output", str(first), "--tool-versions-file", str(tool_lock)], check=True, env=env)
+    subprocess.run([sys.executable, str(TOOL), "build", "--game-root", str(game), "--generated-root", str(generated),
+                    "--output", str(second), "--tool-versions-file", str(tool_lock)], check=True, env=env)
     assert hashlib.sha256(first.read_bytes()).digest() == hashlib.sha256(second.read_bytes()).digest()
     subprocess.run([sys.executable, str(TOOL), "validate", "--generated-root", str(generated)], check=True)
     wrong_map = root / "wrong-map"; shutil.copytree(generated, wrong_map)
@@ -47,6 +54,12 @@ with tempfile.TemporaryDirectory() as name:
     rejected_map = subprocess.run([sys.executable, str(TOOL), "validate", "--generated-root", str(wrong_map)], capture_output=True)
     assert rejected_map.returncode and b"expected 4096x4096" in rejected_map.stderr
     subprocess.run([sys.executable, str(TOOL), "validate", "--bundle", str(first)], check=True)
+    with zipfile.ZipFile(first) as archive:
+        bundled_manifest = json.loads(archive.read("asset-manifest.json"))
+    assert bundled_manifest["toolVersions"] == {
+        "python-embed-windows-x86_64": "3.12.10",
+        "unreal-asset-scout-windows-x86_64": "0.5.0",
+    }
     subprocess.run([sys.executable, str(TOOL), "install-bundle", "--bundle", str(first), "--destination", str(destination)], check=True)
     current = destination / "current"; manifest = json.loads((current / "asset-manifest.json").read_text())
     assert manifest["sourceKind"] == "linux-dedicated-server" and not manifest["missingRequired"]
@@ -78,4 +91,22 @@ with tempfile.TemporaryDirectory() as name:
     corrupt = next(parts.glob("part-*.zip")); corrupt.write_bytes(corrupt.read_bytes() + b"corrupt")
     rejected = subprocess.run([sys.executable, str(TOOL), "install-bundle-set", "--index", str(parts / "bundle-index.json"), "--destination", str(set_destination)], capture_output=True)
     assert rejected.returncode and (set_destination / "current").resolve() == set_current
+
+    replacement_parts = root / "replacement-parts"
+    replacement_parts.mkdir(); (replacement_parts / "old.txt").write_text("old")
+    subprocess.run([sys.executable, str(TOOL), "bundle-set", "--bundle", str(first),
+                    "--output-dir", str(replacement_parts), "--max-part-bytes", str(1024 * 1024),
+                    "--replace"], check=True)
+    assert (replacement_parts / "bundle-index.json").is_file() and not (replacement_parts / "old.txt").exists()
+
+    work = root / "owned-work"; work.mkdir()
+    (work / ".zanik-asset-work.json").write_text(json.dumps({"schemaVersion": 1, "owner": "Zanik asset extractor"}))
+    nested = work / "nested"; nested.mkdir(); locked = nested / "readonly.txt"; locked.write_text("temporary")
+    locked.chmod(0o400)
+    subprocess.run([sys.executable, str(TOOL), "cleanup-work", "--work-root", str(work)], check=True)
+    assert not work.exists()
+    unowned = root / "unowned"; unowned.mkdir(); (unowned / "keep.txt").write_text("keep")
+    refused_cleanup = subprocess.run([sys.executable, str(TOOL), "cleanup-work", "--work-root", str(unowned)],
+                                     capture_output=True)
+    assert refused_cleanup.returncode and (unowned / "keep.txt").is_file()
 print("asset tool tests passed")

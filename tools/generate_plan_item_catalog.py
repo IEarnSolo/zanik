@@ -16,8 +16,9 @@ def main() -> None:
     args = parser.parse_args()
 
     icon_matches = list(args.icons.rglob("T_Icon_Plans.png"))
-    if len(icon_matches) != 1:
-        raise SystemExit(f"Expected one T_Icon_Plans.png, found {len(icon_matches)}")
+    icon_hashes = {hashlib.sha256(path.read_bytes()).hexdigest() for path in icon_matches}
+    if not icon_matches or len(icon_hashes) != 1:
+        raise SystemExit(f"Expected one unique T_Icon_Plans.png, found {len(icon_matches)} exports with {len(icon_hashes)} hashes")
 
     records = []
     for path in sorted(args.assets.rglob("DA_Consumable_Plan*.json")):

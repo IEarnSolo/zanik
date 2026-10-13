@@ -21,10 +21,11 @@ import zipfile
 
 SCHEMA_VERSION = 2
 BUNDLE_SET_SCHEMA_VERSION = 1
-EXTRACTION_RECIPE_VERSION = 3
+EXTRACTION_RECIPE_VERSION = 4
 DEFAULT_PART_BYTES = 90 * 1024 * 1024
 MAX_ENTRY_BYTES = 64 * 1024 * 1024
 WORLD_MAP_DIMENSIONS = (4096, 4096)
+LEGACY_BUILDING_PLACEHOLDER_SHA256 = "04608a9130fcdd8b385f426a95b11f3b1e8fdac39b3bec166c05f65721433c09"
 REQUIRED = (
     "buildings/catalog.json",
     "buildings/catalog.tsv",
@@ -84,6 +85,21 @@ def digest(path: Path) -> str:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             value.update(block)
     return value.hexdigest()
+
+
+def tool_versions_from_file(path: Path) -> dict[str, str]:
+    """Load normalized tool versions without passing JSON through a shell."""
+    value = json.loads(path.read_text(encoding="utf-8"))
+    tools = value.get("tools") if isinstance(value, dict) else None
+    if not isinstance(tools, dict) or not tools:
+        raise ValueError("tool versions file has no tools object")
+    versions: dict[str, str] = {}
+    for name, record in sorted(tools.items()):
+        version = record.get("version") if isinstance(record, dict) else None
+        if not isinstance(version, str) or not version.strip():
+            raise ValueError(f"tool versions file has no version for {name}")
+        versions[name] = version.strip()
+    return versions
 
 
 def clean_relative(value: str) -> str:
@@ -166,11 +182,23 @@ def jpeg_dimensions(path: Path) -> tuple[int, int]:
     raise ValueError("JPEG has no supported frame header")
 
 
+def png_dimensions(path: Path) -> tuple[int, int]:
+    value = path.read_bytes()[:24]
+    if len(value) != 24 or value[:8] != b"\x89PNG\r\n\x1a\n" or value[12:16] != b"IHDR":
+        raise ValueError("missing PNG signature or IHDR")
+    width, height = int.from_bytes(value[16:20], "big"), int.from_bytes(value[20:24], "big")
+    if not width or not height:
+        raise ValueError("invalid PNG dimensions")
+    return width, height
+
+
 def validate_generated(source: Path) -> dict:
     missing_required, missing_optional = classify(source)
     errors: list[str] = []
     warnings: list[str] = []
     counts: dict[str, int] = {}
+    building_icon_sources: dict[str, int] = {}
+    recipe_route_coverage: dict[str, int] = {}
     if not source.is_dir():
         errors.append(f"generated asset root does not exist: {source}")
     for relative in REQUIRED:
@@ -186,6 +214,42 @@ def validate_generated(source: Path) -> dict:
                 if not isinstance(value, (dict, list)):
                     errors.append(f"required JSON has an unsupported root value: {relative}")
                 if isinstance(value, dict):
+                    if relative == "buildings/catalog.json":
+                        building_icon_sources = value.get("iconSources", {})
+                        if value.get("counts", {}).get("pieces") == 822 and building_icon_sources != {
+                            "authored-texture": 753,
+                            "embedded-build-ui-thumbnail": 68,
+                            "procedural-thumbnail": 1,
+                        }:
+                            errors.append(f"building icon source coverage changed: {building_icon_sources}")
+                        pieces = value.get("pieces", [])
+                        if isinstance(pieces, list) and len(pieces) == 822:
+                            seen_icons: set[str] = set()
+                            for piece in pieces:
+                                icon = str(piece.get("icon", "")) if isinstance(piece, dict) else ""
+                                if not icon or Path(icon).name != icon or icon in seen_icons:
+                                    errors.append(f"building catalog has an invalid or duplicate icon reference: {icon!r}")
+                                    continue
+                                seen_icons.add(icon)
+                                icon_path = source / "buildings" / icon
+                                if not icon_path.is_file() or icon_path.is_symlink():
+                                    errors.append(f"building icon is missing: {icon}")
+                                    continue
+                                try:
+                                    dimensions = png_dimensions(icon_path)
+                                    if dimensions[0] < 256 or dimensions[1] < 256:
+                                        errors.append(f"building icon is undersized: {icon} ({dimensions[0]}x{dimensions[1]})")
+                                    if digest(icon_path) == LEGACY_BUILDING_PLACEHOLDER_SHA256:
+                                        errors.append(f"building icon is the removed legacy placeholder: {icon}")
+                                except (OSError, ValueError) as error:
+                                    errors.append(f"building icon is not a valid PNG: {icon}: {error}")
+                    if relative == "recipe-unlocks.json":
+                        recipe_route_coverage = {
+                            "entries": len(value.get("entries", [])),
+                            "unknownTriggers": int(value.get("counts", {}).get("unknownTriggers", 0)),
+                        }
+                        if "Available from the start" in path.read_text(encoding="utf-8"):
+                            errors.append("recipe catalog contains an unsupported automatic-availability claim")
                     for key in ("pieces", "types", "nodes", "quests", "entries"):
                         rows = value.get(key)
                         if isinstance(rows, list):
@@ -245,6 +309,8 @@ def validate_generated(source: Path) -> dict:
         "warnings": warnings,
         "catalogCounts": counts,
         "assetReferences": len(asset_references),
+        "buildingIconSources": building_icon_sources,
+        "recipeRouteCoverage": recipe_route_coverage,
     }
 
 
@@ -349,6 +415,8 @@ def manifest_for(root: Path, source: Path, files: list[Path], validation: dict,
         "mappingSha256": digest(mapping_path) if mapping_path and mapping_path.is_file() else None,
         "toolVersions": tool_versions or {},
         "extractionRecipeVersion": recipe_version,
+        "extractionStage": "validated-and-packaged",
+        "cleanupWarnings": [],
         "compatibility": "compatible" if validation["valid"] and not drift else "incompatible",
         "compatibilityProfile": {
             "version": (profile or {}).get("catalogProfile", {}).get("version"),
@@ -356,6 +424,8 @@ def manifest_for(root: Path, source: Path, files: list[Path], validation: dict,
             "drift": drift,
         },
         "catalogCounts": validation.get("catalogCounts", {}),
+        "buildingIconSources": validation.get("buildingIconSources", {}),
+        "recipeRouteCoverage": validation.get("recipeRouteCoverage", {}),
         "assetReferenceCount": validation.get("assetReferences", 0),
         "generatedFileCount": len([path for path in files if path.name != "asset-manifest.json"]),
         "fileCountsByCategory": dict(sorted(categories.items())),
@@ -375,7 +445,10 @@ def build(args: argparse.Namespace) -> int:
     if not validation["valid"]:
         raise SystemExit("generated assets are invalid:\n  - " + "\n  - ".join(validation["errors"]))
     files = safe_files(source)
-    tool_versions = json.loads(args.tool_versions) if getattr(args, "tool_versions", None) else {}
+    if getattr(args, "tool_versions_file", None):
+        tool_versions = tool_versions_from_file(Path(args.tool_versions_file).resolve())
+    else:
+        tool_versions = json.loads(args.tool_versions) if getattr(args, "tool_versions", None) else {}
     mapping = Path(args.mapping).resolve() if getattr(args, "mapping", None) else None
     profile = json.loads(Path(args.profile).read_text(encoding="utf-8")) if getattr(args, "profile", None) else None
     manifest = manifest_for(root, source, files, validation, mapping, tool_versions,
@@ -393,6 +466,59 @@ def build(args: argparse.Namespace) -> int:
             archive.writestr(info, path.read_bytes())
     print(f"created {output} ({len(manifest['files'])} files)")
     return 0
+
+
+def _clear_readonly(function, target, error) -> None:
+    try:
+        os.chmod(target, 0o700)
+        function(target)
+    except FileNotFoundError:
+        return
+
+
+def cleanup_work(args: argparse.Namespace) -> int:
+    """Delete only a marked Zanik asset workspace, tolerating Windows races."""
+    root = Path(args.work_root).resolve()
+    marker = root / ".zanik-asset-work.json"
+    if not marker.is_file():
+        raise SystemExit(f"refusing to clean an unmarked asset workspace: {root}")
+    try:
+        metadata = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(f"refusing to clean an invalid asset workspace: {error}") from error
+    if metadata.get("schemaVersion") != 1 or metadata.get("owner") != "Zanik asset extractor":
+        raise SystemExit(f"refusing to clean an unowned asset workspace: {root}")
+    attempts = max(1, int(args.attempts))
+    last_error: OSError | None = None
+    for attempt in range(attempts):
+        try:
+            shutil.rmtree(root, onerror=_clear_readonly)
+            if args.pending_journal:
+                Path(args.pending_journal).unlink(missing_ok=True)
+            print(json.dumps({"cleaned": True, "path": str(root)}, sort_keys=True))
+            return 0
+        except FileNotFoundError:
+            if args.pending_journal:
+                Path(args.pending_journal).unlink(missing_ok=True)
+            print(json.dumps({"cleaned": True, "path": str(root)}, sort_keys=True))
+            return 0
+        except OSError as error:
+            last_error = error
+            if attempt + 1 < attempts:
+                time.sleep(min(0.25 * (2 ** attempt), 4.0))
+    if args.pending_journal:
+        journal = Path(args.pending_journal).resolve()
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        temporary = journal.with_suffix(journal.suffix + ".new")
+        temporary.write_text(json.dumps({
+            "schemaVersion": 1,
+            "workRoot": str(root),
+            "error": str(last_error),
+            "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        temporary.replace(journal)
+    print(json.dumps({"cleaned": False, "path": str(root), "warning": str(last_error)}, sort_keys=True))
+    return 3
 
 
 def validate_member(name: str) -> None:
@@ -580,7 +706,13 @@ def write_part(output: Path, source: zipfile.ZipFile, members: list[zipfile.ZipI
 
 def bundle_set(args: argparse.Namespace) -> int:
     bundle = Path(args.bundle).resolve()
-    output = Path(args.output_dir).resolve()
+    requested_output = Path(args.output_dir).resolve()
+    output = requested_output
+    staging: Path | None = None
+    if args.replace:
+        requested_output.parent.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=requested_output.name + ".new-", dir=requested_output.parent))
+        output = staging
     maximum = int(args.max_part_bytes)
     if maximum < 1024 * 1024:
         raise ValueError("maximum part size must be at least 1 MiB")
@@ -624,6 +756,21 @@ def bundle_set(args: argparse.Namespace) -> int:
              "sourceBundleSha256": digest(bundle), "parts": records,
              "fileCount": sum(len(record["files"]) for record in records)}
     (output / "bundle-index.json").write_text(json.dumps(index, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if staging is not None:
+        previous = requested_output.with_name(requested_output.name + ".previous")
+        if previous.exists():
+            shutil.rmtree(previous, onerror=_clear_readonly)
+        if requested_output.exists():
+            requested_output.replace(previous)
+        try:
+            staging.replace(requested_output)
+        except Exception:
+            if previous.exists() and not requested_output.exists():
+                previous.replace(requested_output)
+            raise
+        if previous.exists():
+            shutil.rmtree(previous, onerror=_clear_readonly)
+        output = requested_output
     print(json.dumps({"output": str(output), "parts": len(records), "files": index["fileCount"]}, sort_keys=True))
     return 0
 
@@ -730,6 +877,7 @@ def main() -> int:
     create.add_argument("--output", required=True)
     create.add_argument("--mapping")
     create.add_argument("--tool-versions")
+    create.add_argument("--tool-versions-file")
     create.add_argument("--recipe-version", type=int, default=EXTRACTION_RECIPE_VERSION)
     create.add_argument("--profile")
     create.set_defaults(run=build)
@@ -739,6 +887,7 @@ def main() -> int:
     bundle.add_argument("--output", required=True)
     bundle.add_argument("--mapping")
     bundle.add_argument("--tool-versions")
+    bundle.add_argument("--tool-versions-file")
     bundle.add_argument("--recipe-version", type=int, default=EXTRACTION_RECIPE_VERSION)
     bundle.add_argument("--profile")
     bundle.set_defaults(run=build)
@@ -746,6 +895,7 @@ def main() -> int:
     parts.add_argument("--bundle", required=True)
     parts.add_argument("--output-dir", required=True)
     parts.add_argument("--max-part-bytes", type=int, default=DEFAULT_PART_BYTES)
+    parts.add_argument("--replace", action="store_true")
     parts.set_defaults(run=bundle_set)
     check = commands.add_parser("validate")
     source = check.add_mutually_exclusive_group(required=True)
@@ -764,6 +914,11 @@ def main() -> int:
     install_bundle_set.add_argument("--index", required=True)
     install_bundle_set.add_argument("--destination", required=True)
     install_bundle_set.set_defaults(run=install_set)
+    cleanup = commands.add_parser("cleanup-work")
+    cleanup.add_argument("--work-root", required=True)
+    cleanup.add_argument("--pending-journal")
+    cleanup.add_argument("--attempts", type=int, default=8)
+    cleanup.set_defaults(run=cleanup_work)
     args = parser.parse_args()
     return args.run(args)
 
