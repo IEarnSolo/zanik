@@ -53,6 +53,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(PYTHON) tests/recipe_tree_wiki_links_test.py
 	$(PYTHON) tests/gitlab_pipeline_monitor_test.py
 	$(PYTHON) tests/release_automation_test.py
+	$(PYTHON) tests/github_release_test.py
 	sh tests/config_test.sh
 	$(PYTHON) tests/asset_tool_test.py
 	$(PYTHON) tests/generate_web_assets_test.py

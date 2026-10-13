@@ -47,6 +47,37 @@ The output contains:
 
 The manifest records the client build, container and executable fingerprints, mapping hash, exact tool/recipe versions, catalog counts, every generated file hash, fallbacks, and reviewed compatibility profile. Build-ID differences are informational. Structural errors or unreviewed catalog-count drift mark the candidate incompatible, and the server refuses to activate it.
 
+## Install on a self-hosted Linux server
+
+The complete ZIP is recommended for an ordinary Linux server. On the Linux host, create a versioned incoming directory under the server root. This example assumes the generated filename contains client build `CLIENT_BUILD`:
+
+```sh
+SERVER_ROOT=/srv/dragonwilds
+CLIENT_BUILD=CLIENT_BUILD
+mkdir -p "$SERVER_ROOT/zanik-assets-incoming/$CLIENT_BUILD"
+```
+
+From PowerShell on the Windows machine, transfer the generated ZIP with SCP, or use an equivalent SFTP client:
+
+```powershell
+scp ".\output\zanik-assets-CLIENT_BUILD.zip" `
+  "game-server:/srv/dragonwilds/zanik-assets-incoming/CLIENT_BUILD/"
+```
+
+Do **not** manually unzip the asset bundle. On the Linux server, run the installed initializer:
+
+```sh
+"$SERVER_ROOT/zanik/scripts/init-assets.sh" \
+  --game-root "$SERVER_ROOT" \
+  --install-bundle "$SERVER_ROOT/zanik-assets-incoming/$CLIENT_BUILD/zanik-assets-$CLIENT_BUILD.zip"
+
+"$SERVER_ROOT/zanik/scripts/doctor.sh" --server-root "$SERVER_ROOT" --json
+```
+
+The initializer validates the manifest, catalogs, paths, and hashes in a temporary tree and then atomically activates it as `SERVER_ROOT/zanik/assets/current`. The previous active cache remains available if validation or activation fails.
+
+Use the multipart bundle only when a hosting service has an upload-size limit. Upload `bundle-index.json` and every part without renaming them, then pass the index to `--install-bundle-set` exactly as shown in the Pterodactyl example below.
+
 ## Install on Pterodactyl
 
 For the multipart form, upload the index and every part to:
@@ -71,6 +102,6 @@ For the full ZIP, upload it to `/home/container/zanik-assets-incoming/CLIENT_BUI
   --install-bundle /home/container/zanik-assets-incoming/CLIENT_BUILD/zanik-assets-CLIENT_BUILD.zip
 ```
 
-Both paths reject traversal, symlinks, missing or unexpected parts, duplicate paths, checksum mismatches, incomplete catalogs, unresolved web URLs, and incompatible manifests. Assembly and validation happen in a temporary tree; the previous active cache remains untouched on failure.
+Both paths reject traversal, symlinks, missing or unexpected parts, duplicate paths, checksum mismatches, incomplete catalogs, unresolved web URLs, and incompatible manifests. Assembly and validation happen in a temporary tree; the previous active cache remains untouched on failure. Do not manually extract either form on the server.
 
 Zanik-authored placeholders cover genuinely unavailable optional artwork. Missing required catalogs or static assets never produce a partially activated bundle.

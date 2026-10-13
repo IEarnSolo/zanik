@@ -2,7 +2,8 @@
 
 This directory is independent of the status API and website. Its compost
 selection core chooses the first filled bucket of the same type in inventory
-slot order. `ZANIK_QOL_AUTO_COMPOST=0` disables the feature; the default is on.
+slot order. The packaged setting is `FEATURE_QOL_AUTO_COMPOST=false` and must
+remain false: the feature is incomplete and has no deployable server integration.
 
 **This is not yet a deployable server mod.** Do not upload these files or add a
 `libzanikqol.so` preload to Pterodactyl yet. No server hook or Linux library has

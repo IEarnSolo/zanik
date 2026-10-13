@@ -11,10 +11,10 @@ Use a different archive only when you specifically need a manual or command-line
 | Download | Who it is for |
 | --- | --- |
 | `zanik-manager-windows-x86_64-VERSION.zip` | **Recommended for most users.** Complete Windows management app, Linux server payload, and asset extractor. |
-| `zanik-server-linux-x86_64-VERSION.zip` | Linux/Pterodactyl administrators installing manually through a panel or shell. |
+| `zanik-server-linux-x86_64-VERSION.tar.gz` | **Recommended manual package for self-hosted Linux servers.** Preserves executable modes for a shell installation. |
+| `zanik-server-linux-x86_64-VERSION.zip` | Pterodactyl and other hosting-panel administrators performing a manual upload. |
 | `zanik-asset-tools-windows-x86_64-VERSION.zip` | Advanced users who only want to build web assets from a licensed Windows client. Already included in Zanik Manager. |
 | `zanik-asset-tools-linux-x86_64-VERSION.tar.gz` | Advanced Linux inventory and catalog tooling. A Linux dedicated server cannot produce the complete visual bundle. |
-| `zanik-server-linux-x86_64-VERSION.tar.gz` | Shell-oriented equivalent of the server ZIP. |
 
 Players joining a Zanik-enabled server download **nothing**. Zanik Manager runs on Windows, but the public server loader currently supports Linux x86-64 only.
 
@@ -28,21 +28,30 @@ For detailed Manager instructions, see [docs/manager.md](docs/manager.md).
 - Cannot edit the executable path, such as a fixed Pterodactyl egg: use the acknowledged **replace-executable mode** after reading the warning.
 - Hosting on Windows: the server loader is not supported yet. The Windows asset tool can create an asset bundle for a Linux server.
 
-Download `zanik-server-linux-x86_64-VERSION.zip`, extract it, then run:
+For a self-hosted Linux server, download the server `.tar.gz` and `SHA256SUMS` from the same release. Place them under `SERVER_ROOT/zanik-release/VERSION/`, verify the selected archive, and extract it into `payload/`:
 
 ```sh
-chmod +x scripts/*.sh bin/zanik-server
-scripts/install.sh --server-root /home/container --mode wrapper
-/home/container/zanik/bin/zanik-server --server-root /home/container -- GAME_ARGS
+SERVER_ROOT=/srv/dragonwilds
+ZANIK_VERSION=VERSION
+RELEASE_ROOT="$SERVER_ROOT/zanik-release/$ZANIK_VERSION"
+mkdir -p "$RELEASE_ROOT/payload"
+mv "zanik-server-linux-x86_64-$ZANIK_VERSION.tar.gz" SHA256SUMS "$RELEASE_ROOT/"
+cd "$RELEASE_ROOT"
+grep " zanik-server-linux-x86_64-$ZANIK_VERSION.tar.gz$" SHA256SUMS | sha256sum --check -
+tar -xzf "zanik-server-linux-x86_64-$ZANIK_VERSION.tar.gz" -C payload
+"$RELEASE_ROOT/payload/scripts/install.sh" --server-root "$SERVER_ROOT" --mode wrapper
+"$SERVER_ROOT/zanik/bin/zanik-server" --server-root "$SERVER_ROOT" -- GAME_ARGS
 ```
 
-No game-derived asset is included. The Linux dedicated server supports inventory only; create the complete server-installable bundle from a licensed Windows client with the self-contained Windows asset tool. It produces a full ZIP and sub-90 MiB Pterodactyl parts. Missing optional artwork uses Zanik placeholders; catalog-dependent features report unavailable rather than returning broken data.
+No game-derived asset is included. The Linux dedicated server supports inventory only; create the complete server-installable bundle from a licensed Windows client with the self-contained Windows asset tool. Transfer the generated full ZIP to `SERVER_ROOT/zanik-assets-incoming/CLIENT_BUILD/` and let `init-assets.sh` validate, extract, and atomically activate it—do not unzip it manually. See the [self-hosted Linux guide](docs/linux.md) and [asset instructions](docs/assets.md#install-on-a-self-hosted-linux-server).
 
 Read [installation](docs/installation.md), [configuration](docs/configuration.md), [assets](docs/assets.md), [security](docs/security.md), and [hosting](docs/hosting.md) before public deployment.
 
 ## Safe defaults
 
 Public/read-only tracking is enabled by default. Teleports, storage and gravestone mutation, recipe-unlock administration, and every gameplay-changing QoL feature are disabled until the operator explicitly opts in. Disabled native features do not install their hook, scanner, dispatcher, or periodic task.
+
+Automatic compost equipment is incomplete and has no deployable server integration. Keep `FEATURE_QOL_AUTO_COMPOST=false`.
 
 ## Build and test
 
@@ -54,6 +63,6 @@ make test-assets     # opt-in tests using ignored local game inputs
 
 CI builds and validates server `.tar.gz`/`.zip` archives and separate Linux and Windows asset-tool archives. See [contributor architecture](docs/contributor-architecture.md).
 
-Stable releases are built from matching `vMAJOR.MINOR.PATCH` tags and published as permanent GitLab packages. See [releasing](docs/releasing.md) and [CurseForge distribution](docs/curseforge.md).
+Stable releases are built from matching `vMAJOR.MINOR.PATCH` tags. GitLab is the authoritative development and package platform; new releases and source refs are also mirrored to the public GitHub repository. See [releasing](docs/releasing.md) and [CurseForge distribution](docs/curseforge.md).
 
 The engine discovery layer is adapted from RSDWServerAPI under MIT terms. See [UPSTREAM.md](UPSTREAM.md), [LICENSE](LICENSE), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
