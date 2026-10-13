@@ -9,6 +9,8 @@ All notable changes to Zanik are documented here.
 - Composite the extracted transparent world-map landmass over Zanik's ocean background instead of preserving transparent white texels as visible JPEG gaps.
 - Resize generated world maps to the website's required 4096-by-4096 canvas and reject bundles with unexpected map dimensions.
 - Version the corrected extraction recipe so Zanik Manager does not reuse an older affected bundle.
+- Select the clean `Tag_Skill` artwork for player-page skill cards instead of the visually different glowing skill-tree node textures.
+- Accept structurally valid recipe catalogs whose exact count matches the reviewed asset profile, rather than rejecting new game builds with a stale native count.
 
 ### Changed
 
