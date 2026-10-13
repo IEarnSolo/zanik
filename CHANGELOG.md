@@ -2,6 +2,12 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.3] - 2026-10-13
+
+### Fixed
+
+- Treat a Pterodactyl Wings `500` for a provably absent parent directory as a normal missing path, allowing Zanik Manager first installs to advance from staging to activation instead of retrying the probe as a node outage.
+
 ## [0.2.2] - 2026-10-12
 
 ### Fixed

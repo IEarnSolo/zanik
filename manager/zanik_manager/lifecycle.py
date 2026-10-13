@@ -156,6 +156,8 @@ class PterodactylProvider(ServerProvider):
             except PterodactylError as error:
                 if error.status == 404:
                     return None
+                if error.status in {500, 502, 503, 504} and self._directory_definitely_missing(server_id, posix.parent):
+                    return None
                 if error.status == 522 or (error.status in {500, 502, 503, 504} and failures < 5):
                     failures += 1
                     self._status(
@@ -164,6 +166,22 @@ class PterodactylProvider(ServerProvider):
                     time.sleep(self.client.retry_seconds)
                     continue
                 raise
+
+    def _directory_definitely_missing(self, server_id: str, directory: PurePosixPath) -> bool:
+        """Disambiguate Wings versions that return 500 when listing an absent directory."""
+        current = directory
+        container = PurePosixPath("/home/container")
+        while current != container and str(current) not in {"/", "."}:
+            parent = current.parent
+            try:
+                rows = self.client.list_files(server_id, str(parent))
+            except PterodactylError as error:
+                if error.status in {500, 502, 503, 504}:
+                    current = parent
+                    continue
+                return False
+            return not any(row.get("name") == current.name for row in rows)
+        return False
 
     def _exists(self, server_id: str, path: str) -> bool:
         return self._entry(server_id, path) is not None

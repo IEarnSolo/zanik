@@ -220,6 +220,23 @@ class ManagerTests(unittest.TestCase):
             PterodactylProvider(client, JournalStore(Path(temporary)))._mkdir("dev", "/home/container/zanik")
         self.assertEqual(client.calls[:2], [("/", "zanik"), ("/", "zanik")])
 
+    def test_missing_directory_reported_as_wings_500_is_not_retried_as_an_outage(self):
+        calls = []
+        class Client:
+            retry_seconds = 0
+            cancelled = staticmethod(lambda: False)
+            def list_files(self, server_id, directory):
+                calls.append(directory)
+                if directory == "/home/container/zanik":
+                    raise PterodactylError("node file error", 500)
+                if directory == "/home/container":
+                    return [{"name": "RSDragonwilds", "is_file": False}]
+                raise AssertionError(directory)
+        with tempfile.TemporaryDirectory() as temporary:
+            provider = PterodactylProvider(Client(), JournalStore(Path(temporary)))
+            self.assertIsNone(provider._entry("dev", "/home/container/zanik/install-state.json"))
+        self.assertEqual(calls, ["/home/container/zanik", "/home/container"])
+
     def test_release_payload_manifest_and_traversal(self):
         with tempfile.TemporaryDirectory() as temporary:
             archive = Path(temporary) / "server.zip"
