@@ -17,7 +17,7 @@ from PySide6.QtCore import QUrl
 from .assets import (AssetDeployer, AssetExtractor, discover_steam_game_roots, game_root_id,
                      request_dragonwilds_close)
 from .cache import BundleCache
-from .config import ConfigModel, content_hash
+from .config import ConfigModel, content_hash, update_website_settings
 from .journal import JournalStore
 from .lifecycle import PterodactylProvider, ReleasePayload
 from .onboarding import PanelDiscovery, discover_panel, is_remote_http
@@ -379,7 +379,7 @@ class MainWindow(QMainWindow):
                 self.log(f"Installation complete; backup: {result['backup']}")
                 QMessageBox.information(self, "Installation complete",
                                         "Zanik was installed successfully and the server was started.")
-                self.offer_asset_setup(profile)
+                self.offer_website_settings(profile)
         self.run_async(action, done, title="Installing Zanik…", determinate=True)
 
     def uninstall(self):
@@ -448,6 +448,64 @@ class MainWindow(QMainWindow):
             profile.game_root = str(root); self.store.save(self.profiles)
         self.refresh_bundles()
         return root
+
+    def offer_website_settings(self, profile: ServerProfile):
+        config_path = f"{profile.server_root}/zanik/config/zanik.conf"
+        def loaded(data):
+            try:
+                model = self.config_model(); values = model.parse(data.decode())
+            except Exception as error:
+                self.log(f"Could not prepare website settings: {error}")
+                QMessageBox.warning(self, "Website settings unavailable",
+                                    "The server configuration could not be loaded. You can set the website port and public URL later on the Configuration tab. Website asset setup can still continue.")
+                self.offer_asset_setup(profile); return
+            dialog = QDialog(self); dialog.setWindowTitle("Configure the Zanik website")
+            form = QFormLayout(dialog)
+            explanation = QLabel(
+                "Zanik's website needs its own TCP port. Use a port allocated and open for this server—not the Dragonwilds game port. "
+                "The public URL is the address players and administrators will use to open the website and receive login links.")
+            explanation.setWordWrap(True)
+            port = QSpinBox(); port.setRange(1, 65535); port.setValue(int(values["STATUS_PORT"]))
+            public_url = QLineEdit(str(values["PUBLIC_BASE_URL"])); public_url.setPlaceholderText("http://server.example:29105")
+            later_note = QLabel("You can skip this step and change both values later: select this server, open the Configuration tab, then edit Networking.")
+            later_note.setWordWrap(True)
+            buttons = QDialogButtonBox()
+            buttons.addButton("Save and continue", QDialogButtonBox.AcceptRole)
+            buttons.addButton("Skip for now", QDialogButtonBox.RejectRole)
+            buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject)
+            form.addRow(explanation); form.addRow("Zanik TCP port", port); form.addRow("Public website URL", public_url)
+            form.addRow(later_note); form.addRow(buttons)
+            if dialog.exec() != QDialog.Accepted:
+                self.log(f"Website port and public URL setup for {profile.name} was skipped.")
+                self.offer_asset_setup(profile); return
+            try:
+                rendered = update_website_settings(model, data.decode(), port.value(), public_url.text())
+            except Exception as error:
+                QMessageBox.critical(self, "Invalid website settings", str(error))
+                self.offer_website_settings(profile); return
+            expected = content_hash(data); content = rendered.encode()
+            def action():
+                try:
+                    provider = self.provider(profile)
+                    result = provider.save_config(profile.server_id, profile.server_root, content, expected)
+                    self.operation_progress_signal.emit("Restarting the server to apply website settings", 85)
+                    provider.client.power(profile.server_id, "restart")
+                    return {"result": result}
+                except Exception as error:
+                    return {"error": str(error), "details": traceback.format_exc()}
+            def saved(outcome):
+                if outcome.get("error"):
+                    safe_message = redact(outcome["error"]); safe_details = redact(outcome["details"])
+                    self.activity.appendPlainText("Website settings were not saved: " + safe_message + "\n" + safe_details)
+                    QMessageBox.warning(self, "Website settings were not saved",
+                                        safe_message + "\n\nYou can retry later from the Configuration tab. Website asset setup can still continue.")
+                else:
+                    result = outcome["result"]
+                    self.log(f"Website settings saved; backup: {result['backup']}")
+                self.offer_asset_setup(profile)
+            self.run_async(action, saved, title="Saving website settings…", determinate=True)
+        self.run_async(lambda: self.provider(profile).client.read_file(profile.server_id, config_path), loaded,
+                       title=f"Loading website settings for {profile.name}…")
 
     def offer_asset_setup(self, profile: ServerProfile):
         def checked(result):

@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT))
 
 from manager.zanik_manager.assets import AssetDeployer, dragonwilds_is_running, request_dragonwilds_close
 from manager.zanik_manager.cache import BundleCache
-from manager.zanik_manager.config import ConfigError, ConfigModel, content_hash
+from manager.zanik_manager.config import ConfigError, ConfigModel, content_hash, update_website_settings
 from manager.zanik_manager.journal import JournalStore, OperationJournal
 from manager.zanik_manager.lifecycle import (PterodactylProvider, ReleasePayload, is_exact_legacy_launcher,
                                              safe_archive_name, validate_server_root)
@@ -74,6 +74,9 @@ class ManagerTests(unittest.TestCase):
         self.assertIn('phase_percent = {"preserve": 10, "mappings": 15, "restore": 30,', source)
         self.assertIn("Close game and continue", source)
         self.assertIn("Set up website assets now", source)
+        self.assertIn("Configure the Zanik website", source)
+        self.assertIn("Skip for now", source)
+        self.assertIn("not the Dragonwilds game port", source)
         self.assertIn("self.asset_target_box", source)
         self.assertIn("Confirm asset target", source)
         self.assertIn("def provider(self, profile:", source)
@@ -124,6 +127,16 @@ class ManagerTests(unittest.TestCase):
         with self.assertRaises(ConfigError): model.parse("UNKNOWN=true\n")
         with self.assertRaises(ConfigError): model.parse("STATUS_PORT=99999\n")
         with self.assertRaises(ConfigError): model.parse("FEATURE_MAP=perhaps\n")
+
+    def test_post_install_website_settings_preserve_other_configuration(self):
+        model = ConfigModel(ROOT / "config/zanik-config.schema.json")
+        original = (ROOT / "config/zanik.conf.example").read_text()
+        rendered = update_website_settings(model, original, 30123, "https://play.example.test:30123")
+        values = model.parse(rendered)
+        self.assertEqual(values["STATUS_PORT"], 30123)
+        self.assertEqual(values["PUBLIC_BASE_URL"], "https://play.example.test:30123")
+        self.assertTrue(values["FEATURE_MAP"])
+        self.assertFalse(values["FEATURE_QOL_AUTO_COMPOST"])
 
     def test_journal_persistence_and_incomplete_filter(self):
         with tempfile.TemporaryDirectory() as temporary:

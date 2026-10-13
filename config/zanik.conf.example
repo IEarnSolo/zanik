@@ -1,7 +1,9 @@
 # Zanik configuration. Values are parsed as data; this file is never sourced.
 # Unknown keys and malformed values disable Zanik while still launching the game.
 
+# Use a separately allocated/open TCP port, never the Dragonwilds game port.
 STATUS_PORT=29105
+# The externally reachable website URL, including its public port when needed.
 PUBLIC_BASE_URL=http://127.0.0.1:29105
 ADMIN_COOKIE_NAME=zanik_admin
 

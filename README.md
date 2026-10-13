@@ -43,6 +43,8 @@ tar -xzf "zanik-server-linux-x86_64-$ZANIK_VERSION.tar.gz" -C payload
 "$SERVER_ROOT/zanik/bin/zanik-server" --server-root "$SERVER_ROOT" -- GAME_ARGS
 ```
 
+Before the first start, edit `SERVER_ROOT/zanik/config/zanik.conf`. Set `STATUS_PORT` to a separately allocated and open **TCP** port; it must not be the Dragonwilds game port. Set `PUBLIC_BASE_URL` to the address users will open, including the public port when needed.
+
 No game-derived asset is included. The Linux dedicated server supports inventory only; create the complete server-installable bundle from a licensed Windows client with the self-contained Windows asset tool. Transfer the generated full ZIP to `SERVER_ROOT/zanik-assets-incoming/CLIENT_BUILD/` and let `init-assets.sh` validate, extract, and atomically activate it—do not unzip it manually. See the [self-hosted Linux guide](docs/linux.md) and [asset instructions](docs/assets.md#install-on-a-self-hosted-linux-server).
 
 Read [installation](docs/installation.md), [configuration](docs/configuration.md), [assets](docs/assets.md), [security](docs/security.md), and [hosting](docs/hosting.md) before public deployment.

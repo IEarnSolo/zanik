@@ -8,11 +8,13 @@ All notable changes to Zanik are documented here.
 
 - Automatically mirror each new validated stable release from the authoritative GitLab pipeline to the public GitHub repository with retry-safe asset digest checks.
 - Add a complete first-class self-hosted Linux installation, upgrade, diagnostics, and Windows-to-Linux asset-transfer workflow alongside Zanik Manager.
+- Offer an optional post-install website setup step in Zanik Manager for the separately allocated TCP port and public URL before guided asset extraction begins.
 
 ### Changed
 
 - Require source branches and annotated release tags to be pushed to GitLab first and then to the public GitHub mirror.
 - Mark automatic compost equipment as incomplete and keep `FEATURE_QOL_AUTO_COMPOST` disabled until its native server integration and validation are complete.
+- Clarify throughout the installation guides that Zanik's website port is separate from the Dragonwilds game port and must be opened or allocated by the operator.
 
 ## [0.2.4] - 2026-10-13
 

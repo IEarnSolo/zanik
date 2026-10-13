@@ -42,6 +42,12 @@ Configure systemd, your container entrypoint, or another service manager to star
 
 Replace `GAME_ARGS` with the server's existing arguments. The launcher applies `LD_PRELOAD` only to the game process, and the official executable is not renamed or modified.
 
+Before the first start, edit `SERVER_ROOT/zanik/config/zanik.conf`:
+
+- Set `STATUS_PORT` to a separately allocated and open TCP port. It is the Zanik website/API port, not the Dragonwilds game port.
+- Set `PUBLIC_BASE_URL` to the address users will open, such as `http://server.example:29105`. Include the public port unless a reverse proxy uses a standard port.
+- Allow that TCP port through the host firewall, router/NAT, container mapping, or hosting-panel allocation as applicable.
+
 Important installed paths are:
 
 | Purpose | Example path |
