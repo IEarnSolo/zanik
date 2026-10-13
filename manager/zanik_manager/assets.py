@@ -5,7 +5,9 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
+import time
 import zipfile
 from pathlib import Path, PurePosixPath
 
@@ -71,13 +73,56 @@ def dragonwilds_is_running(runner=subprocess.run, platform: str = os.name) -> bo
         return False
 
 
+def request_dragonwilds_close(runner=subprocess.run, timeout: int = 120,
+                              platform: str = os.name) -> bool:
+    """Request a normal window close and wait; never terminates the process."""
+    if platform != "nt":
+        return True
+    runner(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+         "Get-Process -Name 'RSDragonwilds*' -ErrorAction SilentlyContinue | "
+         "ForEach-Object { [void]$_.CloseMainWindow() }"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
+    )
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not dragonwilds_is_running(runner, platform):
+            return True
+        time.sleep(1)
+    return False
+
+
 class AssetExtractor:
     def __init__(self, tool_root: Path, cache: BundleCache):
         self.tool_root = tool_root
         self.cache = cache
 
+    def _python(self) -> str:
+        embedded = self.tool_root / "runtime" / "python.exe"
+        return str(embedded if embedded.is_file() else Path(sys.executable))
+
+    def mapping_preflight(self, game_root: Path, recovery_root: Path) -> dict:
+        tool = self.tool_root / "tools" / "zanik_assets.py"
+        completed = subprocess.run(
+            [self._python(), str(tool), "mapping-status", "--game-root", str(game_root),
+             "--recovery-root", str(recovery_root)], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=60,
+        )
+        if completed.returncode:
+            raise RuntimeError("Asset preflight failed: " + (completed.stderr or completed.stdout).strip())
+        return json.loads(completed.stdout)
+
+    def validate_bundle(self, bundle: Path) -> None:
+        tool = self.tool_root / "tools" / "zanik_assets.py"
+        completed = subprocess.run([self._python(), str(tool), "validate", "--bundle", str(bundle)],
+                                   capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+        if completed.returncode:
+            raise RuntimeError("Cached asset bundle validation failed")
+
     def extract(self, game_root: Path, output: Path, event=lambda event: None,
-                usmap: Path | None = None, keep_work: bool = False) -> CachedBundle:
+                usmap: Path | None = None, keep_work: bool = False,
+                preserve_existing_loader: bool = False,
+                recovery_root: Path | None = None) -> CachedBundle:
         script = self.tool_root / "init-assets.ps1"
         if not script.exists():
             raise FileNotFoundError("The bundled Windows asset extractor is missing")
@@ -92,6 +137,10 @@ class AssetExtractor:
             command += ["-UsmapPath", str(usmap), "-SkipGameLaunch"]
         if keep_work:
             command.append("-KeepWork")
+        if preserve_existing_loader:
+            command.append("-PreserveExistingLoader")
+        if recovery_root:
+            command += ["-RecoveryDirectory", str(recovery_root)]
         event({"phase": "extract", "message": "Starting the Windows client asset extractor"})
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                    encoding="utf-8", errors="replace")

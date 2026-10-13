@@ -6,4 +6,6 @@ API keys are stored in Windows Credential Manager, not in the application direct
 
 The first release supports Pterodactyl. Wrapper and acknowledged executable-replacement installations remain available, while the standalone shell scripts and Windows asset extractor are packaged separately for advanced use.
 
-Install, Doctor, configuration, extraction, upload, and activation operations display modal stage progress and block conflicting actions. Asset extraction also checks that Dragonwilds is closed before the mapping workflow begins.
+Install, Doctor, configuration, extraction, upload, and activation operations display modal stage progress and block conflicting actions. After installation, Manager offers to complete website asset setup for that exact server. It can reuse a validated local bundle or extract, upload, atomically activate, and verify a new one.
+
+Asset extraction checks whether Dragonwilds is running and can request a graceful close; it never force-terminates the game. When UE4SS or another proxy loader is already installed, Manager asks permission, preserves and verifies it outside the game directory, uses Zanik's mapper temporarily, and restores the original files exactly. Manual uploads always show an explicit target-server selector and confirmation.

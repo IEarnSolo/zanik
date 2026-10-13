@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from manager.zanik_manager.assets import AssetDeployer, dragonwilds_is_running
+from manager.zanik_manager.assets import AssetDeployer, dragonwilds_is_running, request_dragonwilds_close
 from manager.zanik_manager.cache import BundleCache
 from manager.zanik_manager.config import ConfigError, ConfigModel, content_hash
 from manager.zanik_manager.journal import JournalStore, OperationJournal
@@ -71,8 +71,12 @@ class ManagerTests(unittest.TestCase):
         self.assertIn("QProgressDialog", source)
         self.assertIn("Qt.ApplicationModal", source)
         self.assertIn("Wait for the current operation to finish", source)
-        self.assertIn('phase_percent = {"mappings": 10, "extract": 40, "bundle": 80, "complete": 100}', source)
-        self.assertIn("Close Dragonwilds first", source)
+        self.assertIn('phase_percent = {"preserve": 10, "mappings": 15, "restore": 30,', source)
+        self.assertIn("Close game and continue", source)
+        self.assertIn("Set up website assets now", source)
+        self.assertIn("self.asset_target_box", source)
+        self.assertIn("Confirm asset target", source)
+        self.assertIn("def provider(self, profile:", source)
 
     def test_dragonwilds_process_preflight(self):
         class Result:
@@ -83,6 +87,24 @@ class ManagerTests(unittest.TestCase):
         self.assertTrue(dragonwilds_is_running(running, "nt"))
         self.assertEqual(calls[0][0][0], "powershell.exe")
         self.assertFalse(dragonwilds_is_running(running, "posix"))
+
+    def test_graceful_close_never_terminates_process(self):
+        calls = []
+        class Result:
+            stdout = "0\n"
+        def runner(command, **kwargs):
+            calls.append(command); return Result()
+        self.assertTrue(request_dragonwilds_close(runner, timeout=1, platform="nt"))
+        rendered = " ".join(calls[0])
+        self.assertIn("CloseMainWindow", rendered)
+        self.assertNotIn("Stop-Process", rendered)
+
+    def test_manager_paths_include_persistent_mapping_recovery(self):
+        from manager.zanik_manager.paths import ensure_layout
+        with tempfile.TemporaryDirectory() as temporary:
+            paths = ensure_layout(Path(temporary))
+            self.assertEqual(paths["mapping_recovery"], Path(temporary) / "mapping-recovery")
+            self.assertTrue(paths["mapping_recovery"].is_dir())
 
     def test_profile_store_has_only_credential_reference(self):
         with tempfile.TemporaryDirectory() as temporary:

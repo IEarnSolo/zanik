@@ -6,6 +6,8 @@ param(
     [switch]$KeepWork,
     [switch]$CatalogsOnly,
     [switch]$SkipGameLaunch,
+    [switch]$PreserveExistingLoader,
+    [string]$RecoveryDirectory,
     [string]$InstallBundle,
     [string]$Destination
 )
@@ -43,8 +45,15 @@ if (-not $UsmapPath) {
     $Ue4ss = Join-Path $Root 'third_party\ue4ss'
     $UsmapPath = Join-Path $Work 'Mappings.usmap'
     Write-ZanikEvent 'mappings' 'Preparing local Unreal mappings'
-    & $Python $AssetTool prepare-mappings --game-root $GameRoot --ue4ss-root $Ue4ss --output $UsmapPath --work-root (Join-Path $Work 'mapping')
+    $MappingArguments = @($AssetTool, 'prepare-mappings', '--game-root', $GameRoot, '--ue4ss-root', $Ue4ss, '--output', $UsmapPath, '--work-root', (Join-Path $Work 'mapping'))
+    if ($PreserveExistingLoader) {
+        Write-ZanikEvent 'preserve' 'Backing up and verifying the existing UE4SS installation'
+        $MappingArguments += '--preserve-existing-loader'
+    }
+    if ($RecoveryDirectory) { $MappingArguments += @('--recovery-root', ([IO.Path]::GetFullPath($RecoveryDirectory))) }
+    & $Python @MappingArguments
     if ($LASTEXITCODE -ne 0) { throw "Mapping generation failed with exit code $LASTEXITCODE" }
+    if ($PreserveExistingLoader) { Write-ZanikEvent 'restore' 'Existing UE4SS installation restored and verified' }
     $MappingWasGenerated = $true
 } else {
     $UsmapPath = [IO.Path]::GetFullPath($UsmapPath)
