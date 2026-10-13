@@ -2,6 +2,17 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.2] - 2026-10-12
+
+### Fixed
+
+- Show the remote-HTTP credential warning only when a user actually attempts an unencrypted connection, instead of displaying an acknowledgement checkbox for HTTPS panels.
+- Invalidate discovered servers when the panel URL or API key changes so stale connection results cannot be saved.
+- Fall back to Pterodactyl's signed file download when its normal contents endpoint reports a transient node-side error, including while loading configuration.
+- Keep internal tracebacks out of error dialogs while retaining redacted technical details in the Activity tab.
+- Show application-modal Zanik Manager stage and progress feedback for installation, diagnostics, configuration, extraction, and asset activation so long operations cannot overlap.
+- Refuse asset extraction while Dragonwilds is already running, with guidance that the Manager will briefly launch and close the client to generate mappings.
+
 ## [0.2.1] - 2026-10-12
 
 ### Fixed

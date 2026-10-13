@@ -9,12 +9,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from manager.zanik_manager.assets import AssetDeployer
+from manager.zanik_manager.assets import AssetDeployer, dragonwilds_is_running
 from manager.zanik_manager.cache import BundleCache
 from manager.zanik_manager.config import ConfigError, ConfigModel, content_hash
 from manager.zanik_manager.journal import JournalStore, OperationJournal
 from manager.zanik_manager.lifecycle import (PterodactylProvider, ReleasePayload, is_exact_legacy_launcher,
                                              safe_archive_name, validate_server_root)
+from manager.zanik_manager.onboarding import discover_panel, is_remote_http
 from manager.zanik_manager.profiles import ProfileStore, ServerProfile, is_local_origin, normalize_origin
 from manager.zanik_manager.pterodactyl import PterodactylClient, PterodactylError, Response, api_file_path
 from manager.zanik_manager.security import credential_target, redact
@@ -27,7 +28,61 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(normalize_origin("http://localhost:8080/"), "http://localhost:8080")
         self.assertTrue(is_local_origin("http://127.0.0.1"))
         self.assertFalse(is_local_origin("http://panel.example.com"))
+        self.assertTrue(is_remote_http("http://panel.example.com"))
+        self.assertFalse(is_remote_http("https://panel.example.com"))
+        self.assertFalse(is_remote_http("http://localhost:8080"))
         with self.assertRaises(ValueError): normalize_origin("ftp://example.com")
+
+    def test_panel_discovery_warns_before_remote_http_credentials_are_sent(self):
+        events = []
+        class Client:
+            def __init__(self, origin, token): events.append(("client", origin, token))
+            def account(self): return {"id": 7}
+            def servers(self): return [{"identifier": "dev"}]
+        cancelled = discover_panel("http://panel.example.com", "secret",
+                                   lambda: events.append(("warning",)) or False, Client)
+        self.assertIsNone(cancelled)
+        self.assertEqual(events, [("warning",)])
+        connected = discover_panel("http://panel.example.com", "secret",
+                                   lambda: events.append(("warning",)) or True, Client)
+        self.assertTrue(connected.allow_insecure_http)
+        self.assertEqual(events[-2][0], "warning")
+        self.assertEqual(events[-1][0], "client")
+
+    def test_https_and_local_http_discovery_do_not_warn(self):
+        class Client:
+            def __init__(self, origin, token): self.origin = origin
+            def account(self): return {"id": 1}
+            def servers(self): return [{"identifier": "dev"}]
+        def unexpected(): raise AssertionError("secure and loopback origins must not warn")
+        self.assertFalse(discover_panel("https://panel.example.com", "secret", unexpected, Client).allow_insecure_http)
+        self.assertFalse(discover_panel("http://127.0.0.1:8080", "secret", unexpected, Client).allow_insecure_http)
+
+    def test_manager_dialog_contract_hides_checkbox_and_invalidates_edits(self):
+        source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
+        self.assertNotIn("self.http_ack", source)
+        self.assertIn("Continue with HTTP", source)
+        self.assertIn("self.origin.textChanged.connect(self.invalidate_connection)", source)
+        self.assertIn("self.token.textChanged.connect(self.invalidate_connection)", source)
+        self.assertIn("This panel connection uses HTTP; API traffic is not encrypted.", source)
+
+    def test_manager_long_operations_are_modal_and_report_asset_progress(self):
+        source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("QProgressDialog", source)
+        self.assertIn("Qt.ApplicationModal", source)
+        self.assertIn("Wait for the current operation to finish", source)
+        self.assertIn('phase_percent = {"mappings": 10, "extract": 40, "bundle": 80, "complete": 100}', source)
+        self.assertIn("Close Dragonwilds first", source)
+
+    def test_dragonwilds_process_preflight(self):
+        class Result:
+            stdout = "1\n"
+        calls = []
+        def running(command, **kwargs):
+            calls.append((command, kwargs)); return Result()
+        self.assertTrue(dragonwilds_is_running(running, "nt"))
+        self.assertEqual(calls[0][0][0], "powershell.exe")
+        self.assertFalse(dragonwilds_is_running(running, "posix"))
 
     def test_profile_store_has_only_credential_reference(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -86,6 +141,32 @@ class ManagerTests(unittest.TestCase):
         client = PterodactylClient("https://panel.example", "secret", lambda *args: Response(500, b'token=leak', {}))
         with self.assertRaises(PterodactylError) as raised: client.servers()
         self.assertNotIn("leak", str(raised.exception))
+
+    def test_file_contents_node_failure_uses_signed_download_fallback(self):
+        calls = []
+        def transport(method, url, headers, body, timeout):
+            calls.append((method, url, headers))
+            if "/files/contents" in url:
+                return Response(500, b'{"errors":[{"detail":"node unavailable"}]}', {})
+            if "/files/download" in url:
+                return Response(200, b'{"attributes":{"url":"https://node.example/config"}}', {})
+            if url == "https://node.example/config":
+                return Response(200, b"FEATURE_MAP=true\n", {})
+            raise AssertionError(url)
+        content = PterodactylClient("https://panel.example", "secret", transport).read_file(
+            "dev", "/home/container/zanik/config/zanik.conf")
+        self.assertEqual(content, b"FEATURE_MAP=true\n")
+        self.assertEqual(len(calls), 3)
+        self.assertNotIn("Authorization", calls[-1][2])
+
+    def test_file_contents_permission_failure_does_not_fallback(self):
+        calls = []
+        def transport(*args):
+            calls.append(args); return Response(403, b"{}", {})
+        with self.assertRaises(PterodactylError):
+            PterodactylClient("https://panel.example", "secret", transport).read_file(
+                "dev", "/home/container/zanik/config/zanik.conf")
+        self.assertEqual(len(calls), 1)
 
     def test_pterodactyl_translates_container_paths_to_virtual_root(self):
         calls = []
