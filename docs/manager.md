@@ -30,7 +30,7 @@ Validated bundles are stored below `%LOCALAPPDATA%\Zanik Manager\assets\`. The n
 
 The Configuration page validates strict `KEY=VALUE` data before upload, refuses to overwrite a file changed since it was loaded, creates a backup, and asks whether to restart. State-changing and QoL features remain off by default.
 
-Doctor can perform a quick installation check or a deliberately slower complete remote asset verification. The deep check downloads and hashes every manifest entry and is not part of normal activation. Support ZIPs are generated locally and can be reviewed before sharing. They exclude API keys, console secrets, claims, sessions, authorization files, and game-derived assets.
+Doctor can perform a quick installation check or a deliberately slower complete remote asset verification. Deep Doctor normally asks Zanik's launcher to hash the active tree on the server and downloads one aggregate report. Older installations that lack the helper can fall back to the much slower per-file API audit; that fallback should be used only when a complete audit is explicitly needed. Neither deep path is part of normal activation. Support ZIPs are generated locally and can be reviewed before sharing. They exclude API keys, console secrets, claims, sessions, authorization files, and game-derived assets.
 
 ## Windows trust warning
 

@@ -13,7 +13,7 @@ cp "$ROOT/config/zanik-config.schema.json" "$RELEASE/config/zanik-config.schema.
 cp "$ROOT/deploy/compatibility.tsv" "$RELEASE/compatibility/compatibility.tsv"
 cp "$ROOT/tools/zanik_assets.py" "$RELEASE/tools/zanik_assets.py"
 cp "$ROOT/VERSION" "$RELEASE/VERSION"
-for f in install update uninstall doctor init-assets compat-launcher; do cp "$ROOT/scripts/$f.sh" "$RELEASE/scripts/$f.sh"; done
+for f in install update uninstall doctor init-assets compat-launcher verify-assets; do cp "$ROOT/scripts/$f.sh" "$RELEASE/scripts/$f.sh"; done
 GAME=$SERVER/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping
 printf '#!/bin/sh\nprintf "%%s|%%s\\n" "${LD_PRELOAD-}" "$*" > "$0.ran"\n' > "$GAME"; chmod +x "$GAME"
 ORIGINAL=$(sha256sum "$GAME" | awk '{print $1}')
@@ -54,6 +54,17 @@ printf 'zanik-admin public-character-id\nstatus\n' | PATH="$FAKEBIN:$PATH" "$SER
 grep -q 'expires in 5 minutes' "$TMP/proxy.out"
 grep -q '^status$' "$GAME.console"
 ! grep -q 'zanik-admin' "$GAME.console"
+
+mkdir -p "$SERVER/zanik/assets/current"
+printf 'map-data' > "$SERVER/zanik/assets/current/world-map.jpg"
+MAP_HASH=$(sha256sum "$SERVER/zanik/assets/current/world-map.jpg" | awk '{print $1}')
+printf '{\n  "files": [\n    {\n      "path": "world-map.jpg",\n      "sha256": "%s",\n      "size": 8\n    }\n  ]\n}\n' "$MAP_HASH" > "$SERVER/zanik/assets/current/asset-manifest.json"
+printf 'zanik-doctor-assets abc123\nstatus\n' | PATH="$FAKEBIN:$PATH" "$SERVER/zanik/bin/zanik-server" --server-root "$SERVER" -- > "$TMP/asset-proxy.out" 2>&1
+REPORT=$SERVER/zanik/state/asset-verification-abc123.json
+attempt=0; while [ ! -s "$REPORT" ] && [ "$attempt" -lt 50 ]; do sleep .1; attempt=$((attempt+1)); done
+grep -q '"status":"valid"' "$REPORT"
+grep -q '^status$' "$GAME.console"
+! grep -q 'zanik-doctor-assets' "$GAME.console"
 
 "$RELEASE/scripts/install.sh" --server-root "$SERVER" --mode replace-executable --acknowledge-core-file-replacement
 grep -q 'ZANIK_COMPAT_LAUNCHER=1' "$GAME"
