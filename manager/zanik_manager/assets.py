@@ -257,7 +257,8 @@ class AssetDeployer:
         self.provider = provider
 
     def activate(self, profile_id: str, server_id: str, server_root: str, bundle: Path,
-                 progress=lambda current, total, path: None) -> dict:
+                 progress=lambda current, total, path: None,
+                 status=lambda message: None) -> dict:
         self.provider.preflight(server_id, "assets")
         root = server_root.rstrip("/")
         with tempfile.TemporaryDirectory(prefix="zanik-manager-assets-") as temporary:
@@ -328,8 +329,20 @@ class AssetDeployer:
                 operation.rollback.append({"from": previous, "to": current})
             self.provider.client.rename(server_id, root, [(str(PurePosixPath(stage).relative_to(root)), "zanik/assets/current")])
             operation.state = "complete"; operation.completed_steps.append("assets-activated"); journal.save(operation)
+            restarted = self._restart_runtime_if_running(server_id, status)
+            if restarted:
+                operation.completed_steps.append("runtime-restart-requested"); journal.save(operation)
             return {"operationId": operation.operation_id, "manifest": manifest,
-                    "bundleSha256": sha256(bundle.read_bytes()), "fileCount": len(files), "archiveUpload": used_archives}
+                    "bundleSha256": sha256(bundle.read_bytes()), "fileCount": len(files),
+                    "archiveUpload": used_archives, "restartRequested": restarted}
+
+    def _restart_runtime_if_running(self, server_id: str, status=lambda message: None) -> bool:
+        state = self.provider.client.resources(server_id).get("current_state", "")
+        if state != "running":
+            return False
+        status("Restarting the game server to load the new runtime catalogs")
+        self.provider.client.power(server_id, "restart")
+        return True
 
     @staticmethod
     def _make_parts(bundle: Path, output: Path, limit: int = 90 * 1024 * 1024) -> tuple[list[Path], dict]:

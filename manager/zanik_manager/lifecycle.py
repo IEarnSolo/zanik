@@ -104,7 +104,7 @@ class PterodactylProvider(ServerProvider):
         required={
             "doctor": {"file.read", "file.read-content"},
             "install": {"control.start", "control.stop", "file.read", "file.read-content", "file.create", "file.update", "file.delete"},
-            "assets": {"file.read", "file.read-content", "file.create", "file.update", "file.delete"},
+            "assets": {"control.start", "control.stop", "file.read", "file.read-content", "file.create", "file.update", "file.delete"},
             "config": {"file.read", "file.read-content", "file.create", "file.update", "file.delete"},
         }.get(operation, set())
         details=server or self.client.server(server_id)

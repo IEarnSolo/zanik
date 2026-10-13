@@ -46,6 +46,8 @@ The extractor copies authored build-interface thumbnails from the client, includ
 
 The Configuration tab validates strict `KEY=VALUE` data before upload, refuses to overwrite a file changed since it was loaded, creates a backup, and asks whether to restart. If the post-install website step was skipped, select the server, open **Configuration**, load its configuration, and edit the **Networking** section. `STATUS_PORT` is Zanik's separately allocated TCP port; `PUBLIC_BASE_URL` is the address users will open. State-changing and QoL features remain off by default.
 
+After a validated asset bundle is activated, Zanik Manager restarts the target when it is currently running. This startup reload is required for native player recipe and quest tracking; an offline target simply loads the catalogs on its next start. Manual asset uploads show this restart in the target confirmation and operation progress.
+
 Doctor can perform a quick installation check or a deliberately slower complete remote asset verification. Deep Doctor normally asks Zanik's launcher to hash the active tree on the server and downloads one aggregate report. Older installations that lack the helper can fall back to the much slower per-file API audit; that fallback should be used only when a complete audit is explicitly needed. Neither deep path is part of normal activation. Support ZIPs are generated locally and can be reviewed before sharing. They exclude API keys, console secrets, claims, sessions, authorization files, and game-derived assets.
 
 ## Windows trust warning

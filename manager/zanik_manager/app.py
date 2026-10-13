@@ -607,7 +607,8 @@ class MainWindow(QMainWindow):
             def progress(current, total, path):
                 self.operation_progress_signal.emit(f"Uploading and verifying {path}", 70 + int(current * 20 / max(total, 1)))
             activated = AssetDeployer(self.provider(profile)).activate(profile.id, profile.server_id, profile.server_root,
-                                                                       item.path, progress)
+                                                                       item.path, progress,
+                                                                       lambda message: self.operation_progress_signal.emit(message, 93))
             self.operation_progress_signal.emit("Verifying active website assets", 95)
             health = self.provider(profile).diagnose(profile.server_id, profile.server_root)
             if not health.get("assets", {}).get("installed") or health.get("assets", {}).get("compatible") is False:
@@ -617,8 +618,13 @@ class MainWindow(QMainWindow):
             item, activated, _ = result
             profile.last_asset_manifest = item.manifest_hash; self.store.save(self.profiles); self.refresh_bundles()
             self.log(f"Activated {activated['fileCount']} asset files on {profile.name}")
+            if activated.get("restartRequested"):
+                self.log(f"Restart requested for {profile.name} so native catalog tracking loads the activated assets")
             QMessageBox.information(self, "Website assets ready",
-                                    f"Website assets were validated, uploaded, activated, and checked on {profile.name}.")
+                                    f"Website assets were validated, uploaded, activated, and checked on {profile.name}."
+                                    + (" The running game server was restarted to load recipe and quest tracking."
+                                       if activated.get("restartRequested") else
+                                       " The catalogs will load the next time the game server starts."))
         title = (f"Resuming and deploying website assets on {profile.name}…" if mode == "resume"
                  else f"Setting up website assets on {profile.name}…")
         self.run_async(action, done, title=title, determinate=True)
@@ -703,16 +709,21 @@ class MainWindow(QMainWindow):
         if not profile or not value: return
         bundle = Path(value)
         if QMessageBox.question(self, "Confirm asset target",
-                                f"Upload and activate {bundle.name} on:\n\n{profile.name}\n{profile.panel_origin}\nServer {profile.server_id}?",
+                                f"Upload and activate {bundle.name} on:\n\n{profile.name}\n{profile.panel_origin}\nServer {profile.server_id}?\n\n"
+                                "If the game server is running, Zanik Manager will restart it after activation so native catalog tracking loads the new assets.",
                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes: return
         def progress(current, total, path):
             percent = 15 + int(current * 75 / max(total, 1))
             self.operation_progress_signal.emit(f"Uploading and verifying {path}", percent)
-        self.run_async(lambda: AssetDeployer(self.provider(profile)).activate(profile.id, profile.server_id, profile.server_root,
-                                                                               bundle, progress),
+        self.run_async(lambda: AssetDeployer(self.provider(profile)).activate(
+                           profile.id, profile.server_id, profile.server_root, bundle, progress,
+                           lambda message: self.operation_progress_signal.emit(message, 93)),
                        lambda result: (self.log(f"Activated {result['fileCount']} asset files"),
                                        QMessageBox.information(self, "Assets activated",
-                                                               f"Activated {result['fileCount']} validated asset files.")),
+                                                               f"Activated {result['fileCount']} validated asset files. "
+                                                               + ("The running game server was restarted to load recipe and quest tracking."
+                                                                  if result.get("restartRequested") else
+                                                                  "The catalogs will load the next time the game server starts."))),
                        title="Uploading and activating web assets…", determinate=True)
 
     def open_asset_folder(self):

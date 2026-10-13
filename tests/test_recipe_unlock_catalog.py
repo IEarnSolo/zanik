@@ -489,6 +489,10 @@ class RecipeUnlockCatalogTests(unittest.TestCase):
         self.assertIn("recipe-runtime-catalog-history.tsv", main)
         self.assertIn('path == "/api/player-recipes"', main)
         self.assertIn("Player recipe tracking is unavailable for this game build", main)
+        self.assertIn("ZanikConfig::PlayerRecipeTracking()||ZanikConfig::PlayerQuestTracking()", main)
+        self.assertIn("dispatcherCompatibility", main)
+        self.assertIn("playerRecipeDispatcherCompatibility", main)
+        self.assertIn("playerQuestDispatcherCompatibility", main)
 
     def test_player_recipe_output_types_are_complete_and_redacted(self):
         allowed = {"items", "weapons", "armour", "capes", "jewellery",
