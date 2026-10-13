@@ -65,7 +65,6 @@ for file in zanik_assets windows_mapping windows_asset_pipeline generate_buildin
   install -m 0644 "$ROOT/tools/$file.py" "$WORK/asset-windows/tools/$file.py"
 done
 install -m 0644 "$ROOT/asset-tools/tools.lock.json" "$ROOT/asset-tools/extraction-recipes.json" "$ROOT/asset-tools/catalog-rules.json" "$WORK/asset-windows/asset-tools/"
-install -m 0644 "$ROOT/web/recipe-runtime-catalog-history.tsv" "$WORK/asset-windows/asset-tools/recipe-runtime-catalog-history.tsv"
 install -m 0644 "$ROOT/asset-tools/LICENSE-UnrealAssetScout.txt" "$WORK/asset-windows/third_party/uas/LICENSE.txt"
 install -m 0644 "$ROOT/deploy/quest-overrides.json" "$ROOT/deploy/quest-step-overrides.json" "$WORK/asset-windows/deploy/"
 for dir in asset-linux asset-windows; do

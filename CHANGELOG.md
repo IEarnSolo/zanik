@@ -16,7 +16,7 @@ All notable changes to Zanik are documented here.
 - Safely preserve, verify, temporarily remove, and exactly restore an existing user-managed UE4SS/proxy-loader installation during Manager-driven mapping generation.
 - Detect interrupted mapping work and fail closed if either the recovery backup, temporary mapper, game executable, or restoration target changes unexpectedly.
 - Offer a graceful **Close game and continue** action when Dragonwilds is running; the Manager never force-terminates the client.
-- Include the reviewed recipe-history seed in the self-contained Windows extractor so recipe catalogs build without a source checkout or pre-existing web tree.
+- Make reviewed recipe-history seeding optional so the self-contained Windows extractor builds a complete current catalog without a source checkout, generated metadata, or pre-existing web tree.
 
 ## [0.2.3] - 2026-10-13
 
