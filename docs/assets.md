@@ -2,6 +2,8 @@
 
 Zanik does not distribute Dragonwilds containers, mappings, extracted trees, or generated game artwork. The Linux dedicated server is an inventory source only; it cannot create the complete web bundle. Build the bundle on a Windows PC that has a licensed Dragonwilds client, then upload it to the server.
 
+Building artwork comes from the client's authored build-interface assets. Most pieces reference ordinary textures; 68 special pieces reference `GeneratedIcons` packages that contain an embedded thumbnail, and the Wintumber tree references a procedural-thumbnail texture. UnrealAssetScout exports those authored PNGs directly. Zanik does not render building models and does not require Blender.
+
 ## Build on Windows
 
 Extract `zanik-asset-tools-windows-x86_64-VERSION.zip`, open PowerShell in that directory, close Dragonwilds, and run:
@@ -28,6 +30,10 @@ The archive includes its own Python runtime, UnrealAssetScout, UE4SS mapping dum
 
 By default the tool temporarily installs its pinned UE4SS loader, launches the official client through Steam, calls UE4SS's supported `DumpUSMAP(true)` operation, asks the game to close normally, and removes only its own verified files. It refuses to start when Dragonwilds is running and, unless preservation was explicitly selected, when an existing loader occupies a required path. It never overwrites an unknown or changed collision. If an interrupted run leaves a recovery journal, rerun the command after closing the game; recovery completes before another extraction begins.
 
+Catalog export, generation, ZIP packaging, multipart packaging, and cleanup are journaled. Zanik Manager keeps interrupted work under `%LOCALAPPDATA%\Zanik Manager\asset-work\` and offers **Resume extraction** or **Discard generated work**. A packaging retry reuses the validated generated tree instead of reopening the game. Cleanup problems after both bundle forms validate are warnings; Manager retries verified Zanik-owned cleanup later.
+
+Recipe routes require positive cooked evidence. The extractor includes the base and plugin progression tables and never interprets a missing provider as “available from the start.” The reviewed provider-less set is shown as **Unlock trigger not yet identified**; any unreviewed route drift makes the candidate incompatible.
+
 An experienced operator may avoid the temporary loader and use a mapping already generated from the same client:
 
 ```powershell
@@ -40,12 +46,22 @@ An experienced operator may avoid the temporary loader and use a mapping already
 
 `-KeepWork` retains the targeted intermediate exports for debugging and prints their location. Those files are game-derived: do not publish or commit them. `-CatalogsOnly` still keeps any artwork reachable from a generated runtime catalog so it cannot create broken URLs.
 
+Allow roughly 10–30 minutes and at least 10 GiB of free space for a normal extraction; game updates, storage speed, antivirus scanning, and mapping generation can change the total. The final bundle is much smaller than the temporary targeted exports.
+
+## Extraction troubleshooting
+
+- If extraction stops before packaging, leave the reported work directory intact. In Zanik Manager, reopen **Assets** and select **Resume extraction**. For standalone use, rerun the same command with the original `-WorkDirectory PATH -Resume` arguments.
+- If a complete ZIP and multipart set were produced but cleanup was deferred, the bundles are still valid. Manager retries only the ownership-marked workspace at startup; **Discard generated work** performs the same bounded safe cleanup on demand.
+- If the game or its existing loader changed after a checkpoint, discard the old work and start a new extraction. Zanik deliberately refuses to combine mismatched game, recipe, mapping, or tool inputs.
+- If a generated catalog or icon count drifts, do not bypass compatibility validation. Preserve the work directory and Activity output for review.
+- Raw exports, mappings, recovery journals, and retained work contain game-derived or machine-local data and must not be attached to support bundles or published.
+
 The output contains:
 
 - `zanik-assets-CLIENT_BUILD.zip`, the conventional complete bundle;
 - `zanik-assets-CLIENT_BUILD-parts/bundle-index.json` and checksum-indexed logical ZIP parts, each below 90 MiB.
 
-The manifest records the client build, container and executable fingerprints, mapping hash, exact tool/recipe versions, catalog counts, every generated file hash, fallbacks, and reviewed compatibility profile. Build-ID differences are informational. Structural errors or unreviewed catalog-count drift mark the candidate incompatible, and the server refuses to activate it.
+The manifest records the client build, container and executable fingerprints, mapping hash, exact tool/recipe versions, extraction stage, catalog counts, building-icon source coverage, recipe-route coverage, every generated file hash, cleanup warnings, and reviewed compatibility profile. Build-ID differences are informational. Structural errors or unreviewed catalog-count drift mark the candidate incompatible, and the server refuses to activate it.
 
 ## Install on a self-hosted Linux server
 

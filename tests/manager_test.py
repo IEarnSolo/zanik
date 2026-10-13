@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from manager.zanik_manager.assets import AssetDeployer, dragonwilds_is_running, request_dragonwilds_close
+from manager.zanik_manager.assets import AssetDeployer, AssetExtractor, dragonwilds_is_running, request_dragonwilds_close
 from manager.zanik_manager.cache import BundleCache
 from manager.zanik_manager.config import ConfigError, ConfigModel, content_hash, update_website_settings
 from manager.zanik_manager.journal import JournalStore, OperationJournal
@@ -108,6 +108,41 @@ class ManagerTests(unittest.TestCase):
             paths = ensure_layout(Path(temporary))
             self.assertEqual(paths["mapping_recovery"], Path(temporary) / "mapping-recovery")
             self.assertTrue(paths["mapping_recovery"].is_dir())
+            self.assertEqual(paths["asset_work"], Path(temporary) / "asset-work")
+            self.assertTrue(paths["asset_work"].is_dir())
+
+    def test_asset_extraction_resume_requires_verified_journal_and_marker(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); work = root / "work"
+            extractor = AssetExtractor(root / "tools", BundleCache(root / "cache"))
+            self.assertIsNone(extractor.resumable(work))
+            work.mkdir()
+            (work / "extraction-journal.json").write_text(json.dumps({
+                "schemaVersion": 1, "stage": "generated", "updatedAt": "2026-10-13T00:00:00Z"
+            }))
+            self.assertIsNone(extractor.resumable(work))
+            (work / ".zanik-asset-work.json").write_text(json.dumps({
+                "schemaVersion": 1, "owner": "someone else"
+            }))
+            self.assertIsNone(extractor.resumable(work))
+            (work / ".zanik-asset-work.json").write_text(json.dumps({
+                "schemaVersion": 1, "owner": "Zanik asset extractor"
+            }))
+            self.assertEqual(extractor.resumable(work)["stage"], "generated")
+
+    def test_manager_exposes_resume_and_safe_discard_controls(self):
+        source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("Resume extraction", source)
+        self.assertIn("Discard generated work", source)
+        self.assertIn("def resume_asset_extraction", source)
+        self.assertIn("def discard_asset_extraction", source)
+        assets_source = (ROOT / "manager" / "zanik_manager" / "assets.py").read_text(encoding="utf-8")
+        self.assertIn("UnrealAssetScout", assets_source)
+        self.assertIn("UE4SS", assets_source)
+        self.assertIn("game_build", assets_source)
+        lifecycle_source = (ROOT / "manager" / "zanik_manager" / "lifecycle.py").read_text(encoding="utf-8")
+        self.assertIn('"buildingIconSources": manifest.get("buildingIconSources", {})', lifecycle_source)
+        self.assertIn('"recipeRouteCoverage": manifest.get("recipeRouteCoverage", {})', lifecycle_source)
 
     def test_profile_store_has_only_credential_reference(self):
         with tempfile.TemporaryDirectory() as temporary:

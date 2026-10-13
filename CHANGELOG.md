@@ -2,6 +2,21 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.6] - 2026-10-13
+
+### Added
+
+- Extract all 822 building icons from the client’s authored build-interface assets, including embedded `GeneratedIcons` and the Wintumber procedural thumbnail, without Blender or model rendering.
+- Preserve validated extraction checkpoints and expose **Resume extraction** and **Discard generated work** actions in Zanik Manager.
+- Record building-artwork and recipe-route coverage in generated asset manifests and diagnostics.
+
+### Fixed
+
+- Include the base and plugin progression tables needed to recover explicit recipe unlock providers.
+- Replace unsupported “Available from the start” claims with the reviewed **Unlock trigger not yet identified** state and fail closed on provider drift.
+- Pass pinned tool versions through a file instead of fragile inline PowerShell JSON.
+- Move temporary-work cleanup into a bounded, ownership-checked Python operation so filesystem races become deferred warnings after valid bundles are produced.
+
 ## [0.2.5] - 2026-10-13
 
 ### Added

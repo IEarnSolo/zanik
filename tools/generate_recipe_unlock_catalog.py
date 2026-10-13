@@ -809,7 +809,7 @@ def render_docs(result: dict[str, Any], docs_dir: Path) -> None:
         f"This list contains **{result['counts']['totalActive']}** active crafting/building recipes.", "",
         "Each row states the exact recorded action. Compound rows retain their full Boolean query in the JSON dataset.", "",
     ]
-    order = ["default", "obtain_item", "open_station_ui", "compound", "consume_vestige",
+    order = ["unknown_trigger", "obtain_item", "open_station_ui", "compound", "consume_vestige",
              "consume_unlock_item", "interact_recipe_dispenser", "complete_quest", "skill_or_perk",
              "entitlement", "unresolved"]
     for kind in order + sorted(set(groups) - set(order)):
@@ -950,8 +950,8 @@ def render_web_catalog(
             })
         if not steps:
             action = friendly_action(path)
-            if path.get("type") == "default":
-                action = "Available from the start"
+            if path.get("type") == "unknown_trigger":
+                action = "Unlock trigger not yet identified"
             steps.append({"kind": str(path.get("type", "action")), "mode": "all",
                           "text": action.rstrip("."), "targets": []})
         return {
@@ -1033,7 +1033,15 @@ def render_web_catalog(
     payload = {
         "schemaVersion": 1,
         "generatedAt": result["generatedAt"],
-        "counts": {"recipes": len(entries), "dependencyEdges": edge_count, "cycles": len(cycle_edges)},
+        "counts": {
+            "recipes": len(entries),
+            "dependencyEdges": edge_count,
+            "cycles": len(cycle_edges),
+            "unknownTriggers": sum(
+                any(step.get("kind") == "unknown_trigger" for route in entry["routes"] for step in route["steps"])
+                for entry in entries
+            ),
+        },
         "sectionIcons": section_icons,
         "entries": entries,
     }
@@ -1109,6 +1117,9 @@ def main() -> int:
         str(entry["internalName"]): str(entry["reason"])
         for entry in rules.get("recipeExclusions", [])
     }
+    reviewed_unknown_triggers = set(map(str, rules.get("reviewedUnknownRecipeTriggers", [])))
+    if len(reviewed_unknown_triggers) != len(rules.get("reviewedUnknownRecipeTriggers", [])):
+        raise ValueError("catalog rules contain duplicate reviewed unknown recipe triggers")
 
     editor_recipes = read_json(args.editor_data / "RecipeID.json") if args.editor_data and (args.editor_data / "RecipeID.json").is_file() else []
     recipe_exclusions = ({entry["Id"]: entry for entry in read_json(args.editor_data / "RecipeExclusions.json")}
@@ -1407,10 +1418,18 @@ def main() -> int:
             "StationUpgradeComponent",
         } for candidate in station_candidates.get(str(record.get("Name", "")), []))
     }
+    reviewed_unknown_recipe_guids = {
+        guid for guid, (_, record) in recipe_assets.items()
+        if str(record.get("Name", "")) in reviewed_unknown_triggers
+    }
     # RecipeID.json is useful legacy metadata, but it lags newly shipped game
     # features. An authoritative cooked grant promotes a RecipeData even when
-    # that external registry has not yet learned its GUID.
-    active_recipe_guids = (set(editor_by_guid) | game_granted_recipe_guids | station_recipe_guids) - set(recipe_exclusions)
+    # that external registry has not yet learned its GUID. The reviewed unknown
+    # set is also retained explicitly: these recipes were present in the
+    # production catalog, and absence of a discovered provider is not evidence
+    # that they are inactive or automatically available.
+    active_recipe_guids = (set(editor_by_guid) | game_granted_recipe_guids | station_recipe_guids |
+                           reviewed_unknown_recipe_guids) - set(recipe_exclusions)
     for guid in sorted(active_recipe_guids):
         editor = editor_by_guid.get(guid, {})
         asset_pair = recipe_assets.get(guid)
@@ -1442,22 +1461,21 @@ def main() -> int:
             continue
         output_ref = refs(props.get("ItemsCreated", []))
         unlocks = list(trigger_map.get(("crafting", name), []))
-        if not unlocks and not props.get("bIgnoreAutomaticUnlocks"):
+        if not unlocks and name in reviewed_unknown_triggers:
             unlocks.append({
-                "type": "default",
-                "action": "Available without an explicit unlock action",
+                "type": "unknown_trigger",
+                "action": "Unlock trigger not yet identified",
                 "source": {
-                    "assetPath": record.get("Package", ""),
-                    "property": "bIgnoreAutomaticUnlocks=false (inherited default)",
-                    **({"baseline": str(args.fresh_baseline)} if args.fresh_baseline else {}),
+                    "catalogRules": str(args.rules),
+                    "internalName": name,
                 },
-                "evidence": "static:complete_unlock_provider_complement;runtime:fresh_character_save",
-                "confidence": "proven",
-                "validationNote": "No progression, item, station, quest, skill, entitlement, or dispenser grants this active RecipeData; the fresh save contains no explicit grant record for implicit defaults.",
+                "evidence": "reviewed:unknown_trigger",
+                "confidence": "unknown",
+                "validationNote": "No positive cooked unlock provider is currently identified; automatic availability is never inferred from absence.",
             })
-            evidence_sources["default_crafting"] += 1
+            evidence_sources["reviewed_unknown_trigger"] += 1
         unlocks, redundant_unlocks = canonicalize_unlock_paths(unlocks)
-        status = "active" if unlocks else "unresolved"
+        status = "reviewed-unknown" if unlocks and all(path.get("type") == "unknown_trigger" for path in unlocks) else ("active" if unlocks else "unresolved")
         catalog.append({
             "kind": "crafting",
             "internalName": name,
@@ -1509,19 +1527,6 @@ def main() -> int:
             package = record.get("Package", package)
             evidence.append(str(path))
         unlocks = list(trigger_map.get(("building", name), []))
-        if not unlocks and not props.get("bIgnoreAutomaticUnlocks"):
-            unlocks.append({
-                "type": "default",
-                "action": "Available without an explicit unlock action",
-                "source": {
-                    "assetPath": package,
-                    "property": "bIgnoreAutomaticUnlocks=false (inherited default)",
-                },
-                "evidence": "static:complete_unlock_provider_complement",
-                "confidence": "proven",
-                "validationNote": "No cooked grant provider is required for this default building piece.",
-            })
-            evidence_sources["default_building"] += 1
         unlocks, redundant_unlocks = canonicalize_unlock_paths(unlocks)
         if not unlocks:
             exclusions.append({
@@ -1537,7 +1542,7 @@ def main() -> int:
             })
             evidence_sources["unobtainable_building"] += 1
             continue
-        status = "active"
+        status = "active" if unlocks else "unresolved"
         catalog.append({
             "kind": "building",
             "internalName": name,
@@ -1570,6 +1575,13 @@ def main() -> int:
             previous["evidence"] = [prior_evidence, entry["evidence"]] if prior_evidence else entry["evidence"]
     exclusions = sorted(canonical_exclusions.values(), key=lambda entry: (entry.get("kind", ""), entry.get("internalName", "")))
     unresolved = [entry for entry in catalog if entry["obtainableStatus"] == "unresolved"]
+    actual_reviewed_unknowns = {
+        entry["internalName"] for entry in catalog if entry["obtainableStatus"] == "reviewed-unknown"
+    }
+    reviewed_unknown_drift = {
+        "missing": sorted(reviewed_unknown_triggers - actual_reviewed_unknowns),
+        "unexpected": sorted(actual_reviewed_unknowns - reviewed_unknown_triggers),
+    }
     duplicate_ids = [guid for guid, count in Counter(entry["persistentId"] for entry in catalog if entry["persistentId"]).items() if count > 1]
     duplicate_exclusion_ids = [guid for guid, count in Counter(entry.get("persistentId") for entry in exclusions if entry.get("persistentId")).items() if count > 1]
     accounted_buildings = ({entry["internalName"] for entry in catalog if entry["kind"] == "building"} |
@@ -1598,6 +1610,7 @@ def main() -> int:
             "totalActive": len(catalog),
             "excluded": len(exclusions),
             "unresolved": len(unresolved),
+            "reviewedUnknownTriggers": len(actual_reviewed_unknowns),
             "sourceRecipeAssets": len(recipe_assets),
             "accountedSourceRecipeAssets": len(set(recipe_assets) & accounted_recipe_ids),
             "sourceBuildingCatalogPieces": len(catalog_pieces),
@@ -1612,6 +1625,7 @@ def main() -> int:
             "unaccountedBuildingCatalogPieces": unaccounted_buildings,
             "unaccountedSourceRecipeIds": unaccounted_recipe_ids,
             "unresolved": [{"kind": entry["kind"], "internalName": entry["internalName"], "persistentId": entry["persistentId"]} for entry in unresolved],
+            "reviewedUnknownTriggerDrift": reviewed_unknown_drift,
         },
         "recipes": catalog,
         "exclusions": exclusions,
@@ -1625,7 +1639,8 @@ def main() -> int:
     render_docs(result, args.docs_dir)
     print(json.dumps(result["counts"], sort_keys=True))
     failures = bool(duplicate_ids or duplicate_exclusion_ids or recipe_guid_duplicates or result["validation"]["missingBuildingAssets"] or
-                    unaccounted_buildings or unaccounted_recipe_ids or unresolved)
+                    unaccounted_buildings or unaccounted_recipe_ids or unresolved or
+                    reviewed_unknown_drift["missing"] or reviewed_unknown_drift["unexpected"])
     return 0 if (not failures or args.allow_unresolved) else 2
 
 

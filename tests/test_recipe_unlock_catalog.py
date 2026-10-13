@@ -451,6 +451,16 @@ class RecipeUnlockCatalogTests(unittest.TestCase):
         self.assertIn('if history_seed.is_file():', pipeline)
         self.assertIn('recipe_command.extend(["--runtime-history-seed", str(history_seed)])', pipeline)
 
+    def test_extractor_never_infers_automatic_recipe_availability(self):
+        source = (ROOT / "tools" / "generate_recipe_unlock_catalog.py").read_text(encoding="utf-8")
+        rules = json.loads((ROOT / "asset-tools" / "catalog-rules.json").read_text(encoding="utf-8"))
+        self.assertNotIn('"type": "default"', source)
+        self.assertNotIn("Available from the start", source)
+        self.assertEqual(41, len(rules["reviewedUnknownRecipeTriggers"]))
+        self.assertEqual(41, len(set(rules["reviewedUnknownRecipeTriggers"])))
+        self.assertIn('"type": "unknown_trigger"', source)
+        self.assertIn('reviewed_unknown_drift["missing"]', source)
+
     def test_player_page_recipe_catalog_contract(self):
         page = (ROOT / "src" / "web_page.h").read_text(encoding="utf-8")
         main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
@@ -574,7 +584,7 @@ class RecipeUnlockCatalogTests(unittest.TestCase):
         self.assertIn("SetManyEnabled(ids,enabled)", source)
         for field in ("recipeUnlockCatalogCompatibility", "recipeUnlockCatalogRecipes",
                       "recipeUnlockDependencyEdges", "recipeUnlockCycles",
-                      "recipeUnlockCatalogGenerated"):
+                      "recipeUnlockCatalogGenerated", "recipeUnlockUnknownTriggers"):
             self.assertIn(field, source)
 
 

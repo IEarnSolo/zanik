@@ -180,11 +180,11 @@ SkillIconHealth ReadSkillIconHealth() {
     health.compatibility=health.missing==0?1:-1;return health;
 }
 
-struct RecipeCatalogHealth { int compatibility=0,recipes=0,dependencyEdges=0,cycles=0,generated=0; };
+struct RecipeCatalogHealth { int compatibility=0,recipes=0,dependencyEdges=0,cycles=0,unknownTriggers=0,generated=0; };
 RecipeCatalogHealth ReadRecipeCatalogHealth(std::string* body=nullptr) {
     RecipeCatalogHealth health;std::string catalog;if(!ReadWebAsset("recipe-unlocks.json",catalog))return health;
     auto number=[&](const char* key){const std::string needle=std::string("\"")+key+"\":";size_t at=catalog.find(needle);if(at==std::string::npos)return -1;at+=needle.size();int value=0;bool any=false;while(at<catalog.size()&&std::isdigit(static_cast<unsigned char>(catalog[at]))){any=true;value=value*10+(catalog[at++]-'0');}return any?value:-1;};
-    health.recipes=number("recipes");health.dependencyEdges=number("dependencyEdges");health.cycles=number("cycles");
+    health.recipes=number("recipes");health.dependencyEdges=number("dependencyEdges");health.cycles=number("cycles");health.unknownTriggers=number("unknownTriggers");if(health.unknownTriggers<0)health.unknownTriggers=0;
     health.generated=catalog.find("\"generatedAt\":\"")!=std::string::npos?1:0;
     size_t ids=0,cursor=0;while((cursor=catalog.find("\"id\":\"",cursor))!=std::string::npos){++ids;cursor+=6;}
     const bool safe=catalog.find("\"persistentId\"")==std::string::npos&&catalog.find("\"internalName\"")==std::string::npos;
@@ -192,7 +192,7 @@ RecipeCatalogHealth ReadRecipeCatalogHealth(std::string* body=nullptr) {
     // reviewed asset compatibility profile before activation.  At runtime,
     // validate the catalog's self-consistency instead of pinning a second,
     // stale count into the native library.
-    health.compatibility=catalog.find("\"schemaVersion\":1")!=std::string::npos&&health.recipes>=100&&ids==static_cast<size_t>(health.recipes)&&health.dependencyEdges>=0&&health.cycles>=0&&health.generated==1&&safe?1:-1;
+    health.compatibility=catalog.find("\"schemaVersion\":1")!=std::string::npos&&health.recipes>=100&&ids==static_cast<size_t>(health.recipes)&&health.dependencyEdges>=0&&health.cycles>=0&&health.unknownTriggers>=0&&health.generated==1&&safe?1:-1;
     if(body&&health.compatibility==1)*body=std::move(catalog);
     return health;
 }
@@ -796,6 +796,7 @@ void Handle(int fd) {
             ",\"recipeUnlockCatalogRecipes\":" + std::to_string(recipeCatalog.recipes) +
             ",\"recipeUnlockDependencyEdges\":" + std::to_string(recipeCatalog.dependencyEdges) +
             ",\"recipeUnlockCycles\":" + std::to_string(recipeCatalog.cycles) +
+            ",\"recipeUnlockUnknownTriggers\":" + std::to_string(recipeCatalog.unknownTriggers) +
             ",\"recipeUnlockCatalogGenerated\":" + std::to_string(recipeCatalog.generated) +
             ",\"recipeUnlockSettingsCompatibility\":" + std::to_string(recipeSettingsCompatible?1:-1) +
             ",\"recipeUnlockHiddenRoutes\":" + std::to_string(recipeSettings.disabled) +

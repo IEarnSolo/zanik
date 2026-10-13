@@ -15,7 +15,7 @@ import re
 import time
 
 
-RECIPE_VERSION = 3
+RECIPE_VERSION = 4
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 
 
@@ -98,6 +98,17 @@ def run(command: list[str], label: str, *, quiet: bool = False) -> None:
         raise RuntimeError(f"{label} failed with exit code {completed.returncode}")
 
 
+def update_stage(path: Path | None, stage: str) -> None:
+    if path is None:
+        return
+    value = json.loads(path.read_text(encoding="utf-8"))
+    value["stage"] = stage
+    value["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    temporary = path.with_suffix(path.suffix + ".new")
+    temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
 def locate(root: Path, name: str) -> Path:
     matches = list(root.rglob(name))
     if len(matches) != 1:
@@ -105,32 +116,64 @@ def locate(root: Path, name: str) -> Path:
     return matches[0]
 
 
+def cooked_package_path(value: str) -> str | None:
+    """Translate an Unreal soft-object reference to its exact cooked package path."""
+    match = re.search(r"(/[^'\"]+?)(?:\.[^/'\"]+)?(?:'|$)", value)
+    if not match:
+        return None
+    package = match.group(1)
+    if package.startswith("/Game/"):
+        return "RSDragonwilds/Content/" + package[len("/Game/"):]
+    parts = package.strip("/").split("/", 1)
+    if len(parts) == 2:
+        return f"RSDragonwilds/Plugins/GameFeatures/{parts[0]}/Content/{parts[1]}"
+    return None
+
+
 def referenced_textures(json_root: Path, required: list[str]) -> list[str]:
-    names = set(required)
+    targets = {f"basename:{name}" for name in required}
     def visit(value: object, key: str = "") -> None:
         if isinstance(value, dict):
+            display = value.get("DisplayIcon")
+            if isinstance(display, dict):
+                reference = display.get("AssetPathName") or display.get("ObjectPath")
+                package = cooked_package_path(str(reference or ""))
+                if package:
+                    targets.add("package:" + package)
             for child_key, child in value.items(): visit(child, str(child_key))
         elif isinstance(value, list):
             for child in value: visit(child, key)
         elif isinstance(value, str) and key in {"AssetPathName", "ObjectPath", "ObjectName"}:
             match = re.search(r"/(T_(?:Icon|Journal|Skill|Tag|WorldMap)[^/.]*)\.", value, re.I)
-            if match: names.add(match.group(1))
+            if match:
+                package = cooked_package_path(value)
+                targets.add("package:" + package if package else "basename:" + match.group(1))
     for path in json_root.rglob("*.json"):
         if path.name == ".uas-manifest.json": continue
         try: visit(json.loads(path.read_text(encoding="utf-8")))
         except (OSError, UnicodeError, json.JSONDecodeError): continue
-    return sorted(names, key=str.casefold)
+    package_basenames = {
+        Path(target.split(":", 1)[1]).name.casefold()
+        for target in targets if target.startswith("package:")
+    }
+    targets = {
+        target for target in targets
+        if not (target.startswith("basename:") and target.split(":", 1)[1].casefold() in package_basenames)
+    }
+    return sorted(targets, key=str.casefold)
 
 
-def filter_chunks(names: list[str], maximum: int = 18000) -> list[str]:
+def filter_chunks(targets: list[str], maximum: int = 28000) -> list[str]:
     chunks: list[list[str]] = [[]]
     length = 20
-    for name in names:
-        encoded = re.escape(name)
+    for target in targets:
+        kind, value = target.split(":", 1)
+        encoded = ("^" + re.escape(value) if kind == "package"
+                   else r"(?:^|/)" + re.escape(value))
         if chunks[-1] and length + len(encoded) + 1 > maximum:
             chunks.append([]); length = 20
         chunks[-1].append(encoded); length += len(encoded) + 1
-    return [r"(?:/|^)" + "(?:" + "|".join(chunk) + r")\.uasset$" for chunk in chunks if chunk]
+    return ["(?:" + "|".join(chunk) + r")\.uasset$" for chunk in chunks if chunk]
 
 
 def extract(args: argparse.Namespace) -> int:
@@ -152,8 +195,17 @@ def extract(args: argparse.Namespace) -> int:
     work_parent.mkdir(parents=True, exist_ok=True)
     if os.name == "nt" and len(str(work_parent)) > 70:
         raise ValueError("the intermediate work root is too deep for cooked asset paths; use a short path such as $env:TEMP\\zw-assets")
-    temporary = args.resume_work.resolve() if args.resume_work else Path(tempfile.mkdtemp(prefix="zx-", dir=work_parent))
-    keep = bool(args.keep_work or args.resume_work)
+    if args.resume_work:
+        temporary = args.resume_work.resolve()
+    elif args.workspace:
+        temporary = args.workspace.resolve()
+        if temporary.exists() and any(temporary.iterdir()):
+            raise ValueError(f"new extraction workspace is not empty: {temporary}")
+        temporary.mkdir(parents=True, exist_ok=True)
+    else:
+        temporary = Path(tempfile.mkdtemp(prefix="zx-", dir=work_parent))
+    keep = bool(args.keep_work or args.resume_work or args.workspace)
+    stage_journal = args.stage_journal.resolve() if args.stage_journal else None
     try:
         json_root = temporary / "json"; texture_root = temporary / "textures"; font_root = temporary / "font"; web = temporary / "web"; internal = temporary / "internal"
         internal.mkdir(parents=True, exist_ok=True)
@@ -181,6 +233,8 @@ def extract(args: argparse.Namespace) -> int:
                 batch = texture_root / f"batch-{index:02d}"
                 run(common + ["-f", expression, "export", "Textures", "-o", str(batch), "-c", "-r", "-l", str(temporary / f"texture-export-{index:02d}.log")], f"Exporting targeted web textures ({index})", quiet=True)
             run(common + ["-f", recipe["fontFilter"], "export", "Raw", "-o", str(font_root), "-c", "-r", "-l", str(temporary / "font-export.log")], "Exporting the web font", quiet=True)
+            update_stage(stage_journal, "exports")
+        update_stage(stage_journal, "generating")
         scripts = Path(__file__).resolve().parent; repo = scripts.parent; py = sys.executable
         run([py, str(scripts / "generate_building_catalog.py"), str(json_root), str(texture_root), str(web / "buildings"), "--catalogue-root", str(json_root)], "Generating building catalog")
         run([py, str(scripts / "generate_plan_item_catalog.py"), "--assets", str(json_root), "--icons", str(texture_root), "--web", str(web)], "Generating plan-item catalog")
@@ -209,6 +263,7 @@ def extract(args: argparse.Namespace) -> int:
             if previous.exists(): remove_tree(previous)
             output.replace(previous)
         replacement.replace(output)
+        update_stage(stage_journal, "generated")
         print(json.dumps({"output": str(output), "work": str(temporary) if keep else None, "ready": True}, sort_keys=True))
         return 0
     finally:
@@ -230,6 +285,8 @@ def main() -> int:
     parser.add_argument("--work-root", type=Path)
     parser.add_argument("--keep-work", action="store_true")
     parser.add_argument("--resume-work", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--workspace", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--stage-journal", type=Path, help=argparse.SUPPRESS)
     return extract(parser.parse_args())
 
 

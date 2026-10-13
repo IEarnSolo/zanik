@@ -5,12 +5,15 @@ import argparse
 import hashlib
 import json
 import shutil
-import binascii
 import struct
-import zlib
 from pathlib import Path
 
 EXPECTED = {"tabs": 8, "sections": 63, "references": 839, "pieces": 822}
+EXPECTED_ICON_SOURCES = {
+    "authored-texture": 753,
+    "embedded-build-ui-thumbnail": 68,
+    "procedural-thumbnail": 1,
+}
 REMOVED_RUNTIME_PIECES = {
     "DA_BaseBuilding_Building_Protection_Totem",
     "DA_T4_Floor_Large02",
@@ -60,19 +63,44 @@ def scan_assets(root):
     return assets
 
 
-def find_icon(icon_index, icon_asset):
+def cooked_package_path(value):
+    package = str(value or "").split(".", 1)[0]
+    if package.startswith("/Game/"):
+        return "RSDragonwilds/Content/" + package[len("/Game/"):]
+    parts = package.strip("/").split("/", 1)
+    if len(parts) == 2:
+        return f"RSDragonwilds/Plugins/GameFeatures/{parts[0]}/Content/{parts[1]}"
+    return ""
+
+
+def icon_source(icon_asset):
+    normalized = str(icon_asset or "").replace("\\", "/")
+    if "/GeneratedIcons/SM_" in normalized:
+        return "embedded-build-ui-thumbnail"
+    if "/ProceduralThumbnails/" in normalized:
+        return "procedural-thumbnail"
+    return "authored-texture"
+
+
+def find_icon(icon_index, basename_index, icon_asset):
     if not icon_asset:
         return None
-    filename = asset_key(icon_asset) + ".png"
-    return icon_index.get(filename.lower())
+    package = cooked_package_path(icon_asset).casefold()
+    if package and package in icon_index:
+        return icon_index[package]
+    candidates = basename_index.get((asset_key(icon_asset) + ".png").casefold(), [])
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        raise RuntimeError(f"ambiguous icon basename for {icon_asset}: {len(candidates)} exports")
+    return None
 
 
-def placeholder(path):
-    width = height = 32; row = bytes([0]) + bytes((117, 105, 82, 255)) * width
-    def chunk(kind, data):
-        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", binascii.crc32(kind + data) & 0xffffffff)
-    path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
-                     + chunk(b"IDAT", zlib.compress(row * height, 9)) + chunk(b"IEND", b""))
+def png_dimensions(path):
+    value = path.read_bytes()[:24]
+    if len(value) != 24 or value[:8] != b"\x89PNG\r\n\x1a\n" or value[12:16] != b"IHDR":
+        raise RuntimeError(f"building icon is not a valid PNG: {path}")
+    return struct.unpack(">II", value[16:24])
 
 
 def main():
@@ -117,26 +145,43 @@ def main():
 
     args.output.mkdir(parents=True, exist_ok=True)
     icon_index = {}
+    basename_index = {}
     for icon_root in [args.icons, *args.extra_icons]:
         for source in icon_root.rglob("*.png"):
-            icon_index.setdefault(source.name.lower(), source)
+            parts = source.as_posix().split("/")
+            try:
+                start = parts.index("RSDragonwilds")
+            except ValueError:
+                start = -1
+            if start >= 0:
+                package = "/".join(parts[start:])[:-4].casefold()
+                prior = icon_index.get(package)
+                if prior and prior.read_bytes() != source.read_bytes():
+                    raise RuntimeError(f"conflicting exports for cooked icon package {package}")
+                icon_index[package] = source
+            basename_index.setdefault(source.name.casefold(), []).append(source)
     missing_icons = []
+    source_counts = {key: 0 for key in EXPECTED_ICON_SOURCES}
     for key in sorted(unique):
-        source = find_icon(icon_index, assets[key]["iconAsset"])
-        if not source:
-            source = icon_index.get((key + ".png").lower())
-        if not source and "_Banner_Hanging_" in key:
-            deity = key.rsplit("_", 1)[-1]
-            source = icon_index.get(("SM_Single_Banner_" + deity + "_01v2.png").lower())
-            assets[key]["iconFallback"] = bool(source)
+        source_kind = icon_source(assets[key]["iconAsset"])
+        source = find_icon(icon_index, basename_index, assets[key]["iconAsset"])
         if source:
+            width, height = png_dimensions(source)
+            if width < 256 or height < 256:
+                raise RuntimeError(f"building icon is undersized ({width}x{height}): {key}")
             shutil.copy2(source, args.output / assets[key]["icon"])
+            assets[key]["iconSource"] = source_kind
+            source_counts[source_kind] += 1
         else:
             missing_icons.append(key)
-            placeholder(args.output / assets[key]["icon"])
+    if missing_icons:
+        raise SystemExit(f"{len(missing_icons)} building icons were not exported; first: {missing_icons[0]}")
+    if source_counts != EXPECTED_ICON_SOURCES:
+        raise SystemExit(f"building icon coverage changed: expected {EXPECTED_ICON_SOURCES}, got {source_counts}")
 
     pieces = [assets[key] for key in sorted(unique)]
     canonical = {"schemaVersion": 1, "sourceAsset": catalogue_record["Package"], "counts": counts,
+                 "iconSources": source_counts,
                  "tabs": tabs, "pieces": pieces}
     encoded = json.dumps(canonical, ensure_ascii=False, separators=(",", ":")).encode()
     canonical["contentHash"] = hashlib.sha256(encoded).hexdigest()
@@ -158,7 +203,7 @@ def main():
         out.write("# Generated from DA_BuildPieceCatalogue_Default. key<TAB>localized name<TAB>web icon filename<TAB>buildable actor class\n")
         for piece in pieces:
             out.write("{}\t{}\t{}\t{}\n".format(clean(piece["key"]), clean(piece["name"]), clean(piece["icon"]), clean(piece["actor"])))
-    print(json.dumps({**counts, "placeholderIcons": len(missing_icons)}, sort_keys=True))
+    print(json.dumps({**counts, "iconSources": source_counts, "placeholderIcons": 0}, sort_keys=True))
 
 
 if __name__ == "__main__":
