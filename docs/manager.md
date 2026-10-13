@@ -33,6 +33,8 @@ Asset activation uses a fast remote verification path: multipart archives are ha
 
 Validated bundles are stored below `%LOCALAPPDATA%\Zanik Manager\assets\`. The newest two unpinned bundles for each game installation are retained. Use **Open bundle folder** to inspect or copy a ZIP. Interrupted extraction checkpoints live under `%LOCALAPPDATA%\Zanik Manager\asset-work\`; use **Resume extraction** to continue from the last verified stage or **Discard generated work** to remove only the journal-owned workspace. Raw exports are removed after successful packaging.
 
+Resume accepts journals created by both Windows PowerShell 5.1 and PowerShell 7. If a journal update was interrupted after UnrealAssetScout finished, Manager verifies every expected export batch and resumes catalog generation without reopening Dragonwilds. It never infers completion from directory existence alone.
+
 Dragonwilds must be closed when extraction starts. If it is running, Manager can request a normal close and wait; it never force-kills the client. Mapping generation briefly opens and closes the game automatically. If the client already uses UE4SS or another `dwmapi.dll` proxy loader, Manager asks first, backs up and verifies the complete installation outside the game directory, temporarily installs Zanik's pinned mapper, and restores the original files exactly. Persistent recovery records live under `%LOCALAPPDATA%\Zanik Manager\mapping-recovery\` so an interrupted run can be safely restored on the next attempt.
 
 The extractor copies authored build-interface thumbnails from the client, including embedded thumbnails in special `GeneratedIcons` packages. It does not render models and does not install or require Blender.

@@ -2,6 +2,14 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.7] - 2026-10-13
+
+### Fixed
+
+- Read extraction journals written by Windows PowerShell 5.1 with a UTF-8 byte-order mark and write future operational JSON as UTF-8 without a BOM.
+- Recover completed, manifest-verified UnrealAssetScout exports when an interrupted journal remains at an earlier stage, avoiding another game launch or extraction pass.
+- Reset only partial generated output during resume while preserving verified mappings, catalogs, textures, fonts, and recovery evidence.
+
 ## [0.2.6] - 2026-10-13
 
 ### Added

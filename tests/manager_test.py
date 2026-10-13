@@ -129,6 +129,13 @@ class ManagerTests(unittest.TestCase):
                 "schemaVersion": 1, "owner": "Zanik asset extractor"
             }))
             self.assertEqual(extractor.resumable(work)["stage"], "generated")
+            (work / ".zanik-asset-work.json").write_text(json.dumps({
+                "schemaVersion": 1, "owner": "Zanik asset extractor"
+            }), encoding="utf-8-sig")
+            (work / "extraction-journal.json").write_text(json.dumps({
+                "schemaVersion": 1, "stage": "mappings", "updatedAt": "2026-10-13T00:00:00Z"
+            }), encoding="utf-8-sig")
+            self.assertEqual(extractor.resumable(work)["stage"], "mappings")
 
     def test_manager_exposes_resume_and_safe_discard_controls(self):
         source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
@@ -137,6 +144,7 @@ class ManagerTests(unittest.TestCase):
         self.assertIn("def resume_asset_extraction", source)
         self.assertIn("def discard_asset_extraction", source)
         assets_source = (ROOT / "manager" / "zanik_manager" / "assets.py").read_text(encoding="utf-8")
+        self.assertIn('encoding="utf-8-sig"', assets_source)
         self.assertIn("UnrealAssetScout", assets_source)
         self.assertIn("UE4SS", assets_source)
         self.assertIn("game_build", assets_source)

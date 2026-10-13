@@ -5,6 +5,7 @@ import re
 import tempfile
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -108,5 +109,123 @@ with tempfile.TemporaryDirectory() as name:
         raise AssertionError("reviewed export-count drift was accepted")
     except RuntimeError as error:
         assert "jsonFiles expected 11, got 10" in str(error)
+
+    journal = root / "extraction-journal.json"
+    original_journal = {
+        "schemaVersion": 1, "stage": "mappings", "updatedAt": "old",
+        "fingerprints": {"gameExecutableSha256": "game"},
+        "futureField": {"preserved": True},
+    }
+    journal.write_text(json.dumps(original_journal), encoding="utf-8-sig")
+    pipeline.update_stage(journal, "exports")
+    assert not journal.read_bytes().startswith(b"\xef\xbb\xbf")
+    updated = json.loads(journal.read_text(encoding="utf-8"))
+    assert updated["stage"] == "exports" and updated["futureField"] == {"preserved": True}
+
+    workspace = root / "resume"; json_root = workspace / "json"; textures = workspace / "textures"
+    font = workspace / "font"; json_root.mkdir(parents=True); textures.mkdir(); font.mkdir()
+    (json_root / ".uas-manifest.json").write_text(json.dumps({"schema": 2, "mode": "json"}))
+    batch = textures / "batch-01"; batch.mkdir()
+    (batch / ".uas-manifest.json").write_text(json.dumps({"schema": 2, "mode": "textures"}))
+    (batch / "icon.png").write_bytes(b"png")
+    (font / ".uas-manifest.json").write_text(json.dumps({"schema": 2, "mode": "raw"}))
+    (font / "Jancient.ufont").write_bytes(b"font")
+    mapping = root / "Mappings.usmap"; mapping.write_bytes(b"mapping")
+    recipe_path = root / "recipe.json"; recipe_path.write_text("{}")
+    checkpoint_recipe = {"requiredTextureAssets": ["required"], "_path": str(recipe_path)}
+    journal.write_text(json.dumps(original_journal), encoding="utf-8-sig")
+    with patch.object(pipeline, "validate_catalog_export"), \
+         patch.object(pipeline, "referenced_textures", return_value=["basename:required"]), \
+         patch.object(pipeline, "filter_chunks", return_value=["one"]):
+        checkpoint = pipeline.recover_or_create_export_checkpoint(
+            workspace, checkpoint_recipe, {"jsonFiles": 1}, mapping, journal)
+        assert checkpoint["textureBatches"] == [{
+            "name": "batch-01",
+            "manifestSha256": pipeline.sha256(batch / ".uas-manifest.json"),
+            "pngFiles": 1,
+        }]
+        assert checkpoint["fingerprints"] == original_journal["fingerprints"]
+        pipeline.recover_or_create_export_checkpoint(
+            workspace, checkpoint_recipe, {"jsonFiles": 1}, mapping, journal)
+        json_manifest = json_root / ".uas-manifest.json"
+        original_json_manifest = json_manifest.read_text()
+        json_manifest.write_text("not json")
+        try:
+            pipeline.verified_export_checkpoint(
+                workspace, checkpoint_recipe, {"jsonFiles": 1}, mapping, journal)
+            raise AssertionError("corrupt JSON manifest was accepted")
+        except RuntimeError as error:
+            assert "invalid UnrealAssetScout manifest" in str(error)
+        json_manifest.write_text(original_json_manifest)
+        exported_font = font / "Jancient.ufont"
+        exported_font.unlink()
+        try:
+            pipeline.verified_export_checkpoint(
+                workspace, checkpoint_recipe, {"jsonFiles": 1}, mapping, journal)
+            raise AssertionError("missing font was accepted")
+        except RuntimeError as error:
+            assert "exactly one Jancient.ufont" in str(error)
+        exported_font.write_bytes(b"font")
+        mapping.unlink()
+        try:
+            pipeline.verified_export_checkpoint(
+                workspace, checkpoint_recipe, {"jsonFiles": 1}, mapping, journal)
+            raise AssertionError("missing mapping was accepted")
+        except RuntimeError as error:
+            assert "missing its generated mapping" in str(error)
+        mapping.write_bytes(b"mapping")
+        extra = textures / "batch-02"; extra.mkdir()
+        try:
+            pipeline.verified_export_checkpoint(
+                workspace, checkpoint_recipe, {"jsonFiles": 1}, mapping, journal)
+            raise AssertionError("unexpected texture batch was accepted")
+        except RuntimeError as error:
+            assert "extra=['batch-02']" in str(error)
+        extra.rmdir()
+        moved_batch = textures / "held-batch"
+        batch.rename(moved_batch)
+        try:
+            pipeline.verified_export_checkpoint(
+                workspace, checkpoint_recipe, {"jsonFiles": 1}, mapping, journal)
+            raise AssertionError("missing texture batch was accepted")
+        except RuntimeError as error:
+            assert "missing=['batch-01']" in str(error)
+        moved_batch.rename(batch)
+        (batch / "icon.png").unlink()
+        try:
+            pipeline.verified_export_checkpoint(
+                workspace, checkpoint_recipe, {"jsonFiles": 1}, mapping, journal)
+            raise AssertionError("empty texture batch was accepted")
+        except RuntimeError as error:
+            assert "texture export batch is empty" in str(error)
+        (batch / "icon.png").write_bytes(b"png")
+        mapping.write_bytes(b"changed mapping")
+        try:
+            pipeline.recover_or_create_export_checkpoint(
+                workspace, checkpoint_recipe, {"jsonFiles": 1}, mapping, journal)
+            raise AssertionError("changed mapping was accepted by the recorded checkpoint")
+        except RuntimeError as error:
+            assert "checkpoint no longer matches" in str(error)
+        mapping.write_bytes(b"mapping")
+        (batch / ".uas-manifest.json").write_text("not json")
+        try:
+            pipeline.recover_or_create_export_checkpoint(
+                workspace, checkpoint_recipe, {"jsonFiles": 1}, mapping, journal)
+            raise AssertionError("corrupt UAS manifest was accepted")
+        except RuntimeError as error:
+            assert "invalid UnrealAssetScout manifest" in str(error)
+
+    raw = workspace / "json" / "keep.json"; raw.write_text("{}")
+    generated = workspace / "web"; generated.mkdir(); (generated / "partial.txt").write_text("partial")
+    private = workspace / "internal"; private.mkdir(); (private / "partial.txt").write_text("partial")
+    pipeline.reset_partial_generation(workspace)
+    assert raw.is_file() and not generated.exists()
+    assert private.is_dir() and not any(private.iterdir())
+
+    powershell = (ROOT / "scripts" / "init-assets.ps1").read_text(encoding="utf-8")
+    writer = powershell[powershell.index("function Write-JsonAtomic"):powershell.index("function Set-ExtractionStage")]
+    assert "UTF8Encoding($false)" in writer and "WriteAllText" in writer
+    assert "Set-Content" not in writer
+    assert "$Resume -and (Test-Path -LiteralPath $PipelineWorkspace" in powershell
 
 print("windows asset pipeline tests passed")
