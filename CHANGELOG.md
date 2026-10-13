@@ -9,6 +9,7 @@ All notable changes to Zanik are documented here.
 - Make Zanik Manager restart a running Pterodactyl server after atomically activating a website asset bundle so native recipe and quest tracking load their runtime catalogs immediately.
 - Install the bounded native query dispatcher when either default-on read-only player tracker is enabled, without enabling any mutation feature.
 - Report recipe and quest dispatcher compatibility independently and fail closed when their query dispatcher is unavailable.
+- Keep recipe-catalog object discovery and compatibility retries on the worker loop instead of allowing a full Unreal object scan on the game thread during startup.
 - Clarify that self-hosted and manual Pterodactyl installations must restart Zanik after first asset activation or an asset update.
 
 ## [0.2.8] - 2026-10-13
