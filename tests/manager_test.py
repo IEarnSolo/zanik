@@ -9,7 +9,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from manager.zanik_manager.assets import AssetDeployer, AssetExtractor, dragonwilds_is_running, request_dragonwilds_close
+from manager.zanik_manager.assets import (AssetDeployer, AssetExtractor, asset_setup_mode,
+                                          dragonwilds_is_running, request_dragonwilds_close)
 from manager.zanik_manager.cache import BundleCache
 from manager.zanik_manager.config import ConfigError, ConfigModel, content_hash, update_website_settings
 from manager.zanik_manager.journal import JournalStore, OperationJournal
@@ -151,6 +152,16 @@ class ManagerTests(unittest.TestCase):
         lifecycle_source = (ROOT / "manager" / "zanik_manager" / "lifecycle.py").read_text(encoding="utf-8")
         self.assertIn('"buildingIconSources": manifest.get("buildingIconSources", {})', lifecycle_source)
         self.assertIn('"recipeRouteCoverage": manifest.get("recipeRouteCoverage", {})', lifecycle_source)
+
+    def test_guided_asset_setup_prefers_cached_then_resumable_work(self):
+        status = {"stage": "mappings", "updatedAt": "2026-10-13T00:00:00Z"}
+        self.assertEqual(asset_setup_mode(True, status), "cached")
+        self.assertEqual(asset_setup_mode(False, status), "resume")
+        self.assertEqual(asset_setup_mode(False, None), "new")
+        source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("resume_status = None if use_cached else extractor.resumable(work)", source)
+        self.assertIn('resume=(mode == "resume")', source)
+        self.assertIn("Dragonwilds and UnrealAssetScout will not run again", source)
 
     def test_profile_store_has_only_credential_reference(self):
         with tempfile.TemporaryDirectory() as temporary:
