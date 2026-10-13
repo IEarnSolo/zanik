@@ -322,8 +322,10 @@ def extract(args: argparse.Namespace) -> int:
         internal.mkdir(parents=True, exist_ok=True)
         common = [str(uas), "-p", str(paks), "-g", recipe["engine"], "-u", str(mapping)]
         if args.resume_work:
+            print("[Zanik] Validating retained JSON, texture, font, and mapping exports", flush=True)
             recover_or_create_export_checkpoint(temporary, recipe, reviewed_counts, mapping, stage_journal)
             update_stage(stage_journal, "exports")
+            print("[Zanik] Retained exports verified; UnrealAssetScout extraction skipped", flush=True)
         else:
             last_export_error: Exception | None = None
             for attempt in range(1, 4):

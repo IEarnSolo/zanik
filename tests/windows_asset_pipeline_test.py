@@ -227,5 +227,6 @@ with tempfile.TemporaryDirectory() as name:
     assert "UTF8Encoding($false)" in writer and "WriteAllText" in writer
     assert "Set-Content" not in writer
     assert "$Resume -and (Test-Path -LiteralPath $PipelineWorkspace" in powershell
+    assert "game launch and UnrealAssetScout extraction are skipped" in powershell
 
 print("windows asset pipeline tests passed")
