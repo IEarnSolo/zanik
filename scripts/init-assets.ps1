@@ -102,11 +102,13 @@ if ($StateOrder[$Journal.stage] -lt $StateOrder['mappings'] -and -not $UsmapPath
 if ($StateOrder[$Journal.stage] -lt $StateOrder['generated']) {
 $PipelineWorkspace = Join-Path $Work 'pipeline'
 $PipelineArguments = @($Pipeline, '--game-root', $GameRoot, '--output', $Generated, '--tool-root', $Root, '--usmap-path', $UsmapPath, '--recipe', $Recipe, '--work-root', $Work, '--stage-journal', $JournalPath)
-if (($Resume -and (Test-Path -LiteralPath $PipelineWorkspace -PathType Container)) -or $Journal.stage -in @('exports', 'generating')) { $PipelineArguments += @('--resume-work', $PipelineWorkspace) }
+$ResumePipeline = (($Resume -and (Test-Path -LiteralPath $PipelineWorkspace -PathType Container)) -or $Journal.stage -in @('exports', 'generating'))
+if ($ResumePipeline) { $PipelineArguments += @('--resume-work', $PipelineWorkspace) }
 else { $PipelineArguments += @('--workspace', $PipelineWorkspace) }
 if ($KeepWork) { $PipelineArguments += '--keep-work' }
 if ($CatalogsOnly) { Write-Warning '-CatalogsOnly retains artwork referenced by runtime catalogs and omits only unreachable exports.' }
-Write-ZanikEvent 'extract' 'Exporting targeted catalogs and artwork'
+if ($ResumePipeline) { Write-ZanikEvent 'extract' 'Validating retained exports; game launch and UnrealAssetScout extraction are skipped' }
+else { Write-ZanikEvent 'extract' 'Exporting targeted catalogs and artwork' }
 & $Python @PipelineArguments
 if ($LASTEXITCODE -ne 0) { throw "Asset extraction failed with exit code $LASTEXITCODE" }
 Set-ExtractionStage 'generated'
