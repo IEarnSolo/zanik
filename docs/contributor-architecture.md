@@ -9,6 +9,7 @@
 - Temporary mapping generation must refuse pre-existing loader collisions, never force-kill the client, recover from its journal before new work, and verify that every touched client path is restored.
 - A bundle with unreviewed catalog drift is a candidate marked `incompatible`; installers must reject it until the profile is reviewed. Build-ID differences alone are informational.
 - The full ZIP and Pterodactyl parts must assemble to the same file/hash tree. Part installation rejects missing, unexpected, corrupt, duplicate, traversal, and symlink entries before atomic activation.
+- Keep remote development loops tight. Validate and hash complete bundles locally, verify uploaded archives once, trust successful ZIP extraction and CRC checks, and remotely check only critical or changed files plus representative entries before activation. Do not download and hash every remote asset during normal deployment. Preserve full per-file remote verification as an explicit deep Doctor operation for suspected corruption or user-requested audits.
 - Keep clean-clone tests asset-free. Validate every release archive after clean extraction for layout, modes, checksums, credentials, raw game files, operator files, and research data.
 - Maintain `.tmp/distribution-implementation.md` during distribution work; it is local, ignored, and must never be committed.
 - Treat `VERSION` as authoritative and publish stable releases only from matching protected `vMAJOR.MINOR.PATCH` tags. Tagged archives must pass clean extraction and checksum validation before durable publication.

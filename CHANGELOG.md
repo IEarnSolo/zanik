@@ -10,6 +10,10 @@ All notable changes to Zanik are documented here.
 - Resize generated world maps to the website's required 4096-by-4096 canvas and reject bundles with unexpected map dimensions.
 - Version the corrected extraction recipe so Zanik Manager does not reuse an older affected bundle.
 
+### Changed
+
+- Use archive integrity, ZIP CRCs, and critical-file sampling for normal Pterodactyl asset activation; full per-file remote hashing remains available through deep Doctor.
+
 ## [0.2.0] - 2026-10-12
 
 ### Added

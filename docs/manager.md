@@ -20,6 +20,8 @@ Executable replacement is available for fixed eggs. It preserves the verified of
 
 Every mutating operation stages and verifies files before activation and records a recovery journal. Backups are stored under `/home/container/zanik-backups/manager/`. An interrupted operation is offered for resume or rollback the next time the profile connects.
 
+Asset activation uses a fast remote verification path: multipart archives are hash-checked before extraction, Pterodactyl's ZIP CRC checks protect their entries, and Manager downloads only the manifest, runtime catalogs, world map, and representative files before the atomic swap. It does not download every extracted asset during a normal install or development iteration. Use **Run deep Doctor** only when corruption is suspected or a complete remote audit is specifically required.
+
 ## Assets and local files
 
 Validated bundles are stored below `%LOCALAPPDATA%\Zanik Manager\assets\`. The newest two unpinned bundles for each game installation are retained. Use **Open bundle folder** to inspect or copy a ZIP. Raw game containers, mappings, and extraction work trees are not retained by default.
@@ -28,7 +30,7 @@ Validated bundles are stored below `%LOCALAPPDATA%\Zanik Manager\assets\`. The n
 
 The Configuration page validates strict `KEY=VALUE` data before upload, refuses to overwrite a file changed since it was loaded, creates a backup, and asks whether to restart. State-changing and QoL features remain off by default.
 
-Doctor can perform a quick installation check or a slower complete asset verification. Support ZIPs are generated locally and can be reviewed before sharing. They exclude API keys, console secrets, claims, sessions, authorization files, and game-derived assets.
+Doctor can perform a quick installation check or a deliberately slower complete remote asset verification. The deep check downloads and hashes every manifest entry and is not part of normal activation. Support ZIPs are generated locally and can be reviewed before sharing. They exclude API keys, console secrets, claims, sessions, authorization files, and game-derived assets.
 
 ## Windows trust warning
 
