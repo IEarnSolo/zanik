@@ -22,6 +22,7 @@ install -m 0644 "$ROOT/config/zanik-config.schema.json" "$WORK/server/config/zan
 install -m 0644 "$ROOT/deploy/compatibility.tsv" "$WORK/server/compatibility/compatibility.tsv"
 for file in install update uninstall doctor init-assets compat-launcher verify-assets; do install -m 0755 "$ROOT/scripts/$file.sh" "$WORK/server/scripts/$file.sh"; done
 install -m 0644 "$ROOT/tools/zanik_assets.py" "$WORK/server/tools/zanik_assets.py"
+install -m 0644 "$ROOT/tools/asset_filesystem.py" "$WORK/server/tools/asset_filesystem.py"
 install -m 0644 "$ROOT/VERSION" "$ROOT/CHANGELOG.md" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/README.md" "$WORK/server/"
 for file in installation.md linux.md pterodactyl.md docker.md upgrades.md uninstall.md configuration.md assets.md security.md hosting.md curseforge.md releasing.md contributor-architecture.md manager.md; do install -m 0644 "$ROOT/docs/$file" "$WORK/server/docs/$file"; done
 
@@ -61,6 +62,7 @@ unzip -q "$WORK/unreal-asset-scout-windows-x86_64.zip" -d "$WORK/asset-windows/t
 unzip -q "$WORK/ue4ss-windows-x86_64.zip" -d "$WORK/asset-windows/third_party/ue4ss"
 printf '../tools\n' >> "$WORK/asset-windows/runtime/python312._pth"
 install -m 0644 "$ROOT/tools/zanik_assets.py" "$WORK/asset-linux/tools/zanik_assets.py"
+install -m 0644 "$ROOT/tools/asset_filesystem.py" "$WORK/asset-linux/tools/asset_filesystem.py"
 for file in zanik_assets windows_mapping windows_asset_pipeline generate_building_catalog generate_plan_item_catalog generate_world_catalogs generate_quest_catalog generate_web_assets generate_recipe_unlock_catalog analyze_quest_steps asset_filesystem; do
   install -m 0644 "$ROOT/tools/$file.py" "$WORK/asset-windows/tools/$file.py"
 done

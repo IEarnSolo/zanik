@@ -16,9 +16,9 @@ import re
 import time
 
 try:
-    from asset_filesystem import read_json as read_json_file
+    from asset_filesystem import extended_path, read_json as read_json_file
 except ModuleNotFoundError:  # Imported as tools.* by repository tests.
-    from tools.asset_filesystem import read_json as read_json_file
+    from tools.asset_filesystem import extended_path, read_json as read_json_file
 
 
 RECIPE_VERSION = 4
@@ -54,7 +54,7 @@ def remove_tree(path: Path) -> None:
         raise error[1]
     for attempt in range(20):
         try:
-            shutil.rmtree(path, onerror=handle_error)
+            shutil.rmtree(extended_path(path), onerror=handle_error)
             return
         except FileNotFoundError:
             return

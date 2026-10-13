@@ -3,6 +3,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools/zanik_assets.py"
+sys.path.insert(0, str(ROOT / "tools"))
+from asset_filesystem import extended_path
 REQUIRED = ("buildings/catalog.json", "buildings/catalog.tsv", "npc-catalog.json", "plan-items.tsv",
             "quest-catalog.json", "quest-runtime-catalog.tsv", "quest-step-locations.json",
             "recipe-unlocks.json", "recipe-runtime-catalog.tsv", "resource-catalog.json",
@@ -104,6 +106,10 @@ with tempfile.TemporaryDirectory() as name:
         json.dumps({"schemaVersion": 1, "owner": "Zanik asset extractor"}), encoding="utf-8-sig")
     nested = work / "nested"; nested.mkdir(); locked = nested / "readonly.txt"; locked.write_text("temporary")
     locked.chmod(0o400)
+    deep = work.joinpath(*(["deep-" + "x" * 65] * 4))
+    extended_path(deep).mkdir(parents=True)
+    extended_path(deep / "retained.json").write_text("{}", encoding="utf-8")
+    if os.name == "nt": assert len(str(deep / "retained.json")) >= 260
     subprocess.run([sys.executable, str(TOOL), "cleanup-work", "--work-root", str(work)], check=True)
     assert not work.exists()
     unowned = root / "unowned"; unowned.mkdir(); (unowned / "keep.txt").write_text("keep")

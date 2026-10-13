@@ -11,6 +11,7 @@ All notable changes to Zanik are documented here.
 - Reset only partial generated output during resume while preserving verified mappings, catalogs, textures, fonts, and recovery evidence.
 - Automatically resume verified retained work from guided post-install asset setup instead of incorrectly attempting a new extraction.
 - Read deeply nested Windows client exports through extended-length paths, and fail with the affected filename instead of silently omitting an unreadable JSON record or image.
+- Remove owned extraction workspaces through extended-length paths so **Discard generated work** can clean deeply nested cooked exports.
 
 ## [0.2.6] - 2026-10-13
 
