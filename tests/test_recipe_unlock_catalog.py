@@ -447,7 +447,8 @@ class RecipeUnlockCatalogTests(unittest.TestCase):
 
     def test_windows_extractor_seeds_reviewed_recipe_history(self):
         pipeline = (ROOT / "tools" / "windows_asset_pipeline.py").read_text(encoding="utf-8")
-        self.assertIn('"--runtime-history-seed", str(repo / "web/recipe-runtime-catalog-history.tsv")', pipeline)
+        self.assertIn('history_seed = repo / "asset-tools/recipe-runtime-catalog-history.tsv"', pipeline)
+        self.assertIn('"--runtime-history-seed", str(history_seed)', pipeline)
 
     def test_player_page_recipe_catalog_contract(self):
         page = (ROOT / "src" / "web_page.h").read_text(encoding="utf-8")
