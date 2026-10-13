@@ -56,6 +56,21 @@ def discover_steam_game_roots() -> list[Path]:
     return unique
 
 
+def dragonwilds_is_running(runner=subprocess.run, platform: str = os.name) -> bool:
+    """Return whether a Windows Dragonwilds client process is currently running."""
+    if platform != "nt":
+        return False
+    result = runner(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+         "@(Get-Process -Name 'RSDragonwilds*' -ErrorAction SilentlyContinue).Count"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
+    )
+    try:
+        return int((result.stdout or "0").strip().splitlines()[-1]) > 0
+    except (ValueError, IndexError):
+        return False
+
+
 class AssetExtractor:
     def __init__(self, tool_root: Path, cache: BundleCache):
         self.tool_root = tool_root
@@ -66,6 +81,11 @@ class AssetExtractor:
         script = self.tool_root / "init-assets.ps1"
         if not script.exists():
             raise FileNotFoundError("The bundled Windows asset extractor is missing")
+        if not usmap and dragonwilds_is_running():
+            raise RuntimeError(
+                "Dragonwilds is already running. Close the game before extraction, then try again. "
+                "Zanik Manager will launch and close it automatically while generating mappings."
+            )
         command = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
                    str(script), "-GameRoot", str(game_root), "-OutputDirectory", str(output)]
         if usmap:

@@ -10,16 +10,18 @@ from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
-                               QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QSpinBox, QTabWidget, QVBoxLayout, QWidget)
+                               QPlainTextEdit, QProgressBar, QProgressDialog, QPushButton, QScrollArea,
+                               QSpinBox, QTabWidget, QVBoxLayout, QWidget)
 from PySide6.QtCore import QUrl
 
-from .assets import AssetExtractor, discover_steam_game_roots, game_root_id
+from .assets import AssetExtractor, discover_steam_game_roots, dragonwilds_is_running, game_root_id
 from .cache import BundleCache
 from .config import ConfigModel, content_hash
 from .journal import JournalStore
 from .lifecycle import PterodactylProvider, ReleasePayload
+from .onboarding import PanelDiscovery, discover_panel, is_remote_http
 from .paths import ensure_layout
-from .profiles import ProfileStore, ServerProfile, is_local_origin, normalize_origin
+from .profiles import ProfileStore, ServerProfile
 from .pterodactyl import PterodactylClient
 from .security import CredentialVault, credential_target, redact
 from .support import create_support_bundle
@@ -39,72 +41,94 @@ def resource_path(*parts: str) -> Path:
 
 
 class Worker(QObject):
-    finished = Signal(object)
-    failed = Signal(str)
+    done = Signal()
 
     def __init__(self, function):
         super().__init__(); self.function = function
+        self.result = None; self.error = None
 
     @Slot()
     def run(self):
         try:
-            self.finished.emit(self.function())
+            self.result = self.function()
         except Exception as error:
-            self.failed.emit(f"{error}\n\n{traceback.format_exc()}")
+            self.error = (str(error), traceback.format_exc())
+        finally:
+            self.done.emit()
 
 
 class AddServerDialog(QDialog):
     def __init__(self, vault: CredentialVault, parent=None):
-        super().__init__(parent); self.vault = vault; self.profile = None
+        super().__init__(parent); self.vault = vault; self.profile = None; self.discovery: PanelDiscovery | None = None
         self.setWindowTitle("Add a Pterodactyl server")
         layout = QFormLayout(self)
         self.origin = QLineEdit(); self.origin.setPlaceholderText("https://panel.example.com")
         self.token = QLineEdit(); self.token.setEchoMode(QLineEdit.Password)
         self.name = QLineEdit(); self.name.setPlaceholderText("My Dragonwilds server")
         self.server = QComboBox(); self.server.setEnabled(False)
-        self.http_ack = QCheckBox("I understand that this remote HTTP connection exposes my API key")
         self.test = QPushButton("Connect and list servers"); self.test.clicked.connect(self.connect_panel)
         self.buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         self.buttons.button(QDialogButtonBox.Save).setEnabled(False)
         self.buttons.accepted.connect(self.accept_profile); self.buttons.rejected.connect(self.reject)
         layout.addRow("Panel URL", self.origin); layout.addRow("Client API key", self.token)
-        layout.addRow("Profile name", self.name); layout.addRow(self.http_ack); layout.addRow(self.test)
+        layout.addRow("Profile name", self.name); layout.addRow(self.test)
         layout.addRow("Server", self.server); layout.addRow(self.buttons)
-        self.account = {}; self.servers = []
+        self.origin.textChanged.connect(self.invalidate_connection)
+        self.token.textChanged.connect(self.invalidate_connection)
+
+    def invalidate_connection(self):
+        self.discovery = None
+        self.server.clear(); self.server.setEnabled(False)
+        self.buttons.button(QDialogButtonBox.Save).setEnabled(False)
+
+    def confirm_remote_http(self) -> bool:
+        box = QMessageBox(self); box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Unencrypted panel connection")
+        box.setText("This Pterodactyl panel uses HTTP, so its API traffic is not encrypted.")
+        box.setInformativeText("Your API key could be intercepted in transit. Continue only if you trust this network and understand the risk.")
+        proceed = box.addButton("Continue with HTTP", QMessageBox.AcceptRole)
+        cancel = box.addButton("Cancel", QMessageBox.RejectRole)
+        box.setDefaultButton(cancel); box.setEscapeButton(cancel)
+        box.exec()
+        return box.clickedButton() is proceed
 
     def connect_panel(self):
+        self.invalidate_connection()
         try:
-            origin = normalize_origin(self.origin.text())
-            if origin.startswith("http://") and not is_local_origin(origin) and not self.http_ack.isChecked():
-                raise ValueError("A remote HTTP panel requires the plaintext credential warning acknowledgement")
-            client = PterodactylClient(origin, self.token.text())
-            self.account = client.account(); self.servers = client.servers()
-            self.server.clear()
-            for server in self.servers:
+            discovery = discover_panel(self.origin.text(), self.token.text(), self.confirm_remote_http)
+            if discovery is None:
+                return
+            self.discovery = discovery
+            for server in discovery.servers:
                 self.server.addItem(server.get("name", server.get("identifier", "Server")), server)
-            self.server.setEnabled(bool(self.servers)); self.buttons.button(QDialogButtonBox.Save).setEnabled(bool(self.servers))
+            self.server.setEnabled(bool(discovery.servers)); self.buttons.button(QDialogButtonBox.Save).setEnabled(bool(discovery.servers))
         except Exception as error:
             QMessageBox.critical(self, "Connection failed", str(error))
 
     def accept_profile(self):
-        server = self.server.currentData(); origin = normalize_origin(self.origin.text())
-        account_id = str(self.account.get("id") or self.account.get("uuid") or self.account.get("email") or "account")
+        if self.discovery is None or not self.server.currentData():
+            QMessageBox.critical(self, "Reconnect required", "Connect with the current panel URL and API key before saving.")
+            return
+        server = self.server.currentData(); origin = self.discovery.origin
+        account = self.discovery.account
+        account_id = str(account.get("id") or account.get("uuid") or account.get("email") or "account")
         target = credential_target(origin, account_id); self.vault.write(target, self.token.text(), account_id)
         self.profile = ServerProfile.create(name=self.name.text().strip() or server.get("name", "Dragonwilds server"),
                                             panel_origin=origin, account_id=account_id, credential_target=target,
                                             server_id=server.get("identifier", ""), server_uuid=server.get("uuid", ""),
-                                            allow_insecure_http=origin.startswith("http://") and not is_local_origin(origin))
+                                            allow_insecure_http=self.discovery.allow_insecure_http)
         self.accept()
 
 
 class MainWindow(QMainWindow):
     activity_signal = Signal(str)
+    operation_progress_signal = Signal(str, int)
 
     def __init__(self, prompt_first_run: bool = True):
         super().__init__(); self.setWindowTitle("Zanik Manager"); self.resize(980, 680)
         self.paths = ensure_layout(); self.store = ProfileStore(self.paths["root"] / "profiles.json")
         self.vault = CredentialVault(); self.profiles = self.store.load(); self.current_config_hash = ""
-        self.threads = []
+        self.threads = []; self.busy_dialog = None; self.last_progress_message = ""
         central = QWidget(); outer = QVBoxLayout(central)
         target = QHBoxLayout(); self.profile_box = QComboBox(); self.add_button = QPushButton("Add server")
         self.add_button.clicked.connect(self.add_server); self.profile_box.currentIndexChanged.connect(self.refresh_header)
@@ -114,6 +138,7 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget(); outer.addWidget(self.tabs, 1); self.setCentralWidget(central)
         self._servers_tab(); self._assets_tab(); self._config_tab(); self._doctor_tab(); self._activity_tab()
         self.activity_signal.connect(self.log)
+        self.operation_progress_signal.connect(self.update_operation_progress)
         self.reload_profiles()
         if prompt_first_run and not self.profiles:
             self.add_server()
@@ -183,14 +208,60 @@ class MainWindow(QMainWindow):
     def log(self, message: str):
         self.activity.appendPlainText(redact(message)); self.statusBar().showMessage(message, 5000)
 
-    def run_async(self, function, completed=lambda result: None):
+    def begin_operation(self, title: str, determinate: bool) -> None:
+        self.last_progress_message = ""
+        self.progress.setRange(0, 100); self.progress.setValue(0)
+        dialog = QProgressDialog(title, "", 0, 100 if determinate else 0, self)
+        dialog.setWindowTitle(title); dialog.setCancelButton(None)
+        dialog.setWindowModality(Qt.ApplicationModal); dialog.setMinimumDuration(0)
+        dialog.setAutoClose(False); dialog.setAutoReset(False); dialog.setValue(0)
+        dialog.show()
+        self.busy_dialog = dialog
+        self.log(title)
+
+    def update_operation_progress(self, message: str, percent: int = -1) -> None:
+        safe_message = redact(message)
+        if self.busy_dialog:
+            self.busy_dialog.setLabelText(safe_message)
+            if percent >= 0:
+                if self.busy_dialog.maximum() == 0:
+                    self.busy_dialog.setRange(0, 100)
+                value = max(0, min(100, percent))
+                self.busy_dialog.setValue(value); self.progress.setValue(value)
+        if safe_message and safe_message != self.last_progress_message:
+            self.last_progress_message = safe_message
+            self.log(safe_message)
+
+    def finish_operation(self) -> None:
+        if self.busy_dialog:
+            self.busy_dialog.close(); self.busy_dialog.deleteLater(); self.busy_dialog = None
+        self.progress.setRange(0, 100)
+
+    def run_async(self, function, completed=lambda result: None, *, title="Working…", determinate=False):
+        if self.threads:
+            QMessageBox.information(self, "Operation in progress",
+                                    "Wait for the current operation to finish before starting another one.")
+            return False
+        self.begin_operation(title, determinate)
         thread = QThread(self); worker = Worker(function); worker.moveToThread(thread)
         thread.started.connect(worker.run)
-        worker.finished.connect(completed); worker.finished.connect(thread.quit)
-        worker.failed.connect(lambda error: QMessageBox.critical(self, "Operation failed", redact(error)))
-        worker.failed.connect(lambda error: self.log("Operation failed: " + error.splitlines()[0])); worker.failed.connect(thread.quit)
-        thread.finished.connect(lambda: self.threads.remove((thread, worker)))
-        self.threads.append((thread, worker)); thread.start()
+        worker.done.connect(thread.quit)
+        thread.finished.connect(lambda: self.operation_thread_finished(thread, worker, completed))
+        self.threads.append((thread, worker)); thread.start(); return True
+
+    def operation_thread_finished(self, thread, worker, completed) -> None:
+        self.threads.remove((thread, worker))
+        if worker.error:
+            self.operation_failed(*worker.error)
+            return
+        self.progress.setValue(100); self.finish_operation(); completed(worker.result)
+
+    def operation_failed(self, message: str, details: str):
+        self.finish_operation()
+        safe_message = redact(message); safe_details = redact(details)
+        QMessageBox.critical(self, "Operation failed", safe_message + "\n\nTechnical details are available in Activity.")
+        self.activity.appendPlainText("Operation failed: " + safe_message + "\n" + safe_details)
+        self.statusBar().showMessage("Operation failed: " + safe_message, 5000)
 
     def active(self) -> ServerProfile | None:
         return self.profile_box.currentData()
@@ -200,7 +271,9 @@ class MainWindow(QMainWindow):
         if not profile: raise RuntimeError("Add and select a server first")
         token = self.vault.read(profile.credential_target)
         if not token: raise RuntimeError("The API key is missing from Windows Credential Manager")
-        return PterodactylProvider(PterodactylClient(profile.panel_origin, token), JournalStore(self.paths["journals"]))
+        status = lambda message: self.operation_progress_signal.emit(message, -1)
+        return PterodactylProvider(PterodactylClient(profile.panel_origin, token, status=status),
+                                   JournalStore(self.paths["journals"]))
 
     def reload_profiles(self):
         self.profile_box.clear()
@@ -209,7 +282,8 @@ class MainWindow(QMainWindow):
 
     def refresh_header(self):
         profile = self.active()
-        self.warning.setText("⚠ API credentials are being sent to a remote HTTP panel." if profile and profile.allow_insecure_http else "")
+        insecure = bool(profile and profile.allow_insecure_http and is_remote_http(profile.panel_origin))
+        self.warning.setText("⚠ This panel connection uses HTTP; API traffic is not encrypted." if insecure else "")
         if profile: self.server_summary.setText(f"{profile.name}\n{profile.panel_origin} · {profile.server_id}\nInstall mode: {profile.install_mode}")
         if profile:
             incomplete=JournalStore(self.paths["journals"]).incomplete(profile.id)
@@ -236,7 +310,8 @@ class MainWindow(QMainWindow):
         if choice in {QMessageBox.Retry,QMessageBox.Reset}:
             retry=choice==QMessageBox.Retry
             self.run_async(lambda:self.provider().rollback(journal,profile.server_id,profile.server_root),
-                           lambda _: (self.log("Rollback completed."),self.refresh_header(),self.install() if retry and journal.action=="install" else None))
+                           lambda _: (self.log("Rollback completed."),self.refresh_header(),self.install() if retry and journal.action=="install" else None),
+                           title="Recovering the interrupted operation…")
 
     def open_panel(self):
         if self.active(): QDesktopServices.openUrl(QUrl(self.active().panel_origin + "/server/" + self.active().server_id))
@@ -266,9 +341,11 @@ class MainWindow(QMainWindow):
             matches = sorted((resource_path("dist", "release")).glob("zanik-server-*.zip"))
             if not matches: QMessageBox.critical(self, "Missing payload", "The matching server payload is missing."); return
             archive = matches[-1]
+        def progress(message, percent): self.operation_progress_signal.emit(message, percent)
         def action(): return self.provider().install(profile.id, profile.server_id, profile.server_root,
                                                      ReleasePayload(archive), selected, selected == "replace-executable",
-                                                     wrapper_adapter=adapter if selected == "wrapper" else None)
+                                                     wrapper_adapter=adapter if selected == "wrapper" else None,
+                                                     progress=progress)
         def done(result):
             profile.install_mode = selected; self.store.save(self.profiles)
             if selected == "wrapper" and not adapter:
@@ -276,21 +353,27 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "Startup action required", f"The server remains stopped and installation is not yet active. Set the egg startup executable to:\n{profile.server_root}/zanik/bin/zanik-server --server-root {profile.server_root} --\n\nThen start the server and run Doctor to verify it.")
             else:
                 self.log(f"Installation complete; backup: {result['backup']}")
-        self.run_async(action, done)
+                asset_note = ("\n\nNo local asset bundle is ready yet. Open the Assets tab to extract, "
+                              "upload, and activate the website assets." if self.bundle_box.count() == 0 else "")
+                QMessageBox.information(self, "Installation complete",
+                                        "Zanik was installed successfully and the server was started." + asset_note)
+        self.run_async(action, done, title="Installing Zanik…", determinate=True)
 
     def uninstall(self):
         profile = self.active()
         if not profile or QMessageBox.warning(self, "Uninstall Zanik", "Uninstall Zanik from the selected server? Persistent data will be kept.",
                                                QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes: return
         self.run_async(lambda: self.provider().uninstall(profile.id, profile.server_id, profile.server_root),
-                       lambda result: self.log(f"Uninstalled; recovery backup: {result['backup']}"))
+                       lambda result: self.log(f"Uninstalled; recovery backup: {result['backup']}"),
+                       title="Uninstalling Zanik…")
 
     def run_doctor(self, deep=False):
         profile = self.active()
         if not profile: return
         self.run_async(lambda: self.provider().diagnose(profile.server_id, profile.server_root, deep),
                        lambda result: (self.doctor_output.setPlainText(json.dumps(result, indent=2, sort_keys=True)),
-                                       self.server_summary.setText("Healthy" if result.get("healthy") else "Doctor found problems")))
+                                       self.server_summary.setText("Healthy" if result.get("healthy") else "Doctor found problems")),
+                       title="Running deep Doctor…" if deep else "Running Doctor…")
 
     def choose_game_root(self):
         selected = QFileDialog.getExistingDirectory(self, "Select the RSDragonwilds installation", self.game_root.text())
@@ -305,18 +388,39 @@ class MainWindow(QMainWindow):
     def extract_assets(self):
         root = Path(self.game_root.text())
         if not root.is_dir(): QMessageBox.critical(self, "Game not found", "Select a valid Dragonwilds client directory."); return
+        if dragonwilds_is_running():
+            QMessageBox.warning(
+                self, "Close Dragonwilds first",
+                "Dragonwilds is currently running. Close it before starting extraction, then try again.\n\n"
+                "Zanik Manager will launch and close the game automatically while it generates mappings. "
+                "Do not relaunch or interact with the game until extraction finishes."
+            )
+            return
         output = self.paths["root"] / "extraction-output"
         tool_root = resource_path("asset-tools")
-        def event(value): self.activity_signal.emit(value.get("message", str(value)))
+        phase_percent = {"mappings": 10, "extract": 40, "bundle": 80, "complete": 100}
+        def event(value):
+            message = value.get("message", str(value)); phase = value.get("phase", "extract")
+            self.operation_progress_signal.emit(message, phase_percent.get(phase, -1))
         self.run_async(lambda: AssetExtractor(tool_root, BundleCache(self.paths["assets"])).extract(root, output, event),
-                       lambda item: (self.refresh_bundles(), self.log(f"Validated asset bundle: {item.path}")))
+                       lambda item: (self.refresh_bundles(), self.log(f"Validated asset bundle: {item.path}"),
+                                     QMessageBox.information(self, "Asset extraction complete",
+                                                             f"The validated asset bundle is ready at:\n{item.path}")),
+                       title="Extracting Dragonwilds web assets…", determinate=True)
 
     def upload_assets(self):
         profile = self.active(); value = self.bundle_box.currentData()
         if not profile or not value: return
         from .assets import AssetDeployer
-        self.run_async(lambda: AssetDeployer(self.provider()).activate(profile.id, profile.server_id, profile.server_root, Path(value)),
-                       lambda result: self.log(f"Activated {result['fileCount']} asset files"))
+        def progress(current, total, path):
+            percent = 15 + int(current * 75 / max(total, 1))
+            self.operation_progress_signal.emit(f"Uploading and verifying {path}", percent)
+        self.run_async(lambda: AssetDeployer(self.provider()).activate(profile.id, profile.server_id, profile.server_root,
+                                                                       Path(value), progress),
+                       lambda result: (self.log(f"Activated {result['fileCount']} asset files"),
+                                       QMessageBox.information(self, "Assets activated",
+                                                               f"Activated {result['fileCount']} validated asset files.")),
+                       title="Uploading and activating web assets…", determinate=True)
 
     def open_asset_folder(self):
         value = self.bundle_box.currentData()
@@ -337,7 +441,7 @@ class MainWindow(QMainWindow):
                 if isinstance(field,QCheckBox): field.setChecked(bool(value))
                 elif isinstance(field,QSpinBox): field.setValue(int(value))
                 else: field.setText(str(value))
-        self.run_async(action, done)
+        self.run_async(action, done, title="Loading server configuration…")
 
     def save_config(self):
         profile = self.active()
@@ -360,7 +464,8 @@ class MainWindow(QMainWindow):
                                     QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
                 self.provider().client.power(profile.server_id, "restart")
             self.log(f"Configuration saved; backup: {result['backup']}")
-        self.run_async(lambda: self.provider().save_config(profile.server_id, profile.server_root, content, self.current_config_hash), done)
+        self.run_async(lambda: self.provider().save_config(profile.server_id, profile.server_root, content, self.current_config_hash), done,
+                       title="Saving server configuration…")
 
     def export_support(self):
         profile = self.active()

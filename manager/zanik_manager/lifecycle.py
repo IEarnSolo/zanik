@@ -10,6 +10,7 @@ import time
 import zipfile
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
+from typing import Callable
 
 from .config import content_hash
 from .journal import JournalStore, OperationJournal
@@ -94,6 +95,11 @@ class PterodactylProvider(ServerProvider):
     def list_servers(self) -> list[dict]:
         return self.client.servers()
 
+    def _status(self, message: str) -> None:
+        callback = getattr(self.client, "status", None)
+        if callback:
+            callback(message)
+
     def preflight(self, server_id: str, operation: str, server: dict | None = None) -> None:
         required={
             "doctor": {"file.read", "file.read-content"},
@@ -130,6 +136,9 @@ class PterodactylProvider(ServerProvider):
                         if self.client.cancelled():
                             raise PterodactylError("Operation cancelled while waiting for the panel", error.status)
                         gateway_failures += 1
+                        self._status(
+                            f"The server node is temporarily unavailable (HTTP {error.status}). Retrying in 60 seconds…"
+                        )
                         time.sleep(self.client.retry_seconds)
                         continue
                     raise
@@ -149,6 +158,9 @@ class PterodactylProvider(ServerProvider):
                     return None
                 if error.status == 522 or (error.status in {500, 502, 503, 504} and failures < 5):
                     failures += 1
+                    self._status(
+                        f"The server node is temporarily unavailable (HTTP {error.status}). Retrying in 60 seconds…"
+                    )
                     time.sleep(self.client.retry_seconds)
                     continue
                 raise
@@ -156,12 +168,15 @@ class PterodactylProvider(ServerProvider):
     def _exists(self, server_id: str, path: str) -> bool:
         return self._entry(server_id, path) is not None
 
-    def _upload_payload(self, server_id: str, stage: str, payload: ReleasePayload, journal: OperationJournal) -> None:
+    def _upload_payload(self, server_id: str, stage: str, payload: ReleasePayload, journal: OperationJournal,
+                        progress: Callable[[str, int], None] = lambda _message, _percent: None) -> None:
         directories = sorted({str(PurePosixPath(stage) / PurePosixPath(name).parent) for name in payload.entries})
         for directory in directories:
             self._mkdir(server_id, directory)
         modes: dict[str, list[tuple[str, int]]] = {}
-        for name, entry in payload.entries.items():
+        total = len(payload.entries)
+        for index, (name, entry) in enumerate(payload.entries.items(), 1):
+            progress(f"Uploading and verifying {name}", 25 + int(index * 35 / max(total, 1)))
             directory = str(PurePosixPath(stage) / PurePosixPath(name).parent)
             data = payload.read(name)
             self.client.upload(server_id, directory, PurePosixPath(name).name, data)
@@ -188,7 +203,8 @@ class PterodactylProvider(ServerProvider):
 
     def install(self, profile_id: str, server_id: str, server_root: str, payload: ReleasePayload,
                 mode: str, acknowledge_replacement: bool = False, stop_server: bool = True,
-                wrapper_adapter: dict | None = None) -> dict:
+                wrapper_adapter: dict | None = None,
+                progress: Callable[[str, int], None] = lambda _message, _percent: None) -> dict:
         if mode not in {"wrapper", "replace-executable"}:
             raise ValueError("Installation mode must be wrapper or replace-executable")
         if mode == "replace-executable" and not acknowledge_replacement:
@@ -200,21 +216,25 @@ class PterodactylProvider(ServerProvider):
         timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         backup = f"{root}/zanik-backups/manager/{timestamp}-{journal.operation_id[:8]}"
         try:
+            progress("Checking panel permissions", 5)
             self.preflight(server_id, "install")
             if stop_server:
+                progress("Stopping the game server", 10)
                 state = self.client.resources(server_id).get("current_state")
                 if state != "offline":
                     self.client.power(server_id, "stop")
                     self._wait_offline(server_id)
                 journal.completed_steps.append("server-stopped")
                 self.journals.save(journal)
+            progress("Preparing staging and backup directories", 18)
             self._mkdir(server_id, stage)
             self._mkdir(server_id, backup)
-            self._upload_payload(server_id, stage, payload, journal)
+            self._upload_payload(server_id, stage, payload, journal, progress)
             remote_journal = f"{root}/.zanik-manager/transactions/{journal.operation_id}.json"
             self._mkdir(server_id, str(PurePosixPath(remote_journal).parent))
             self.client.write_file(server_id, remote_journal, json.dumps(asdict(journal), sort_keys=True).encode())
 
+            progress("Activating the verified Zanik payload", 68)
             # Keep an existing installation recoverable before the critical activation.
             if self._exists(server_id, f"{root}/zanik/install-state.json"):
                 self.client.rename(server_id, root, [("zanik", f"zanik-backups/manager/{PurePosixPath(backup).name}/zanik")])
@@ -225,6 +245,7 @@ class PterodactylProvider(ServerProvider):
             journal.completed_steps.append("payload-activated")
             self.journals.save(journal)
 
+            progress("Preserving configuration and persistent files", 76)
             old = f"{backup}/zanik"
             for relative in ("config/zanik.conf", "admins.txt", "assets"):
                 source = f"{old}/{relative}"
@@ -249,6 +270,7 @@ class PterodactylProvider(ServerProvider):
                                                 ("zanik/compatibility.tsv", 0o644),
                                                 ("zanik-data/console-admin.key", 0o600)])
 
+            progress("Configuring the server launcher", 84)
             game = f"{root}/{GAME_RELATIVE}"
             official = game
             official_data = None
@@ -293,6 +315,7 @@ class PterodactylProvider(ServerProvider):
             if official_data is None:
                 official_data = self.client.download_file(server_id, official)
             version = self.client.read_file(server_id, f"{root}/zanik/VERSION").decode().strip()
+            progress("Writing and verifying installation metadata", 90)
             state = {"schemaVersion": 1, "version": version, "mode": mode, "serverRoot": root,
                      "officialExecutable": official, "officialSha256": sha256(official_data),
                      "librarySha256": payload.entries["bin/libzanik.so"].sha256,
@@ -304,12 +327,15 @@ class PterodactylProvider(ServerProvider):
             startup_action_required = mode == "wrapper" and not wrapper_adapter
             journal.state = "complete"; journal.completed_steps.append("installation-verified")
             if mode == "wrapper" and wrapper_adapter:
+                progress("Configuring the Pterodactyl startup command", 94)
                 self.client.set_startup_variable(server_id, wrapper_adapter["key"], wrapper_adapter["value"])
                 journal.completed_steps.append("wrapper-startup-configured")
             self.journals.save(journal)
             self.client.write_file(server_id, remote_journal, json.dumps(asdict(journal), sort_keys=True).encode())
             if stop_server and not startup_action_required:
+                progress("Starting the game server", 97)
                 self.client.power(server_id, "start")
+            progress("Installation complete", 100)
             return {"installation": state, "backup": backup, "operationId": journal.operation_id,
                     "startupActionRequired": startup_action_required}
         except Exception as error:
