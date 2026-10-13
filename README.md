@@ -2,9 +2,25 @@
 
 Zanik is a Linux x86-64 server-side mod for RuneScape: Dragonwilds. It exposes player, world, recipe, quest, resource, NPC, and map information through a web interface and provides separately gated administrative and quality-of-life features. Players do not install anything.
 
+## What should I download?
+
+Most server owners should download **`zanik-manager-windows-x86_64-VERSION.zip`**. Extract the whole ZIP on your Windows PC and run `ZanikManager.exe`. It guides you through installing Zanik on a Linux Pterodactyl server, configuring it, running Doctor, extracting web assets from your licensed Windows game client, and uploading those assets.
+
+Use a different archive only when you specifically need a manual or command-line workflow:
+
+| Download | Who it is for |
+| --- | --- |
+| `zanik-manager-windows-x86_64-VERSION.zip` | **Recommended for most users.** Complete Windows management app, Linux server payload, and asset extractor. |
+| `zanik-server-linux-x86_64-VERSION.zip` | Linux/Pterodactyl administrators installing manually through a panel or shell. |
+| `zanik-asset-tools-windows-x86_64-VERSION.zip` | Advanced users who only want to build web assets from a licensed Windows client. Already included in Zanik Manager. |
+| `zanik-asset-tools-linux-x86_64-VERSION.tar.gz` | Advanced Linux inventory and catalog tooling. A Linux dedicated server cannot produce the complete visual bundle. |
+| `zanik-server-linux-x86_64-VERSION.tar.gz` | Shell-oriented equivalent of the server ZIP. |
+
+Players joining a Zanik-enabled server download **nothing**. Zanik Manager runs on Windows, but the public server loader currently supports Linux x86-64 only.
+
 Zanik is a native `LD_PRELOAD` library. The recommended installation leaves the official game executable untouched and starts it through `zanik-server`. Executable replacement remains available only for hosting panels whose egg cannot change its startup command; it is explicitly non-recommended.
 
-For Pterodactyl administrators on Windows, the recommended download is **Zanik Manager**. The portable app installs and updates the server package, edits configuration, runs diagnostics, builds assets from a licensed client, and uploads them without requiring Python or SSH. See [docs/manager.md](docs/manager.md).
+For detailed Manager instructions, see [docs/manager.md](docs/manager.md).
 
 ## Choose an installation
 
