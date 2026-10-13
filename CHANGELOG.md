@@ -2,6 +2,13 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.8] - 2026-10-13
+
+### Fixed
+
+- Publish Zanik Manager and both asset-tool archives to CurseForge as independent normal files instead of unsupported additional files attached to the server ZIP.
+- Preserve partial-upload recovery for each CurseForge file while supplying the supported Dragonwilds game version on every independent upload.
+
 ## [0.2.7] - 2026-10-13
 
 ### Fixed
