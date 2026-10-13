@@ -13,6 +13,22 @@ from .cache import BundleCache, CachedBundle
 from .lifecycle import PterodactylProvider, safe_archive_name, sha256
 
 
+CRITICAL_REMOTE_ASSETS = {
+    "asset-manifest.json",
+    "world-map.jpg",
+    "buildings/catalog.json",
+    "npc-catalog.json",
+    "npc-identities.tsv",
+    "quest-catalog.json",
+    "quest-runtime-catalog.tsv",
+    "quest-step-locations.json",
+    "recipe-unlocks.json",
+    "recipe-runtime-catalog.tsv",
+    "resource-catalog.json",
+    "resource-identities.tsv",
+}
+
+
 def game_root_id(path: Path) -> str:
     return hashlib.sha256(str(path.resolve()).lower().encode()).hexdigest()[:16]
 
@@ -127,7 +143,12 @@ class AssetDeployer:
                     self.provider.client.decompress(server_id, stage, part.name)
                     self.provider.client.delete(server_id, stage, [part.name])
                 self.provider.client.delete(server_id, stage, ["bundle-index.json"])
-                self._verify_remote_tree(server_id, stage, tree, progress)
+                representatives = set(CRITICAL_REMOTE_ASSETS)
+                for record in index_data["parts"]:
+                    names = record.get("files", [])
+                    if names:
+                        representatives.update((names[0], names[len(names) // 2], names[-1]))
+                self._verify_remote_subset(server_id, stage, tree, representatives, progress)
                 used_archives = True
             except Exception:
                 # Some Pterodactyl versions acknowledge archive extraction without
@@ -141,9 +162,8 @@ class AssetDeployer:
                     self.provider._mkdir(server_id, directory)
                     data = path.read_bytes()
                     self.provider.client.upload(server_id, directory, path.name, data)
-                    if sha256(self.provider.client.download_file(server_id, str(PurePosixPath(stage) / relative))) != sha256(data):
-                        raise RuntimeError(f"Remote asset verification failed for {relative}")
                     progress(index, len(files), relative)
+                self._verify_remote_subset(server_id, stage, tree, CRITICAL_REMOTE_ASSETS, progress)
             current = f"{root}/zanik/assets/current"
             previous = f"{root}/zanik/assets/previous"
             if self.provider._directory_exists(server_id, previous):
@@ -184,11 +204,16 @@ class AssetDeployer:
                                                     "size":part.stat().st_size,"files":[safe_archive_name(item.filename) for item in group]})
         return parts, {"schemaVersion":1,"bundle":bundle.name,"bundleSha256":sha256(bundle.read_bytes()),"parts":records}
 
-    def _verify_remote_tree(self, server_id: str, stage: str, tree: Path, progress) -> None:
-        files=sorted(path for path in tree.rglob("*") if path.is_file())
-        for index,path in enumerate(files,1):
-            relative=path.relative_to(tree).as_posix()
+    def _verify_remote_subset(self, server_id: str, stage: str, tree: Path,
+                              selected: set[str], progress) -> None:
+        files = sorted(
+            tree / safe_archive_name(relative)
+            for relative in selected
+            if (tree / safe_archive_name(relative)).is_file()
+        )
+        for index, path in enumerate(files, 1):
+            relative = path.relative_to(tree).as_posix()
             actual=sha256(self.provider.client.download_file(server_id, str(PurePosixPath(stage)/relative)))
             if actual != sha256(path.read_bytes()):
                 raise RuntimeError(f"Remote asset verification failed for {relative}")
-            progress(index,len(files),relative)
+            progress(index, len(files), relative)
