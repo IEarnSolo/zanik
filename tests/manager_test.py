@@ -411,6 +411,21 @@ class ManagerTests(unittest.TestCase):
             self.assertFalse((root/"PySide6/designer.exe").exists())
             self.assertTrue(all((root/name).is_file() for name in KEEP_FILES))
 
+    def test_asset_activation_restarts_only_a_running_server(self):
+        class Client:
+            def __init__(self, state): self.state=state; self.signals=[]
+            def resources(self, _server): return {"current_state": self.state}
+            def power(self, _server, signal): self.signals.append(signal)
+        class Provider:
+            def __init__(self, state): self.client=Client(state)
+        messages=[]; running=Provider("running")
+        self.assertTrue(AssetDeployer(running)._restart_runtime_if_running("dev", messages.append))
+        self.assertEqual(running.client.signals, ["restart"])
+        self.assertIn("runtime catalogs", messages[0])
+        offline=Provider("offline")
+        self.assertFalse(AssetDeployer(offline)._restart_runtime_if_running("dev", messages.append))
+        self.assertEqual(offline.client.signals, [])
+
     def test_replacement_install_and_uninstall_against_synthetic_server(self):
         class FakeClient:
             def __init__(self):

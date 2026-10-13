@@ -97,6 +97,8 @@ Do **not** manually unzip the asset bundle. On the Linux server, run the install
 
 The initializer validates the manifest, catalogs, paths, and hashes in a temporary tree and then atomically activates it as `SERVER_ROOT/zanik/assets/current`. The previous active cache remains available if validation or activation fails.
 
+Restart the Dragonwilds server after activation. Zanik's native recipe and quest trackers load their runtime catalogs during process startup, so an already-running server cannot use a newly activated or updated catalog until it restarts. Zanik Manager performs this restart automatically when it activates assets on a running Pterodactyl server.
+
 Use the multipart bundle only when a hosting service has an upload-size limit. Upload `bundle-index.json` and every part without renaming them, then pass the index to `--install-bundle-set` exactly as shown in the Pterodactyl example below.
 
 ## Install on Pterodactyl
@@ -124,5 +126,7 @@ For the full ZIP, upload it to `/home/container/zanik-assets-incoming/CLIENT_BUI
 ```
 
 Both paths reject traversal, symlinks, missing or unexpected parts, duplicate paths, checksum mismatches, incomplete catalogs, unresolved web URLs, and incompatible manifests. Assembly and validation happen in a temporary tree; the previous active cache remains untouched on failure. Do not manually extract either form on the server.
+
+Restart the Pterodactyl server after the initializer succeeds. This is required for native recipe and quest tracking to load the activated runtime catalogs. Zanik Manager handles this automatically for Manager-driven uploads.
 
 Zanik-authored placeholders cover genuinely unavailable optional artwork. Missing required catalogs or static assets never produce a partially activated bundle.
