@@ -13,6 +13,11 @@ from pathlib import Path
 import re
 from typing import Any, Iterable
 
+try:
+    from asset_filesystem import read_json
+except ModuleNotFoundError:  # Imported as tools.* by repository tests.
+    from tools.asset_filesystem import read_json
+
 MAP_X = -11075.0
 MAP_Y = -117685.0
 MAP_SIZE = 420000.0
@@ -47,10 +52,10 @@ def files(root: Path) -> Iterable[Path]:
 
 def load(path: Path) -> list[dict[str, Any]] | None:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = read_json(path)
         return value if isinstance(value, list) else None
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return None
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"cannot read exported JSON {path.name}: {error}") from error
 
 
 def props(value: dict[str, Any] | None) -> dict[str, Any]:

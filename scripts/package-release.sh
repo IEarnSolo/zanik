@@ -61,7 +61,7 @@ unzip -q "$WORK/unreal-asset-scout-windows-x86_64.zip" -d "$WORK/asset-windows/t
 unzip -q "$WORK/ue4ss-windows-x86_64.zip" -d "$WORK/asset-windows/third_party/ue4ss"
 printf '../tools\n' >> "$WORK/asset-windows/runtime/python312._pth"
 install -m 0644 "$ROOT/tools/zanik_assets.py" "$WORK/asset-linux/tools/zanik_assets.py"
-for file in zanik_assets windows_mapping windows_asset_pipeline generate_building_catalog generate_plan_item_catalog generate_world_catalogs generate_quest_catalog generate_web_assets generate_recipe_unlock_catalog analyze_quest_steps; do
+for file in zanik_assets windows_mapping windows_asset_pipeline generate_building_catalog generate_plan_item_catalog generate_world_catalogs generate_quest_catalog generate_web_assets generate_recipe_unlock_catalog analyze_quest_steps asset_filesystem; do
   install -m 0644 "$ROOT/tools/$file.py" "$WORK/asset-windows/tools/$file.py"
 done
 install -m 0644 "$ROOT/asset-tools/tools.lock.json" "$ROOT/asset-tools/extraction-recipes.json" "$ROOT/asset-tools/catalog-rules.json" "$WORK/asset-windows/asset-tools/"

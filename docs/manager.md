@@ -35,6 +35,8 @@ Validated bundles are stored below `%LOCALAPPDATA%\Zanik Manager\assets\`. The n
 
 Resume accepts journals created by both Windows PowerShell 5.1 and PowerShell 7. If a journal update was interrupted after UnrealAssetScout finished, Manager verifies every expected export batch and resumes catalog generation without reopening Dragonwilds. This recovery is also automatic in the fresh-server guided setup flow, which continues through upload and activation on the pinned server. Manager never infers completion from directory existence alone.
 
+Manager handles deeply nested exports with Windows extended-length paths. If any retained JSON or artwork cannot be read, generation fails with the affected filename rather than publishing a partial catalog. Corrected builds can resume the same retained exports after such a failure.
+
 Dragonwilds must be closed when extraction starts. If it is running, Manager can request a normal close and wait; it never force-kills the client. Mapping generation briefly opens and closes the game automatically. If the client already uses UE4SS or another `dwmapi.dll` proxy loader, Manager asks first, backs up and verifies the complete installation outside the game directory, temporarily installs Zanik's pinned mapper, and restores the original files exactly. Persistent recovery records live under `%LOCALAPPDATA%\Zanik Manager\mapping-recovery\` so an interrupted run can be safely restored on the next attempt.
 
 The extractor copies authored build-interface thumbnails from the client, including embedded thumbnails in special `GeneratedIcons` packages. It does not render models and does not install or require Blender.

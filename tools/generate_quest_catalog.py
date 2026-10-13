@@ -2,6 +2,10 @@
 from __future__ import annotations
 import argparse,hashlib,json,re,sys
 from pathlib import Path
+try:
+    from asset_filesystem import read_json
+except ModuleNotFoundError:  # Imported as tools.* by repository tests.
+    from tools.asset_filesystem import read_json
 
 REGIONS={'Brynmoor':'Brynmoor','Ghornfell':'Ghornfell','Fellhollow':'Fellhollow','DowdunReach':'Dowdun Reach','UmbralSands':'Umbral Sands','ScornedWilderness':'Scorned Wilderness'}
 EXCLUDE=('ftue','test','debug','example','template')
@@ -38,8 +42,9 @@ def main():
     quests=[]
     for path in args.source.rglob('*.json'):
         if 'quest' not in str(path).lower():continue
-        try:data=json.loads(path.read_text(encoding='utf-8'))
-        except Exception:continue
+        try:data=read_json(path)
+        except (OSError,UnicodeError,json.JSONDecodeError) as error:
+            raise RuntimeError(f"cannot read exported JSON {path.name}: {error}") from error
         for export in data if isinstance(data,list) else []:
             if export.get('Type')!='QuestData':continue
             p=export.get('Properties') or {};qid=p.get('PersistenceID');name=text(p.get('QuestName'))

@@ -34,6 +34,8 @@ Catalog export, generation, ZIP packaging, multipart packaging, and cleanup are 
 
 Operational journals are compatible with Windows PowerShell 5.1 and PowerShell 7. On resume, Zanik validates the reviewed JSON counts, every expected UnrealAssetScout texture-batch manifest, the font, mapping, recipe, and source fingerprints before reusing exports. A stale outer stage is repaired only when that complete checkpoint validates; missing or changed exports fail closed without launching the game or deleting retained work. Fresh-server guided setup automatically chooses this verified resume path and then completes upload and activation on the server being installed.
 
+The packaged Windows tools use extended-length filesystem paths for deeply nested cooked exports. Every exported JSON record used by generation must be readable and valid; an unreadable or malformed file stops validation with its filename instead of being silently omitted. This is required even when the outer working directory itself is short because cooked package names can still cross the legacy 260-character Windows limit.
+
 Recipe routes require positive cooked evidence. The extractor includes the base and plugin progression tables and never interprets a missing provider as “available from the start.” The reviewed provider-less set is shown as **Unlock trigger not yet identified**; any unreviewed route drift makes the candidate incompatible.
 
 An experienced operator may avoid the temporary loader and use a mapping already generated from the same client:

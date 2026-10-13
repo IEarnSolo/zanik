@@ -8,6 +8,11 @@ import shutil
 import struct
 from pathlib import Path
 
+try:
+    from asset_filesystem import copy_file, read_bytes, read_json
+except ModuleNotFoundError:  # Imported as tools.* by repository tests.
+    from tools.asset_filesystem import copy_file, read_bytes, read_json
+
 EXPECTED = {"tabs": 8, "sections": 63, "references": 839, "pieces": 822}
 EXPECTED_ICON_SOURCES = {
     "authored-texture": 753,
@@ -32,9 +37,9 @@ def scan_assets(root):
     assets = {}
     for path in root.rglob("*.json"):
         try:
-            records = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
+            records = read_json(path)
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"cannot read exported JSON {path.name}: {error}") from error
         for record in records if isinstance(records, list) else []:
             if record.get("Type") != "BuildingPieceData":
                 continue
@@ -97,7 +102,7 @@ def find_icon(icon_index, basename_index, icon_asset):
 
 
 def png_dimensions(path):
-    value = path.read_bytes()[:24]
+    value = read_bytes(path)[:24]
     if len(value) != 24 or value[:8] != b"\x89PNG\r\n\x1a\n" or value[12:16] != b"IHDR":
         raise RuntimeError(f"building icon is not a valid PNG: {path}")
     return struct.unpack(">II", value[16:24])
@@ -114,7 +119,7 @@ def main():
     args = parser.parse_args()
 
     catalogue_path = next((args.catalogue_root or args.assets).rglob("DA_BuildPieceCatalogue_Default.json"))
-    catalogue_record = json.loads(catalogue_path.read_text(encoding="utf-8"))[0]
+    catalogue_record = read_json(catalogue_path)[0]
     props = catalogue_record["Properties"]
     assets = scan_assets(args.assets)
     for extra in args.extra_assets:
@@ -156,7 +161,7 @@ def main():
             if start >= 0:
                 package = "/".join(parts[start:])[:-4].casefold()
                 prior = icon_index.get(package)
-                if prior and prior.read_bytes() != source.read_bytes():
+                if prior and read_bytes(prior) != read_bytes(source):
                     raise RuntimeError(f"conflicting exports for cooked icon package {package}")
                 icon_index[package] = source
             basename_index.setdefault(source.name.casefold(), []).append(source)
@@ -169,7 +174,7 @@ def main():
             width, height = png_dimensions(source)
             if width < 256 or height < 256:
                 raise RuntimeError(f"building icon is undersized ({width}x{height}): {key}")
-            shutil.copy2(source, args.output / assets[key]["icon"])
+            copy_file(source, args.output / assets[key]["icon"])
             assets[key]["iconSource"] = source_kind
             source_counts[source_kind] += 1
         else:

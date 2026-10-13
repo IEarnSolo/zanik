@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 spec = importlib.util.spec_from_file_location("windows_asset_pipeline", ROOT / "tools/windows_asset_pipeline.py")
 pipeline = importlib.util.module_from_spec(spec); spec.loader.exec_module(pipeline)
+filesystem_spec = importlib.util.spec_from_file_location("asset_filesystem", ROOT / "tools/asset_filesystem.py")
+asset_filesystem = importlib.util.module_from_spec(filesystem_spec); filesystem_spec.loader.exec_module(asset_filesystem)
 building_spec = importlib.util.spec_from_file_location("generate_building_catalog", ROOT / "tools/generate_building_catalog.py")
 buildings = importlib.util.module_from_spec(building_spec); building_spec.loader.exec_module(buildings)
 
@@ -35,6 +37,9 @@ assert buildings.icon_source("/Game/Art/UI/Icons/ProceduralThumbnails/T_Tree.T_T
 assert buildings.cooked_package_path("/Game/Art/UI/Icons/GeneratedIcons/SM_Flag.SM_Flag") == (
     "RSDragonwilds/Content/Art/UI/Icons/GeneratedIcons/SM_Flag"
 )
+assert str(asset_filesystem.extended_path(
+    r"C:\Users\Bill\AppData\Local\Zanik Manager\asset-work\hash\pipeline\json", "nt"
+)).startswith("\\\\?\\C:\\")
 
 with tempfile.TemporaryDirectory() as name:
     root = Path(name)
@@ -73,6 +78,12 @@ with tempfile.TemporaryDirectory() as name:
     assert pipeline.cooked_package_path("/UmbralSands/UI/T_Icon.T_Icon") == (
         "RSDragonwilds/Plugins/GameFeatures/UmbralSands/Content/UI/T_Icon"
     )
+    with patch.object(pipeline, "read_json_file", side_effect=OSError("path too long")):
+        try:
+            pipeline.referenced_textures(root, [])
+            raise AssertionError("an unreadable exported JSON file was silently skipped")
+        except RuntimeError as error:
+            assert "cannot read exported JSON" in str(error)
     transient = root / "transient"; transient.mkdir(); (transient / "gone.txt").write_text("gone")
     original = pipeline.shutil.rmtree
     def raced(path, onerror=None):
