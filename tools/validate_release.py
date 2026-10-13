@@ -10,6 +10,7 @@ EXECUTABLE={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','sc
 WINDOWS_ASSET_REQUIRED={'init-assets.ps1','runtime/python.exe','runtime/LICENSE.txt','third_party/uas/uas.exe',
     'third_party/uas/LICENSE.txt','third_party/ue4ss/dwmapi.dll','third_party/ue4ss/ue4ss/UE4SS.dll',
     'third_party/ue4ss/ue4ss/LICENSE','asset-tools/extraction-recipes.json','tools/zanik_assets.py',
+    'asset-tools/recipe-runtime-catalog-history.tsv',
     'tools/windows_mapping.py','tools/windows_asset_pipeline.py','tools/generate_web_assets.py',
     'tools/generate_world_catalogs.py','deploy/quest-overrides.json','deploy/quest-step-overrides.json'}
 MANAGER_REQUIRED={'ZanikManager.exe','runtime/pythonw.exe','app/zanik_manager/app.py','app/zanik_manager/pterodactyl.py',
