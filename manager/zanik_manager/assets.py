@@ -31,6 +31,15 @@ CRITICAL_REMOTE_ASSETS = {
 }
 
 
+def asset_setup_mode(use_cached: bool, resume_status: dict | None) -> str:
+    """Choose the cheapest safe source for a guided asset setup."""
+    if use_cached:
+        return "cached"
+    if resume_status:
+        return "resume"
+    return "new"
+
+
 def game_root_id(path: Path) -> str:
     return hashlib.sha256(str(path.resolve()).lower().encode()).hexdigest()[:16]
 

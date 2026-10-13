@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDia
                                QSpinBox, QTabWidget, QVBoxLayout, QWidget)
 from PySide6.QtCore import QUrl
 
-from .assets import (AssetDeployer, AssetExtractor, discover_steam_game_roots, game_root_id,
+from .assets import (AssetDeployer, AssetExtractor, asset_setup_mode, discover_steam_game_roots, game_root_id,
                      request_dragonwilds_close)
 from .cache import BundleCache
 from .config import ConfigModel, content_hash, update_website_settings
@@ -572,7 +572,12 @@ class MainWindow(QMainWindow):
                 self, "Reuse validated assets",
                 f"A cached bundle for build {cached[0].build} is available. Validate and reuse it instead of opening the game again?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
-        preflight = (False, False) if use_cached else self.confirm_asset_preflight(root, extractor)
+        work = self.asset_work_root(root)
+        resume_status = None if use_cached else extractor.resumable(work)
+        mode = asset_setup_mode(use_cached, resume_status)
+        if mode == "resume":
+            self.log(f"Resuming verified asset work from stage {resume_status['stage']}; Dragonwilds and UnrealAssetScout will not run again.")
+        preflight = (False, False) if mode != "new" else self.confirm_asset_preflight(root, extractor)
         if preflight is None: return
         close_game, preserve = preflight
         output = self.paths["root"] / "extraction-output"
@@ -586,15 +591,18 @@ class MainWindow(QMainWindow):
                 self.operation_progress_signal.emit("Requesting Dragonwilds to close", 5)
                 if not request_dragonwilds_close():
                     raise RuntimeError("Dragonwilds did not close normally. Close it manually and retry; it was not force-terminated.")
-            if use_cached:
+            if mode == "cached":
                 item = cached[0]
                 self.operation_progress_signal.emit("Validating the cached asset bundle", 20)
                 extractor.validate_bundle(item.path)
             else:
                 if preserve: self.operation_progress_signal.emit("Preserving the existing UE4SS installation", 10)
+                if mode == "resume":
+                    self.operation_progress_signal.emit(
+                        f"Resuming verified extraction from {resume_status['stage']}", 15)
                 item = extractor.extract(root, output, event, preserve_existing_loader=preserve,
                                          recovery_root=self.asset_recovery_root(root),
-                                         work_root=self.asset_work_root(root))
+                                         work_root=work, resume=(mode == "resume"))
             self.operation_progress_signal.emit(f"Uploading assets to {profile.name}", 70)
             def progress(current, total, path):
                 self.operation_progress_signal.emit(f"Uploading and verifying {path}", 70 + int(current * 20 / max(total, 1)))
@@ -611,7 +619,9 @@ class MainWindow(QMainWindow):
             self.log(f"Activated {activated['fileCount']} asset files on {profile.name}")
             QMessageBox.information(self, "Website assets ready",
                                     f"Website assets were validated, uploaded, activated, and checked on {profile.name}.")
-        self.run_async(action, done, title=f"Setting up website assets on {profile.name}…", determinate=True)
+        title = (f"Resuming and deploying website assets on {profile.name}…" if mode == "resume"
+                 else f"Setting up website assets on {profile.name}…")
+        self.run_async(action, done, title=title, determinate=True)
 
     def extract_assets(self):
         root = self.choose_or_confirm_game_root()
@@ -619,7 +629,16 @@ class MainWindow(QMainWindow):
         output = self.paths["root"] / "extraction-output"
         tool_root = resource_path("asset-tools")
         extractor = AssetExtractor(tool_root, BundleCache(self.paths["assets"]))
-        preflight = self.confirm_asset_preflight(root, extractor)
+        work = self.asset_work_root(root); resume_status = extractor.resumable(work)
+        if resume_status:
+            if QMessageBox.question(
+                    self, "Resume verified extraction",
+                    f"Verified extraction work is available at stage {resume_status['stage']}. Resume it without reopening Dragonwilds or repeating exports?",
+                    QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Yes) != QMessageBox.Yes:
+                return
+            preflight = (False, False)
+        else:
+            preflight = self.confirm_asset_preflight(root, extractor)
         if preflight is None: return
         close_game, preserve = preflight
         phase_percent = {"preserve": 10, "mappings": 15, "restore": 30,
@@ -634,12 +653,13 @@ class MainWindow(QMainWindow):
                     raise RuntimeError("Dragonwilds did not close normally. Close it manually and retry; it was not force-terminated.")
             return extractor.extract(root, output, event, preserve_existing_loader=preserve,
                                      recovery_root=self.asset_recovery_root(root),
-                                     work_root=self.asset_work_root(root))
+                                     work_root=work, resume=bool(resume_status))
         self.run_async(action,
                        lambda item: (self.refresh_bundles(), self.log(f"Validated asset bundle: {item.path}"),
                                      QMessageBox.information(self, "Asset extraction complete",
                                                              f"The validated asset bundle is ready at:\n{item.path}")),
-                       title="Extracting Dragonwilds web assets…", determinate=True)
+                       title=(f"Resuming asset extraction from {resume_status['stage']}…" if resume_status
+                              else "Extracting Dragonwilds web assets…"), determinate=True)
 
     def resume_asset_extraction(self):
         root = self.choose_or_confirm_game_root()
