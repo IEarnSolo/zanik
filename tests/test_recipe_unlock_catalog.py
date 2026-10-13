@@ -493,6 +493,9 @@ class RecipeUnlockCatalogTests(unittest.TestCase):
         self.assertIn("dispatcherCompatibility", main)
         self.assertIn("playerRecipeDispatcherCompatibility", main)
         self.assertIn("playerQuestDispatcherCompatibility", main)
+        self.assertIn("RefreshPlayerRecipeTrackingCompatibility", main)
+        recipe_tick = (ROOT / "src/engine/player_recipes.cpp").read_text(encoding="utf-8").split("void ProcessPlayerRecipeTracking(){", 1)[1].split("std::vector<PlayerRecipeSnapshot>", 1)[0]
+        self.assertNotIn("ResolveCatalogObjects", recipe_tick)
 
     def test_player_recipe_output_types_are_complete_and_redacted(self):
         allowed = {"items", "weapons", "armour", "capes", "jewellery",

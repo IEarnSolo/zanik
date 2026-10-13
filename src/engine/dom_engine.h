@@ -618,6 +618,7 @@ struct PlayerRecipeDiagnostics {
 bool InitializePlayerRecipeTracking(const std::string& catalogPath, uintptr_t moduleBase, uintptr_t moduleEnd);
 void UpdatePlayerRecipeTargets(const std::vector<PlayerInfo>& players);
 void ProcessPlayerRecipeTracking();
+void RefreshPlayerRecipeTrackingCompatibility();
 std::vector<PlayerRecipeSnapshot> ReadPlayerRecipeSnapshots();
 PlayerRecipeDiagnostics GetPlayerRecipeDiagnostics();
 std::string GetPlayerRecipeCatalogFingerprint();

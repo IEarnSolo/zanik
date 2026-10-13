@@ -26,7 +26,7 @@ std::unique_ptr<Scan> active;
 ProcessEventFn processEvent=nullptr;
 uintptr_t recipeQuery=0,buildingQuery=0;
 std::string fingerprint;
-std::atomic<int> compatibility{0},catalogCompatibility{0},layoutCompatibility{0},queryCompatibility{0};
+std::atomic<int> compatibility{-7},catalogCompatibility{0},layoutCompatibility{0},queryCompatibility{0};
 std::atomic<std::uint64_t> resolved{0},completed{0},failures{0};
 std::atomic<std::uint64_t> maximumProgressLookupUs{0},maximumSingleQueryUs{0},slowQueries{0};
 std::atomic<std::int64_t> lastScan{0};
@@ -91,10 +91,10 @@ bool InitializePlayerRecipeTracking(const std::string& path,uintptr_t moduleBase
     nextResolve=std::chrono::steady_clock::now();ResolveCatalogObjects();LogMessage(compatibility.load()==1?"Player recipe tracking initialized with "+std::to_string(catalog.size())+" recipes":"Player recipe tracking waiting for runtime recipe objects");return true;
 }
 void UpdatePlayerRecipeTargets(const std::vector<PlayerInfo>& players){std::vector<Target> fresh;for(const auto&p:players)if(!p.characterGuid.empty()&&p.controllerPtr){Target target{p.characterGuid,p.controllerPtr,p.pawnPtr,p.playerStatePtr,0};const auto started=std::chrono::steady_clock::now();target.progress=FindProgress(target);RecordMaximum(maximumProgressLookupUs,static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-started).count()));fresh.push_back(std::move(target));}Lock lock(targetMutex);targets=std::move(fresh);}
+void RefreshPlayerRecipeTrackingCompatibility(){if(!g_Engine||compatibility.load()<0||compatibility.load()==1)return;const auto now=std::chrono::steady_clock::now();if(now<nextResolve)return;ResolveCatalogObjects();nextResolve=now+std::chrono::seconds(10);}
 void ProcessPlayerRecipeTracking(){
-    if(!g_Engine||compatibility.load()<0)return;
+    if(!g_Engine||compatibility.load()!=1)return;
     const auto now=std::chrono::steady_clock::now();
-    if(compatibility.load()!=1){if(now>=nextResolve){ResolveCatalogObjects();nextResolve=now+std::chrono::seconds(10);}if(compatibility.load()!=1)return;}
     if(active&&!TargetStillOnline(active->target))active.reset();
     if(!active){if(now<nextCycle)return;std::vector<Target> current;{Lock lock(targetMutex);current=targets;}if(current.empty()){nextCycle=now+std::chrono::seconds(2);return;}static size_t targetCursor=0;if(targetCursor>=current.size())targetCursor=0;Target target=current[targetCursor++];if(!target.progress||!g_Engine->IsObjectLive(target.progress)||!g_Engine->IsA(target.progress,"ProgressComponent")){layoutCompatibility=0;++failures;nextCycle=now+std::chrono::seconds(1);return;}layoutCompatibility=1;active=std::make_unique<Scan>();active->target=target;active->progress=target.progress;active->unlocked.reserve(catalog.size());nextQuery=now;}
     if(!active||!g_Engine->IsObjectLive(active->progress)){active.reset();++failures;return;}
