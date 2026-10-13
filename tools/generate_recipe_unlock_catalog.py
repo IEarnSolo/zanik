@@ -836,6 +836,7 @@ def render_web_catalog(
     result: dict[str, Any], asset_records: list[tuple[Path, dict[str, Any]]], output_path: Path,
     runtime_output_path: Path | None = None, runtime_history_path: Path | None = None,
     runtime_history_imports: list[Path] | None = None,
+    runtime_history_seeds: list[Path] | None = None,
 ) -> dict[str, int]:
     """Emit a compact, display-only dependency graph for the public website."""
     recipes = result["recipes"]
@@ -1045,6 +1046,11 @@ def render_web_catalog(
                 fields = line.split("\t")
                 if len(fields) == 3 and fields[0] == "C" and len(fields[1]) == 64:
                     history[fields[1]] = sorted(set(value for value in fields[2].split(",") if len(value) == 16))
+        for seed in runtime_history_seeds or []:
+            for line in seed.read_text(encoding="utf-8").splitlines():
+                fields = line.split("\t")
+                if len(fields) == 3 and fields[0] == "C" and len(fields[1]) == 64:
+                    history[fields[1]] = sorted(set(value for value in fields[2].split(",") if len(value) == 16))
         prior_catalogs = ([runtime_output_path] if runtime_output_path.exists() else []) + (runtime_history_imports or [])
         for prior_catalog in prior_catalogs:
             old_lines = prior_catalog.read_text(encoding="utf-8").splitlines()
@@ -1092,6 +1098,7 @@ def main() -> int:
     parser.add_argument("--runtime-web-output", type=Path, default=Path("web/recipe-runtime-catalog.tsv"))
     parser.add_argument("--runtime-history-output", type=Path, default=Path("web/recipe-runtime-catalog-history.tsv"))
     parser.add_argument("--runtime-history-import", type=Path, action="append", default=[])
+    parser.add_argument("--runtime-history-seed", type=Path, action="append", default=[])
     parser.add_argument("--allow-unresolved", action="store_true")
     args = parser.parse_args()
 
@@ -1610,7 +1617,8 @@ def main() -> int:
         "exclusions": exclusions,
     }
     web_counts = render_web_catalog(result, asset_records, args.web_output, args.runtime_web_output,
-                                    args.runtime_history_output, args.runtime_history_import)
+                                    args.runtime_history_output, args.runtime_history_import,
+                                    args.runtime_history_seed)
     result["validation"]["webCatalog"] = web_counts
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
