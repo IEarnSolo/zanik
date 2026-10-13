@@ -18,6 +18,9 @@ import tempfile
 import time
 import zipfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from asset_filesystem import extended_path
+
 
 SCHEMA_VERSION = 2
 BUNDLE_SET_SCHEMA_VERSION = 1
@@ -492,7 +495,7 @@ def cleanup_work(args: argparse.Namespace) -> int:
     last_error: OSError | None = None
     for attempt in range(attempts):
         try:
-            shutil.rmtree(root, onerror=_clear_readonly)
+            shutil.rmtree(extended_path(root), onerror=_clear_readonly)
             if args.pending_journal:
                 Path(args.pending_journal).unlink(missing_ok=True)
             print(json.dumps({"cleaned": True, "path": str(root)}, sort_keys=True))
