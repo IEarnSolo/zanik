@@ -2,6 +2,14 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.1] - 2026-10-12
+
+### Fixed
+
+- Composite the extracted transparent world-map landmass over Zanik's ocean background instead of preserving transparent white texels as visible JPEG gaps.
+- Resize generated world maps to the website's required 4096-by-4096 canvas and reject bundles with unexpected map dimensions.
+- Version the corrected extraction recipe so Zanik Manager does not reuse an older affected bundle.
+
 ## [0.2.0] - 2026-10-12
 
 ### Added
