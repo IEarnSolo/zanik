@@ -23,6 +23,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+try:
+    from asset_filesystem import read_json as read_json_file
+except ModuleNotFoundError:  # Imported as tools.* by repository tests.
+    from tools.asset_filesystem import read_json as read_json_file
+
 
 TRIGGER_LABELS = {
     "ItemsPickedUp": "obtain_item",
@@ -148,7 +153,7 @@ STATION_ACTOR_ROWS = {
 
 
 def read_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8-sig"))
+    return read_json_file(path)
 
 
 def sha256(path: Path) -> str:
@@ -635,8 +640,8 @@ def iter_records(root: Path) -> Iterable[tuple[Path, dict[str, Any]]]:
             continue
         try:
             data = read_json(path)
-        except (OSError, json.JSONDecodeError):
-            continue
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"cannot read exported JSON {path.name}: {error}") from error
         if isinstance(data, list):
             for record in data:
                 if isinstance(record, dict):

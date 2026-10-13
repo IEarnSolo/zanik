@@ -7,6 +7,10 @@ operation.  Wiki text is useful to review ordering, but never supplies coords.
 from __future__ import annotations
 import argparse,json,math,re
 from pathlib import Path
+try:
+    from asset_filesystem import read_text as read_asset_text
+except ModuleNotFoundError:  # Imported as tools.* by repository tests.
+    from tools.asset_filesystem import read_text as read_asset_text
 
 ROOT=CONTENT=OUTPUT=PUBLIC=COVERAGE=OVERRIDES=NPC_IDENTITIES=Path()
 CATALOG={};NPC={}
@@ -85,11 +89,13 @@ def dungeon_entrances():
     maps=CONTENT/'RSDragonwilds'
     for path in maps.rglob('*.json'):
         if 'Maps' not in path.parts:continue
-        try:raw=path.read_text(encoding='utf-8')
-        except Exception:continue
+        try:raw=read_asset_text(path)
+        except (OSError,UnicodeError) as error:
+            raise RuntimeError(f"cannot read exported JSON {path.name}: {error}") from error
         if 'DungeonEntrance_' not in raw:continue
         try:records=json.loads(raw)
-        except Exception:continue
+        except json.JSONDecodeError as error:
+            raise RuntimeError(f"invalid exported JSON {path.name}: {error}") from error
         if not isinstance(records,list):continue
         for actor in records:
             label=str(actor.get('ActorLabel',''));match=re.match(r'DungeonEntrance_([A-Za-z0-9_]+)',label)
@@ -159,12 +165,14 @@ def main():
         is_world_map='Maps' in path.parts and 'World' in path.parts
         is_actor_definition=path.stem.startswith('BP_') and ('NPCs' in path.parts or 'Interactables' in path.parts)
         if not is_quest and not is_world_map and not is_actor_definition:continue
-        try:raw=path.read_text(encoding='utf-8')
-        except Exception:continue
+        try:raw=read_asset_text(path)
+        except (OSError,UnicodeError) as error:
+            raise RuntimeError(f"cannot read exported JSON {path.name}: {error}") from error
         if not is_quest and not is_world_map and not is_actor_definition:continue
         if is_world_map and not is_quest and not any(token in raw for token in ('"RelativeLocation"','"GameplayObjectRegistry"','"BP_MapRegion_C"')):continue
         try:data=json.loads(raw)
-        except Exception:continue
+        except json.JSONDecodeError as error:
+            raise RuntimeError(f"invalid exported JSON {path.name}: {error}") from error
         if not isinstance(data,list):continue
         # Quest pickups and bespoke interactables are frequently implemented as
         # NPC-derived blueprints instead of BP_QuestLocation actors. Preserve

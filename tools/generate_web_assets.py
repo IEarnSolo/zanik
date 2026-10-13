@@ -13,6 +13,11 @@ import struct
 import subprocess
 import zlib
 
+try:
+    from asset_filesystem import copy_file, extended_path, read_bytes, read_json
+except ModuleNotFoundError:  # Imported as tools.* by repository tests.
+    from tools.asset_filesystem import copy_file, extended_path, read_bytes, read_json
+
 
 SKILLS = ("agility", "artisan", "attack", "construction", "cooking", "farming", "fishing", "magic", "mining", "ranged", "runecrafting", "woodcutting")
 MAP_SIZE = 4096
@@ -44,8 +49,9 @@ def index_pngs(root: Path) -> dict[str, Path]:
 def records(root: Path):
     for path in root.rglob("*.json"):
         if path.name == ".uas-manifest.json": continue
-        try: value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError): continue
+        try: value = read_json(path)
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"cannot read exported JSON {path.name}: {error}") from error
         for record in value if isinstance(value, list) else []:
             if isinstance(record, dict): yield record
 
@@ -58,7 +64,7 @@ def asset_base(value) -> str:
 def copy(index: dict[str, Path], name: str, destination: Path) -> bool:
     source = index.get(name.casefold())
     if not source: return False
-    destination.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(source, destination); return True
+    destination.parent.mkdir(parents=True, exist_ok=True); copy_file(source, destination); return True
 
 
 def svg(path: Path, main: bool) -> None:
@@ -84,7 +90,7 @@ def convert_map(source: Path, destination: Path) -> None:
         "$output.Save($env:ZANIK_MAP_DESTINATION,[System.Drawing.Imaging.ImageFormat]::Jpeg)"
         "}finally{$graphics.Dispose();$output.Dispose();$source.Dispose()}"
     )
-    environment = os.environ.copy(); environment["ZANIK_MAP_SOURCE"] = str(source.resolve()); environment["ZANIK_MAP_DESTINATION"] = str(destination.resolve())
+    environment = os.environ.copy(); environment["ZANIK_MAP_SOURCE"] = str(extended_path(source)); environment["ZANIK_MAP_DESTINATION"] = str(destination.resolve())
     completed = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
                                check=False, capture_output=True, text=True, env=environment)
     if completed.returncode:
@@ -97,7 +103,7 @@ def extract_font(font_root: Path, destination: Path) -> None:
     matches = list(font_root.rglob("Jancient.ufont"))
     if len(matches) != 1:
         raise RuntimeError(f"expected one extracted Jancient.ufont, found {len(matches)}")
-    encoded = matches[0].read_bytes()
+    encoded = read_bytes(matches[0])
     if len(encoded) < 12:
         raise RuntimeError("the extracted Jancient font is truncated")
     size = int.from_bytes(encoded[:4], "little")

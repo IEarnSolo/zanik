@@ -15,6 +15,11 @@ import tempfile
 import re
 import time
 
+try:
+    from asset_filesystem import read_json as read_json_file
+except ModuleNotFoundError:  # Imported as tools.* by repository tests.
+    from tools.asset_filesystem import read_json as read_json_file
+
 
 RECIPE_VERSION = 4
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
@@ -30,7 +35,7 @@ def sha256(path: Path) -> str:
 
 
 def read_operational_json(path: Path) -> dict:
-    value = json.loads(path.read_text(encoding="utf-8-sig"))
+    value = read_json_file(path)
     if not isinstance(value, dict):
         raise ValueError(f"operational JSON must contain an object: {path}")
     return value
@@ -72,7 +77,7 @@ def validate_catalog_export(json_root: Path, expected_counts: dict[str, int] | N
         catalogue_path = next(json_root.rglob("DA_BuildPieceCatalogue_Default.json"))
     except StopIteration as error:
         raise RuntimeError("targeted export omitted the building catalogue") from error
-    records = json.loads(catalogue_path.read_text(encoding="utf-8"))
+    records = read_json_file(catalogue_path)
     if not isinstance(records, list) or not records:
         raise RuntimeError("targeted export produced a malformed building catalogue")
     required: set[str] = set()
@@ -93,9 +98,9 @@ def validate_catalog_export(json_root: Path, expected_counts: dict[str, int] | N
         if path.stem not in required:
             continue
         try:
-            values = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            continue
+            values = read_json_file(path)
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"cannot read exported JSON {path.name}: {error}") from error
         for value in values if isinstance(values, list) else []:
             if value.get("Type") == "BuildingPieceData" and value.get("Name") in required:
                 found.add(value["Name"])
@@ -171,8 +176,9 @@ def referenced_textures(json_root: Path, required: list[str]) -> list[str]:
                 targets.add("package:" + package if package else "basename:" + match.group(1))
     for path in json_root.rglob("*.json"):
         if path.name == ".uas-manifest.json": continue
-        try: visit(json.loads(path.read_text(encoding="utf-8")))
-        except (OSError, UnicodeError, json.JSONDecodeError): continue
+        try: visit(read_json_file(path))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"cannot read exported JSON {path.name}: {error}") from error
     package_basenames = {
         Path(target.split(":", 1)[1]).name.casefold()
         for target in targets if target.startswith("package:")

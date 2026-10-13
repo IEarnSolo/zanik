@@ -7,6 +7,11 @@ import json
 import shutil
 from pathlib import Path
 
+try:
+    from asset_filesystem import copy_file, read_bytes, read_json
+except ModuleNotFoundError:  # Imported as tools.* by repository tests.
+    from tools.asset_filesystem import copy_file, read_bytes, read_json
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -16,13 +21,13 @@ def main() -> None:
     args = parser.parse_args()
 
     icon_matches = list(args.icons.rglob("T_Icon_Plans.png"))
-    icon_hashes = {hashlib.sha256(path.read_bytes()).hexdigest() for path in icon_matches}
+    icon_hashes = {hashlib.sha256(read_bytes(path)).hexdigest() for path in icon_matches}
     if not icon_matches or len(icon_hashes) != 1:
         raise SystemExit(f"Expected one unique T_Icon_Plans.png, found {len(icon_matches)} exports with {len(icon_hashes)} hashes")
 
     records = []
     for path in sorted(args.assets.rglob("DA_Consumable_Plan*.json")):
-        exports = json.loads(path.read_text(encoding="utf-8"))
+        exports = read_json(path)
         matches = [value for value in exports if value.get("Name") == path.stem]
         if len(matches) != 1:
             raise ValueError(f"{path}: expected one matching export")
@@ -40,7 +45,7 @@ def main() -> None:
     item_dir = args.web / "items"
     item_dir.mkdir(parents=True, exist_ok=True)
     for key, _, _, filename in records:
-        shutil.copyfile(icon_matches[0], item_dir / filename)
+        copy_file(icon_matches[0], item_dir / filename)
 
     lines = [f"# zanik-plan-items\t1\t{len(records)}\t{fingerprint}"]
     lines.extend("\t".join(row) for row in records)
