@@ -210,6 +210,7 @@ publish-curseforge:
       set -- --directory dist/release --version "$VERSION" --tag "$CI_COMMIT_TAG" --changelog dist/release/release-notes.md --report dist/release/curseforge-upload.json
       if [ -n "${CURSEFORGE_PRIMARY_FILE_ID:-}" ]; then set -- "$@" --primary-file-id "$CURSEFORGE_PRIMARY_FILE_ID"; fi
       old_ifs=$IFS; IFS=,
+      # Historical variable names remain supported for safe partial-upload recovery.
       for role in ${CURSEFORGE_SKIP_CHILDREN:-}; do [ -n "$role" ] && set -- "$@" --skip-child "$role"; done
       IFS=$old_ifs
       python3 tools/curseforge_upload.py "$@"

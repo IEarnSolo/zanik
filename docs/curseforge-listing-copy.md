@@ -1,6 +1,6 @@
 # CurseForge listing copy
 
-The project description and reviewer notes below are maintained as ready-to-paste copy for the CurseForge author dashboard. Keep the download guidance near the top of the public description because CurseForge treats the manual Linux server ZIP as the primary file while most Windows administrators should use the additional Zanik Manager download.
+The project description and reviewer notes below are maintained as ready-to-paste copy for the CurseForge author dashboard. Keep the download guidance near the top of the public description because CurseForge lists the server, Manager, and asset tools as independent files while most Windows administrators should choose Zanik Manager.
 
 ## Project description
 

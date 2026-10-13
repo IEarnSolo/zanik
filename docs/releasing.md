@@ -50,6 +50,6 @@ The automatic `publish-github-release` job applies only to new stable tags after
 
 ## CurseForge recovery
 
-The job uploads the server ZIP first, then records its CurseForge file ID before uploading the Manager and two asset-tool children. Its `curseforge-upload.json` artifact is retained even on failure.
+The job uploads the server ZIP first, then records its CurseForge file ID before uploading the Manager and two asset-tool archives as independent normal files. Its `curseforge-upload.json` artifact is retained even on failure. CurseForge does not allow additional-file relationships for Zanik's project type, so none of these uploads uses `parentFileID`.
 
-Do not blindly retry an upload after a timeout or partial failure. Inspect the report and the CurseForge project. For recovery, run the manual job with `CURSEFORGE_PRIMARY_FILE_ID` set to the recorded primary ID. Set `CURSEFORGE_SKIP_CHILDREN` to any comma-separated combination of `linux`, `windows`, and `manager` for child files already accepted. These recovery values are non-secret and apply only to that manual run.
+Do not blindly retry an upload after a timeout or partial failure. Inspect the report and the CurseForge project. For recovery, run the manual job with `CURSEFORGE_PRIMARY_FILE_ID` set to the recorded server-file ID. Set `CURSEFORGE_SKIP_CHILDREN` to any comma-separated combination of `linux`, `windows`, and `manager` for companion files already accepted. These recovery values are non-secret and apply only to that manual run.

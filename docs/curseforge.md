@@ -4,7 +4,7 @@ Create the project as **Zanik** under **UE4SS Mods > Utilities**, the closest cl
 
 Use the public GitHub mirror, <https://github.com/IEarnSolo/zanik>, for every source, issue, and documentation link shown on CurseForge. Do not reference private release infrastructure in CurseForge project text, file metadata, reviewer notes, or support links.
 
-Publish the validated `zanik-server-linux-x86_64-VERSION.zip` as the primary manual server download. Publish Zanik Manager as the recommended Windows additional file, with Linux and Windows asset-tool bundles for advanced users. Do not upload a locally generated `zanik-assets-*` bundle.
+Publish the validated `zanik-server-linux-x86_64-VERSION.zip`, Zanik Manager, and both asset-tool archives as independent normal files. CurseForge rejects additional-file relationships for this project type. Label Zanik Manager as the recommended Windows download and the asset-tool bundles as advanced downloads. Do not upload a locally generated `zanik-assets-*` bundle.
 
 The CurseForge project description and reviewer notes are edited manually in the CurseForge author dashboard. The CI job uploads release files, display names, and release changelogs; it does not replace the project description. Use the maintained copy in [curseforge-listing-copy.md](curseforge-listing-copy.md).
 
@@ -14,4 +14,4 @@ Keep the public description concise and practical. Link manager, installation, s
 
 After creating the project, generate a token from the CurseForge API Tokens page. Store it only as the protected, masked-and-hidden CI variable `CURSEFORGE_API_TOKEN`. Store the numeric project ID as protected `CURSEFORGE_PROJECT_ID`. See [releasing](releasing.md) for the manual job and partial-upload recovery procedure.
 
-The `publish-curseforge` job submits the server ZIP as the primary release for game version `1.0`. It attaches Zanik Manager and both asset-tool archives to that primary file, uses Markdown release notes, and allows publication automatically after moderation. The server tarball is not uploaded to CurseForge.
+The `publish-curseforge` job submits the server ZIP, Zanik Manager, and both asset-tool archives as independent normal release files for game version `1.0`. It uses Markdown release notes and allows publication automatically after moderation. The server tarball is not uploaded to CurseForge.

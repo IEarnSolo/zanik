@@ -89,7 +89,14 @@ def main() -> int:
         "windows": args.directory / f"zanik-asset-tools-windows-x86_64-{args.version}.zip",
         "manager": args.directory / f"zanik-manager-windows-x86_64-{args.version}.zip",
     }
-    report = {"schemaVersion": 1, "tag": args.tag, "version": args.version, "status": "validating", "files": {}}
+    report = {
+        "schemaVersion": 2,
+        "tag": args.tag,
+        "version": args.version,
+        "publicationMode": "normal-files",
+        "status": "validating",
+        "files": {},
+    }
     try:
         if args.tag != f"v{args.version}":
             raise ValueError("tag and version do not match")
@@ -123,13 +130,23 @@ def main() -> int:
             if role in args.skip_child:
                 report["files"][role]["status"] = "skipped"
                 continue
-            metadata = {"changelog": changelog, "changelogType": "markdown", "displayName": f"{label} {args.version}", "parentFileID": primary_id, "releaseType": "release", "isMarkedForManualRelease": False}
+            # Some CurseForge sites only permit normal files and reject
+            # parentFileID with error 1011. Publish every Zanik download as a
+            # self-contained normal file so all supported project types work.
+            metadata = {
+                "changelog": changelog,
+                "changelogType": "markdown",
+                "displayName": f"{label} {args.version}",
+                "gameVersionNames": ["1.0"],
+                "releaseType": "release",
+                "isMarkedForManualRelease": False,
+            }
             file_id = upload(args.base_url, args.project_id, token, metadata, files[role])
             report["files"][role].update(status="uploaded", fileId=file_id)
             write_report(args.report, report)
         report["status"] = "submitted"
         write_report(args.report, report)
-        print(f"submitted Zanik {args.version} to CurseForge as primary file {primary_id}")
+        print(f"submitted Zanik {args.version} to CurseForge as independent normal files (server file {primary_id})")
         return 0
     except (OSError, ValueError, RuntimeError) as error:
         report["status"] = "failed"
