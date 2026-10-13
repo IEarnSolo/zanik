@@ -12,9 +12,21 @@ Extract `zanik-asset-tools-windows-x86_64-VERSION.zip`, open PowerShell in that 
   -OutputDirectory ".\output"
 ```
 
+The standalone command refuses to overwrite an existing UE4SS or proxy-loader installation by default. Zanik Manager is the recommended path when another loader is present because it presents the safety confirmation and keeps persistent recovery state. Advanced standalone use may opt in explicitly:
+
+```powershell
+.\init-assets.ps1 `
+  -GameRoot "E:\SteamLibrary\steamapps\common\RSDragonwilds" `
+  -OutputDirectory ".\output" `
+  -PreserveExistingLoader `
+  -RecoveryDirectory "$env:LOCALAPPDATA\Zanik Manager\mapping-recovery\manual"
+```
+
+The recovery directory must remain outside the game directory. Zanik inventories and verifies the existing loader before removal, restores it after mapping, and refuses to overwrite any file that changes unexpectedly.
+
 The archive includes its own Python runtime, UnrealAssetScout, UE4SS mapping dumper, licenses, recipes, and generators. It does not need system Python or Node.
 
-By default the tool temporarily installs its pinned UE4SS loader, launches the official client through Steam, calls UE4SS's supported `DumpUSMAP(true)` operation, asks the game to close normally, and removes only its own verified files. It refuses to start when Dragonwilds is running or when an existing loader/UE4SS installation occupies a required path. It never overwrites an unknown collision. If an interrupted run leaves a recovery journal, rerun the command after closing the game; recovery completes before another extraction begins.
+By default the tool temporarily installs its pinned UE4SS loader, launches the official client through Steam, calls UE4SS's supported `DumpUSMAP(true)` operation, asks the game to close normally, and removes only its own verified files. It refuses to start when Dragonwilds is running and, unless preservation was explicitly selected, when an existing loader occupies a required path. It never overwrites an unknown or changed collision. If an interrupted run leaves a recovery journal, rerun the command after closing the game; recovery completes before another extraction begins.
 
 An experienced operator may avoid the temporary loader and use a mapping already generated from the same client:
 

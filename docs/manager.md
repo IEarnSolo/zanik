@@ -7,14 +7,16 @@ Zanik Manager is the recommended installation path for Windows administrators us
 1. Enter the Pterodactyl panel URL and a **Client API key** from your panel account.
 2. Select one of the Dragonwilds servers visible to that account and give the profile a friendly name.
 3. Review the detected installation and choose wrapper or executable-replacement mode.
-4. Use **Assets** to locate the licensed Windows client, generate a validated bundle, and upload it.
+4. If the server has no healthy website assets, accept **Set up website assets now** after installation. Manager will validate a cached bundle or extract, upload, activate, and verify a new one for that exact server. Choose **Later** to use the Assets tab manually.
 5. Run **Doctor** before joining the server.
 
 API keys are stored in Windows Credential Manager. They are never written to `profiles.json`, logs, diagnostics, or support ZIPs. Before sending a key to a remote panel over plain HTTP, the Manager presents an explicit confirmation and then keeps a compact warning on that profile because the traffic can be intercepted. HTTPS and loopback HTTP connections do not show the warning. Certificate validation cannot be bypassed.
 
 If the panel's normal file-contents route reports a transient node-side `5xx` error, the Manager retries the read through Pterodactyl's signed download route. If both routes fail, the dialog shows a concise redacted error and places technical details in the Activity tab.
 
-Long-running operations use an application-modal progress window and record each stage in **Activity**. This prevents another server mutation from starting while an install, update, asset operation, or diagnostic is still running. A first installation that has no local asset bundle directs the operator to the **Assets** tab after the server payload is installed.
+Long-running operations use an application-modal progress window and record each stage in **Activity**. This prevents another server mutation from starting while an install, update, asset operation, or diagnostic is still running. Guided asset setup is a separate transaction: a mapping, extraction, or upload failure never rolls back a successful server installation, and a completed local bundle remains cached for Retry.
+
+The Assets tab always shows its explicit **Target server**. Before a manual upload, Manager confirms the bundle, profile, panel, and server identifier so changing the active server cannot silently redirect an upload.
 
 ## Installation modes
 
@@ -29,6 +31,8 @@ Asset activation uses a fast remote verification path: multipart archives are ha
 ## Assets and local files
 
 Validated bundles are stored below `%LOCALAPPDATA%\Zanik Manager\assets\`. The newest two unpinned bundles for each game installation are retained. Use **Open bundle folder** to inspect or copy a ZIP. Raw game containers, mappings, and extraction work trees are not retained by default.
+
+Dragonwilds must be closed when extraction starts. If it is running, Manager can request a normal close and wait; it never force-kills the client. Mapping generation briefly opens and closes the game automatically. If the client already uses UE4SS or another `dwmapi.dll` proxy loader, Manager asks first, backs up and verifies the complete installation outside the game directory, temporarily installs Zanik's pinned mapper, and restores the original files exactly. Persistent recovery records live under `%LOCALAPPDATA%\Zanik Manager\mapping-recovery\` so an interrupted run can be safely restored on the next attempt.
 
 Dragonwilds must be closed before extraction starts. The Manager checks this before launching the worker and explains how to proceed. Mapping generation may then launch and close the client automatically; do not interact with or relaunch it until the progress window reports completion.
 

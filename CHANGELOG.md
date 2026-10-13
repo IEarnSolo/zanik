@@ -2,6 +2,21 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.4] - 2026-10-13
+
+### Added
+
+- Offer a guided website-asset setup immediately after a successful server installation when the target has no healthy active asset manifest.
+- Let the guided workflow validate and reuse a compatible cached bundle or extract, upload, atomically activate, and verify a new bundle for the just-installed server.
+- Add an explicit target-server selector and final target confirmation to manual asset uploads.
+- Add machine-readable mapping preflight and persistent recovery data under `%LOCALAPPDATA%\Zanik Manager\mapping-recovery\`.
+
+### Fixed
+
+- Safely preserve, verify, temporarily remove, and exactly restore an existing user-managed UE4SS/proxy-loader installation during Manager-driven mapping generation.
+- Detect interrupted mapping work and fail closed if either the recovery backup, temporary mapper, game executable, or restoration target changes unexpectedly.
+- Offer a graceful **Close game and continue** action when Dragonwilds is running; the Manager never force-terminates the client.
+
 ## [0.2.3] - 2026-10-13
 
 ### Fixed

@@ -14,7 +14,8 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDia
                                QSpinBox, QTabWidget, QVBoxLayout, QWidget)
 from PySide6.QtCore import QUrl
 
-from .assets import AssetExtractor, discover_steam_game_roots, dragonwilds_is_running, game_root_id
+from .assets import (AssetDeployer, AssetExtractor, discover_steam_game_roots, game_root_id,
+                     request_dragonwilds_close)
 from .cache import BundleCache
 from .config import ConfigModel, content_hash
 from .journal import JournalStore
@@ -131,7 +132,7 @@ class MainWindow(QMainWindow):
         self.threads = []; self.busy_dialog = None; self.last_progress_message = ""
         central = QWidget(); outer = QVBoxLayout(central)
         target = QHBoxLayout(); self.profile_box = QComboBox(); self.add_button = QPushButton("Add server")
-        self.add_button.clicked.connect(self.add_server); self.profile_box.currentIndexChanged.connect(self.refresh_header)
+        self.add_button.clicked.connect(self.add_server); self.profile_box.currentIndexChanged.connect(self.active_profile_changed)
         target.addWidget(QLabel("Active server:")); target.addWidget(self.profile_box, 1); target.addWidget(self.add_button)
         self.warning = QLabel(); self.warning.setStyleSheet("color:#b45309;font-weight:600")
         outer.addLayout(target); outer.addWidget(self.warning)
@@ -164,7 +165,11 @@ class MainWindow(QMainWindow):
         upload = QPushButton("Upload and activate selected bundle"); upload.clicked.connect(self.upload_assets)
         open_button = QPushButton("Open bundle folder"); open_button.clicked.connect(self.open_asset_folder)
         layout.addRow("Dragonwilds client", row); layout.addRow(self.extract_button)
-        layout.addRow("Validated bundle", self.bundle_box); layout.addRow(upload); layout.addRow(open_button)
+        self.asset_target_box = QComboBox()
+        layout.addRow("Validated bundle", self.bundle_box)
+        layout.addRow("Target server", self.asset_target_box)
+        layout.addRow(upload); layout.addRow(open_button)
+        self.game_root.editingFinished.connect(self.refresh_bundles)
         self.tabs.addTab(page, "Assets")
 
     def _config_tab(self):
@@ -266,8 +271,8 @@ class MainWindow(QMainWindow):
     def active(self) -> ServerProfile | None:
         return self.profile_box.currentData()
 
-    def provider(self) -> PterodactylProvider:
-        profile = self.active()
+    def provider(self, profile: ServerProfile | None = None) -> PterodactylProvider:
+        profile = profile or self.active()
         if not profile: raise RuntimeError("Add and select a server first")
         token = self.vault.read(profile.credential_target)
         if not token: raise RuntimeError("The API key is missing from Windows Credential Manager")
@@ -278,7 +283,26 @@ class MainWindow(QMainWindow):
     def reload_profiles(self):
         self.profile_box.clear()
         for profile in self.profiles: self.profile_box.addItem(profile.name, profile)
-        self.refresh_header(); self.refresh_bundles()
+        self.refresh_asset_targets(); self.refresh_header(); self.refresh_bundles()
+
+    def active_profile_changed(self):
+        self.refresh_header()
+        profile = self.active()
+        if profile:
+            for index in range(self.asset_target_box.count()):
+                if self.asset_target_box.itemData(index).id == profile.id:
+                    self.asset_target_box.setCurrentIndex(index)
+                    break
+
+    def refresh_asset_targets(self):
+        selected = self.asset_target_box.currentData().id if self.asset_target_box.count() and self.asset_target_box.currentData() else ""
+        self.asset_target_box.clear()
+        for profile in self.profiles:
+            self.asset_target_box.addItem(f"{profile.name} · {profile.panel_origin} · {profile.server_id}", profile)
+        wanted = selected or (self.active().id if self.active() else "")
+        for index in range(self.asset_target_box.count()):
+            if self.asset_target_box.itemData(index).id == wanted:
+                self.asset_target_box.setCurrentIndex(index); break
 
     def refresh_header(self):
         profile = self.active()
@@ -353,10 +377,9 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "Startup action required", f"The server remains stopped and installation is not yet active. Set the egg startup executable to:\n{profile.server_root}/zanik/bin/zanik-server --server-root {profile.server_root} --\n\nThen start the server and run Doctor to verify it.")
             else:
                 self.log(f"Installation complete; backup: {result['backup']}")
-                asset_note = ("\n\nNo local asset bundle is ready yet. Open the Assets tab to extract, "
-                              "upload, and activate the website assets." if self.bundle_box.count() == 0 else "")
                 QMessageBox.information(self, "Installation complete",
-                                        "Zanik was installed successfully and the server was started." + asset_note)
+                                        "Zanik was installed successfully and the server was started.")
+                self.offer_asset_setup(profile)
         self.run_async(action, done, title="Installing Zanik…", determinate=True)
 
     def uninstall(self):
@@ -385,38 +408,155 @@ class MainWindow(QMainWindow):
         for item in BundleCache(self.paths["assets"]).list(game_root_id(root)):
             self.bundle_box.addItem(f"Build {item.build} · {item.manifest_hash[:12]}", str(item.path))
 
+    def asset_recovery_root(self, root: Path) -> Path:
+        return self.paths["mapping_recovery"] / game_root_id(root)
+
+    def confirm_asset_preflight(self, root: Path, extractor: AssetExtractor) -> tuple[bool, bool] | None:
+        recovery = self.asset_recovery_root(root)
+        status = extractor.mapping_preflight(root, recovery)
+        close_game = bool(status.get("gameRunning"))
+        if close_game:
+            box = QMessageBox(self); box.setWindowTitle("Dragonwilds must close")
+            box.setText("Dragonwilds is running and must close before website assets can be extracted.")
+            box.setInformativeText("Zanik Manager will request a normal close, then briefly open and close the game automatically to generate mappings. It will never force-kill the game.")
+            proceed = box.addButton("Close game and continue", QMessageBox.AcceptRole)
+            cancel = box.addButton("Cancel", QMessageBox.RejectRole); box.setDefaultButton(cancel); box.exec()
+            if box.clickedButton() is not proceed: return None
+        preserve = bool(status.get("existingLoader"))
+        if preserve:
+            paths = "\n".join(status.get("loaderPaths", []))
+            message = "Dragonwilds already has a UE4SS or proxy-loader installation."
+            if status.get("unfinishedRecovery"):
+                message = "An interrupted Zanik mapping operation must be recovered before extraction."
+            box = QMessageBox(self); box.setWindowTitle("Preserve existing game tools")
+            box.setText(message)
+            box.setInformativeText("Zanik Manager will back up and verify the complete existing loader, temporarily use its pinned mapper, then restore the original files exactly.\n\n" + paths)
+            proceed = box.addButton("Preserve, restore, and continue", QMessageBox.AcceptRole)
+            cancel = box.addButton("Cancel", QMessageBox.RejectRole); box.setDefaultButton(cancel); box.exec()
+            if box.clickedButton() is not proceed: return None
+        return close_game, preserve
+
+    def choose_or_confirm_game_root(self, profile: ServerProfile | None = None) -> Path | None:
+        value = profile.game_root if profile and profile.game_root else self.game_root.text()
+        root = Path(value) if value else Path()
+        if not root.is_dir():
+            selected = QFileDialog.getExistingDirectory(self, "Select the RSDragonwilds installation", value)
+            if not selected: return None
+            root = Path(selected)
+        self.game_root.setText(str(root))
+        if profile:
+            profile.game_root = str(root); self.store.save(self.profiles)
+        self.refresh_bundles()
+        return root
+
+    def offer_asset_setup(self, profile: ServerProfile):
+        def checked(result):
+            assets = result.get("assets", {})
+            if assets.get("installed") and assets.get("compatible") is not False:
+                self.log(f"Website assets are already active on {profile.name}.")
+                return
+            box = QMessageBox(self); box.setWindowTitle("Set up website assets")
+            box.setText(f"{profile.name} does not have a healthy active website asset bundle.")
+            box.setInformativeText("Zanik Manager can extract the required assets from your licensed Dragonwilds client, upload them to this server, and activate them now. Dragonwilds must initially be closed; it will briefly open and close automatically for mapping generation.")
+            setup = box.addButton("Set up website assets now", QMessageBox.AcceptRole)
+            later = box.addButton("Later", QMessageBox.RejectRole); box.setDefaultButton(setup); box.exec()
+            if box.clickedButton() is setup:
+                self.guided_asset_setup(profile)
+            else:
+                self.log(f"Website asset setup for {profile.name} was deferred.")
+        self.run_async(lambda: self.provider(profile).diagnose(profile.server_id, profile.server_root), checked,
+                       title=f"Checking website assets on {profile.name}…")
+
+    def guided_asset_setup(self, profile: ServerProfile):
+        root = self.choose_or_confirm_game_root(profile)
+        if not root: return
+        tool_root = resource_path("asset-tools"); cache = BundleCache(self.paths["assets"])
+        extractor = AssetExtractor(tool_root, cache); cached = cache.list(game_root_id(root))
+        use_cached = False
+        if cached:
+            use_cached = QMessageBox.question(
+                self, "Reuse validated assets",
+                f"A cached bundle for build {cached[0].build} is available. Validate and reuse it instead of opening the game again?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
+        preflight = (False, False) if use_cached else self.confirm_asset_preflight(root, extractor)
+        if preflight is None: return
+        close_game, preserve = preflight
+        output = self.paths["root"] / "extraction-output"
+        def event(value):
+            stage = value.get("phase", "extract")
+            percent = {"preserve": 10, "mappings": 15, "restore": 25,
+                       "extract": 35, "bundle": 55, "complete": 65}.get(stage, -1)
+            self.operation_progress_signal.emit(value.get("message", str(value)), percent)
+        def action():
+            if close_game:
+                self.operation_progress_signal.emit("Requesting Dragonwilds to close", 5)
+                if not request_dragonwilds_close():
+                    raise RuntimeError("Dragonwilds did not close normally. Close it manually and retry; it was not force-terminated.")
+            if use_cached:
+                item = cached[0]
+                self.operation_progress_signal.emit("Validating the cached asset bundle", 20)
+                extractor.validate_bundle(item.path)
+            else:
+                if preserve: self.operation_progress_signal.emit("Preserving the existing UE4SS installation", 10)
+                item = extractor.extract(root, output, event, preserve_existing_loader=preserve,
+                                         recovery_root=self.asset_recovery_root(root))
+            self.operation_progress_signal.emit(f"Uploading assets to {profile.name}", 70)
+            def progress(current, total, path):
+                self.operation_progress_signal.emit(f"Uploading and verifying {path}", 70 + int(current * 20 / max(total, 1)))
+            activated = AssetDeployer(self.provider(profile)).activate(profile.id, profile.server_id, profile.server_root,
+                                                                       item.path, progress)
+            self.operation_progress_signal.emit("Verifying active website assets", 95)
+            health = self.provider(profile).diagnose(profile.server_id, profile.server_root)
+            if not health.get("assets", {}).get("installed") or health.get("assets", {}).get("compatible") is False:
+                raise RuntimeError("Assets were uploaded, but the server did not report a healthy active manifest")
+            return item, activated, health
+        def done(result):
+            item, activated, _ = result
+            profile.last_asset_manifest = item.manifest_hash; self.store.save(self.profiles); self.refresh_bundles()
+            self.log(f"Activated {activated['fileCount']} asset files on {profile.name}")
+            QMessageBox.information(self, "Website assets ready",
+                                    f"Website assets were validated, uploaded, activated, and checked on {profile.name}.")
+        self.run_async(action, done, title=f"Setting up website assets on {profile.name}…", determinate=True)
+
     def extract_assets(self):
-        root = Path(self.game_root.text())
-        if not root.is_dir(): QMessageBox.critical(self, "Game not found", "Select a valid Dragonwilds client directory."); return
-        if dragonwilds_is_running():
-            QMessageBox.warning(
-                self, "Close Dragonwilds first",
-                "Dragonwilds is currently running. Close it before starting extraction, then try again.\n\n"
-                "Zanik Manager will launch and close the game automatically while it generates mappings. "
-                "Do not relaunch or interact with the game until extraction finishes."
-            )
-            return
+        root = self.choose_or_confirm_game_root()
+        if not root: return
         output = self.paths["root"] / "extraction-output"
         tool_root = resource_path("asset-tools")
-        phase_percent = {"mappings": 10, "extract": 40, "bundle": 80, "complete": 100}
+        extractor = AssetExtractor(tool_root, BundleCache(self.paths["assets"]))
+        preflight = self.confirm_asset_preflight(root, extractor)
+        if preflight is None: return
+        close_game, preserve = preflight
+        phase_percent = {"preserve": 10, "mappings": 15, "restore": 30,
+                         "extract": 40, "bundle": 80, "complete": 100}
         def event(value):
             message = value.get("message", str(value)); phase = value.get("phase", "extract")
             self.operation_progress_signal.emit(message, phase_percent.get(phase, -1))
-        self.run_async(lambda: AssetExtractor(tool_root, BundleCache(self.paths["assets"])).extract(root, output, event),
+        def action():
+            if close_game:
+                self.operation_progress_signal.emit("Requesting Dragonwilds to close", 5)
+                if not request_dragonwilds_close():
+                    raise RuntimeError("Dragonwilds did not close normally. Close it manually and retry; it was not force-terminated.")
+            return extractor.extract(root, output, event, preserve_existing_loader=preserve,
+                                     recovery_root=self.asset_recovery_root(root))
+        self.run_async(action,
                        lambda item: (self.refresh_bundles(), self.log(f"Validated asset bundle: {item.path}"),
                                      QMessageBox.information(self, "Asset extraction complete",
                                                              f"The validated asset bundle is ready at:\n{item.path}")),
                        title="Extracting Dragonwilds web assets…", determinate=True)
 
     def upload_assets(self):
-        profile = self.active(); value = self.bundle_box.currentData()
+        profile = self.asset_target_box.currentData(); value = self.bundle_box.currentData()
         if not profile or not value: return
-        from .assets import AssetDeployer
+        bundle = Path(value)
+        if QMessageBox.question(self, "Confirm asset target",
+                                f"Upload and activate {bundle.name} on:\n\n{profile.name}\n{profile.panel_origin}\nServer {profile.server_id}?",
+                                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes: return
         def progress(current, total, path):
             percent = 15 + int(current * 75 / max(total, 1))
             self.operation_progress_signal.emit(f"Uploading and verifying {path}", percent)
-        self.run_async(lambda: AssetDeployer(self.provider()).activate(profile.id, profile.server_id, profile.server_root,
-                                                                       Path(value), progress),
+        self.run_async(lambda: AssetDeployer(self.provider(profile)).activate(profile.id, profile.server_id, profile.server_root,
+                                                                               bundle, progress),
                        lambda result: (self.log(f"Activated {result['fileCount']} asset files"),
                                        QMessageBox.information(self, "Assets activated",
                                                                f"Activated {result['fileCount']} validated asset files.")),

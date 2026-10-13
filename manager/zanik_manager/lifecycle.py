@@ -423,8 +423,12 @@ class PterodactylProvider(ServerProvider):
             result["checks"]["configSha256"] = None; result["healthy"] = False
         try:
             manifest = json.loads(self.client.read_file(server_id, f"{root}/zanik/assets/current/asset-manifest.json"))
-            result["assets"] = {"installed": True, "compatible": manifest.get("compatible"),
+            compatibility = manifest.get("compatibility", manifest.get("compatible"))
+            result["assets"] = {"installed": True,
+                                "compatible": compatibility not in {False, "incompatible"},
+                                "compatibility": compatibility,
                                 "gameBuild": manifest.get("gameBuild") or manifest.get("clientBuild")}
+            result["healthy"] &= result["assets"]["compatible"]
             if deep:
                 try:
                     audit = self._server_asset_audit(server_id, root, manifest)

@@ -667,7 +667,9 @@ def install_set(args: argparse.Namespace) -> int:
 def prepare_mappings(args: argparse.Namespace) -> int:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from windows_mapping import prepare
-    result = prepare(Path(args.game_root), Path(args.ue4ss_root), Path(args.output), Path(args.work_root), args.timeout)
+    result = prepare(Path(args.game_root), Path(args.ue4ss_root), Path(args.output), Path(args.work_root), args.timeout,
+                     args.preserve_existing_loader,
+                     Path(args.recovery_root) if args.recovery_root else None)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
@@ -677,6 +679,14 @@ def recover_mappings(args: argparse.Namespace) -> int:
     from windows_mapping import recover
     restored = recover(Path(args.journal))
     print(json.dumps({"restored": restored}, sort_keys=True))
+    return 0
+
+
+def mapping_preflight(args: argparse.Namespace) -> int:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from windows_mapping import mapping_status
+    result = mapping_status(Path(args.game_root), Path(args.recovery_root) if args.recovery_root else None)
+    print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
 
@@ -701,7 +711,13 @@ def main() -> int:
     mappings.add_argument("--output", required=True)
     mappings.add_argument("--work-root", required=True)
     mappings.add_argument("--timeout", type=int, default=600)
+    mappings.add_argument("--preserve-existing-loader", action="store_true")
+    mappings.add_argument("--recovery-root")
     mappings.set_defaults(run=prepare_mappings)
+    mapping_check = commands.add_parser("mapping-status")
+    mapping_check.add_argument("--game-root", required=True)
+    mapping_check.add_argument("--recovery-root")
+    mapping_check.set_defaults(run=mapping_preflight)
     recovery = commands.add_parser("recover-mappings")
     recovery.add_argument("--journal", required=True)
     recovery.set_defaults(run=recover_mappings)
