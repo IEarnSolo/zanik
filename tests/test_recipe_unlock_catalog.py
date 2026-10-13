@@ -432,6 +432,23 @@ class RecipeUnlockCatalogTests(unittest.TestCase):
         main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
         self.assertNotIn('path == "/recipe-runtime-catalog.tsv"', main)
 
+    def test_reviewed_runtime_history_preserves_prior_catalogs(self):
+        history = ROOT / "web" / "recipe-runtime-catalog-history.tsv"
+        rows = [line.split("\t") for line in history.read_text(encoding="utf-8").splitlines()
+                if line.startswith("C\t")]
+        self.assertGreaterEqual(len(rows), 2)
+        self.assertTrue(all(len(row) == 3 and len(row[1]) == 64 for row in rows))
+        self.assertTrue(all(all(len(recipe_id) == 16 for recipe_id in row[2].split(","))
+                            for row in rows))
+        runtime_header = (ROOT / "web" / "recipe-runtime-catalog.tsv").read_text(
+            encoding="utf-8").splitlines()[0]
+        current = re.search(r"fingerprint=([0-9a-f]{64})", runtime_header).group(1)
+        self.assertIn(current, {row[1] for row in rows})
+
+    def test_windows_extractor_seeds_reviewed_recipe_history(self):
+        pipeline = (ROOT / "tools" / "windows_asset_pipeline.py").read_text(encoding="utf-8")
+        self.assertIn('"--runtime-history-seed", str(repo / "web/recipe-runtime-catalog-history.tsv")', pipeline)
+
     def test_player_page_recipe_catalog_contract(self):
         page = (ROOT / "src" / "web_page.h").read_text(encoding="utf-8")
         main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
