@@ -548,7 +548,9 @@ class RecipeUnlockCatalogTests(unittest.TestCase):
         self.assertIn('path == "/recipe-unlocks"', source)
         self.assertIn('path == "/api/recipe-unlocks"', source)
         self.assertIn('Respond(fd,503,"application/json; charset=utf-8"', source)
-        self.assertIn(f"kExpectedRecipeCatalogCount={self.web['counts']['recipes']}", source)
+        self.assertIn('health.recipes>=100', source)
+        self.assertIn('ids==static_cast<size_t>(health.recipes)', source)
+        self.assertNotIn("kExpectedRecipeCatalogCount", source)
         self.assertIn('JsonValue(request.body,"bulk")=="true"', source)
         self.assertIn("SetManyEnabled(ids,enabled)", source)
         for field in ("recipeUnlockCatalogCompatibility", "recipeUnlockCatalogRecipes",

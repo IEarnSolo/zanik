@@ -11,5 +11,7 @@ assert "function routeLines(entry){" in page
 assert "link.onclick=closeRecipeTooltip" in page
 assert 'id="recipeCompletion"' in page
 assert "recipes unlocked';recipeCounts.textContent" in page
+assert "snapshot.compatibility==='changed'" in page
+assert "Catalog changed; matching unlocks are shown until the next scan" in page
 
 print("player recipe card links and direct tooltips: ok")

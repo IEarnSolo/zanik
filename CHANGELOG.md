@@ -11,6 +11,7 @@ All notable changes to Zanik are documented here.
 - Version the corrected extraction recipe so Zanik Manager does not reuse an older affected bundle.
 - Select the clean `Tag_Skill` artwork for player-page skill cards instead of the visually different glowing skill-tree node textures.
 - Accept structurally valid recipe catalogs whose exact count matches the reviewed asset profile, rather than rejecting new game builds with a stale native count.
+- Preserve matching saved player recipe unlocks across reviewed catalog removals and mark new recipes unknown until the character is scanned again.
 
 ### Changed
 
