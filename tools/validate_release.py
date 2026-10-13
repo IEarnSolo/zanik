@@ -5,8 +5,8 @@ from pathlib import Path
 BANNED_NAMES={'.env','.env.gitlab','admins.txt','console-admin.key','pterodactyl_api_key.txt','AGENTS.MD'}
 BANNED_SUFFIXES={'.pak','.utoc','.ucas','.usmap','.sav','.db','.pem','.p12','.pfx'}
 BANNED_CONTENT=(b'PTERODACTYL_API_KEY=',b'GITLAB_TOKEN=',b'-----BEGIN PRIVATE KEY-----')
-REQUIRED={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','config/zanik.conf.example','config/zanik-config.schema.json','compatibility/compatibility.tsv','LICENSE','README.md','CHANGELOG.md','docs/releasing.md'}
-EXECUTABLE={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh'}
+REQUIRED={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','scripts/verify-assets.sh','config/zanik.conf.example','config/zanik-config.schema.json','compatibility/compatibility.tsv','LICENSE','README.md','CHANGELOG.md','docs/releasing.md'}
+EXECUTABLE={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','scripts/verify-assets.sh'}
 WINDOWS_ASSET_REQUIRED={'init-assets.ps1','runtime/python.exe','runtime/LICENSE.txt','third_party/uas/uas.exe',
     'third_party/uas/LICENSE.txt','third_party/ue4ss/dwmapi.dll','third_party/ue4ss/ue4ss/UE4SS.dll',
     'third_party/ue4ss/ue4ss/LICENSE','asset-tools/extraction-recipes.json','tools/zanik_assets.py',

@@ -71,6 +71,7 @@ class ReleasePayload:
                 mode = (item.external_attr >> 16) & 0o777 or 0o644
                 self.entries[name] = PayloadEntry(name, len(data), sha256(data), mode)
         required = {"bin/libzanik.so", "bin/zanik-server", "scripts/compat-launcher.sh",
+                    "scripts/verify-assets.sh",
                     "config/zanik.conf.example", "compatibility/compatibility.tsv", "VERSION"}
         missing = required - set(self.entries)
         if missing:
@@ -381,19 +382,64 @@ class PterodactylProvider(ServerProvider):
             result["assets"] = {"installed": True, "compatible": manifest.get("compatible"),
                                 "gameBuild": manifest.get("gameBuild") or manifest.get("clientBuild")}
             if deep:
-                mismatches = []
-                for entry in manifest.get("files", []):
-                    try:
-                        actual = sha256(self.client.read_file(server_id, f"{root}/zanik/assets/current/{entry['path']}"))
-                        if actual != entry["sha256"]:
-                            mismatches.append(entry["path"])
-                    except Exception:
-                        mismatches.append(entry.get("path", "unknown"))
-                result["assets"]["mismatches"] = mismatches
-                result["healthy"] &= not mismatches
+                try:
+                    audit = self._server_asset_audit(server_id, root, manifest)
+                    result["assets"]["deepVerification"] = audit
+                    result["assets"]["mismatches"] = [] if audit.get("status") == "valid" else ["server-side asset audit failed"]
+                except Exception as error:
+                    # Compatibility fallback for older launchers or panels that
+                    # cannot invoke the bounded server-side verifier.
+                    mismatches = []
+                    for entry in manifest.get("files", []):
+                        try:
+                            actual = sha256(self.client.download_file(server_id, f"{root}/zanik/assets/current/{entry['path']}"))
+                            if actual != entry["sha256"]:
+                                mismatches.append(entry["path"])
+                        except Exception:
+                            mismatches.append(entry.get("path", "unknown"))
+                    result["assets"]["deepVerification"] = {"method": "per-file-api-fallback", "serverAuditError": str(error)}
+                    result["assets"]["mismatches"] = mismatches
+                result["healthy"] &= not result["assets"]["mismatches"]
         except Exception:
             result["assets"] = {"installed": False}
         return result
+
+    def _server_asset_audit(self, server_id: str, root: str, manifest: dict,
+                            timeout: float = 300.0) -> dict:
+        request_id = secrets.token_hex(12)
+        filename = f"asset-verification-{request_id}.json"
+        report_path = f"{root}/zanik/state/{filename}"
+        self.client.command(server_id, f"zanik-doctor-assets {request_id}")
+        deadline = time.monotonic() + timeout
+        raw = None
+        while time.monotonic() < deadline:
+            try:
+                raw = self.client.read_file(server_id, report_path)
+                break
+            except PterodactylError as error:
+                if error.status != 404:
+                    raise
+                time.sleep(1)
+        if raw is None:
+            raise RuntimeError("server-side asset verifier did not produce a report")
+        report = json.loads(raw)
+        entries = manifest.get("files", [])
+        canonical = "".join(f"{entry['sha256']}\t{entry['path']}\n" for entry in entries).encode()
+        manifest_path = f"{root}/zanik/assets/current/asset-manifest.json"
+        manifest_raw = self.client.read_file(server_id, manifest_path)
+        if (report.get("schemaVersion") != 1 or report.get("requestId") != request_id or
+                report.get("manifestSha256") != sha256(manifest_raw) or
+                report.get("expected") != len(entries) or
+                report.get("status") not in {"valid", "invalid"}):
+            raise RuntimeError("server-side asset verification report did not match the active manifest")
+        if report["status"] == "valid" and report.get("aggregateSha256") != sha256(canonical):
+            raise RuntimeError("server-side asset verification aggregate did not match the active manifest")
+        report["method"] = "server-side-aggregate"
+        try:
+            self.client.delete(server_id, f"{root}/zanik/state", [filename])
+        except Exception:
+            pass
+        return report
 
     def save_config(self, server_id: str, server_root: str, content: bytes, expected_sha256: str) -> dict:
         self.preflight(server_id, "config")

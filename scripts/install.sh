@@ -78,7 +78,7 @@ copy_required "$SOURCE_DIR/lib/zanik-common.sh" "$install_dir/lib/zanik-common.s
 copy_required "$SOURCE_DIR/config/zanik.conf.example" "$install_dir/config/zanik.conf.example"
 copy_required "$SOURCE_DIR/config/zanik-config.schema.json" "$install_dir/config/zanik-config.schema.json"
 copy_required "$SOURCE_DIR/compatibility/compatibility.tsv" "$install_dir/compatibility.tsv"
-for command in install update uninstall doctor init-assets; do copy_required "$SOURCE_DIR/scripts/$command.sh" "$install_dir/scripts/$command.sh"; done
+for command in install update uninstall doctor init-assets verify-assets; do copy_required "$SOURCE_DIR/scripts/$command.sh" "$install_dir/scripts/$command.sh"; done
 copy_required "$SOURCE_DIR/scripts/compat-launcher.sh" "$install_dir/scripts/compat-launcher.sh"
 copy_required "$SOURCE_DIR/tools/zanik_assets.py" "$install_dir/tools/zanik_assets.py"
 [ -f "$install_dir/config/zanik.conf" ] || cp -p "$install_dir/config/zanik.conf.example" "$install_dir/config/zanik.conf"

@@ -143,6 +143,7 @@ class ManagerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             archive = Path(temporary) / "server.zip"
             required = ["bin/libzanik.so", "bin/zanik-server", "bin/zanik-compat-analyzer", "scripts/compat-launcher.sh",
+                        "scripts/verify-assets.sh",
                         "config/zanik.conf.example", "compatibility/compatibility.tsv", "VERSION"]
             with zipfile.ZipFile(archive, "w") as package:
                 for name in required: package.writestr(name, b"0.2.0" if name == "VERSION" else b"payload")
@@ -186,6 +187,32 @@ class ManagerTests(unittest.TestCase):
             AssetDeployer(Provider())._verify_remote_subset("dev", "/stage", tree, {"world-map.jpg"},
                                                             lambda current,total,path:progress.append((current,total,path)))
             self.assertEqual(progress,[(1,1,"world-map.jpg")])
+
+    def test_deep_asset_verification_uses_one_server_report(self):
+        manifest = {"files": [
+            {"path": "world-map.jpg", "sha256": "a" * 64},
+            {"path": "items/example.png", "sha256": "b" * 64},
+        ]}
+        manifest_raw = json.dumps(manifest, sort_keys=True).encode()
+        canonical = "".join(f"{entry['sha256']}\t{entry['path']}\n" for entry in manifest["files"]).encode()
+        class Client:
+            def __init__(self): self.request_id = None; self.deleted = False; self.reads = []
+            def command(self, server, command): self.request_id = command.rsplit(" ", 1)[-1]
+            def read_file(self, server, path):
+                self.reads.append(path)
+                if path.endswith("asset-manifest.json"): return manifest_raw
+                return json.dumps({"schemaVersion": 1, "requestId": self.request_id, "status": "valid",
+                                   "expected": 2, "checked": 2, "missing": 0, "mismatches": 0,
+                                   "aggregateSha256": content_hash(canonical),
+                                   "manifestSha256": content_hash(manifest_raw)}).encode()
+            def delete(self, server, root, files): self.deleted = True
+        client = Client()
+        with tempfile.TemporaryDirectory() as temporary:
+            provider = PterodactylProvider(client, JournalStore(Path(temporary)))
+            report = provider._server_asset_audit("dev", "/home/container", manifest, timeout=0.1)
+        self.assertEqual(report["method"], "server-side-aggregate")
+        self.assertEqual(len(client.reads), 2)
+        self.assertTrue(client.deleted)
 
     def test_pyside_pruner_keeps_only_declared_runtime(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -244,7 +271,8 @@ class ManagerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); archive = root / "server.zip"
             files = {"bin/libzanik.so": b"library", "bin/zanik-server": b"launcher", "bin/zanik-compat-analyzer": b"analyzer",
-                     "scripts/compat-launcher.sh": b"#!/bin/sh\n# ZANIK_COMPAT_LAUNCHER=1\n", "config/zanik.conf.example": b"FEATURE_MAP=true\n",
+                     "scripts/compat-launcher.sh": b"#!/bin/sh\n# ZANIK_COMPAT_LAUNCHER=1\n",
+                     "scripts/verify-assets.sh": b"#!/bin/sh\nexit 0\n", "config/zanik.conf.example": b"FEATURE_MAP=true\n",
                      "config/zanik-config.schema.json": b"{}", "compatibility/compatibility.tsv": b"sha\toffsets\n", "VERSION": b"0.2.0\n"}
             with zipfile.ZipFile(archive, "w") as package:
                 for name, data in files.items(): package.writestr(name, data)

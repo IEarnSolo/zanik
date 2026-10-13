@@ -103,6 +103,27 @@ while kill -0 "$game_pid" 2>/dev/null && IFS= read -r command; do
     zanik-admin)
       zanik_log 'Usage: zanik-admin <public-character-id>'
       ;;
+    zanik-doctor-assets\ *)
+      request_id=${command#zanik-doctor-assets }
+      case "$request_id" in
+        ''|*[!0-9a-f]*)
+          zanik_log 'Usage: zanik-doctor-assets <request-id>'
+          ;;
+        *)
+          if [ ${#request_id} -gt 64 ]; then
+            zanik_log 'Usage: zanik-doctor-assets <request-id>'
+          else
+            report="$ZANIK_DIR/state/asset-verification-$request_id.json"
+            rm -f "$report"
+            "$ZANIK_DIR/scripts/verify-assets.sh" "$ZANIK_DIR/assets/current" "$report" "$request_id" >/dev/null 2>&1 &
+            zanik_log "Started server-side asset verification request $request_id."
+          fi
+          ;;
+      esac
+      ;;
+    zanik-doctor-assets)
+      zanik_log 'Usage: zanik-doctor-assets <request-id>'
+      ;;
     *) printf '%s\n' "$command" >&3;;
   esac
 done

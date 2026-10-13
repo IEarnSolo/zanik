@@ -12,7 +12,8 @@ All notable changes to Zanik are documented here.
 
 ### Changed
 
-- Use archive integrity, ZIP CRCs, and critical-file sampling for normal Pterodactyl asset activation; full per-file remote hashing remains available through deep Doctor.
+- Use archive integrity, ZIP CRCs, and critical-file sampling for normal Pterodactyl asset activation.
+- Make Deep Doctor hash the complete asset tree on the server and download one aggregate report, retaining per-file API downloads only as a compatibility fallback.
 
 ## [0.2.0] - 2026-10-12
 
