@@ -15,7 +15,7 @@ import re
 import time
 
 
-RECIPE_VERSION = 2
+RECIPE_VERSION = 3
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 
 

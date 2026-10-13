@@ -40,6 +40,14 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
     temporary_root = pathlib.Path(temporary)
     web_root = temporary_root / "empty-web"
     web_root.mkdir()
+    recipe_catalog = {
+        "schemaVersion": 1,
+        "generatedAt": "2026-10-12T00:00:00Z",
+        "counts": {"recipes": 100, "dependencyEdges": 0, "cycles": 0},
+        "entries": [{"id": f"{index:016x}", "name": f"Recipe {index}"} for index in range(100)],
+    }
+    recipe_path = web_root / "recipe-unlocks.json"
+    recipe_path.write_text(json.dumps(recipe_catalog, separators=(",", ":")), encoding="utf-8")
     data_file = temporary_root / "players.db"
 
     env = os.environ.copy()
@@ -81,6 +89,13 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
 
         expect_error(base, "/api/quests/catalog", 503, "Quest catalog unavailable")
         expect_error(base, "/api/map/npcs/catalog", 503, "NPC catalog unavailable")
+        with get(base, "/api/recipe-unlocks") as response:
+            assert json.loads(response.read())["counts"]["recipes"] == 100
+        recipe_catalog["counts"]["recipes"] = 101
+        recipe_path.write_text(json.dumps(recipe_catalog, separators=(",", ":")), encoding="utf-8")
+        expect_error(base, "/api/recipe-unlocks", 503, "Recipe unlock catalog unavailable")
+        recipe_catalog["counts"]["recipes"] = 100
+        recipe_path.write_text(json.dumps(recipe_catalog, separators=(",", ":")), encoding="utf-8")
         with get(base, "/assets/world-map.jpg") as response:
             assert response.headers.get_content_type() == "image/svg+xml"
             assert b"<svg" in response.read()

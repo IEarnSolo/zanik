@@ -140,7 +140,10 @@ def main() -> int:
             if not icon or not copy(images, icon, web / "resources" / f"{key}.png"):
                 placeholder(web / "resources" / f"{key}.png", (91, 157, 91, 255)); missing.append(f"resource:{key}")
     for skill in SKILLS:
-        candidates = [f"T_Icon_SkillTree_{skill}", f"T_Icon_{skill}", f"T_Icon_Tag_Skill_{skill}"]
+        # Player cards use the clean skill glyphs from the tag artwork.  The
+        # SkillTree textures are glowing progression-node badges and are not
+        # interchangeable even though their names look more specific.
+        candidates = [f"T_Icon_Tag_Skill_{skill}", f"T_Icon_{skill}", f"T_Icon_SkillTree_{skill}"]
         if not next((copy(images, candidate, web / "skills" / f"{skill}.png") for candidate in candidates), False):
             placeholder(web / "skills" / f"{skill}.png", (193, 166, 77, 255)); missing.append(f"skill:{skill}")
     for target, candidates, color in (
