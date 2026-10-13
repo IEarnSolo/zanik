@@ -82,3 +82,10 @@ def content_hash(data: bytes | str) -> str:
     if isinstance(data, str):
         data = data.encode()
     return hashlib.sha256(data).hexdigest()
+
+
+def update_website_settings(model: ConfigModel, text: str, port: int, public_url: str) -> str:
+    values = model.parse(text)
+    values["STATUS_PORT"] = port
+    values["PUBLIC_BASE_URL"] = public_url.strip()
+    return model.render(values)

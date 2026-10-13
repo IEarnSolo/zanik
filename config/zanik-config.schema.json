@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "properties": {
-    "STATUS_PORT": {"type": "integer", "default": 29105, "minimum": 1, "maximum": 65535, "category": "networking", "title": "Web status port", "description": "TCP port used by the Zanik web interface.", "restartRequired": true},
-    "PUBLIC_BASE_URL": {"type": "string", "default": "http://127.0.0.1:29105", "pattern": "^https?://", "category": "networking", "title": "Public base URL", "description": "Address used when Zanik creates console login links.", "restartRequired": true},
+    "STATUS_PORT": {"type": "integer", "default": 29105, "minimum": 1, "maximum": 65535, "category": "networking", "title": "Zanik website TCP port", "description": "Separately allocated and open TCP port for the Zanik website. Do not use the Dragonwilds game port.", "restartRequired": true},
+    "PUBLIC_BASE_URL": {"type": "string", "default": "http://127.0.0.1:29105", "pattern": "^https?://", "category": "networking", "title": "Public website URL", "description": "Externally reachable website address used for links, including its public port when needed.", "restartRequired": true},
     "ADMIN_COOKIE_NAME": {"type": "string", "default": "zanik_admin", "pattern": "^[A-Za-z0-9_]{1,64}$", "category": "administration", "title": "Administrator cookie name", "description": "Browser cookie name for administrator sessions.", "restartRequired": true},
     "FEATURE_PLAYER_STATUS": {"type": "boolean", "default": true, "category": "read-only", "title": "Player status", "description": "Track connected players and status information.", "restartRequired": true},
     "FEATURE_KILL_TRACKING": {"type": "boolean", "default": true, "category": "read-only", "title": "Kill tracking", "description": "Record player kill information.", "restartRequired": true},

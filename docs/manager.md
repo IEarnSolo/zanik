@@ -7,8 +7,9 @@ Zanik Manager is the recommended installation path for Windows administrators us
 1. Enter the Pterodactyl panel URL and a **Client API key** from your panel account.
 2. Select one of the Dragonwilds servers visible to that account and give the profile a friendly name.
 3. Review the detected installation and choose wrapper or executable-replacement mode.
-4. If the server has no healthy website assets, accept **Set up website assets now** after installation. Manager will validate a cached bundle or extract, upload, activate, and verify a new one for that exact server. Choose **Later** to use the Assets tab manually.
-5. Run **Doctor** before joining the server.
+4. Optionally configure the Zanik website port and public URL. The port must be a separate TCP allocation, not the Dragonwilds game port. **Save and continue** writes the validated settings and restarts the server; **Skip for now** continues without changing them.
+5. If the server has no healthy website assets, accept **Set up website assets now**. Manager will validate a cached bundle or extract, upload, activate, and verify a new one for that exact server. Choose **Later** to use the Assets tab manually.
+6. Run **Doctor** before joining the server.
 
 API keys are stored in Windows Credential Manager. They are never written to `profiles.json`, logs, diagnostics, or support ZIPs. Before sending a key to a remote panel over plain HTTP, the Manager presents an explicit confirmation and then keeps a compact warning on that profile because the traffic can be intercepted. HTTPS and loopback HTTP connections do not show the warning. Certificate validation cannot be bypassed.
 
@@ -38,7 +39,7 @@ Dragonwilds must be closed before extraction starts. The Manager checks this bef
 
 ## Configuration and support
 
-The Configuration page validates strict `KEY=VALUE` data before upload, refuses to overwrite a file changed since it was loaded, creates a backup, and asks whether to restart. State-changing and QoL features remain off by default.
+The Configuration tab validates strict `KEY=VALUE` data before upload, refuses to overwrite a file changed since it was loaded, creates a backup, and asks whether to restart. If the post-install website step was skipped, select the server, open **Configuration**, load its configuration, and edit the **Networking** section. `STATUS_PORT` is Zanik's separately allocated TCP port; `PUBLIC_BASE_URL` is the address users will open. State-changing and QoL features remain off by default.
 
 Doctor can perform a quick installation check or a deliberately slower complete remote asset verification. Deep Doctor normally asks Zanik's launcher to hash the active tree on the server and downloads one aggregate report. Older installations that lack the helper can fall back to the much slower per-file API audit; that fallback should be used only when a complete audit is explicitly needed. Neither deep path is part of normal activation. Support ZIPs are generated locally and can be reviewed before sharing. They exclude API keys, console secrets, claims, sessions, authorization files, and game-derived assets.
 
