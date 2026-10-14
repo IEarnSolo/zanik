@@ -2,6 +2,14 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.12] - 2026-10-14
+
+### Fixed
+
+- Detect when Steam updated Dragonwilds after a resumable mapping or extraction was saved, before Zanik Manager starts the resume operation.
+- Offer to safely discard only the stale Zanik workspace and immediately restart the guided extraction instead of failing inside PowerShell.
+- Exclude cached asset bundles from guided reuse when their source executable does not match the currently installed client.
+
 ## [0.2.11] - 2026-10-14
 
 ### Fixed

@@ -82,6 +82,8 @@ class ManagerTests(unittest.TestCase):
         self.assertIn("self.asset_target_box", source)
         self.assertIn("Confirm asset target", source)
         self.assertIn("def provider(self, profile:", source)
+        self.assertIn("Discard stale work and start fresh", source)
+        self.assertIn("resume_compatibility(work, root)", source)
 
     def test_dragonwilds_process_preflight(self):
         class Result:
@@ -139,6 +141,35 @@ class ManagerTests(unittest.TestCase):
             }), encoding="utf-8-sig")
             self.assertEqual(extractor.resumable(work)["stage"], "mappings")
 
+    def test_resume_and_cache_compatibility_reject_game_updates(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); tools = root / "asset-tools"; work = root / "work"
+            game = root / "game"
+            executable = game / "RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe"
+            executable.parent.mkdir(parents=True); executable.write_bytes(b"game-v1")
+            (tools / "asset-tools").mkdir(parents=True)
+            (tools / "asset-tools/extraction-recipes.json").write_bytes(b"recipe")
+            (tools / "asset-tools/tools.lock.json").write_bytes(b"lock")
+            extractor = AssetExtractor(tools, BundleCache(root / "cache"))
+            work.mkdir(); (work / ".zanik-asset-work.json").write_text(json.dumps({
+                "schemaVersion": 1, "owner": "Zanik asset extractor"
+            }))
+            fingerprints = extractor.current_fingerprints(game)
+            (work / "extraction-journal.json").write_text(json.dumps({
+                "schemaVersion": 1, "stage": "mappings", "fingerprints": fingerprints
+            }))
+            self.assertTrue(extractor.resume_compatibility(work, game)["compatible"])
+            manifest = {"sourceExecutable": {"sha256": fingerprints["gameExecutableSha256"]}}
+            bundle = root / "bundle.zip"
+            with zipfile.ZipFile(bundle, "w") as archive:
+                archive.writestr("asset-manifest.json", json.dumps(manifest))
+            self.assertTrue(extractor.bundle_compatible_with_game(bundle, game))
+            executable.write_bytes(b"game-v2")
+            status = extractor.resume_compatibility(work, game)
+            self.assertFalse(status["compatible"])
+            self.assertEqual(status["mismatches"], ["gameExecutableSha256"])
+            self.assertFalse(extractor.bundle_compatible_with_game(bundle, game))
+
     def test_manager_exposes_resume_and_safe_discard_controls(self):
         source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
         self.assertIn("Resume extraction", source)
@@ -160,7 +191,7 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(asset_setup_mode(False, status), "resume")
         self.assertEqual(asset_setup_mode(False, None), "new")
         source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
-        self.assertIn("resume_status = None if use_cached else extractor.resumable(work)", source)
+        self.assertIn("resume_status = None if use_cached else extractor.resume_compatibility(work, root)", source)
         self.assertIn('resume=(mode == "resume")', source)
         self.assertIn('resume_activity_message(resume_status["stage"])', source)
         self.assertIn("Dragonwilds will not reopen", resume_activity_message("mappings"))

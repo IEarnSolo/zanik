@@ -30,6 +30,8 @@ CRITICAL_REMOTE_ASSETS = {
     "resource-identities.tsv",
 }
 
+GAME_EXECUTABLE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
+
 
 def asset_setup_mode(use_cached: bool, resume_status: dict | None) -> str:
     """Choose the cheapest safe source for a guided asset setup."""
@@ -171,6 +173,45 @@ class AssetExtractor:
         if completed.returncode:
             raise RuntimeError("Cached asset bundle validation failed")
 
+    @staticmethod
+    def _file_sha256(path: Path) -> str:
+        value = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                value.update(chunk)
+        return value.hexdigest()
+
+    def current_fingerprints(self, game_root: Path) -> dict[str, str]:
+        paths = {
+            "gameExecutableSha256": game_root / GAME_EXECUTABLE,
+            "recipeSha256": self.tool_root / "asset-tools" / "extraction-recipes.json",
+            "toolLockSha256": self.tool_root / "asset-tools" / "tools.lock.json",
+        }
+        missing = [str(path) for path in paths.values() if not path.is_file()]
+        if missing:
+            raise RuntimeError("Cannot validate resumable extraction; required file is missing: " + ", ".join(missing))
+        return {name: self._file_sha256(path) for name, path in paths.items()}
+
+    def resume_compatibility(self, work_root: Path, game_root: Path) -> dict | None:
+        status = self.resumable(work_root)
+        if not status:
+            return None
+        current = self.current_fingerprints(game_root)
+        expected = status.get("fingerprints", {})
+        mismatches = [name for name, value in current.items() if expected.get(name) != value]
+        return {**status, "compatible": not mismatches, "mismatches": mismatches}
+
+    def bundle_compatible_with_game(self, bundle: Path, game_root: Path,
+                                    executable_sha256: str | None = None) -> bool:
+        try:
+            with zipfile.ZipFile(bundle) as archive:
+                manifest = json.loads(archive.read("asset-manifest.json"))
+            source = manifest.get("sourceExecutable") or {}
+            current = executable_sha256 or self.current_fingerprints(game_root)["gameExecutableSha256"]
+            return source.get("sha256") == current
+        except (OSError, KeyError, ValueError, zipfile.BadZipFile, json.JSONDecodeError, RuntimeError):
+            return False
+
     def extract(self, game_root: Path, output: Path, event=lambda event: None,
                 usmap: Path | None = None, keep_work: bool = False,
                 preserve_existing_loader: bool = False,
@@ -235,7 +276,9 @@ class AssetExtractor:
             return None
         if ownership.get("owner") != "Zanik asset extractor" or value.get("schemaVersion") != 1:
             return None
-        return {"stage": str(value.get("stage", "unknown")), "updatedAt": str(value.get("updatedAt", ""))}
+        fingerprints = value.get("fingerprints", {})
+        return {"stage": str(value.get("stage", "unknown")), "updatedAt": str(value.get("updatedAt", "")),
+                "fingerprints": fingerprints if isinstance(fingerprints, dict) else {}}
 
     def discard(self, work_root: Path) -> None:
         tool = self.tool_root / "tools" / "zanik_assets.py"

@@ -132,3 +132,5 @@ Both paths reject traversal, symlinks, missing or unexpected parts, duplicate pa
 Restart the Pterodactyl server after the initializer succeeds. This is required for native recipe and quest tracking to load the activated runtime catalogs. Zanik Manager handles this automatically for Manager-driven uploads.
 
 Zanik-authored placeholders cover genuinely unavailable optional artwork. Missing required catalogs or static assets never produce a partially activated bundle.
+
+If Dragonwilds updates while an extraction is paused, its saved mapping and raw exports are treated as stale. Zanik Manager checks the saved game, recipe, and tool fingerprints before resuming. Choose **Discard stale work and start fresh** when prompted; validated bundles already in the local cache are not deleted. Guided setup will not offer an older cached bundle for a different client executable.
