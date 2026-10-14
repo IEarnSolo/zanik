@@ -8,7 +8,7 @@ Zanik Manager is the recommended installation path for Windows administrators us
 2. Select one of the Dragonwilds servers visible to that account and give the profile a friendly name.
 3. Review the detected installation and choose wrapper or executable-replacement mode.
 4. Optionally configure the Zanik website port and public URL. The port must be a separate TCP allocation, not the Dragonwilds game port. **Save and continue** writes the validated settings and restarts the server; **Skip for now** continues without changing them.
-5. If the server has no healthy website assets, accept **Set up website assets now**. Manager will validate a cached bundle, resume any verified retained extraction, or start a new extraction before it uploads, activates, and verifies the assets on that exact server. Resuming retained work does not reopen Dragonwilds or repeat UnrealAssetScout exports. Choose **Later** to use the Assets tab manually.
+5. If the server has no healthy website assets, accept **Set up website assets now**. Manager will validate a compatible cached bundle, resume any verified retained extraction, or start a new extraction before it uploads, activates, and verifies the assets on that exact server. Resume never repeats mapping generation; it continues any extraction stages that were not already completed. Choose **Later** to use the Assets tab manually.
 6. Run **Doctor** before joining the server.
 
 API keys are stored in Windows Credential Manager. They are never written to `profiles.json`, logs, diagnostics, or support ZIPs. Before sending a key to a remote panel over plain HTTP, the Manager presents an explicit confirmation and then keeps a compact warning on that profile because the traffic can be intercepted. HTTPS and loopback HTTP connections do not show the warning. Certificate validation cannot be bypassed.
@@ -53,3 +53,5 @@ Doctor can perform a quick installation check or a deliberately slower complete 
 ## Windows trust warning
 
 The initial portable build is not code-signed, so Windows may show a SmartScreen warning. Verify the archive against the published `SHA256SUMS`. Future builds can be signed in CI without changing the portable layout.
+
+When Steam updates Dragonwilds during a paused asset extraction, the Manager will refuse to reuse the old mapping. It offers **Discard stale work and start fresh**, removes only the marked Zanik extraction workspace, and returns to the guided extraction flow. Existing validated cached bundles remain available, but a bundle produced from a different client executable is not automatically offered for a new installation.

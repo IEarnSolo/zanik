@@ -272,9 +272,15 @@ class MainWindow(QMainWindow):
         root = Path(self.game_root.text()) if self.game_root.text() else None
         if root and root.is_dir():
             extractor = AssetExtractor(resource_path("asset-tools"), BundleCache(self.paths["assets"]))
-            status = extractor.resumable(self.asset_work_root(root))
+            try:
+                status = extractor.resume_compatibility(self.asset_work_root(root), root)
+            except (OSError, RuntimeError):
+                status = extractor.resumable(self.asset_work_root(root))
             if status:
-                safe_message += f"\n\nVerified work was preserved at stage {status['stage']}. Use Resume extraction or Discard generated work on the Assets tab."
+                if status.get("compatible", True):
+                    safe_message += f"\n\nVerified work was preserved at stage {status['stage']}. Use Resume extraction or Discard generated work on the Assets tab."
+                else:
+                    safe_message += "\n\nThe saved extraction belongs to an older game or tool version. Discard it from the Assets tab before starting fresh."
         QMessageBox.critical(self, "Operation failed", safe_message + "\n\nTechnical details are available in Activity.")
         self.activity.appendPlainText("Operation failed: " + safe_message + "\n" + safe_details)
         self.statusBar().showMessage("Operation failed: " + safe_message, 5000)
@@ -565,7 +571,13 @@ class MainWindow(QMainWindow):
         root = self.choose_or_confirm_game_root(profile)
         if not root: return
         tool_root = resource_path("asset-tools"); cache = BundleCache(self.paths["assets"])
-        extractor = AssetExtractor(tool_root, cache); cached = cache.list(game_root_id(root))
+        extractor = AssetExtractor(tool_root, cache)
+        all_cached = cache.list(game_root_id(root))
+        current_executable = extractor.current_fingerprints(root)["gameExecutableSha256"] if all_cached else None
+        cached = [item for item in all_cached
+                  if extractor.bundle_compatible_with_game(item.path, root, current_executable)]
+        if all_cached and not cached:
+            self.log("Existing cached asset bundles target an older Dragonwilds executable and will not be reused.")
         use_cached = False
         if cached:
             use_cached = QMessageBox.question(
@@ -573,7 +585,11 @@ class MainWindow(QMainWindow):
                 f"A cached bundle for build {cached[0].build} is available. Validate and reuse it instead of opening the game again?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes
         work = self.asset_work_root(root)
-        resume_status = None if use_cached else extractor.resumable(work)
+        resume_status = None if use_cached else extractor.resume_compatibility(work, root)
+        if resume_status and not resume_status["compatible"]:
+            self.offer_stale_asset_cleanup(root, extractor, resume_status,
+                                           lambda: self.guided_asset_setup(profile))
+            return
         mode = asset_setup_mode(use_cached, resume_status)
         if mode == "resume":
             self.log(resume_activity_message(resume_status["stage"]))
@@ -635,11 +651,14 @@ class MainWindow(QMainWindow):
         output = self.paths["root"] / "extraction-output"
         tool_root = resource_path("asset-tools")
         extractor = AssetExtractor(tool_root, BundleCache(self.paths["assets"]))
-        work = self.asset_work_root(root); resume_status = extractor.resumable(work)
+        work = self.asset_work_root(root); resume_status = extractor.resume_compatibility(work, root)
+        if resume_status and not resume_status["compatible"]:
+            self.offer_stale_asset_cleanup(root, extractor, resume_status, self.extract_assets)
+            return
         if resume_status:
             if QMessageBox.question(
                     self, "Resume verified extraction",
-                    f"Verified extraction work is available at stage {resume_status['stage']}. Resume it without reopening Dragonwilds or repeating exports?",
+                    resume_activity_message(resume_status["stage"]) + " Resume now?",
                     QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Yes) != QMessageBox.Yes:
                 return
             preflight = (False, False)
@@ -672,10 +691,13 @@ class MainWindow(QMainWindow):
         if not root: return
         tool_root = resource_path("asset-tools"); cache = BundleCache(self.paths["assets"])
         extractor = AssetExtractor(tool_root, cache); work = self.asset_work_root(root)
-        status = extractor.resumable(work)
+        status = extractor.resume_compatibility(work, root)
         if not status:
             QMessageBox.information(self, "Nothing to resume", "No verified Zanik extraction workspace exists for this game installation.")
             self.refresh_bundles(); return
+        if not status["compatible"]:
+            self.offer_stale_asset_cleanup(root, extractor, status, self.extract_assets)
+            return
         output = self.paths["root"] / "extraction-output"
         def event(value):
             phase = value.get("phase", "extract")
@@ -703,6 +725,30 @@ class MainWindow(QMainWindow):
         self.run_async(lambda: extractor.discard(work),
                        lambda _: (self.refresh_bundles(), self.log("Discarded the incomplete asset extraction workspace.")),
                        title="Discarding generated work…")
+
+    def offer_stale_asset_cleanup(self, root: Path, extractor: AssetExtractor, status: dict, retry):
+        labels = {
+            "gameExecutableSha256": "Dragonwilds was updated",
+            "recipeSha256": "the extraction recipe changed",
+            "toolLockSha256": "the packaged extraction tools changed",
+        }
+        reasons = ", ".join(labels.get(name, name) for name in status.get("mismatches", []))
+        box = QMessageBox(self); box.setWindowTitle("Saved extraction is out of date")
+        box.setText("The saved extraction cannot be safely resumed.")
+        box.setInformativeText(
+            f"Reason: {reasons}. Zanik can safely remove only its saved workspace and start a fresh extraction. "
+            "Validated cached bundles are not removed.")
+        discard = box.addButton("Discard stale work and start fresh", QMessageBox.AcceptRole)
+        cancel = box.addButton("Cancel", QMessageBox.RejectRole); box.setDefaultButton(discard); box.exec()
+        if box.clickedButton() is not discard:
+            return
+        work = self.asset_work_root(root)
+        self.run_async(
+            lambda: extractor.discard(work),
+            lambda _: (self.log("Discarded stale extraction work after a game or tool update."),
+                       self.refresh_bundles(), retry()),
+            title="Preparing a fresh asset extraction…",
+        )
 
     def upload_assets(self):
         profile = self.asset_target_box.currentData(); value = self.bundle_box.currentData()
