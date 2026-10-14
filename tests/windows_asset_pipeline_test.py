@@ -15,6 +15,8 @@ filesystem_spec = importlib.util.spec_from_file_location("asset_filesystem", ROO
 asset_filesystem = importlib.util.module_from_spec(filesystem_spec); filesystem_spec.loader.exec_module(asset_filesystem)
 building_spec = importlib.util.spec_from_file_location("generate_building_catalog", ROOT / "tools/generate_building_catalog.py")
 buildings = importlib.util.module_from_spec(building_spec); building_spec.loader.exec_module(buildings)
+world_spec = importlib.util.spec_from_file_location("generate_world_catalogs", ROOT / "tools/generate_world_catalogs.py")
+world = importlib.util.module_from_spec(world_spec); world_spec.loader.exec_module(world)
 
 recipe = json.loads((ROOT / "asset-tools/extraction-recipes.json").read_text(encoding="utf-8"))
 pattern = re.compile(recipe["jsonFilter"], re.I)
@@ -31,6 +33,15 @@ assert buildings.EXPECTED_ICON_SOURCES == {
     "authored-texture": 753,
     "embedded-build-ui-thumbnail": 68,
     "procedural-thumbnail": 1,
+}
+assert world.RESOURCE_ICON_ITEMS == {
+    "BP_Cactus_Barrel": "ITEM_Resources_Steak_Cactus",
+    "BP_Cactus_Bunny": "ITEM_Resources_Steak_Cactus",
+    "BP_Cactus_Pipe": "ITEM_Resources_Cactus_Pipe",
+    "BP_Plant_Explosive_CorpseCotton": "ITEM_Resources_Corpse_Fur",
+    "BP_Spawner_Salvage_Metal": "ITEM_Resources_Salvage_Bronze",
+    "BP_ThornyRoot_Irit": "ITEM_Herb_Irit",
+    "BP_Weed_Desert": "ITEM_Resources_Weed_Desert",
 }
 assert buildings.icon_source("/Game/Art/UI/Icons/GeneratedIcons/SM_Flag.SM_Flag") == "embedded-build-ui-thumbnail"
 assert buildings.icon_source("/Game/Art/UI/Icons/ProceduralThumbnails/T_Tree.T_Tree") == "procedural-thumbnail"
@@ -58,6 +69,7 @@ with tempfile.TemporaryDirectory() as name:
     (root / "item.json").write_text(json.dumps([
         {"Properties": {"Icon": {"AssetPathName": "/Game/UI/T_Icon_Log.T_Icon_Log"}}},
         {"Properties": {"Image": {"ObjectPath": "/Game/UI/T_Icon_Wolf.T_Icon_Wolf"}}},
+        {"Properties": {"Icon": {"AssetPathName": "/Game/UI/T_Arrows_Bone.T_Arrows_Bone"}}},
         {"Properties": {"DisplayIcon": {"AssetPathName": "/Game/Art/UI/Icons/GeneratedIcons/SM_Flag.SM_Flag"}}},
         {"Properties": {"DisplayIcon": {"AssetPathName": "/Game/Art/UI/Icons/ProceduralThumbnails/T_Tree.T_Tree"}}},
     ]), encoding="utf-8")
@@ -66,6 +78,7 @@ with tempfile.TemporaryDirectory() as name:
         "basename:T_WorldMap_Landmass",
         "package:RSDragonwilds/Content/Art/UI/Icons/GeneratedIcons/SM_Flag",
         "package:RSDragonwilds/Content/Art/UI/Icons/ProceduralThumbnails/T_Tree",
+        "package:RSDragonwilds/Content/UI/T_Arrows_Bone",
         "package:RSDragonwilds/Content/UI/T_Icon_Log",
         "package:RSDragonwilds/Content/UI/T_Icon_Wolf",
     ]
