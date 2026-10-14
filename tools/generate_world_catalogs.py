@@ -39,6 +39,20 @@ RESOURCE_NAMES = {
     "BP_Cactus_Pipe": "Fibrous Pipe Cactus",
 }
 
+# Some world resources do not expose a single ItemData property on their
+# actor CDO.  Their web-map marker therefore uses the reviewed inventory item
+# that represents the harvested resource.  Keep this keyed by stable cooked
+# identities rather than localized display names.
+RESOURCE_ICON_ITEMS = {
+    "BP_Cactus_Barrel": "ITEM_Resources_Steak_Cactus",
+    "BP_Cactus_Bunny": "ITEM_Resources_Steak_Cactus",
+    "BP_Cactus_Pipe": "ITEM_Resources_Cactus_Pipe",
+    "BP_Plant_Explosive_CorpseCotton": "ITEM_Resources_Corpse_Fur",
+    "BP_Spawner_Salvage_Metal": "ITEM_Resources_Salvage_Bronze",
+    "BP_ThornyRoot_Irit": "ITEM_Herb_Irit",
+    "BP_Weed_Desert": "ITEM_Resources_Weed_Desert",
+}
+
 
 def generated_at() -> str:
     import os
@@ -347,6 +361,15 @@ def resource_catalog(args: argparse.Namespace) -> int:
         item = item_exports[0] if item_exports else {}
         respawn = next((entry for entry in exports if entry.get("Type") == "ResourceRespawnComponent" and entry.get("Name") == "RespawnComponent"), None)
         metadata[raw] = {"name": text(props(item).get("Name")) or display_name(raw), "iconAsset": ref_base(props(item).get("Icon")), "respawn": inherited(respawn)}
+    for raw, item_key in RESOURCE_ICON_ITEMS.items():
+        item_path = items.get(item_key)
+        item_exports = load(item_path) if item_path else None
+        item = next((record for record in (item_exports or []) if record.get("Name") == item_key), None)
+        icon = ref_base(props(item).get("Icon"))
+        if not icon:
+            raise RuntimeError(f"reviewed resource icon item {item_key} for {raw} is missing or has no Icon")
+        current = metadata.setdefault(raw, {"name": display_name(raw), "iconAsset": "", "respawn": ""})
+        current["iconAsset"] = icon
     nodes: list[dict[str, Any]] = []; private: list[dict[str, Any]] = []; types: dict[str, dict[str, Any]] = {}; rejected = 0; scanned = 0
     for path in files(args.cells_root):
         exports = load(path)

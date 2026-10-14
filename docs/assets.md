@@ -4,6 +4,8 @@ Zanik does not distribute Dragonwilds containers, mappings, extracted trees, or 
 
 Building artwork comes from the client's authored build-interface assets. Most pieces reference ordinary textures; 68 special pieces reference `GeneratedIcons` packages that contain an embedded thumbnail, and the Wintumber tree references a procedural-thumbnail texture. UnrealAssetScout exports those authored PNGs directly. Zanik does not render building models and does not require Blender.
 
+Resource markers whose world actors do not expose a direct item reference use a reviewed mapping to the harvested inventory item. Item artwork is selected from the explicit cooked `Icon` reference by full package path; it is never guessed from a filename or replaced by a generated marker. Missing resource artwork makes extraction fail before bundling.
+
 ## Build on Windows
 
 Extract `zanik-asset-tools-windows-x86_64-VERSION.zip`, open PowerShell in that directory, close Dragonwilds, and run:

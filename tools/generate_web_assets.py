@@ -145,6 +145,9 @@ def main() -> int:
             key = str(item.get("id", "")); icon = resource_icons.get(key, "")
             if not icon or not copy(images, icon, web / "resources" / f"{key}.png"):
                 placeholder(web / "resources" / f"{key}.png", (91, 157, 91, 255)); missing.append(f"resource:{key}")
+        missing_resources = [entry for entry in missing if entry.startswith("resource:")]
+        if missing_resources:
+            raise RuntimeError("required resource artwork is unavailable: " + ", ".join(missing_resources))
     for skill in SKILLS:
         # Player cards use the clean skill glyphs from the tag artwork.  The
         # SkillTree textures are glowing progression-node badges and are not

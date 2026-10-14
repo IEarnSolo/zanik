@@ -160,8 +160,10 @@ def referenced_textures(json_root: Path, required: list[str]) -> list[str]:
     targets = {f"basename:{name}" for name in required}
     def visit(value: object, key: str = "") -> None:
         if isinstance(value, dict):
-            display = value.get("DisplayIcon")
-            if isinstance(display, dict):
+            for field in ("Icon", "DisplayIcon", "Image"):
+                display = value.get(field)
+                if not isinstance(display, dict):
+                    continue
                 reference = display.get("AssetPathName") or display.get("ObjectPath")
                 package = cooked_package_path(str(reference or ""))
                 if package:
