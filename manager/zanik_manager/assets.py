@@ -40,6 +40,15 @@ def asset_setup_mode(use_cached: bool, resume_status: dict | None) -> str:
     return "new"
 
 
+def resume_activity_message(stage: str) -> str:
+    """Describe exactly which expensive work a verified resume will repeat."""
+    if stage == "mappings":
+        return ("Resuming from the verified mapping; Dragonwilds will not reopen. "
+                "UnrealAssetScout will continue with catalog and artwork export.")
+    return (f"Resuming verified asset work from stage {stage}; Dragonwilds and completed "
+            "UnrealAssetScout exports will not run again.")
+
+
 def game_root_id(path: Path) -> str:
     return hashlib.sha256(str(path.resolve()).lower().encode()).hexdigest()[:16]
 

@@ -2,6 +2,14 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.11] - 2026-10-14
+
+### Fixed
+
+- Keep the Zanik Manager Windows extractor runtime version in lockstep with extraction recipe version 5, preventing the packaged 0.2.10 tool from rejecting its own recipe immediately after mapping generation.
+- Reuse the verified mapping when resuming this failure, without reopening Dragonwilds, while accurately reporting that UnrealAssetScout still needs to perform the catalog and artwork exports.
+- Add a release-gating regression check that fails whenever the pipeline and extraction recipe versions are not bumped together.
+
 ## [0.2.10] - 2026-10-14
 
 ### Fixed
