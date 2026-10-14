@@ -2,6 +2,15 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.10] - 2026-10-14
+
+### Fixed
+
+- Restore the seven missing web-map resource icons for Barrel Cactus, Bunny Cactus, Corpse Cotton, Desert Weed, Fibrous Pipe Cactus, Irit, and Salvage Metal using reviewed harvested-item identities.
+- Extract explicit item artwork by full cooked package path so Fang Arrow and Poisoned Fang Arrow receive their authored recipe-card icon even though its texture does not use the `T_Icon_*` naming convention.
+- Reject missing required resource artwork before bundling instead of silently publishing generated placeholders, and invalidate older incomplete asset caches with extraction recipe version 5.
+- Package the corrected recipe in Zanik Manager and the standalone Windows asset tool so newly extracted bundles cannot reuse the affected older cache.
+
 ## [0.2.9] - 2026-10-13
 
 ### Fixed
