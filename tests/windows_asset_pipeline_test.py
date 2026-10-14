@@ -19,6 +19,9 @@ world_spec = importlib.util.spec_from_file_location("generate_world_catalogs", R
 world = importlib.util.module_from_spec(world_spec); world_spec.loader.exec_module(world)
 
 recipe = json.loads((ROOT / "asset-tools/extraction-recipes.json").read_text(encoding="utf-8"))
+assert pipeline.RECIPE_VERSION == recipe["schemaVersion"], (
+    "the pipeline and extraction recipe versions must be bumped together"
+)
 pattern = re.compile(recipe["jsonFilter"], re.I)
 assert pattern.search("/Game/Maps/World/L_World.umap")
 assert pattern.search("/Game/Maps/World/L_World/_Generated_/ABC.umap")

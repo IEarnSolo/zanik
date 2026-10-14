@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from manager.zanik_manager.assets import (AssetDeployer, AssetExtractor, asset_setup_mode,
-                                          dragonwilds_is_running, request_dragonwilds_close)
+                                          dragonwilds_is_running, request_dragonwilds_close,
+                                          resume_activity_message)
 from manager.zanik_manager.cache import BundleCache
 from manager.zanik_manager.config import ConfigError, ConfigModel, content_hash, update_website_settings
 from manager.zanik_manager.journal import JournalStore, OperationJournal
@@ -161,7 +162,11 @@ class ManagerTests(unittest.TestCase):
         source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
         self.assertIn("resume_status = None if use_cached else extractor.resumable(work)", source)
         self.assertIn('resume=(mode == "resume")', source)
-        self.assertIn("Dragonwilds and UnrealAssetScout will not run again", source)
+        self.assertIn('resume_activity_message(resume_status["stage"])', source)
+        self.assertIn("Dragonwilds will not reopen", resume_activity_message("mappings"))
+        self.assertIn("will continue with catalog and artwork export", resume_activity_message("mappings"))
+        self.assertIn("completed UnrealAssetScout exports will not run again",
+                      resume_activity_message("exports"))
 
     def test_profile_store_has_only_credential_reference(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDia
 from PySide6.QtCore import QUrl
 
 from .assets import (AssetDeployer, AssetExtractor, asset_setup_mode, discover_steam_game_roots, game_root_id,
-                     request_dragonwilds_close)
+                     request_dragonwilds_close, resume_activity_message)
 from .cache import BundleCache
 from .config import ConfigModel, content_hash, update_website_settings
 from .journal import JournalStore
@@ -576,7 +576,7 @@ class MainWindow(QMainWindow):
         resume_status = None if use_cached else extractor.resumable(work)
         mode = asset_setup_mode(use_cached, resume_status)
         if mode == "resume":
-            self.log(f"Resuming verified asset work from stage {resume_status['stage']}; Dragonwilds and UnrealAssetScout will not run again.")
+            self.log(resume_activity_message(resume_status["stage"]))
         preflight = (False, False) if mode != "new" else self.confirm_asset_preflight(root, extractor)
         if preflight is None: return
         close_game, preserve = preflight
