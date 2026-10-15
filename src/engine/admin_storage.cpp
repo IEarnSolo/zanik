@@ -29,6 +29,7 @@
 namespace DomEngine {
 namespace {
 bool ExpectedSha(const std::string& hash){return hash=="445f8b65047d208adb04a3cb03bc7706f069306d814172ae29caec16c15bec7e"||hash=="ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac";}
+bool ExpectedDispatcherSha(const std::string& hash){return ExpectedSha(hash)||hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c";}
 constexpr std::size_t QueueCapacity=32;
 constexpr uintptr_t AddItemByDataOffset=0x0A6118E0;
 constexpr uintptr_t CanAddItemByDataOffset=0x0A612180;
@@ -437,9 +438,10 @@ bool InitializeAdminStorage(uintptr_t moduleBase,uintptr_t moduleEnd){
 }
 bool InitializeAdminStorageHookEarly(){
     if(earlyHookInstalled.load())return true;
-    std::string hash=FileSha256("/proc/self/exe");if(!ExpectedSha(hash)){LogMessage("Admin storage dispatcher fingerprint mismatch: "+hash);return false;}
-    uintptr_t bounds[3]={0,0,0};dl_iterate_phdr(&ExecutableBounds,bounds);if(!bounds[2]||bounds[0]+EngineTickOffset+EngineTickHookBytes>bounds[1]){LogMessage("Admin storage dispatcher executable bounds unavailable");return false;}
-    auto* target=reinterpret_cast<unsigned char*>(bounds[0]+EngineTickOffset);
+    std::string hash=FileSha256("/proc/self/exe");if(!ExpectedDispatcherSha(hash)){LogMessage("Admin storage dispatcher fingerprint mismatch: "+hash);return false;}
+    const uintptr_t dispatcherOffset=hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"?0x07ABFE00:EngineTickOffset;
+    uintptr_t bounds[3]={0,0,0};dl_iterate_phdr(&ExecutableBounds,bounds);if(!bounds[2]||bounds[0]+dispatcherOffset+EngineTickHookBytes>bounds[1]){LogMessage("Admin storage dispatcher executable bounds unavailable");return false;}
+    auto* target=reinterpret_cast<unsigned char*>(bounds[0]+dispatcherOffset);
     const unsigned char expected[EngineTickHookBytes]={0x53,0x48,0x83,0xEC,0x10,0x8B,0x47,0x08,0xA8,0x10,0x0F,0x85,0x92,0x00,0x00,0x00};
     if(std::memcmp(target,expected,sizeof(expected))){char message[160]{};std::snprintf(message,sizeof(message),"Admin storage dispatcher signature mismatch base=0x%llx target=0x%llx bytes=%02x%02x%02x%02x",static_cast<unsigned long long>(bounds[0]),static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(target)),target[0],target[1],target[2],target[3]);LogMessage(message);return false;}
     auto* trampoline=static_cast<unsigned char*>(mmap(nullptr,64,PROT_READ|PROT_WRITE|PROT_EXEC,MAP_PRIVATE|MAP_ANONYMOUS,-1,0));if(trampoline==MAP_FAILED)return false;
