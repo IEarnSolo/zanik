@@ -30,7 +30,7 @@ class Response:
 
 Transport = Callable[[str, str, dict[str, str], bytes | None, float], Response]
 CONTAINER_ROOT = "/home/container"
-USER_AGENT = "Zanik-Manager/0.2.2"
+USER_AGENT = "Zanik-Manager/0.2.15"
 
 
 def api_file_path(path: str) -> str:

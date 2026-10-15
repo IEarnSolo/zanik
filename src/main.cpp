@@ -208,6 +208,18 @@ std::string UpdateStateJson() {
     return json;
 }
 
+std::string GameUpdateStateJson() {
+    const char* raw = std::getenv("DW_GAME_UPDATE_STATE");
+    std::ifstream input(raw && *raw ? raw : "/home/container/zanik/state/game-update-status.json");
+    if (!input) return "null";
+    std::ostringstream value;
+    value << input.rdbuf();
+    std::string json = value.str();
+    while (!json.empty() && std::isspace(static_cast<unsigned char>(json.back()))) json.pop_back();
+    if (json.size() > 65536 || json.empty() || json.front() != '{' || json.back() != '}') return "null";
+    return json;
+}
+
 std::string AssetManifestJson() {
     const char* raw=std::getenv("DW_ASSET_MANIFEST");
     std::ifstream input(raw&&*raw?raw:(WebRoot()+"/asset-manifest.json"));
@@ -857,7 +869,8 @@ void Handle(int fd) {
             ",\"onlinePlayers\":" + std::to_string(onlinePlayers) +
             ",\"spawnedPawns\":" + std::to_string(players.spawnedPawns) +
             ",\"worldLocations\":" + std::to_string(players.worldLocations) +
-            ",\"updater\":" + UpdateStateJson() + "}");
+            ",\"updater\":" + UpdateStateJson() +
+            ",\"gameUpdate\":" + GameUpdateStateJson() + "}");
     } else {
         Respond(fd, 404, "application/json; charset=utf-8", "{\"error\":\"Not found\"}");
     }

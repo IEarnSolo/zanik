@@ -21,6 +21,7 @@ def ensure_layout(root: Path | None = None) -> dict[str, Path]:
         "support": root / "support",
         "mapping_recovery": root / "mapping-recovery",
         "asset_work": root / "asset-work",
+        "updates": root / "updates",
     }
     for path in paths.values():
         path.mkdir(parents=True, exist_ok=True)

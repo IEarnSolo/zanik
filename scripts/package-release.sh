@@ -20,7 +20,7 @@ install -m 0644 "$ROOT/scripts/lib/zanik-common.sh" "$WORK/server/lib/zanik-comm
 install -m 0644 "$ROOT/config/zanik.conf.example" "$WORK/server/config/zanik.conf.example"
 install -m 0644 "$ROOT/config/zanik-config.schema.json" "$WORK/server/config/zanik-config.schema.json"
 install -m 0644 "$ROOT/deploy/compatibility.tsv" "$WORK/server/compatibility/compatibility.tsv"
-for file in install update uninstall doctor init-assets compat-launcher verify-assets; do install -m 0755 "$ROOT/scripts/$file.sh" "$WORK/server/scripts/$file.sh"; done
+for file in install update uninstall doctor init-assets compat-launcher verify-assets check-game-update; do install -m 0755 "$ROOT/scripts/$file.sh" "$WORK/server/scripts/$file.sh"; done
 install -m 0644 "$ROOT/tools/zanik_assets.py" "$WORK/server/tools/zanik_assets.py"
 install -m 0644 "$ROOT/tools/asset_filesystem.py" "$WORK/server/tools/asset_filesystem.py"
 install -m 0644 "$ROOT/VERSION" "$ROOT/CHANGELOG.md" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/README.md" "$WORK/server/"
@@ -100,15 +100,19 @@ EOF
 cp -p "$SERVER_ZIP" "$WORK/manager/payload/server.zip"
 cp -p "$ROOT/config/zanik-config.schema.json" "$WORK/manager/config/zanik-config.schema.json"
 cp -p "$ROOT/manager/README.md" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/manager/tools.lock.json" "$WORK/manager/"
+cp -p "$ROOT/VERSION" "$WORK/manager/VERSION"
 cp -p /usr/share/common-licenses/LGPL-3 "$WORK/manager/LICENSE-LGPL-3.0.txt"
 x86_64-w64-mingw32-gcc -municode -mwindows -Os -s "$ROOT/manager/launcher.c" -o "$WORK/manager/ZanikManager.exe"
+x86_64-w64-mingw32-gcc -municode -mwindows -Os -s "$ROOT/manager/updater.c" -lshell32 -o "$WORK/manager/ZanikManagerUpdater.exe"
 if [ -n "${WINDOWS_SIGNING_CERT_BASE64:-}" ]; then
   [ -n "${WINDOWS_SIGNING_CERT_PASSWORD:-}" ] || { printf 'WINDOWS_SIGNING_CERT_PASSWORD is required when signing\n' >&2; exit 1; }
   printf '%s' "$WINDOWS_SIGNING_CERT_BASE64" | base64 -d > "$WORK/manager-signing.p12"
-  osslsigncode sign -pkcs12 "$WORK/manager-signing.p12" -pass "$WINDOWS_SIGNING_CERT_PASSWORD" \
-    -n 'Zanik Manager' -i 'https://github.com/IEarnSolo/zanik' \
-    -in "$WORK/manager/ZanikManager.exe" -out "$WORK/manager/ZanikManager.signed.exe"
-  mv "$WORK/manager/ZanikManager.signed.exe" "$WORK/manager/ZanikManager.exe"
+  for executable in ZanikManager ZanikManagerUpdater; do
+    osslsigncode sign -pkcs12 "$WORK/manager-signing.p12" -pass "$WINDOWS_SIGNING_CERT_PASSWORD" \
+      -n 'Zanik Manager' -i 'https://github.com/IEarnSolo/zanik' \
+      -in "$WORK/manager/$executable.exe" -out "$WORK/manager/$executable.signed.exe"
+    mv "$WORK/manager/$executable.signed.exe" "$WORK/manager/$executable.exe"
+  done
   rm -f "$WORK/manager-signing.p12"
 fi
 python3 - "$WORK/manager" "$VERSION" <<'PY'

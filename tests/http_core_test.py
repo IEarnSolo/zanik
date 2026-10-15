@@ -49,6 +49,10 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
     recipe_path = web_root / "recipe-unlocks.json"
     recipe_path.write_text(json.dumps(recipe_catalog, separators=(",", ":")), encoding="utf-8")
     data_file = temporary_root / "players.db"
+    game_update_file = temporary_root / "game-update-status.json"
+    game_update_file.write_text(json.dumps({"schemaVersion": 1, "status": "current",
+                                            "installedBuild": "123", "latestBuild": "123",
+                                            "updateAvailable": False}), encoding="utf-8")
 
     env = os.environ.copy()
     env.update(
@@ -56,6 +60,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
         DW_STATUS_PORT=str(port),
         DW_STATUS_DATA=str(data_file),
         DW_WEB_ROOT=str(web_root),
+        DW_GAME_UPDATE_STATE=str(game_update_file),
         DW_STATUS_TEST_HOST="1",
     )
     process = subprocess.Popen(
@@ -123,6 +128,8 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert update["features"]["qolAutoCompost"] is False
             assert update["featureStates"]["adminTeleport"] == "disabled"
             assert update["assets"] is None
+            assert update["gameUpdate"]["status"] == "current"
+            assert update["gameUpdate"]["installedBuild"] == "123"
         with get(base, "/api/quest-tracker-diagnostics") as response:
             diagnostics = json.loads(response.read())
             assert "catalogCompatibility" in diagnostics

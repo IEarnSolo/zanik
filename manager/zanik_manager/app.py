@@ -26,6 +26,8 @@ from .profiles import ProfileStore, ServerProfile
 from .pterodactyl import PterodactylClient
 from .security import CredentialVault, credential_target, redact
 from .support import create_support_bundle
+from .updates import (GitHubReleaseChecker, current_manager_version, prune_updater_backups,
+                      write_startup_handshake)
 
 
 def distribution_root() -> Path:
@@ -141,7 +143,10 @@ class MainWindow(QMainWindow):
         self.paths = ensure_layout(); self.store = ProfileStore(self.paths["root"] / "profiles.json")
         self.vault = CredentialVault(); self.profiles = self.store.load(); self.current_config_hash = ""
         self.current_config_profile_id = ""
-        self.threads = []; self.busy_dialog = None; self.last_progress_message = ""
+        self.threads = []; self.background_threads = []; self.busy_dialog = None; self.last_progress_message = ""
+        self.manager_version = current_manager_version(distribution_root())
+        self.release_checker = GitHubReleaseChecker(self.paths["updates"])
+        self.validated_manager_update = None
         central = QWidget(); outer = QVBoxLayout(central)
         target = QHBoxLayout(); self.profile_box = QComboBox(); self.add_button = button_help(
             QPushButton("Add server"), "Add a Pterodactyl panel connection and select one server to manage.")
@@ -151,6 +156,7 @@ class MainWindow(QMainWindow):
         outer.addLayout(target); outer.addWidget(self.warning)
         self.tabs = QTabWidget(); outer.addWidget(self.tabs, 1); self.setCentralWidget(central)
         self._servers_tab(); self._assets_tab(); self._config_tab(); self._doctor_tab(); self._activity_tab()
+        self._update_status_bar()
         self.activity_signal.connect(self.log)
         self.operation_progress_signal.connect(self.update_operation_progress)
         self.reload_profiles()
@@ -158,6 +164,10 @@ class MainWindow(QMainWindow):
         if startup_profile:
             QTimer.singleShot(250, lambda profile_id=startup_profile.id: self.load_startup_config(profile_id))
         QTimer.singleShot(1000, self.retry_pending_asset_cleanup)
+        QTimer.singleShot(1500, lambda: self.check_manager_update(False))
+        QTimer.singleShot(2500, lambda: self.check_game_update(False))
+        self.update_timer = QTimer(self); self.update_timer.setInterval(6 * 60 * 60 * 1000)
+        self.update_timer.timeout.connect(self.scheduled_update_checks); self.update_timer.start()
         if prompt_first_run and not self.profiles:
             self.add_server()
 
@@ -168,7 +178,7 @@ class MainWindow(QMainWindow):
         actions = (
             ("Refresh", self.run_doctor, "Run a quick, read-only health check and refresh the selected server summary."),
             ("Install / repair", self.install, "Install Zanik or repair its managed files and launcher on the selected server."),
-            ("Update", self.install, "Update the selected server to the Zanik version embedded in this Manager."),
+            ("Update Zanik server", self.install, "Update the selected server to the Zanik version embedded in this Manager. This does not update Manager or Dragonwilds."),
             ("Recover interrupted", self.recover_interrupted, "Resume or roll back an interrupted Manager transaction for this server."),
             ("Uninstall", self.uninstall, "Remove verified Zanik-managed files while preserving server data by default."),
             ("Open panel", self.open_panel, "Open this server's page in the configured Pterodactyl panel."),
@@ -258,6 +268,124 @@ class MainWindow(QMainWindow):
     def log(self, message: str):
         self.activity.appendPlainText(redact(message)); self.statusBar().showMessage(message, 5000)
 
+    def _update_status_bar(self):
+        container = QWidget(); layout = QHBoxLayout(container)
+        layout.setContentsMargins(4, 0, 4, 0); layout.setSpacing(6)
+        self.manager_update_label = QLabel(f"Manager {self.manager_version} · Not checked")
+        self.manager_check_button = button_help(QPushButton("Check"), "Check GitHub for a newer stable Zanik Manager release.")
+        self.manager_check_button.clicked.connect(lambda: self.check_manager_update(True))
+        self.manager_install_button = button_help(QPushButton("Update and relaunch"),
+                                                  "Download and verify the newer Manager, replace this portable copy transactionally, and relaunch it.")
+        self.manager_install_button.clicked.connect(self.install_manager_update); self.manager_install_button.hide()
+        self.game_update_label = QLabel("Game · No server selected")
+        self.game_check_button = button_help(QPushButton("Check"),
+                                             "Ask the active running server to compare its installed dedicated-server build with SteamCMD. This never installs an update.")
+        self.game_check_button.clicked.connect(lambda: self.check_game_update(True))
+        for widget in (QLabel("│"), self.manager_update_label, self.manager_check_button,
+                       self.manager_install_button, QLabel("│"), self.game_update_label, self.game_check_button):
+            layout.addWidget(widget)
+        self.statusBar().addPermanentWidget(container)
+        self._set_update_label(self.manager_update_label, f"Manager {self.manager_version} · Not checked", "neutral")
+        self._set_update_label(self.game_update_label, "Game · No server selected", "neutral")
+
+    @staticmethod
+    def _set_update_label(label: QLabel, text: str, state: str, tooltip: str = ""):
+        colors = {"current": "#2f855a", "available": "#b7791f", "neutral": "#6b7280"}
+        label.setText(text); label.setStyleSheet(f"color:{colors[state]};font-weight:600")
+        label.setToolTip(tooltip)
+
+    def run_background(self, key: str, function, completed):
+        if any(item[0] == key for item in self.background_threads):
+            return False
+        thread = QThread(self); worker = Worker(function); worker.moveToThread(thread)
+        thread.started.connect(worker.run); worker.done.connect(thread.quit)
+        def finished():
+            self.background_threads.remove((key, thread, worker))
+            if worker.error:
+                completed(None, worker.error[0])
+            else:
+                completed(worker.result, None)
+            worker.deleteLater(); thread.deleteLater()
+        thread.finished.connect(finished)
+        self.background_threads.append((key, thread, worker)); thread.start(); return True
+
+    def scheduled_update_checks(self):
+        self.check_manager_update(False); self.check_game_update(False)
+
+    def check_manager_update(self, manual: bool = False):
+        self._set_update_label(self.manager_update_label, f"Manager {self.manager_version} · Checking…", "neutral")
+        self.manager_check_button.setEnabled(False)
+        def done(result, error):
+            self.manager_check_button.setEnabled(True)
+            if error:
+                self._set_update_label(self.manager_update_label, f"Manager {self.manager_version} · Unknown", "neutral",
+                                       "The last update check failed. See Activity for details.")
+                self.log(f"Manager update check failed: {error}"); return
+            self.validated_manager_update = result if result.get("updateAvailable") else None
+            if result.get("updateAvailable"):
+                latest = result["latestVersion"]
+                self._set_update_label(self.manager_update_label, f"Manager {self.manager_version} · {latest} available", "available",
+                                       f"Stable Zanik Manager {latest} is available from GitHub and its release metadata was validated.")
+                self.manager_install_button.show()
+            else:
+                self._set_update_label(self.manager_update_label, f"Manager {self.manager_version} · Up to date", "current")
+                self.manager_install_button.hide()
+            if manual: self.log("Manager update check completed.")
+        self.run_background("manager-update-check", lambda: self.release_checker.check(self.manager_version, force=manual), done)
+
+    def check_game_update(self, manual: bool = False):
+        profile = self.active()
+        if not profile:
+            self._set_update_label(self.game_update_label, "Game · No server selected", "neutral")
+            self.game_check_button.setEnabled(False); return
+        self.game_check_button.setEnabled(True)
+        self._set_update_label(self.game_update_label, f"Game ({profile.name}) · Checking…", "neutral")
+        profile_id = profile.id
+        def done(result, error):
+            if not self.active() or self.active().id != profile_id:
+                QTimer.singleShot(0, lambda: self.check_game_update(False))
+                return
+            if error:
+                self._set_update_label(self.game_update_label, f"Game ({profile.name}) · Unknown", "neutral",
+                                       "The read-only dedicated-server update check failed. See Activity for details.")
+                self.log(f"Game update check failed for {profile.name}: {error}"); return
+            status = result.get("status")
+            if status == "update-available" or result.get("updateAvailable") is True:
+                self._set_update_label(self.game_update_label, f"Game ({profile.name}) · Update available", "available",
+                                       "Update Dragonwilds through the host or Steam workflow, then revalidate Zanik compatibility and regenerate assets if needed.")
+            elif status == "current" or result.get("updateAvailable") is False:
+                suffix = "Current" if result.get("fresh", False) else "Current (cached)"
+                self._set_update_label(self.game_update_label, f"Game ({profile.name}) · {suffix}", "current",
+                                       f"Installed build {result.get('installedBuild', 'unknown')}; latest build {result.get('latestBuild', 'unknown')}.")
+            else:
+                label = "Offline (cached unavailable)" if status == "offline-no-cache" else "Unknown"
+                explanation = result.get("message") or result.get("reason", "A current launcher and running server are required for a fresh check.")
+                if status in {"launcher-unavailable", "unsupported-or-timeout"}:
+                    explanation += " Use Install / repair on the Servers tab if this installation should be running through Zanik."
+                self._set_update_label(self.game_update_label, f"Game ({profile.name}) · {label}", "neutral",
+                                       explanation)
+            if manual: self.log(f"Game update check completed for {profile.name}: {status}.")
+        self.run_background("game-update-check", lambda: self.provider(profile, background=True).check_game_update(
+            profile.server_id, profile.server_root, force=manual), done)
+
+    def install_manager_update(self):
+        result = self.validated_manager_update
+        if not result: return
+        if QMessageBox.question(self, "Update Zanik Manager",
+                                f"Install verified Zanik Manager {result['latestVersion']} and relaunch now?\n\n"
+                                "Your profiles, credentials, cached assets, and settings are stored separately and will not be changed.",
+                                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            return
+        def done(staged):
+            if not staged.get("ready"):
+                QDesktopServices.openUrl(QUrl.fromLocalFile(staged["staged"]))
+                QMessageBox.information(self, "Verified update staged", staged["message"] + "\n\nIts folder has been opened for manual replacement.")
+                return
+            GitHubReleaseChecker.launch(staged)
+            QApplication.quit()
+        self.run_async(lambda: self.release_checker.stage(result, distribution_root()), done,
+                       title="Downloading and verifying Manager update…", determinate=False)
+
     def begin_operation(self, title: str, determinate: bool) -> None:
         self.last_progress_message = ""
         self.progress.setRange(0, 100); self.progress.setValue(0)
@@ -345,12 +473,13 @@ class MainWindow(QMainWindow):
     def active(self) -> ServerProfile | None:
         return self.profile_box.currentData()
 
-    def provider(self, profile: ServerProfile | None = None) -> PterodactylProvider:
+    def provider(self, profile: ServerProfile | None = None, *, background: bool = False) -> PterodactylProvider:
         profile = profile or self.active()
         if not profile: raise RuntimeError("Add and select a server first")
         token = self.vault.read(profile.credential_target)
         if not token: raise RuntimeError("The API key is missing from Windows Credential Manager")
-        status = lambda message: self.operation_progress_signal.emit(message, -1)
+        status = ((lambda message: self.activity_signal.emit(message)) if background else
+                  (lambda message: self.operation_progress_signal.emit(message, -1)))
         return PterodactylProvider(PterodactylClient(profile.panel_origin, token, status=status),
                                    JournalStore(self.paths["journals"]))
 
@@ -370,6 +499,11 @@ class MainWindow(QMainWindow):
                 if self.asset_target_box.itemData(index).id == profile.id:
                     self.asset_target_box.setCurrentIndex(index)
                     break
+            QTimer.singleShot(150, lambda profile_id=profile.id:
+                              self.check_game_update(False) if self.active() and self.active().id == profile_id else None)
+        elif hasattr(self, "game_update_label"):
+            self._set_update_label(self.game_update_label, "Game · No server selected", "neutral")
+            self.game_check_button.setEnabled(False)
 
     def refresh_asset_targets(self):
         selected = self.asset_target_box.currentData().id if self.asset_target_box.count() and self.asset_target_box.currentData() else ""
@@ -1001,6 +1135,13 @@ def main() -> int:
     smoke_test = "--smoke-test" in sys.argv
     application = QApplication(sys.argv); application.setApplicationName("Zanik Manager")
     window = MainWindow(prompt_first_run=not smoke_test); window.show()
+    if "--update-handshake" in sys.argv:
+        try:
+            handshake = Path(sys.argv[sys.argv.index("--update-handshake") + 1])
+            QTimer.singleShot(500, lambda: (write_startup_handshake(handshake, window.manager_version),
+                                            prune_updater_backups(distribution_root())))
+        except (IndexError, ValueError):
+            pass
     if smoke_test:
         QTimer.singleShot(250, application.quit)
     return application.exec()

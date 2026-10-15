@@ -1,5 +1,7 @@
 # Upgrades
 
+Do not confuse the three update types. Zanik Manager updates itself from a verified stable GitHub release through **Update and relaunch**. The Servers-tab **Update Zanik server** action installs the matching Zanik payload on the selected server. Dragonwilds dedicated-server updates remain an operator/hosting responsibility; Manager only reports their availability and never runs Steam `app_update`.
+
 Stop the server, download the new server archive and `SHA256SUMS`, and follow the versioned staging and checksum steps in [installation.md](installation.md). Extract each version into its own `SERVER_ROOT/zanik-release/VERSION/payload/` directory, then run:
 
 ```sh

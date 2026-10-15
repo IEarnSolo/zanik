@@ -72,7 +72,7 @@ class ReleasePayload:
                 mode = (item.external_attr >> 16) & 0o777 or 0o644
                 self.entries[name] = PayloadEntry(name, len(data), sha256(data), mode)
         required = {"bin/libzanik.so", "bin/zanik-server", "scripts/compat-launcher.sh",
-                    "scripts/verify-assets.sh",
+                    "scripts/verify-assets.sh", "scripts/check-game-update.sh",
                     "config/zanik.conf.example", "compatibility/compatibility.tsv", "VERSION"}
         missing = required - set(self.entries)
         if missing:
@@ -516,7 +516,64 @@ class PterodactylProvider(ServerProvider):
                 result["healthy"] &= not result["assets"]["mismatches"]
         except Exception:
             result["assets"] = {"installed": False}
+        try:
+            result["gameUpdate"] = self._read_game_update_report(server_id, root)
+        except Exception:
+            result["gameUpdate"] = {"schemaVersion": 1, "status": "unchecked"}
         return result
+
+    def _read_game_update_report(self, server_id: str, root: str) -> dict:
+        raw = self.client.read_file(server_id, f"{root}/zanik/state/game-update-status.json")
+        report = json.loads(raw.decode("utf-8"))
+        if report.get("schemaVersion") != 1 or not isinstance(report.get("status"), str):
+            raise RuntimeError("The cached game-update report is invalid")
+        return report
+
+    def check_game_update(self, server_id: str, server_root: str, timeout: float = 110.0,
+                          force: bool = True) -> dict:
+        """Request a bounded read-only SteamCMD check, or return the offline cached report."""
+        root = validate_server_root(server_root)
+        cached = None
+        try:
+            cached = self._read_game_update_report(server_id, root)
+        except Exception:
+            pass
+        if not force and cached and cached.get("status") in {"current", "update-available"}:
+            try:
+                checked = dt.datetime.fromisoformat(str(cached["checkedAt"]).replace("Z", "+00:00"))
+                if (dt.datetime.now(dt.timezone.utc) - checked).total_seconds() < 6 * 60 * 60:
+                    return {**cached, "fresh": False, "serverRunning": None, "cachedWithinInterval": True}
+            except (KeyError, TypeError, ValueError):
+                pass
+        resources = self.client.resources(server_id)
+        running = resources.get("current_state") == "running"
+        if not running:
+            if cached:
+                return {**cached, "fresh": False, "serverRunning": False}
+            else:
+                return {"schemaVersion": 1, "status": "offline-no-cache", "fresh": False,
+                        "serverRunning": False,
+                        "message": "A fresh check requires the game server to be running."}
+
+        launcher = self.replacement_launcher_status(server_id, root)
+        if launcher.get("applicable") and not launcher.get("healthy"):
+            return {"schemaVersion": 1, "status": "launcher-unavailable", "fresh": False,
+                    "serverRunning": True, "reason": launcher.get("reason", "launcher-unavailable")}
+
+        request_id = secrets.token_hex(12)
+        self.client.command(server_id, f"zanik-check-game-update {request_id}")
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                report = self._read_game_update_report(server_id, root)
+                if report.get("requestId") == request_id:
+                    return {**report, "fresh": True, "serverRunning": True}
+            except (PterodactylError, UnicodeDecodeError, ValueError, RuntimeError):
+                pass
+            time.sleep(1)
+        return {"schemaVersion": 1, "status": "unsupported-or-timeout", "fresh": False,
+                "serverRunning": True,
+                "message": "The current Zanik launcher did not return a fresh game-update report."}
 
     def _server_asset_audit(self, server_id: str, root: str, manifest: dict,
                             timeout: float = 300.0) -> dict:
