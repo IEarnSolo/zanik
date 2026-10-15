@@ -151,7 +151,7 @@ const BuildingCatalog& AuthoritativeBuildingCatalog(){
             else if(f[0]=="P"&&f.size()>=7)value.pieces.emplace(f[1],BuildingMeta{f[2],f[3],f[4],f[5],f[6]});}
         size_t sections=0,references=0;bool icons=true;for(const auto&tab:value.tabs)for(const auto&section:tab.sections){++sections;references+=section.pieces.size();}for(const auto&p:value.pieces){struct stat st{};if(stat((base+p.second.icon).c_str(),&st)!=0||st.st_size<1){icons=false;break;}}
         const bool fingerprintValid=value.fingerprint.size()==64&&std::all_of(value.fingerprint.begin(),value.fingerprint.end(),[](unsigned char c){return std::isxdigit(c)!=0;});
-        value.iconsValid=icons;value.valid=value.schema==1&&fingerprintValid&&declaredTabs==8&&declaredSections==63&&value.expectedReferences==839&&value.expectedPieces==822&&value.tabs.size()==size_t(declaredTabs)&&sections==size_t(declaredSections)&&references==size_t(value.expectedReferences)&&value.pieces.size()==size_t(value.expectedPieces);return value;}();return catalog;
+        value.iconsValid=icons;value.valid=value.schema==1&&fingerprintValid&&declaredTabs==8&&declaredSections==63&&value.expectedReferences==844&&value.expectedPieces==827&&value.tabs.size()==size_t(declaredTabs)&&sections==size_t(declaredSections)&&references==size_t(value.expectedReferences)&&value.pieces.size()==size_t(value.expectedPieces);return value;}();return catalog;
 }
 const std::unordered_map<std::string,BuildingMeta>& BuildingMetadata(){
     return AuthoritativeBuildingCatalog().pieces;

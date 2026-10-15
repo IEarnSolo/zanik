@@ -2,6 +2,19 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.13] - 2026-10-14
+
+### Fixed
+
+- Stop treating arbitrary Unreal component properties named `Icon` as web textures; only authored texture packages and the reviewed embedded build-UI thumbnail locations are targeted.
+- Correctly ignore the updated world level's ambience-controller billboard component, which previously created an impossible request to export `L_World` as a PNG.
+- Validate coverage per requested texture package instead of requiring the total number of emitted PNGs to equal the number of packages; Unreal packages may legitimately emit additional textures.
+- Allow Zanik Manager to resume the verified 3,113-PNG retained workspace from 0.2.12 directly into catalog generation without reopening Dragonwilds or repeating UnrealAssetScout exports.
+
+### Changed
+
+- Review the five building pieces added by the current client—Farming and Fishing skill tomes in flat and standing variants, plus the Ultra Compost Bin—and update building compatibility to 827 pieces, 844 references, and 827 authored icons.
+
 ## [0.2.12] - 2026-10-14
 
 ### Fixed

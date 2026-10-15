@@ -219,14 +219,14 @@ def validate_generated(source: Path) -> dict:
                 if isinstance(value, dict):
                     if relative == "buildings/catalog.json":
                         building_icon_sources = value.get("iconSources", {})
-                        if value.get("counts", {}).get("pieces") == 822 and building_icon_sources != {
-                            "authored-texture": 753,
+                        if value.get("counts", {}).get("pieces") == 827 and building_icon_sources != {
+                            "authored-texture": 758,
                             "embedded-build-ui-thumbnail": 68,
                             "procedural-thumbnail": 1,
                         }:
                             errors.append(f"building icon source coverage changed: {building_icon_sources}")
                         pieces = value.get("pieces", [])
-                        if isinstance(pieces, list) and len(pieces) == 822:
+                        if isinstance(pieces, list) and len(pieces) == 827:
                             seen_icons: set[str] = set()
                             for piece in pieces:
                                 icon = str(piece.get("icon", "")) if isinstance(piece, dict) else ""

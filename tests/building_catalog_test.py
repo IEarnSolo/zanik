@@ -6,13 +6,13 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 catalog = json.loads((root / "web/buildings/catalog.json").read_text(encoding="utf-8"))
 assert catalog["schemaVersion"] == 1
-assert catalog["counts"] == {"tabs": 8, "sections": 63, "references": 839, "pieces": 822}
+assert catalog["counts"] == {"tabs": 8, "sections": 63, "references": 844, "pieces": 827}
 assert len(catalog["tabs"]) == 8
 assert sum(len(tab["sections"]) for tab in catalog["tabs"]) == 63
-assert sum(len(section["pieces"]) for tab in catalog["tabs"] for section in tab["sections"]) == 839
+assert sum(len(section["pieces"]) for tab in catalog["tabs"] for section in tab["sections"]) == 844
 
 pieces = {piece["key"]: piece for piece in catalog["pieces"]}
-assert len(pieces) == 822
+assert len(pieces) == 827
 for tab in catalog["tabs"]:
     for section in tab["sections"]:
         for key in section["pieces"]:
@@ -27,8 +27,8 @@ assert len(labels[("Decoration", "Companions")]["pieces"]) == 7
 assert ("Walls", "Doors & Windows") in labels
 assert ("Walls", "Baroque Castle Walls") in labels
 assert ("Beams & Pillars", "Kharidian Beams & Pillars") in labels
-assert len({key for tab in catalog["tabs"] for section in tab["sections"] for key in section["pieces"]}) < 839
+assert len({key for tab in catalog["tabs"] for section in tab["sections"] for key in section["pieces"]}) < 844
 
 header = (root / "web/buildings/catalog.tsv").read_text(encoding="utf-8").splitlines()[0].split("\t")
-assert header[:6] == ["# zanik-building-catalog", "1", "8", "63", "839", "822"]
+assert header[:6] == ["# zanik-building-catalog", "1", "8", "63", "844", "827"]
 print("building catalogue invariants passed")

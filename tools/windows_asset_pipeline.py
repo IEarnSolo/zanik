@@ -158,6 +158,14 @@ def cooked_package_path(value: str) -> str | None:
 
 def referenced_textures(json_root: Path, required: list[str]) -> list[str]:
     targets = {f"basename:{name}" for name in required}
+    def web_texture_package(reference: object) -> str:
+        package = cooked_package_path(str(reference or ""))
+        normalized = package.replace("\\", "/").casefold()
+        leaf = Path(package).name.casefold()
+        if (leaf.startswith("t_") or "/generatedicons/" in normalized
+                or "/proceduralthumbnails/" in normalized):
+            return package
+        return ""
     def visit(value: object, key: str = "") -> None:
         if isinstance(value, dict):
             for field in ("Icon", "DisplayIcon", "Image"):
@@ -165,7 +173,7 @@ def referenced_textures(json_root: Path, required: list[str]) -> list[str]:
                 if not isinstance(display, dict):
                     continue
                 reference = display.get("AssetPathName") or display.get("ObjectPath")
-                package = cooked_package_path(str(reference or ""))
+                package = web_texture_package(reference)
                 if package:
                     targets.add("package:" + package)
             for child_key, child in value.items(): visit(child, str(child_key))
@@ -203,6 +211,24 @@ def filter_chunks(targets: list[str], maximum: int = 28000) -> list[str]:
             chunks.append([]); length = 20
         chunks[-1].append(encoded); length += len(encoded) + 1
     return ["(?:" + "|".join(chunk) + r")\.uasset$" for chunk in chunks if chunk]
+
+
+def missing_texture_targets(texture_root: Path, targets: list[str]) -> list[str]:
+    packages: set[str] = set()
+    basenames: set[str] = set()
+    for image in texture_root.rglob("*.png"):
+        parts = image.relative_to(texture_root).parts
+        if len(parts) < 2 or not parts[0].startswith("batch-"):
+            continue
+        packages.add(Path(*parts[1:]).with_suffix("").as_posix().casefold())
+        basenames.add(image.stem.casefold())
+    missing = []
+    for target in targets:
+        kind, value = target.split(":", 1)
+        inventory = packages if kind == "package" else basenames
+        if value.casefold() not in inventory:
+            missing.append(target)
+    return missing
 
 
 def _uas_manifest(path: Path, mode: str) -> dict:
@@ -245,8 +271,11 @@ def verified_export_checkpoint(temporary: Path, recipe: dict, reviewed_counts: d
             raise RuntimeError(f"completed texture export batch is empty: {name}")
         texture_pngs += len(images)
         batches.append({"name": name, "manifestSha256": sha256(manifest), "pngFiles": len(images)})
-    if texture_pngs != len(targets):
-        raise RuntimeError(f"completed texture exports contain {texture_pngs} PNGs for {len(targets)} targets")
+    missing_targets = missing_texture_targets(texture_root, targets)
+    if missing_targets:
+        preview = ", ".join(missing_targets[:10])
+        suffix = f" (+{len(missing_targets) - 10} more)" if len(missing_targets) > 10 else ""
+        raise RuntimeError(f"completed texture exports are missing {len(missing_targets)} target(s): {preview}{suffix}")
     font_manifest = font_root / ".uas-manifest.json"
     _uas_manifest(font_manifest, "raw")
     fonts = list(font_root.rglob("Jancient.ufont"))

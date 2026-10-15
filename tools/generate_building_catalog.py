@@ -13,9 +13,9 @@ try:
 except ModuleNotFoundError:  # Imported as tools.* by repository tests.
     from tools.asset_filesystem import copy_file, read_bytes, read_json
 
-EXPECTED = {"tabs": 8, "sections": 63, "references": 839, "pieces": 822}
+EXPECTED = {"tabs": 8, "sections": 63, "references": 844, "pieces": 827}
 EXPECTED_ICON_SOURCES = {
-    "authored-texture": 753,
+    "authored-texture": 758,
     "embedded-build-ui-thumbnail": 68,
     "procedural-thumbnail": 1,
 }

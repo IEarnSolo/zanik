@@ -81,8 +81,8 @@ do {
            $adminDiagnostics.storageRemovalTrackingCompatibility -eq 1 -and $adminDiagnostics.storageCatalogCompatibility -eq 1 -and $adminDiagnostics.storageUnlockCatalogCompatibility -eq 1 -and $unlockIconsOk -and
            $update.adminBuildingTaxonomyCompatibility -eq 1 -and $update.adminBuildingRequirementsCompatibility -eq 1 -and
            $update.adminBuildingIconsCompatibility -eq 1 -and $update.adminCraftingRecipeCompatibility -eq 1 -and
-           $update.adminBuildingExpectedPieces -eq 822 -and $update.adminBuildingResolvedPieces -eq 822 -and
-           $update.adminBuildingUnavailablePieces -eq 0 -and $update.adminBuildingReferences -eq 839 -and
+           $update.adminBuildingExpectedPieces -eq 827 -and $update.adminBuildingResolvedPieces -eq 827 -and
+           $update.adminBuildingUnavailablePieces -eq 0 -and $update.adminBuildingReferences -eq 844 -and
            $adminDiagnostics.gravestoneCompatibility -eq 1 -and $adminDiagnostics.gravestoneInventoryCompatibility -eq 1 -and $adminDiagnostics.gravestoneRegistryCompatibility -eq 1 -and
            $adminDiagnostics.gravestoneStreamingCompatibility -eq 1 -and $adminDiagnostics.gravestoneRespawnCaptureCompatibility -eq 1 -and $adminDiagnostics.gravestonePersistenceCompatibility -eq 1 -and
            $update.website -eq $true -and $update.playerSkillIconCompatibility -eq 1 -and $update.playerSkillIconAssets -eq 12 -and $update.playerSkillMissingIconAssets -eq 0 -and $update.adminStoragePlanCatalogCompatibility -eq 1 -and $update.adminStoragePlanCatalogItems -eq 123 -and $update.adminAuthorizationStorage -eq $true -and $update.adminConsoleCompatibility -eq 1 -and
