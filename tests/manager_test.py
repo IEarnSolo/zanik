@@ -32,6 +32,8 @@ class ManagerTests(unittest.TestCase):
         self.assertIn('QPushButton("Check")', source)
         self.assertIn('run_background("manager-update-check"', source)
         self.assertIn('run_background("game-update-check"', source)
+        self.assertIn('self.update_timer.setInterval(10 * 60 * 1000)', source)
+        self.assertIn('QTimer.singleShot(250, lambda profile_id=profile.id: self.load_startup_config(profile_id))', source)
         self.assertIn('prompt_first_run=not smoke_test and not update_handshake', source)
 
     def test_origin_and_http_policy_helpers(self):
@@ -227,6 +229,7 @@ class ManagerTests(unittest.TestCase):
     def test_config_schema_matches_example_and_rejects_bad_values(self):
         model = ConfigModel(ROOT / "config/zanik-config.schema.json")
         values = model.parse((ROOT / "config/zanik.conf.example").read_text())
+        self.assertTrue(values["ZANIK_ENABLED"])
         self.assertFalse(values["FEATURE_ADMIN_TELEPORT"])
         self.assertEqual(model.parse(model.render(values)), values)
         with self.assertRaises(ConfigError): model.parse("UNKNOWN=true\n")
@@ -461,33 +464,48 @@ class ManagerTests(unittest.TestCase):
 
     def test_game_update_check_rejects_stale_report_and_matches_request(self):
         class Client:
-            def __init__(self): self.request_id = None; self.reads = 0
-            def resources(self, _server): return {"current_state": "running"}
-            def command(self, _server, command): self.request_id = command.rsplit(" ", 1)[-1]
+            def list_files(self, _server, _path): return []
             def read_file(self, _server, path):
-                if path.endswith("install-state.json"):
-                    return b'{"mode":"wrapper"}'
-                self.reads += 1
-                request = "stale" if self.reads == 1 else self.request_id
-                return json.dumps({"schemaVersion": 1, "requestId": request, "status": "current",
-                                   "installedBuild": "123", "latestBuild": "123",
-                                   "updateAvailable": False}).encode()
+                if path.endswith("appmanifest_4019830.acf"):
+                    return b'"AppState" { "buildid" "123" }'
+                raise PterodactylError("not found", 404)
+        class Checker:
+            def latest_build(self): return "123"
         with tempfile.TemporaryDirectory() as temporary:
-            result = PterodactylProvider(Client(), JournalStore(Path(temporary))).check_game_update(
+            result = PterodactylProvider(Client(), JournalStore(Path(temporary)), Checker()).check_game_update(
                 "dev", "/home/container", timeout=2.5)
         self.assertTrue(result["fresh"])
         self.assertEqual(result["status"], "current")
+        self.assertFalse(result["zanikInstalled"])
 
     def test_offline_game_update_check_uses_cached_report(self):
         class Client:
             def resources(self, _server): return {"current_state": "offline"}
-            def read_file(self, _server, _path):
-                return b'{"schemaVersion":1,"status":"update-available","updateAvailable":true}'
+            def list_files(self, _server, path):
+                return [{"name": "VERSION"}] if path.endswith("/zanik") else []
+            def read_file(self, _server, path):
+                if path.endswith("game-update-status.json"):
+                    return b'{"schemaVersion":1,"status":"update-available","updateAvailable":true}'
+                if path.endswith("appmanifest_4019830.acf"):
+                    return b'"AppState" { "buildid" "123" }'
+                raise PterodactylError("not found", 404)
+        class Checker:
+            def latest_build(self): raise RuntimeError("offline")
         with tempfile.TemporaryDirectory() as temporary:
-            result = PterodactylProvider(Client(), JournalStore(Path(temporary))).check_game_update(
+            result = PterodactylProvider(Client(), JournalStore(Path(temporary)), Checker()).check_game_update(
                 "dev", "/home/container")
         self.assertFalse(result["fresh"])
-        self.assertFalse(result["serverRunning"])
+        self.assertTrue(result["zanikInstalled"])
+
+    def test_uninstalled_configuration_is_a_normal_state(self):
+        class Client:
+            def list_files(self, _server, _path): return []
+            def read_file(self, *_args): raise AssertionError("missing configuration must not be downloaded")
+        with tempfile.TemporaryDirectory() as temporary:
+            result = PterodactylProvider(Client(), JournalStore(Path(temporary))).read_configuration(
+                "dev", "/home/container")
+        self.assertEqual(result, {"zanikInstalled": False, "zanikEnabled": None,
+                                  "exists": False, "data": None})
 
     def test_pyside_pruner_keeps_only_declared_runtime(self):
         with tempfile.TemporaryDirectory() as temporary:

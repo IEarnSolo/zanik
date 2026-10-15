@@ -2,6 +2,8 @@
 
 Copy `config/zanik.conf.example` to `config/zanik.conf`. It is strict `KEY=VALUE` text: no quoting, substitution, shell code, or unknown keys. Precedence is launcher/install options, `ZANIK_*` environment variables, this file, legacy `DW_*` compatibility variables, then defaults.
 
+`ZANIK_ENABLED=true` is the master switch. Set it to `false` and restart to make the canonical launcher execute the official game server without `LD_PRELOAD`, native hooks, the website, scanners, or periodic Zanik work. The Zanik installation, configuration, authorization records, generated assets, and persistent data remain in place so the mod can be re-enabled safely later.
+
 Malformed configuration logs the exact non-secret key/line error and launches the official game without Zanik. It never prevents the server itself starting.
 
 `STATUS_PORT` is the TCP port on which Zanik serves its website and API. Allocate and open a separate TCP port for it in the firewall, router, container, or hosting panel; do not reuse the Dragonwilds game port. `PUBLIC_BASE_URL` is the externally reachable URL placed in generated links, including the public port when one is required. A reverse proxy may expose a different public port than `STATUS_PORT`.

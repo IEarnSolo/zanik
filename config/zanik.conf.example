@@ -1,6 +1,10 @@
 # Zanik configuration. Values are parsed as data; this file is never sourced.
 # Unknown keys and malformed values disable Zanik while still launching the game.
 
+# Master switch. false launches the official game server without loading Zanik.
+# Installed files, configuration, generated assets, and persistent data are preserved.
+ZANIK_ENABLED=true
+
 # Use a separately allocated/open TCP port, never the Dragonwilds game port.
 STATUS_PORT=29105
 # The externally reachable website URL, including its public port when needed.

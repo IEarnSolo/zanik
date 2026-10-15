@@ -36,6 +36,15 @@ grep -q 'Unknown configuration key' "$TMP/invalid.log"
 ! grep -q 'secret-value' "$TMP/invalid.log"
 cp "$RELEASE/config/zanik.conf.example" "$SERVER/zanik/config/zanik.conf"
 
+# The master switch must bypass LD_PRELOAD and every Zanik runtime side effect
+# while preserving the installation and official-server startup.
+sed -i 's/^ZANIK_ENABLED=true$/ZANIK_ENABLED=false/' "$SERVER/zanik/config/zanik.conf"
+"$SERVER/zanik/bin/zanik-server" --server-root "$SERVER" -- disabled > /dev/null 2> "$TMP/disabled.log"
+grep -q '^|disabled$' "$GAME.ran"
+grep -q 'disabled by configuration' "$TMP/disabled.log"
+"$SERVER/zanik/scripts/doctor.sh" --server-root "$SERVER" --json | grep -q '"zanikEnabled":false'
+sed -i 's/^ZANIK_ENABLED=false$/ZANIK_ENABLED=true/' "$SERVER/zanik/config/zanik.conf"
+
 # The canonical launcher must retain Pterodactyl's console login proxy while
 # forwarding all ordinary commands unchanged to the official server process.
 FAKEBIN=$TMP/fake-bin; mkdir -p "$FAKEBIN"

@@ -4,6 +4,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import secrets
 import stat
 import time
@@ -13,6 +14,7 @@ from pathlib import Path, PurePosixPath
 from typing import Callable
 
 from .config import content_hash
+from .game_updates import INTERVAL_SECONDS, PublicSteamBuildChecker, installed_build
 from .journal import JournalStore, OperationJournal
 from .pterodactyl import PterodactylClient, PterodactylError, api_file_path
 from .provider import ServerProvider
@@ -88,9 +90,10 @@ class ReleasePayload:
 
 
 class PterodactylProvider(ServerProvider):
-    def __init__(self, client: PterodactylClient, journals: JournalStore):
+    def __init__(self, client: PterodactylClient, journals: JournalStore, steam_checker=None):
         self.client = client
         self.journals = journals
+        self.steam_checker = steam_checker or PublicSteamBuildChecker()
 
     def list_servers(self) -> list[dict]:
         return self.client.servers()
@@ -529,36 +532,78 @@ class PterodactylProvider(ServerProvider):
             raise RuntimeError("The cached game-update report is invalid")
         return report
 
+    def _zanik_state(self, server_id: str, root: str) -> dict:
+        config_path = f"{root}/zanik/config/zanik.conf"
+        config_exists = self._exists(server_id, config_path)
+        installed = (config_exists or self._exists(server_id, f"{root}/zanik/VERSION") or
+                     self._exists(server_id, f"{root}/zanik/install-state.json"))
+        enabled = None
+        if installed and config_exists:
+            try:
+                text = self.client.read_file(server_id, config_path).decode("utf-8-sig")
+                match = re.search(r"(?mi)^\s*ZANIK_ENABLED\s*=\s*(true|false|1|0|yes|no|on|off)\s*$", text)
+                enabled = not match or match.group(1).lower() in {"true", "1", "yes", "on"}
+            except (PterodactylError, UnicodeDecodeError):
+                enabled = None
+        return {"zanikInstalled": installed, "zanikEnabled": enabled}
+
+    def read_configuration(self, server_id: str, server_root: str) -> dict:
+        """Return configuration state without treating an uninstalled server as an error."""
+        root = validate_server_root(server_root)
+        state = self._zanik_state(server_id, root)
+        path = f"{root}/zanik/config/zanik.conf"
+        if not state["zanikInstalled"]:
+            return {**state, "exists": False, "data": None}
+        if not self._exists(server_id, path):
+            return {**state, "exists": False, "data": None,
+                    "error": "Zanik is installed but its configuration file is missing. Use Install / repair."}
+        return {**state, "exists": True, "data": self.client.read_file(server_id, path)}
+
     def check_game_update(self, server_id: str, server_root: str, timeout: float = 110.0,
                           force: bool = True) -> dict:
-        """Request a bounded read-only SteamCMD check, or return the offline cached report."""
+        """Compare the remote app manifest with public metadata, independent of Zanik."""
         root = validate_server_root(server_root)
+        state = self._zanik_state(server_id, root)
         cached = None
-        try:
-            cached = self._read_game_update_report(server_id, root)
-        except Exception:
-            pass
+        if state["zanikInstalled"]:
+            try:
+                cached = self._read_game_update_report(server_id, root)
+            except Exception:
+                pass
         if not force and cached and cached.get("status") in {"current", "update-available"}:
             try:
                 checked = dt.datetime.fromisoformat(str(cached["checkedAt"]).replace("Z", "+00:00"))
-                if (dt.datetime.now(dt.timezone.utc) - checked).total_seconds() < 6 * 60 * 60:
-                    return {**cached, "fresh": False, "serverRunning": None, "cachedWithinInterval": True}
+                if (dt.datetime.now(dt.timezone.utc) - checked).total_seconds() < INTERVAL_SECONDS:
+                    return {**cached, **state, "fresh": False, "serverRunning": None, "cachedWithinInterval": True}
             except (KeyError, TypeError, ValueError):
                 pass
+
+        try:
+            manifest = self.client.read_file(server_id, f"{root}/steamapps/appmanifest_4019830.acf")
+            installed = installed_build(manifest)
+        except (PterodactylError, RuntimeError) as error:
+            return {"schemaVersion": 1, "status": "missing-installed-build", **state,
+                    "fresh": False, "message": str(error)}
+        try:
+            latest = self.steam_checker.latest_build()
+            available = installed != latest
+            return {"schemaVersion": 1, "status": "update-available" if available else "current",
+                    "installedBuild": installed, "latestBuild": latest, "updateAvailable": available,
+                    "source": "public-steamcmd-metadata", "fresh": True, **state}
+        except RuntimeError as public_error:
+            if cached:
+                return {**cached, **state, "fresh": False,
+                        "message": f"{public_error}; showing the last server-cached result."}
+            if not state["zanikInstalled"]:
+                return {"schemaVersion": 1, "status": "metadata-unavailable", **state,
+                        "installedBuild": installed, "fresh": False, "message": str(public_error)}
+
         resources = self.client.resources(server_id)
         running = resources.get("current_state") == "running"
         if not running:
-            if cached:
-                return {**cached, "fresh": False, "serverRunning": False}
-            else:
-                return {"schemaVersion": 1, "status": "offline-no-cache", "fresh": False,
-                        "serverRunning": False,
-                        "message": "A fresh check requires the game server to be running."}
-
-        launcher = self.replacement_launcher_status(server_id, root)
-        if launcher.get("applicable") and not launcher.get("healthy"):
-            return {"schemaVersion": 1, "status": "launcher-unavailable", "fresh": False,
-                    "serverRunning": True, "reason": launcher.get("reason", "launcher-unavailable")}
+            return {"schemaVersion": 1, "status": "offline-no-cache", **state,
+                    "installedBuild": installed, "fresh": False, "serverRunning": False,
+                    "message": "Public metadata was unavailable and the stopped server has no cached launcher result."}
 
         request_id = secrets.token_hex(12)
         self.client.command(server_id, f"zanik-check-game-update {request_id}")
@@ -567,11 +612,11 @@ class PterodactylProvider(ServerProvider):
             try:
                 report = self._read_game_update_report(server_id, root)
                 if report.get("requestId") == request_id:
-                    return {**report, "fresh": True, "serverRunning": True}
+                    return {**report, **state, "fresh": True, "serverRunning": True}
             except (PterodactylError, UnicodeDecodeError, ValueError, RuntimeError):
                 pass
             time.sleep(1)
-        return {"schemaVersion": 1, "status": "unsupported-or-timeout", "fresh": False,
+        return {"schemaVersion": 1, "status": "unsupported-or-timeout", **state, "fresh": False,
                 "serverRunning": True,
                 "message": "The current Zanik launcher did not return a fresh game-update report."}
 

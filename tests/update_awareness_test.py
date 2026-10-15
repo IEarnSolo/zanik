@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from manager.zanik_manager.updates import GitHubReleaseChecker, parse_version
+from manager.zanik_manager.game_updates import PublicSteamBuildChecker, installed_build
 
 
 class Reply:
@@ -35,6 +36,19 @@ def manager_zip(version="0.2.15"):
 
 
 class UpdateAwarenessTests(unittest.TestCase):
+    def test_public_game_build_metadata_and_manifest(self):
+        payload = {"data": {"4019830": {"depots": {"branches": {"public": {"buildid": "25811348"}}}}}}
+        checker = PublicSteamBuildChecker(lambda _request, timeout=0: Reply(json.dumps(payload).encode()))
+        self.assertEqual(checker.latest_build(), "25811348")
+        self.assertEqual(installed_build(b'"AppState"\n{\n "buildid" "25811348"\n}'), "25811348")
+
+    def test_public_game_build_metadata_fails_closed(self):
+        checker = PublicSteamBuildChecker(lambda _request, timeout=0: Reply(b'{"status":"success"}'))
+        with self.assertRaisesRegex(RuntimeError, "did not contain"):
+            checker.latest_build()
+        with self.assertRaisesRegex(RuntimeError, "no valid build"):
+            installed_build(b'"AppState" {}')
+
     def test_strict_versions(self):
         self.assertEqual(parse_version("v1.2.3"), (1, 2, 3))
         for invalid in ("v1.2", "v01.2.3", "v1.2.3-beta", "latest"):

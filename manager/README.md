@@ -2,7 +2,7 @@
 
 Zanik Manager is the recommended Windows interface for installing and maintaining Zanik on a Pterodactyl-hosted Dragonwilds server. It is portable: extract the complete archive and open `ZanikManager.exe`.
 
-The bottom-right indicators separately track the Manager release and the active server's Linux Dragonwilds build. Manager checks use stable GitHub releases and offer a verified transactional **Update and relaunch** action. Game checks use the active server's SteamCMD in read-only mode and never install a game update. **Update Zanik server** on the Servers tab updates only the embedded Zanik server payload.
+The bottom-right indicators separately track the Manager release and the active server's Linux Dragonwilds build every ten minutes. Manager checks use stable GitHub releases and offer a verified transactional **Update and relaunch** action. Game checks read the selected server's Steam manifest and public dedicated-server metadata, work without Zanik installed, and never install a game update. **Update Zanik server** on the Servers tab updates only the embedded Zanik server payload.
 
 The external updater runs from LocalAppData rather than the portable installation directory, retries short-lived Windows file locks, and records the exact failed swap operation in its LocalAppData journal while preserving or restoring the prior installation.
 
@@ -11,6 +11,8 @@ API keys are stored in Windows Credential Manager, not in the application direct
 The first release supports Pterodactyl. Wrapper and acknowledged executable-replacement installations remain available, while the standalone shell scripts and Windows asset extractor are packaged separately for advanced use.
 
 Install, Doctor, configuration, extraction, upload, and activation operations display modal stage progress and block conflicting actions. After installation, Manager first offers an optional website-settings step for Zanik's separate TCP port and public URL, then offers to complete website asset setup for that exact server. Skipped website settings remain available under the selected server's Configuration tab. Asset setup can reuse a validated local bundle or extract, upload, atomically activate, and verify a new one.
+
+Configuration loads automatically when the selected server changes. An unmodded server is reported as not installed rather than as a failed file download. The guided editor includes `ZANIK_ENABLED`, a master switch that preserves files and data while starting the official server without the mod.
 
 Asset extraction checks whether Dragonwilds is running and can request a graceful close; it never force-terminates the game. When UE4SS or another proxy loader is already installed, Manager asks permission, preserves and verifies it outside the game directory, uses Zanik's mapper temporarily, and restores the original files exactly. Manual uploads always show an explicit target-server selector and confirmation.
 

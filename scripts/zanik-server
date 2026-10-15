@@ -8,6 +8,7 @@ ZANIK_DIR=$(CDPATH= cd -- "$SELF_DIR/.." && pwd)
 server_root=${ZANIK_SERVER_ROOT:-$(CDPATH= cd -- "$ZANIK_DIR/.." && pwd)}
 config_path=${ZANIK_CONFIG:-$ZANIK_DIR/config/zanik.conf}
 install_mode=${ZANIK_INSTALL_MODE:-wrapper}
+env_ZANIK_ENABLED=${ZANIK_ENABLED-}
 env_STATUS_PORT=${ZANIK_STATUS_PORT-}
 env_PUBLIC_BASE_URL=${ZANIK_PUBLIC_BASE_URL-}
 env_ADMIN_COOKIE_NAME=${ZANIK_ADMIN_COOKIE_NAME-}
@@ -51,7 +52,8 @@ apply_override(){
     return 1
   fi
 }
-if ! apply_override STATUS_PORT "$env_STATUS_PORT" ||
+if ! apply_override ZANIK_ENABLED "$env_ZANIK_ENABLED" ||
+   ! apply_override STATUS_PORT "$env_STATUS_PORT" ||
    ! apply_override PUBLIC_BASE_URL "$env_PUBLIC_BASE_URL" ||
    ! apply_override ADMIN_COOKIE_NAME "$env_ADMIN_COOKIE_NAME" ||
    ! apply_override FEATURE_PLAYER_STATUS "$env_FEATURE_PLAYER_STATUS" ||
@@ -68,6 +70,11 @@ if ! apply_override STATUS_PORT "$env_STATUS_PORT" ||
    ! apply_override FEATURE_ADMIN_GRAVESTONE_MUTATION "$env_FEATURE_ADMIN_GRAVESTONE_MUTATION" ||
    ! apply_override FEATURE_QOL_AUTO_COMPOST "$env_FEATURE_QOL_AUTO_COMPOST"; then
   export ZANIK_CONFIG_VALID=0
+  exec "$game" "$@"
+fi
+
+if [ "$CFG_ZANIK_ENABLED" -eq 0 ]; then
+  zanik_log 'Zanik is disabled by configuration; starting the official server without Zanik.'
   exec "$game" "$@"
 fi
 

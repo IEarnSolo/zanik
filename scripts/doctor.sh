@@ -16,11 +16,13 @@ game_target=$game
 config_valid=true
 zanik_defaults
 zanik_load_config "$install/config/zanik.conf" >/dev/null 2>&1 || config_valid=false
+zanik_enabled=true
+[ "${CFG_ZANIK_ENABLED:-1}" -eq 1 ] || zanik_enabled=false
 healthy=true
 [ -x "$game_target" ] || healthy=false
 [ -s "$install/bin/libzanik.so" ] || healthy=false
 [ -x "$install/bin/zanik-server" ] || healthy=false
-[ -s "$server_root/zanik-data/console-admin.key" ] || healthy=false
+[ "$zanik_enabled" = false ] || [ -s "$server_root/zanik-data/console-admin.key" ] || healthy=false
 hash_matches(){
   field=$1 path=$2
   expected=$(sed -n "s/.*\"$field\":\"\([^\"]*\)\".*/\1/p" "$install/install-state.json" 2>/dev/null)
@@ -32,8 +34,8 @@ hash_matches launcherSha256 "$install/bin/zanik-server" || healthy=false
 assets=false
 [ -f "$install/assets/current/asset-manifest.json" ] && assets=true
 if [ "$json" -eq 1 ]; then
-  printf '{"healthy":%s,"configValid":%s,"mode":"%s","assetsInstalled":%s}\n' "$healthy" "$config_valid" "$mode" "$assets"
+  printf '{"healthy":%s,"configValid":%s,"zanikEnabled":%s,"mode":"%s","assetsInstalled":%s}\n' "$healthy" "$config_valid" "$zanik_enabled" "$mode" "$assets"
 else
-  zanik_log "healthy=$healthy configValid=$config_valid mode=$mode assetsInstalled=$assets"
+  zanik_log "healthy=$healthy configValid=$config_valid zanikEnabled=$zanik_enabled mode=$mode assetsInstalled=$assets"
 fi
 [ "$healthy" = true ] && [ "$config_valid" = true ]

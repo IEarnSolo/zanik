@@ -2,6 +2,18 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.19] - 2026-10-15
+
+### Added
+
+- Add the `ZANIK_ENABLED` master configuration switch, which starts the untouched official server without loading Zanik while preserving all installed files and persistent data.
+
+### Fixed
+
+- Make Zanik Manager game-build checks work before Zanik is installed by comparing the remote Steam app manifest with public dedicated-server metadata; results also report whether Zanik is installed or disabled.
+- Treat missing configuration on an unmodded server as a normal state and automatically load configuration whenever the active server changes.
+- Poll Manager and active-server updates every ten minutes while retaining quiet status-bar reporting and manual checks.
+
 ## [0.2.18] - 2026-10-15
 
 ### Fixed

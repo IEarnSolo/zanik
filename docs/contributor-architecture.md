@@ -2,6 +2,7 @@
 
 - Linux x86-64 uses a native process-scoped `LD_PRELOAD` library. Wrapper mode is canonical; managed executable replacement is compatibility-only.
 - Read-only features default on. Every state-changing or gameplay QoL feature owns an off-by-default gate and must not initialize native work when disabled.
+- `ZANIK_ENABLED` is the master runtime gate. When false, the canonical launcher must execute the verified official binary without `LD_PRELOAD` or any Zanik runtime initialization while preserving installation and persistent data.
 - `FEATURE_QOL_AUTO_COMPOST` is a reserved, incomplete feature and must remain false until its native integration, compatibility gates, diagnostics, performance evidence, and development-server validation are complete.
 - New native or operational dependencies must update compatibility analysis, runtime validation, diagnostics, backups, reports, positive/negative tests, and safe feature-local failure behavior.
 - Hooks and dispatchers are latency-critical: no I/O, waits, unbounded scans, or blocking locks on the game thread. Observe per-operation timing, queue depth, drops, cache state, and slow calls; preserve the aggregate tick budget.
