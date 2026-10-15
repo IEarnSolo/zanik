@@ -35,6 +35,12 @@ constexpr uintptr_t GWorld_25501739   = 0x0DD555F8;
 constexpr uintptr_t GObjects_25630937 = 0x0DC3A510;
 constexpr uintptr_t GNames_25630937   = 0x0DB7EFF8;
 constexpr uintptr_t GWorld_25630937   = 0x0DD565F8;
+// Build 25811348 shifted the writable ELF sections by 0x5C000. These
+// candidates are never trusted by address alone; engine_core validates the
+// name pool, object array, and world object structures before publishing them.
+constexpr uintptr_t GObjects_25811348 = 0x0DC96510;
+constexpr uintptr_t GNames_25811348   = 0x0DBDAFF8;
+constexpr uintptr_t GWorld_25811348   = 0x0DDB25F8;
 
 // TUObjectArray / FUObjectItem - Source: RSDWSDK/CppSDK/SDK/Basic.hpp
 constexpr uintptr_t ObjArray_Objects     = 0x00;

@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-15",
+  "build": "25811348",
+  "executableSha256": "49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c",
+  "executableSize": 230029320,
+  "clientBuild": "25812671",
+  "developmentValidation": "passed-read-only-awaiting-gameplay",
+  "productionValidation": "not-run",
+  "buildingPieces": 827,
+  "npcPlacements": 2964,
+  "recipeEntries": 1576,
+  "questEntries": 41,
+  "dispatcherMaximumMicroseconds": 80,
+  "dispatcherSlowCalls": 0,
+  "developmentRollback": "/home/container/zanik-backups/compat-20261015T053313Z"
+}

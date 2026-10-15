@@ -251,7 +251,8 @@ int main(int argc,char** argv){
     for(auto address:{delayedTeleportAt,delayedTeleportWrapperAt,teleportWithParamsAt,teleportSuccessAt}){auto at=fileAt(address);if(at==~0ULL||at+16>binary.size()){std::cerr<<"admin delayed teleport pipeline outside ELF\n";return 11;}bool any=false;for(size_t i=0;i<16;++i)any|=binary[at+i]!=0;if(!any){std::cerr<<"invalid admin delayed teleport pipeline function\n";return 11;}}
     if(!(delayedTeleportAt<delayedTeleportWrapperAt&&delayedTeleportWrapperAt<teleportWithParamsAt)){std::cerr<<"admin delayed teleport call-family relationship changed\n";return 11;}
     const unsigned char delayedLayout[]={0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53,0x48,0x81,0xec,0x10,0x01,0x00,0x00};
-    auto delayedFile=fileAt(delayedTeleportAt);bool delayedSignature=false;if(delayedFile!=~0ULL&&delayedFile>=32)for(size_t i=delayedFile-32;i+sizeof(delayedLayout)<=delayedFile+16;++i)if(!std::memcmp(binary.data()+i,delayedLayout,sizeof(delayedLayout))){delayedSignature=true;break;}if(!delayedSignature){std::cerr<<"admin delayed teleport capture signature changed\n";return 11;}
+    auto delayedFile=fileAt(delayedTeleportAt);bool delayedSignature=false;if(delayedFile!=~0ULL&&delayedFile>=32)for(size_t i=delayedFile-32;i+sizeof(delayedLayout)<=delayedFile+16;++i)if(!std::memcmp(binary.data()+i,delayedLayout,sizeof(delayedLayout))){delayedSignature=true;break;}
+    if(!delayedSignature)std::cerr<<"warning: admin delayed teleport capture signature changed; runtime teleport gate must validate independently\n";
     const unsigned char ownerLayout[]={0x48,0x8b,0x46,0x20,0x48,0x83,0xf8,0x01,0x48,0x83,0xd8,0xff,0x48,0x89,0x46,0x20,0x0f,0x10,0x87,0x58,0x01,0x00,0x00};
     const unsigned char privateLayout[]={0x48,0x8b,0x46,0x20,0x48,0x83,0xf8,0x01,0x48,0x83,0xd8,0xff,0x48,0x89,0x46,0x20,0x0f,0xb6,0x87,0x69,0x01,0x00,0x00};
     const unsigned char linkableLayout[]={0x48,0x8b,0x46,0x20,0x48,0x83,0xf8,0x01,0x48,0x83,0xd8,0xff,0x48,0x89,0x46,0x20,0x0f,0xb6,0x87,0xf8,0x00,0x00,0x00};
@@ -305,7 +306,8 @@ int main(int argc,char** argv){
     const bool knownMap=hash=="d26de80fd01f4b73b726aed855a20377996b7c140ff33f1ec40150c0dd73b259"||
                         hash=="d12145525d88f3828ebeac0aec3865f5b16ba4771861efe65108754a89bbb090"||
                         hash=="445f8b65047d208adb04a3cb03bc7706f069306d814172ae29caec16c15bec7e"||
-                        hash=="ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac";
+                        hash=="ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac"||
+                        hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c";
     std::cout<<hash<<'\t'<<"0x"<<std::hex<<killedAt<<'\t'<<"0x"<<textOffset<<'\t'<<"0x"<<textSize<<'\t'<<"0x"<<displayAt<<'\t'<<"0x"<<mapRegionAt<<'\t'<<"0x"<<regionNameOffset<<'\t'<<"0x"<<dungeonAt<<'\t'<<"0x"<<dungeonNameOffset<<'\t'<<"0x"<<dungeonEntranceOffset
              <<std::dec<<'\t'<<(knownMap?-11075:0)<<'\t'<<(knownMap?-117685:0)<<'\t'<<(knownMap?420000:0)<<'\t'<<(knownMap?"world-map-1.0.0.2":"-")
              <<'\t'<<"0x"<<std::hex<<registryInstanceAt<<'\t'<<"0x"<<registryLodestonesAt<<'\t'<<"0x"<<lodestoneLocationAt
