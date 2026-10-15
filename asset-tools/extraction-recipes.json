@@ -11,7 +11,7 @@
     "T_Icon_Plans"
   ],
   "catalogProfile": {
-    "version": "client-25812671-reviewed-4",
+    "version": "client-25812671-reviewed-5",
     "clientBuild": "25812671",
     "exportCounts": {
       "jsonFiles": 17249,
@@ -21,8 +21,11 @@
       "buildings/catalog.json:pieces": 827,
       "npc-catalog.json:nodes": 2964,
       "npc-catalog.json:types": 171,
+      "quest-catalog.json:objectives": 219,
       "quest-catalog.json:quests": 41,
+      "quest-step-locations.json:markers": 695,
       "quest-step-locations.json:quests": 41,
+      "quest-step-locations.json:steps": 230,
       "recipe-unlocks.json:entries": 1576,
       "resource-catalog.json:nodes": 31910,
       "resource-catalog.json:types": 26

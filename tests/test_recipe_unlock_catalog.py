@@ -533,6 +533,19 @@ class RecipeUnlockCatalogTests(unittest.TestCase):
         for name in ("Glass Owl", "Wooden Club", "Challenge Horn Mouthpiece"):
             self.assertEqual(set(), by_name[name])
 
+    def test_new_compost_recipes_are_farming(self):
+        from tools.generate_recipe_unlock_catalog import public_recipe_types
+        large_bucket = {
+            "kind": "crafting", "internalName": "Recipe_Tool_Bucket_Compost_Big",
+            "displayName": "Large Compost Bucket", "output": [],
+        }
+        ultra_bin = {
+            "kind": "building", "internalName": "DA_BaseBuilding_Station_ComposterUltra",
+            "displayName": "Ultra Compost Bin", "output": [],
+        }
+        self.assertEqual(["items", "farming"], public_recipe_types(large_bucket))
+        self.assertEqual(["farming"], public_recipe_types(ultra_bin))
+
     def test_recipe_unlock_page_search_and_disclosure_contract(self):
         page = (ROOT / "src" / "web_page.h").read_text(encoding="utf-8")
         self.assertIn("constexpr const char* kRecipeUnlocksPage", page)
