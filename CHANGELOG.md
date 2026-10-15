@@ -2,6 +2,19 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.15] - 2026-10-15
+
+### Added
+
+- Add quiet Zanik Manager and active-game-server update indicators with separate manual checks and six-hour background refreshes.
+- Validate stable Manager releases from GitHub and provide a transactional, rollback-capable **Update and relaunch** workflow.
+- Add a bounded read-only launcher command that compares the installed Linux dedicated-server build with SteamCMD without installing an update.
+- Include cached dedicated-server update health in `/api/update-status` and Doctor output.
+
+### Changed
+
+- Rename the server payload action to **Update Zanik server** and document the distinction between Manager, Zanik server payload, and Dragonwilds updates.
+
 ## [0.2.14] - 2026-10-14
 
 ### Added

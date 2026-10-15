@@ -25,6 +25,14 @@ from manager.zanik_manager.support import create_support_bundle
 from tools.prune_pyside_runtime import KEEP_FILES, prune
 
 class ManagerTests(unittest.TestCase):
+    def test_update_controls_are_distinct_and_non_modal_by_default(self):
+        source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('"Update Zanik server"', source)
+        self.assertIn('QPushButton("Update and relaunch")', source)
+        self.assertIn('QPushButton("Check")', source)
+        self.assertIn('run_background("manager-update-check"', source)
+        self.assertIn('run_background("game-update-check"', source)
+
     def test_origin_and_http_policy_helpers(self):
         self.assertEqual(normalize_origin("EXAMPLE.com/"), "https://example.com")
         self.assertEqual(normalize_origin("http://localhost:8080/"), "http://localhost:8080")
@@ -379,7 +387,7 @@ class ManagerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             archive = Path(temporary) / "server.zip"
             required = ["bin/libzanik.so", "bin/zanik-server", "bin/zanik-compat-analyzer", "scripts/compat-launcher.sh",
-                        "scripts/verify-assets.sh",
+                        "scripts/verify-assets.sh", "scripts/check-game-update.sh",
                         "config/zanik.conf.example", "compatibility/compatibility.tsv", "VERSION"]
             with zipfile.ZipFile(archive, "w") as package:
                 for name in required: package.writestr(name, b"0.2.0" if name == "VERSION" else b"payload")
@@ -449,6 +457,36 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(report["method"], "server-side-aggregate")
         self.assertEqual(len(client.reads), 2)
         self.assertTrue(client.deleted)
+
+    def test_game_update_check_rejects_stale_report_and_matches_request(self):
+        class Client:
+            def __init__(self): self.request_id = None; self.reads = 0
+            def resources(self, _server): return {"current_state": "running"}
+            def command(self, _server, command): self.request_id = command.rsplit(" ", 1)[-1]
+            def read_file(self, _server, path):
+                if path.endswith("install-state.json"):
+                    return b'{"mode":"wrapper"}'
+                self.reads += 1
+                request = "stale" if self.reads == 1 else self.request_id
+                return json.dumps({"schemaVersion": 1, "requestId": request, "status": "current",
+                                   "installedBuild": "123", "latestBuild": "123",
+                                   "updateAvailable": False}).encode()
+        with tempfile.TemporaryDirectory() as temporary:
+            result = PterodactylProvider(Client(), JournalStore(Path(temporary))).check_game_update(
+                "dev", "/home/container", timeout=2.5)
+        self.assertTrue(result["fresh"])
+        self.assertEqual(result["status"], "current")
+
+    def test_offline_game_update_check_uses_cached_report(self):
+        class Client:
+            def resources(self, _server): return {"current_state": "offline"}
+            def read_file(self, _server, _path):
+                return b'{"schemaVersion":1,"status":"update-available","updateAvailable":true}'
+        with tempfile.TemporaryDirectory() as temporary:
+            result = PterodactylProvider(Client(), JournalStore(Path(temporary))).check_game_update(
+                "dev", "/home/container")
+        self.assertFalse(result["fresh"])
+        self.assertFalse(result["serverRunning"])
 
     def test_pyside_pruner_keeps_only_declared_runtime(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -551,7 +589,8 @@ class ManagerTests(unittest.TestCase):
             root = Path(temporary); archive = root / "server.zip"
             files = {"bin/libzanik.so": b"library", "bin/zanik-server": b"launcher", "bin/zanik-compat-analyzer": b"analyzer",
                      "scripts/compat-launcher.sh": b"#!/bin/sh\n# ZANIK_COMPAT_LAUNCHER=1\n",
-                     "scripts/verify-assets.sh": b"#!/bin/sh\nexit 0\n", "config/zanik.conf.example": b"FEATURE_MAP=true\n",
+                     "scripts/verify-assets.sh": b"#!/bin/sh\nexit 0\n", "scripts/check-game-update.sh": b"#!/bin/sh\nexit 0\n",
+                     "config/zanik.conf.example": b"FEATURE_MAP=true\n",
                      "config/zanik-config.schema.json": b"{}", "compatibility/compatibility.tsv": b"sha\toffsets\n", "VERSION": b"0.2.0\n"}
             with zipfile.ZipFile(archive, "w") as package:
                 for name, data in files.items(): package.writestr(name, data)

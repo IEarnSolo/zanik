@@ -2,6 +2,10 @@
 
 Zanik Manager is the recommended installation path for Windows administrators using Pterodactyl. Download `zanik-manager-windows-x86_64-VERSION.zip`, extract the complete folder, and open `ZanikManager.exe`. It includes the matching server package and Windows asset extractor and does not require Python, SSH, or administrator rights.
 
+The bottom-right status bar quietly tracks two independent update states. **Manager** checks stable public GitHub releases shortly after startup and every six hours; **Check** refreshes it immediately, and **Update and relaunch** appears only after the exact archive, release manifest, size, and SHA-256 digest have been validated. The updater swaps the portable directory transactionally, waits for the new GUI to start, and restores the prior copy if startup fails. Profiles, credentials, cached bundles, and operation journals remain under `%LOCALAPPDATA%` and are not part of that swap.
+
+**Game (server name)** checks only the active Pterodactyl profile. A running current Zanik launcher asks that server's own SteamCMD installation whether Linux dedicated-server app `4019830` has a newer public build. This is read-only: it never runs `app_update`, changes files, or stops the server. An offline server shows its last cached result when available. If an update exists, install it through the host or Steam workflow, then run Doctor and revalidate compatibility and assets. Windows-client and Linux-server build IDs are intentionally not compared.
+
 ## First run
 
 1. Enter the Pterodactyl panel URL and a **Client API key** from your panel account.
@@ -16,6 +20,8 @@ API keys are stored in Windows Credential Manager. They are never written to `pr
 If the panel's normal file-contents route reports a transient node-side `5xx` error, the Manager retries the read through Pterodactyl's signed download route. If both routes fail, the dialog shows a concise redacted error and places technical details in the Activity tab.
 
 Long-running operations use an application-modal progress window and record each stage in **Activity**. This prevents another server mutation from starting while an install, update, asset operation, or diagnostic is still running. Guided asset setup is a separate transaction: a mapping, extraction, or upload failure never rolls back a successful server installation, and a completed local bundle remains cached for Retry.
+
+The Servers-tab **Update Zanik server** action updates only the Linux Zanik payload embedded in the current Manager. It does not update the Manager application or Dragonwilds.
 
 The Assets tab always shows its explicit **Target server**. Before a manual upload, Manager confirms the bundle, profile, panel, and server identifier so changing the active server cannot silently redirect an upload. After a standalone extraction succeeds, Manager offers **Upload and activate now** for that displayed target; choosing **Later** keeps the validated bundle in the local cache. Cached bundle entries include the time they were validated, the client build, and a manifest fingerprint.
 

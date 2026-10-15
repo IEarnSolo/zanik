@@ -5,14 +5,14 @@ from pathlib import Path
 BANNED_NAMES={'.env','.env.gitlab','admins.txt','console-admin.key','pterodactyl_api_key.txt','AGENTS.MD'}
 BANNED_SUFFIXES={'.pak','.utoc','.ucas','.usmap','.sav','.db','.pem','.p12','.pfx'}
 BANNED_CONTENT=(b'PTERODACTYL_API_KEY=',b'GITLAB_TOKEN=',b'-----BEGIN PRIVATE KEY-----')
-REQUIRED={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','scripts/verify-assets.sh','config/zanik.conf.example','config/zanik-config.schema.json','compatibility/compatibility.tsv','LICENSE','README.md','CHANGELOG.md','docs/releasing.md','tools/asset_filesystem.py'}
-EXECUTABLE={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','scripts/verify-assets.sh'}
+REQUIRED={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','scripts/verify-assets.sh','scripts/check-game-update.sh','config/zanik.conf.example','config/zanik-config.schema.json','compatibility/compatibility.tsv','LICENSE','README.md','CHANGELOG.md','docs/releasing.md','tools/asset_filesystem.py'}
+EXECUTABLE={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','scripts/verify-assets.sh','scripts/check-game-update.sh'}
 WINDOWS_ASSET_REQUIRED={'init-assets.ps1','runtime/python.exe','runtime/LICENSE.txt','third_party/uas/uas.exe',
     'third_party/uas/LICENSE.txt','third_party/ue4ss/dwmapi.dll','third_party/ue4ss/ue4ss/UE4SS.dll',
     'third_party/ue4ss/ue4ss/LICENSE','asset-tools/extraction-recipes.json','tools/zanik_assets.py',
     'tools/windows_mapping.py','tools/windows_asset_pipeline.py','tools/generate_web_assets.py','tools/asset_filesystem.py',
     'tools/generate_world_catalogs.py','deploy/quest-overrides.json','deploy/quest-step-overrides.json'}
-MANAGER_REQUIRED={'ZanikManager.exe','runtime/pythonw.exe','app/zanik_manager/app.py','app/zanik_manager/pterodactyl.py',
+MANAGER_REQUIRED={'ZanikManager.exe','ZanikManagerUpdater.exe','VERSION','runtime/pythonw.exe','app/zanik_manager/app.py','app/zanik_manager/pterodactyl.py',
     'config/zanik-config.schema.json','asset-tools/init-assets.ps1','payload/server.zip',
     'payload/server-payload.json','payload/payloads.json','README.md','LICENSE','LICENSE-LGPL-3.0.txt','THIRD_PARTY_NOTICES.md','tools.lock.json'}
 MANAGER_RUNTIME_REQUIRED={'runtime/Lib/site-packages/PySide6/QtCore.pyd','runtime/Lib/site-packages/PySide6/QtGui.pyd',
@@ -58,6 +58,8 @@ def inspect(path):
                     if any(marker in data for marker in BANNED_CONTENT): raise SystemExit(f'credential marker in {path.name}: {name}')
             if path.name.startswith('zanik-manager-windows-'):
                 payloads=json.loads(archive.read('payload/payloads.json'))
+                packaged_version=archive.read('VERSION').decode('utf-8-sig').strip()
+                if packaged_version!=payloads.get('version'): raise SystemExit('manager VERSION differs from nested payload version')
                 data=archive.read('payload/server.zip')
                 if hashlib.sha256(data).hexdigest()!=payloads['serverSha256']: raise SystemExit('manager nested server payload hash mismatch')
                 version=payloads.get('version')
