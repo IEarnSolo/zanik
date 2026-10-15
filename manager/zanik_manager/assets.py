@@ -381,20 +381,23 @@ class AssetDeployer:
                 operation.rollback.append({"from": previous, "to": current})
             self.provider.client.rename(server_id, root, [(str(PurePosixPath(stage).relative_to(root)), "zanik/assets/current")])
             operation.state = "complete"; operation.completed_steps.append("assets-activated"); journal.save(operation)
-            restarted = self._restart_runtime_if_running(server_id, status)
+            restart_context = self._restart_runtime_if_running(server_id, status)
+            restarted = restart_context is not None
             if restarted:
                 operation.completed_steps.append("runtime-restart-requested"); journal.save(operation)
             return {"operationId": operation.operation_id, "manifest": manifest,
                     "bundleSha256": sha256(bundle.read_bytes()), "fileCount": len(files),
-                    "archiveUpload": used_archives, "restartRequested": restarted}
+                    "archiveUpload": used_archives, "restartRequested": restarted,
+                    "restartPreviousUptime": (restart_context or {}).get("previousUptime")}
 
-    def _restart_runtime_if_running(self, server_id: str, status=lambda message: None) -> bool:
-        state = self.provider.client.resources(server_id).get("current_state", "")
-        if state != "running":
-            return False
+    def _restart_runtime_if_running(self, server_id: str, status=lambda message: None) -> dict | None:
+        resources = self.provider.client.resources(server_id)
+        if resources.get("current_state", "") != "running":
+            return None
+        previous_uptime = int(resources.get("resources", {}).get("uptime") or 0)
         status("Restarting the game server to load the new runtime catalogs")
         self.provider.client.power(server_id, "restart")
-        return True
+        return {"previousUptime": previous_uptime}
 
     @staticmethod
     def _make_parts(bundle: Path, output: Path, limit: int = 90 * 1024 * 1024) -> tuple[list[Path], dict]:

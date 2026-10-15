@@ -16,7 +16,7 @@ from PySide6.QtCore import QUrl
 
 from .assets import (AssetDeployer, AssetExtractor, asset_setup_mode, discover_steam_game_roots, game_root_id,
                      request_dragonwilds_close, resume_activity_message)
-from .cache import BundleCache
+from .cache import BundleCache, format_bundle_timestamp
 from .config import ConfigModel, content_hash, update_website_settings
 from .journal import JournalStore
 from .lifecycle import PterodactylProvider, ReleasePayload
@@ -39,6 +39,11 @@ def resource_path(*parts: str) -> Path:
         return candidate
     repo = Path(__file__).resolve().parents[2]
     return repo.joinpath(*parts)
+
+
+def button_help(button: QPushButton, text: str) -> QPushButton:
+    button.setToolTip(text)
+    return button
 
 
 class Worker(QObject):
@@ -67,9 +72,13 @@ class AddServerDialog(QDialog):
         self.token = QLineEdit(); self.token.setEchoMode(QLineEdit.Password)
         self.name = QLineEdit(); self.name.setPlaceholderText("My Dragonwilds server")
         self.server = QComboBox(); self.server.setEnabled(False)
-        self.test = QPushButton("Connect and list servers"); self.test.clicked.connect(self.connect_panel)
+        self.test = button_help(QPushButton("Connect and list servers"),
+                                "Validate this panel URL and API key, then list the servers this account can manage.")
+        self.test.clicked.connect(self.connect_panel)
         self.buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         self.buttons.button(QDialogButtonBox.Save).setEnabled(False)
+        self.buttons.button(QDialogButtonBox.Save).setToolTip("Save the selected server as a Manager profile after a successful connection test.")
+        self.buttons.button(QDialogButtonBox.Cancel).setToolTip("Close this dialog without saving a server profile.")
         self.buttons.accepted.connect(self.accept_profile); self.buttons.rejected.connect(self.reject)
         layout.addRow("Panel URL", self.origin); layout.addRow("Client API key", self.token)
         layout.addRow("Profile name", self.name); layout.addRow(self.test)
@@ -89,6 +98,8 @@ class AddServerDialog(QDialog):
         box.setInformativeText("Your API key could be intercepted in transit. Continue only if you trust this network and understand the risk.")
         proceed = box.addButton("Continue with HTTP", QMessageBox.AcceptRole)
         cancel = box.addButton("Cancel", QMessageBox.RejectRole)
+        proceed.setToolTip("Send the API key over this unencrypted HTTP connection and continue only on a trusted network.")
+        cancel.setToolTip("Cancel without sending the API key to the panel.")
         box.setDefaultButton(cancel); box.setEscapeButton(cancel)
         box.exec()
         return box.clickedButton() is proceed
@@ -129,9 +140,11 @@ class MainWindow(QMainWindow):
         super().__init__(); self.setWindowTitle("Zanik Manager"); self.resize(980, 680)
         self.paths = ensure_layout(); self.store = ProfileStore(self.paths["root"] / "profiles.json")
         self.vault = CredentialVault(); self.profiles = self.store.load(); self.current_config_hash = ""
+        self.current_config_profile_id = ""
         self.threads = []; self.busy_dialog = None; self.last_progress_message = ""
         central = QWidget(); outer = QVBoxLayout(central)
-        target = QHBoxLayout(); self.profile_box = QComboBox(); self.add_button = QPushButton("Add server")
+        target = QHBoxLayout(); self.profile_box = QComboBox(); self.add_button = button_help(
+            QPushButton("Add server"), "Add a Pterodactyl panel connection and select one server to manage.")
         self.add_button.clicked.connect(self.add_server); self.profile_box.currentIndexChanged.connect(self.active_profile_changed)
         target.addWidget(QLabel("Active server:")); target.addWidget(self.profile_box, 1); target.addWidget(self.add_button)
         self.warning = QLabel(); self.warning.setStyleSheet("color:#b45309;font-weight:600")
@@ -141,6 +154,9 @@ class MainWindow(QMainWindow):
         self.activity_signal.connect(self.log)
         self.operation_progress_signal.connect(self.update_operation_progress)
         self.reload_profiles()
+        startup_profile = self.active()
+        if startup_profile:
+            QTimer.singleShot(250, lambda profile_id=startup_profile.id: self.load_startup_config(profile_id))
         QTimer.singleShot(1000, self.retry_pending_asset_cleanup)
         if prompt_first_run and not self.profiles:
             self.add_server()
@@ -149,30 +165,47 @@ class MainWindow(QMainWindow):
         page = QWidget(); layout = QVBoxLayout(page)
         self.server_summary = QLabel("Add a server to begin."); self.server_summary.setWordWrap(True)
         row = QHBoxLayout()
-        for label, handler in (("Refresh", self.run_doctor), ("Install / repair", self.install),
-                               ("Update", self.install), ("Recover interrupted", self.recover_interrupted),
-                               ("Uninstall", self.uninstall), ("Open panel", self.open_panel)):
-            button = QPushButton(label); button.clicked.connect(handler); row.addWidget(button)
+        actions = (
+            ("Refresh", self.run_doctor, "Run a quick, read-only health check and refresh the selected server summary."),
+            ("Install / repair", self.install, "Install Zanik or repair its managed files and launcher on the selected server."),
+            ("Update", self.install, "Update the selected server to the Zanik version embedded in this Manager."),
+            ("Recover interrupted", self.recover_interrupted, "Resume or roll back an interrupted Manager transaction for this server."),
+            ("Uninstall", self.uninstall, "Remove verified Zanik-managed files while preserving server data by default."),
+            ("Open panel", self.open_panel, "Open this server's page in the configured Pterodactyl panel."),
+        )
+        for label, handler, tooltip in actions:
+            button = button_help(QPushButton(label), tooltip); button.clicked.connect(handler); row.addWidget(button)
         layout.addWidget(self.server_summary); layout.addLayout(row); layout.addStretch(); self.tabs.addTab(page, "Servers")
 
     def _assets_tab(self):
         page = QWidget(); layout = QFormLayout(page)
         self.game_root = QLineEdit(); roots = discover_steam_game_roots()
         if roots: self.game_root.setText(str(roots[0]))
-        browse = QPushButton("Browse…"); browse.clicked.connect(self.choose_game_root)
+        browse = button_help(QPushButton("Browse…"), "Select the local licensed Dragonwilds client used to generate website assets.")
+        browse.clicked.connect(self.choose_game_root)
         row = QHBoxLayout(); row.addWidget(self.game_root); row.addWidget(browse)
-        self.bundle_box = QComboBox(); self.extract_button = QPushButton("Extract and validate assets")
+        self.bundle_box = QComboBox(); self.extract_button = button_help(
+            QPushButton("Extract and validate assets"),
+            "Generate a complete validated website asset bundle from the selected local Dragonwilds client.")
         self.extract_button.clicked.connect(self.extract_assets)
-        self.resume_extract_button = QPushButton("Resume extraction"); self.resume_extract_button.clicked.connect(self.resume_asset_extraction)
-        self.discard_extract_button = QPushButton("Discard generated work"); self.discard_extract_button.clicked.connect(self.discard_asset_extraction)
+        self.resume_extract_button = button_help(QPushButton("Resume extraction"),
+                                                 "Continue a verified interrupted extraction without repeating completed stages.")
+        self.resume_extract_button.clicked.connect(self.resume_asset_extraction)
+        self.discard_extract_button = button_help(QPushButton("Discard generated work"),
+                                                  "Safely remove only the verified temporary extraction workspace; cached bundles are kept.")
+        self.discard_extract_button.clicked.connect(self.discard_asset_extraction)
         recovery_row = QHBoxLayout(); recovery_row.addWidget(self.resume_extract_button); recovery_row.addWidget(self.discard_extract_button)
-        upload = QPushButton("Upload and activate selected bundle"); upload.clicked.connect(self.upload_assets)
-        open_button = QPushButton("Open bundle folder"); open_button.clicked.connect(self.open_asset_folder)
+        self.upload_asset_button = button_help(QPushButton("Upload and activate selected bundle"),
+                                               "Upload the selected validated bundle to the explicitly selected target server and activate it atomically.")
+        self.upload_asset_button.clicked.connect(lambda: self.upload_assets())
+        open_button = button_help(QPushButton("Open bundle folder"),
+                                  "Open the Windows folder containing the selected validated bundle.")
+        open_button.clicked.connect(self.open_asset_folder)
         layout.addRow("Dragonwilds client", row); layout.addRow(self.extract_button); layout.addRow(recovery_row)
         self.asset_target_box = QComboBox()
         layout.addRow("Validated bundle", self.bundle_box)
         layout.addRow("Target server", self.asset_target_box)
-        layout.addRow(upload); layout.addRow(open_button)
+        layout.addRow(self.upload_asset_button); layout.addRow(open_button)
         self.game_root.editingFinished.connect(self.refresh_bundles)
         self.tabs.addTab(page, "Assets")
 
@@ -195,15 +228,23 @@ class MainWindow(QMainWindow):
         scroll=QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(form_page)
         self.config_text = QPlainTextEdit(); self.config_text.setPlaceholderText("Load the server configuration to edit it.")
         self.config_editors.addTab(scroll,"Guided settings"); self.config_editors.addTab(self.config_text,"Advanced raw editor")
-        row = QHBoxLayout(); load = QPushButton("Load from server"); save = QPushButton("Validate and save")
-        load.clicked.connect(self.load_config); save.clicked.connect(self.save_config)
+        row = QHBoxLayout(); load = button_help(QPushButton("Load from server"),
+                                               "Download and display the selected server's current Zanik configuration.")
+        save = button_help(QPushButton("Validate and save"),
+                           "Validate these settings, back up the remote configuration, and save only if it has not changed remotely.")
+        load.clicked.connect(lambda: self.load_config()); save.clicked.connect(self.save_config)
         row.addWidget(load); row.addWidget(save); row.addStretch()
         layout.addWidget(QLabel("Mutation and QoL features are off by default.")); layout.addWidget(self.config_editors, 1); layout.addLayout(row)
         self.tabs.addTab(page, "Configuration")
 
     def _doctor_tab(self):
         page = QWidget(); layout = QVBoxLayout(page); row = QHBoxLayout()
-        quick = QPushButton("Run quick Doctor"); deep = QPushButton("Run deep Doctor"); support = QPushButton("Create support ZIP")
+        quick = button_help(QPushButton("Run quick Doctor"),
+                            "Check installation, configuration, launcher, assets, and server status without a full asset hash audit.")
+        deep = button_help(QPushButton("Run deep Doctor"),
+                           "Run the full server-side asset verification in addition to the normal Doctor checks.")
+        support = button_help(QPushButton("Create support ZIP"),
+                              "Create a reviewable, redacted support archive without credentials, authorization data, or game assets.")
         quick.clicked.connect(self.run_doctor); deep.clicked.connect(lambda: self.run_doctor(True)); support.clicked.connect(self.export_support)
         row.addWidget(quick); row.addWidget(deep); row.addWidget(support); row.addStretch()
         self.doctor_output = QPlainTextEdit(); self.doctor_output.setReadOnly(True)
@@ -287,6 +328,7 @@ class MainWindow(QMainWindow):
 
     def retry_pending_asset_cleanup(self):
         if self.threads:
+            QTimer.singleShot(1000, self.retry_pending_asset_cleanup)
             return
         extractor = AssetExtractor(resource_path("asset-tools"), BundleCache(self.paths["assets"]))
         pending = [path for path in self.paths["asset_work"].iterdir()
@@ -320,6 +362,9 @@ class MainWindow(QMainWindow):
     def active_profile_changed(self):
         self.refresh_header()
         profile = self.active()
+        if not profile or self.current_config_profile_id != profile.id:
+            self.current_config_hash = ""; self.current_config_profile_id = ""
+            self.config_text.clear()
         if profile:
             for index in range(self.asset_target_box.count()):
                 if self.asset_target_box.itemData(index).id == profile.id:
@@ -362,6 +407,9 @@ class MainWindow(QMainWindow):
         box.setInformativeText("Retry first restores the last safe state and then reopens the workflow. Rollback only restores it.")
         box.setStandardButtons(QMessageBox.Retry|QMessageBox.Reset|QMessageBox.Cancel)
         box.button(QMessageBox.Reset).setText("Rollback only")
+        box.button(QMessageBox.Retry).setToolTip("Restore the last safe state, then retry the interrupted workflow.")
+        box.button(QMessageBox.Reset).setToolTip("Restore the last safe state without retrying the operation.")
+        box.button(QMessageBox.Cancel).setToolTip("Leave the recovery journal unchanged and close this prompt.")
         choice=box.exec()
         if choice in {QMessageBox.Retry,QMessageBox.Reset}:
             retry=choice==QMessageBox.Retry
@@ -373,23 +421,30 @@ class MainWindow(QMainWindow):
         if self.active(): QDesktopServices.openUrl(QUrl(self.active().panel_origin + "/server/" + self.active().server_id))
 
     def install(self):
-        profile = self.active()
+        self.install_profile(self.active())
+
+    def install_profile(self, profile: ServerProfile | None, forced_mode: str | None = None,
+                        replacement_acknowledged: bool = False, repair_context: bool = False):
         if not profile: return
         try:
-            adapter = self.provider().client.wrapper_adapter(profile.server_id)
+            adapter = self.provider(profile).client.wrapper_adapter(profile.server_id)
         except Exception as error:
             QMessageBox.critical(self, "Startup inspection failed", str(error)); return
-        dialog = QDialog(self); dialog.setWindowTitle("Choose installation mode"); form = QFormLayout(dialog)
-        choices = QComboBox(); choices.addItem("Wrapper — recommended", "wrapper"); choices.addItem("Replace executable — compatibility", "replace-executable")
-        if not adapter: choices.setCurrentIndex(1)
-        note = QLabel("This egg has a supported editable startup variable; wrapper mode can be configured automatically." if adapter else
-                      "This egg has no recognized wrapper variable. Wrapper mode will install files and show the exact manual startup command.")
-        note.setWordWrap(True); buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject)
-        form.addRow(note); form.addRow("Mode", choices); form.addRow(buttons)
-        if dialog.exec() != QDialog.Accepted: return
-        selected = choices.currentData()
-        if selected == "replace-executable" and QMessageBox.warning(self, "Core-file replacement",
+        selected = forced_mode
+        if not selected:
+            dialog = QDialog(self); dialog.setWindowTitle("Choose installation mode"); form = QFormLayout(dialog)
+            choices = QComboBox(); choices.addItem("Wrapper — recommended", "wrapper"); choices.addItem("Replace executable — compatibility", "replace-executable")
+            if not adapter: choices.setCurrentIndex(1)
+            note = QLabel("This egg has a supported editable startup variable; wrapper mode can be configured automatically." if adapter else
+                          "This egg has no recognized wrapper variable. Wrapper mode will install files and show the exact manual startup command.")
+            note.setWordWrap(True); buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttons.button(QDialogButtonBox.Ok).setToolTip("Continue with the selected installation mode.")
+            buttons.button(QDialogButtonBox.Cancel).setToolTip("Cancel without changing the server.")
+            buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject)
+            form.addRow(note); form.addRow("Mode", choices); form.addRow(buttons)
+            if dialog.exec() != QDialog.Accepted: return
+            selected = choices.currentData()
+        if selected == "replace-executable" and not replacement_acknowledged and QMessageBox.warning(self, "Core-file replacement",
             "This compatibility mode replaces the executable path while preserving the official binary. Continue?",
             QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes: return
         archive = resource_path("payload", "server.zip")
@@ -398,7 +453,7 @@ class MainWindow(QMainWindow):
             if not matches: QMessageBox.critical(self, "Missing payload", "The matching server payload is missing."); return
             archive = matches[-1]
         def progress(message, percent): self.operation_progress_signal.emit(message, percent)
-        def action(): return self.provider().install(profile.id, profile.server_id, profile.server_root,
+        def action(): return self.provider(profile).install(profile.id, profile.server_id, profile.server_root,
                                                      ReleasePayload(archive), selected, selected == "replace-executable",
                                                      wrapper_adapter=adapter if selected == "wrapper" else None,
                                                      progress=progress)
@@ -409,10 +464,31 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "Startup action required", f"The server remains stopped and installation is not yet active. Set the egg startup executable to:\n{profile.server_root}/zanik/bin/zanik-server --server-root {profile.server_root} --\n\nThen start the server and run Doctor to verify it.")
             else:
                 self.log(f"Installation complete; backup: {result['backup']}")
-                QMessageBox.information(self, "Installation complete",
-                                        "Zanik was installed successfully and the server was started.")
-                self.offer_website_settings(profile)
+                if repair_context:
+                    QMessageBox.information(self, "Launcher repaired",
+                                            "The replacement launcher was repaired and the server was started. Existing configuration and website assets were preserved.")
+                else:
+                    QMessageBox.information(self, "Installation complete",
+                                            "Zanik was installed successfully and the server was started.")
+                    self.offer_website_settings(profile)
         self.run_async(action, done, title="Installing Zanik…", determinate=True)
+
+    def offer_launcher_repair(self, profile: ServerProfile, launcher: dict):
+        self.log(f"Steam displaced the replacement launcher on {profile.name}; website service is not active.")
+        box = QMessageBox(self); box.setWindowTitle("Zanik launcher needs repair")
+        box.setIcon(QMessageBox.Warning)
+        box.setText("The server restarted, but Steam replaced Zanik's compatibility launcher with the official game executable.")
+        box.setInformativeText(
+            f"Your activated assets are safe. Repair the launcher now on {profile.name} ({profile.server_id}) so Zanik and its website load again. "
+            "This uses the existing replacement mode and preserves the newly updated official executable.")
+        repair = box.addButton("Repair launcher now", QMessageBox.AcceptRole)
+        later = box.addButton("Later", QMessageBox.RejectRole)
+        repair.setToolTip("Reinstall the managed compatibility launcher while preserving the official executable and all Zanik data.")
+        later.setToolTip("Leave the assets installed but keep the server running without Zanik until you repair it later.")
+        box.setDefaultButton(repair); box.exec()
+        if box.clickedButton() is repair:
+            self.install_profile(profile, forced_mode="replace-executable",
+                                 replacement_acknowledged=True, repair_context=True)
 
     def uninstall(self):
         profile = self.active()
@@ -438,7 +514,9 @@ class MainWindow(QMainWindow):
         self.bundle_box.clear(); root = Path(self.game_root.text()) if self.game_root.text() else None
         if not root: return
         for item in BundleCache(self.paths["assets"]).list(game_root_id(root)):
-            self.bundle_box.addItem(f"Build {item.build} · {item.manifest_hash[:12]}", str(item.path))
+            self.bundle_box.addItem(
+                f"Build {item.build} · validated {format_bundle_timestamp(item.created_at)} · {item.manifest_hash[:12]}",
+                str(item.path))
         tool_root = resource_path("asset-tools")
         status = AssetExtractor(tool_root, BundleCache(self.paths["assets"])).resumable(self.asset_work_root(root))
         self.resume_extract_button.setEnabled(bool(status)); self.discard_extract_button.setEnabled(bool(status))
@@ -462,7 +540,10 @@ class MainWindow(QMainWindow):
             box.setText("Dragonwilds is running and must close before website assets can be extracted.")
             box.setInformativeText("Zanik Manager will request a normal close, then briefly open and close the game automatically to generate mappings. It will never force-kill the game.")
             proceed = box.addButton("Close game and continue", QMessageBox.AcceptRole)
-            cancel = box.addButton("Cancel", QMessageBox.RejectRole); box.setDefaultButton(cancel); box.exec()
+            cancel = box.addButton("Cancel", QMessageBox.RejectRole)
+            proceed.setToolTip("Request a normal Dragonwilds shutdown, then continue extraction after it exits.")
+            cancel.setToolTip("Cancel extraction without closing or changing Dragonwilds.")
+            box.setDefaultButton(cancel); box.exec()
             if box.clickedButton() is not proceed: return None
         preserve = bool(status.get("existingLoader"))
         if preserve:
@@ -474,7 +555,10 @@ class MainWindow(QMainWindow):
             box.setText(message)
             box.setInformativeText("Zanik Manager will back up and verify the complete existing loader, temporarily use its pinned mapper, then restore the original files exactly.\n\n" + paths)
             proceed = box.addButton("Preserve, restore, and continue", QMessageBox.AcceptRole)
-            cancel = box.addButton("Cancel", QMessageBox.RejectRole); box.setDefaultButton(cancel); box.exec()
+            cancel = box.addButton("Cancel", QMessageBox.RejectRole)
+            proceed.setToolTip("Back up and verify the existing loader, use Zanik's mapper temporarily, then restore it exactly.")
+            cancel.setToolTip("Cancel extraction without changing the existing loader.")
+            box.setDefaultButton(cancel); box.exec()
             if box.clickedButton() is not proceed: return None
         return close_game, preserve
 
@@ -512,8 +596,10 @@ class MainWindow(QMainWindow):
             later_note = QLabel("You can skip this step and change both values later: select this server, open the Configuration tab, then edit Networking.")
             later_note.setWordWrap(True)
             buttons = QDialogButtonBox()
-            buttons.addButton("Save and continue", QDialogButtonBox.AcceptRole)
-            buttons.addButton("Skip for now", QDialogButtonBox.RejectRole)
+            save_button = buttons.addButton("Save and continue", QDialogButtonBox.AcceptRole)
+            skip_button = buttons.addButton("Skip for now", QDialogButtonBox.RejectRole)
+            save_button.setToolTip("Validate and save the website port and public URL, restart this server, then continue to asset setup.")
+            skip_button.setToolTip("Leave the current networking settings unchanged and continue to asset setup; edit them later on Configuration.")
             buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject)
             form.addRow(explanation); form.addRow("Zanik TCP port", port); form.addRow("Public website URL", public_url)
             form.addRow(later_note); form.addRow(buttons)
@@ -559,7 +645,10 @@ class MainWindow(QMainWindow):
             box.setText(f"{profile.name} does not have a healthy active website asset bundle.")
             box.setInformativeText("Zanik Manager can extract the required assets from your licensed Dragonwilds client, upload them to this server, and activate them now. Dragonwilds must initially be closed; it will briefly open and close automatically for mapping generation.")
             setup = box.addButton("Set up website assets now", QMessageBox.AcceptRole)
-            later = box.addButton("Later", QMessageBox.RejectRole); box.setDefaultButton(setup); box.exec()
+            later = box.addButton("Later", QMessageBox.RejectRole)
+            setup.setToolTip("Extract or reuse a validated local bundle, upload it to this server, and activate it.")
+            later.setToolTip("Finish installation without website assets; set them up later from the Assets tab.")
+            box.setDefaultButton(setup); box.exec()
             if box.clickedButton() is setup:
                 self.guided_asset_setup(profile)
             else:
@@ -622,11 +711,17 @@ class MainWindow(QMainWindow):
             self.operation_progress_signal.emit(f"Uploading assets to {profile.name}", 70)
             def progress(current, total, path):
                 self.operation_progress_signal.emit(f"Uploading and verifying {path}", 70 + int(current * 20 / max(total, 1)))
-            activated = AssetDeployer(self.provider(profile)).activate(profile.id, profile.server_id, profile.server_root,
-                                                                       item.path, progress,
-                                                                       lambda message: self.operation_progress_signal.emit(message, 93))
+            provider = self.provider(profile)
+            activated = AssetDeployer(provider).activate(profile.id, profile.server_id, profile.server_root,
+                                                         item.path, progress,
+                                                         lambda message: self.operation_progress_signal.emit(message, 93))
+            if activated.get("restartRequested"):
+                self.operation_progress_signal.emit("Waiting for the restarted server and verifying the Zanik launcher", 94)
+                activated["launcherStatus"] = provider.verify_launcher_after_restart(
+                    profile.server_id, profile.server_root,
+                    previous_uptime=activated.get("restartPreviousUptime"))
             self.operation_progress_signal.emit("Verifying active website assets", 95)
-            health = self.provider(profile).diagnose(profile.server_id, profile.server_root)
+            health = provider.diagnose(profile.server_id, profile.server_root)
             if not health.get("assets", {}).get("installed") or health.get("assets", {}).get("compatible") is False:
                 raise RuntimeError("Assets were uploaded, but the server did not report a healthy active manifest")
             return item, activated, health
@@ -636,11 +731,7 @@ class MainWindow(QMainWindow):
             self.log(f"Activated {activated['fileCount']} asset files on {profile.name}")
             if activated.get("restartRequested"):
                 self.log(f"Restart requested for {profile.name} so native catalog tracking loads the activated assets")
-            QMessageBox.information(self, "Website assets ready",
-                                    f"Website assets were validated, uploaded, activated, and checked on {profile.name}."
-                                    + (" The running game server was restarted to load recipe and quest tracking."
-                                       if activated.get("restartRequested") else
-                                       " The catalogs will load the next time the game server starts."))
+            self.asset_activation_complete(profile, activated)
         title = (f"Resuming and deploying website assets on {profile.name}…" if mode == "resume"
                  else f"Setting up website assets on {profile.name}…")
         self.run_async(action, done, title=title, determinate=True)
@@ -680,9 +771,7 @@ class MainWindow(QMainWindow):
                                      recovery_root=self.asset_recovery_root(root),
                                      work_root=work, resume=bool(resume_status))
         self.run_async(action,
-                       lambda item: (self.refresh_bundles(), self.log(f"Validated asset bundle: {item.path}"),
-                                     QMessageBox.information(self, "Asset extraction complete",
-                                                             f"The validated asset bundle is ready at:\n{item.path}")),
+                       lambda item: self.asset_extraction_complete(item, resumed=False),
                        title=(f"Resuming asset extraction from {resume_status['stage']}…" if resume_status
                               else "Extracting Dragonwilds web assets…"), determinate=True)
 
@@ -706,8 +795,7 @@ class MainWindow(QMainWindow):
         self.run_async(
             lambda: extractor.extract(root, output, event, recovery_root=self.asset_recovery_root(root),
                                       work_root=work, resume=True),
-            lambda item: (self.refresh_bundles(), self.log(f"Resumed and validated asset bundle: {item.path}"),
-                          QMessageBox.information(self, "Asset extraction complete", f"The validated asset bundle is ready at:\n{item.path}")),
+            lambda item: self.asset_extraction_complete(item, resumed=True),
             title=f"Resuming asset extraction from {status['stage']}…", determinate=True,
         )
 
@@ -739,7 +827,10 @@ class MainWindow(QMainWindow):
             f"Reason: {reasons}. Zanik can safely remove only its saved workspace and start a fresh extraction. "
             "Validated cached bundles are not removed.")
         discard = box.addButton("Discard stale work and start fresh", QMessageBox.AcceptRole)
-        cancel = box.addButton("Cancel", QMessageBox.RejectRole); box.setDefaultButton(discard); box.exec()
+        cancel = box.addButton("Cancel", QMessageBox.RejectRole)
+        discard.setToolTip("Remove only this marked, incompatible Zanik workspace, then begin a fresh extraction.")
+        cancel.setToolTip("Keep the saved workspace and do not start extraction.")
+        box.setDefaultButton(discard); box.exec()
         if box.clickedButton() is not discard:
             return
         work = self.asset_work_root(root)
@@ -750,27 +841,69 @@ class MainWindow(QMainWindow):
             title="Preparing a fresh asset extraction…",
         )
 
-    def upload_assets(self):
-        profile = self.asset_target_box.currentData(); value = self.bundle_box.currentData()
+    def asset_extraction_complete(self, item, resumed: bool = False):
+        self.refresh_bundles()
+        self.log(f"{'Resumed and validated' if resumed else 'Validated'} asset bundle: {item.path}")
+        profile = self.asset_target_box.currentData()
+        if not profile:
+            QMessageBox.information(self, "Asset extraction complete",
+                                    f"The validated asset bundle is ready at:\n{item.path}")
+            return
+        box = QMessageBox(self); box.setWindowTitle("Asset extraction complete")
+        box.setText("The website asset bundle was generated and validated successfully.")
+        box.setInformativeText(
+            f"Upload and activate it now on:\n\n{profile.name}\n{profile.panel_origin}\nServer {profile.server_id}\n\n"
+            "The target remains explicit, and a running game server will restart after activation.")
+        upload = box.addButton("Upload and activate now", QMessageBox.AcceptRole)
+        later = box.addButton("Later", QMessageBox.RejectRole)
+        upload.setToolTip("Upload this newly validated bundle to the displayed server and activate it atomically.")
+        later.setToolTip("Keep the validated bundle in the local cache without changing a server.")
+        box.setDefaultButton(upload); box.exec()
+        if box.clickedButton() is upload:
+            self.upload_assets(profile=profile, bundle=item.path, confirmed=True)
+
+    def upload_assets(self, profile: ServerProfile | None = None, bundle: Path | None = None,
+                      confirmed: bool = False):
+        profile = profile or self.asset_target_box.currentData()
+        value = bundle or self.bundle_box.currentData()
         if not profile or not value: return
         bundle = Path(value)
-        if QMessageBox.question(self, "Confirm asset target",
+        if not confirmed and QMessageBox.question(self, "Confirm asset target",
                                 f"Upload and activate {bundle.name} on:\n\n{profile.name}\n{profile.panel_origin}\nServer {profile.server_id}?\n\n"
                                 "If the game server is running, Zanik Manager will restart it after activation so native catalog tracking loads the new assets.",
                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes: return
         def progress(current, total, path):
             percent = 15 + int(current * 75 / max(total, 1))
             self.operation_progress_signal.emit(f"Uploading and verifying {path}", percent)
-        self.run_async(lambda: AssetDeployer(self.provider(profile)).activate(
-                           profile.id, profile.server_id, profile.server_root, bundle, progress,
-                           lambda message: self.operation_progress_signal.emit(message, 93)),
-                       lambda result: (self.log(f"Activated {result['fileCount']} asset files"),
-                                       QMessageBox.information(self, "Assets activated",
-                                                               f"Activated {result['fileCount']} validated asset files. "
-                                                               + ("The running game server was restarted to load recipe and quest tracking."
-                                                                  if result.get("restartRequested") else
-                                                                  "The catalogs will load the next time the game server starts."))),
+        def action():
+            provider = self.provider(profile)
+            result = AssetDeployer(provider).activate(
+                profile.id, profile.server_id, profile.server_root, bundle, progress,
+                lambda message: self.operation_progress_signal.emit(message, 93))
+            if result.get("restartRequested"):
+                self.operation_progress_signal.emit("Waiting for the restarted server and verifying the Zanik launcher", 96)
+                result["launcherStatus"] = provider.verify_launcher_after_restart(
+                    profile.server_id, profile.server_root,
+                    previous_uptime=result.get("restartPreviousUptime"))
+            return result
+        self.run_async(action,
+                       lambda result: self.asset_activation_complete(profile, result),
                        title="Uploading and activating web assets…", determinate=True)
+
+    def asset_activation_complete(self, profile: ServerProfile, result: dict):
+        self.log(f"Activated {result['fileCount']} asset files on {profile.name}")
+        launcher = result.get("launcherStatus", {})
+        if launcher.get("applicable") and not launcher.get("healthy"):
+            self.offer_launcher_repair(profile, launcher)
+            return
+        QMessageBox.information(
+            self, "Assets activated",
+            f"Activated {result['fileCount']} validated asset files on {profile.name}. "
+            + ("The server restarted, and the replacement launcher was verified."
+               if result.get("restartRequested") and launcher.get("applicable") else
+               "The running game server was restarted to load recipe and quest tracking."
+               if result.get("restartRequested") else
+               "The catalogs will load the next time the game server starts."))
 
     def open_asset_folder(self):
         value = self.bundle_box.currentData()
@@ -780,22 +913,56 @@ class MainWindow(QMainWindow):
     def config_model(self):
         return ConfigModel(resource_path("config", "zanik-config.schema.json"))
 
-    def load_config(self):
+    def load_startup_config(self, profile_id: str):
+        if self.threads:
+            QTimer.singleShot(500, lambda: self.load_startup_config(profile_id))
+            return
         profile = self.active()
+        if profile and profile.id == profile_id:
+            self.load_config(profile, automatic=True)
+
+    def load_config(self, profile: ServerProfile | None = None, automatic: bool = False):
+        profile = profile or self.active()
         if not profile: return
-        def action(): return self.provider().client.read_file(profile.server_id, f"{profile.server_root}/zanik/config/zanik.conf")
-        def done(data):
-            values=self.config_model().parse(data.decode()); self.current_config_hash = content_hash(data); self.config_text.setPlainText(data.decode())
+        def action():
+            try:
+                return {"data": self.provider(profile).client.read_file(
+                    profile.server_id, f"{profile.server_root}/zanik/config/zanik.conf")}
+            except Exception as error:
+                if not automatic:
+                    raise
+                return {"error": str(error)}
+        def done(result):
+            if result.get("error"):
+                self.log(f"Configuration was not auto-loaded for {profile.name}: {result['error']}")
+                return
+            if not self.active() or self.active().id != profile.id:
+                self.log(f"Configuration loaded for {profile.name}, but the active server changed before it could be displayed.")
+                return
+            data = result["data"]
+            try:
+                values = self.config_model().parse(data.decode())
+            except Exception as error:
+                if automatic:
+                    self.log(f"Configuration from {profile.name} could not be displayed: {error}")
+                    return
+                QMessageBox.critical(self, "Invalid server configuration", str(error)); return
+            self.current_config_hash = content_hash(data); self.current_config_profile_id = profile.id
+            self.config_text.setPlainText(data.decode())
             for key,value in values.items():
                 field=self.config_fields[key]
                 if isinstance(field,QCheckBox): field.setChecked(bool(value))
                 elif isinstance(field,QSpinBox): field.setValue(int(value))
                 else: field.setText(str(value))
-        self.run_async(action, done, title="Loading server configuration…")
+            self.log(f"Loaded configuration from {profile.name}.")
+        self.run_async(action, done, title=f"Loading configuration from {profile.name}…")
 
     def save_config(self):
         profile = self.active()
-        if not profile or not self.current_config_hash: return
+        if not profile or not self.current_config_hash or self.current_config_profile_id != profile.id:
+            QMessageBox.information(self, "Load configuration first",
+                                    "Load the selected server's configuration before saving changes.")
+            return
         try:
             model = self.config_model()
             if self.config_editors.currentIndex()==0:
@@ -810,6 +977,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Invalid configuration", str(error)); return
         def done(result):
             self.current_config_hash = result["sha256"]
+            self.current_config_profile_id = profile.id
             if QMessageBox.question(self, "Configuration saved", "Restart the server now to apply these settings?",
                                     QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
                 self.provider().client.power(profile.server_id, "restart")

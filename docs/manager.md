@@ -17,13 +17,17 @@ If the panel's normal file-contents route reports a transient node-side `5xx` er
 
 Long-running operations use an application-modal progress window and record each stage in **Activity**. This prevents another server mutation from starting while an install, update, asset operation, or diagnostic is still running. Guided asset setup is a separate transaction: a mapping, extraction, or upload failure never rolls back a successful server installation, and a completed local bundle remains cached for Retry.
 
-The Assets tab always shows its explicit **Target server**. Before a manual upload, Manager confirms the bundle, profile, panel, and server identifier so changing the active server cannot silently redirect an upload.
+The Assets tab always shows its explicit **Target server**. Before a manual upload, Manager confirms the bundle, profile, panel, and server identifier so changing the active server cannot silently redirect an upload. After a standalone extraction succeeds, Manager offers **Upload and activate now** for that displayed target; choosing **Later** keeps the validated bundle in the local cache. Cached bundle entries include the time they were validated, the client build, and a manifest fingerprint.
+
+Every primary action and guided-workflow button has hover help explaining what it will inspect or change. This is especially useful before power-changing, upload, repair, or discard actions.
 
 ## Installation modes
 
 Wrapper mode remains recommended and is selected automatically for a recognized egg with a safe editable startup variable. If an egg cannot be changed through the Client API, the manager shows the exact manual startup action and waits for verification.
 
 Executable replacement is available for fixed eggs. It preserves the verified official ELF as `.zanik-original`, displays the core-file warning, and requires explicit acknowledgement.
+
+Some Steam updates restore the official executable at the fixed startup path. After Manager restarts a replacement-mode server for asset activation, it verifies that the small Zanik launcher is still present. If Steam displaced it, Manager leaves the successfully activated assets alone and offers **Repair launcher now** for that exact server. Repair preserves the newly updated official executable, configuration, persistent state, authorization data, and assets.
 
 Every mutating operation stages and verifies files before activation and records a recovery journal. Backups are stored under `/home/container/zanik-backups/manager/`. An interrupted operation is offered for resume or rollback the next time the profile connects.
 
@@ -44,7 +48,7 @@ The extractor copies authored build-interface thumbnails from the client, includ
 
 ## Configuration and support
 
-The Configuration tab validates strict `KEY=VALUE` data before upload, refuses to overwrite a file changed since it was loaded, creates a backup, and asks whether to restart. If the post-install website step was skipped, select the server, open **Configuration**, load its configuration, and edit the **Networking** section. `STATUS_PORT` is Zanik's separately allocated TCP port; `PUBLIC_BASE_URL` is the address users will open. State-changing and QoL features remain off by default.
+When Manager starts with a saved server selected, it automatically loads that server's configuration. Changing profiles clears the prior editable state so it cannot be saved to the wrong server; use **Load from server** to load the newly selected profile. The Configuration tab validates strict `KEY=VALUE` data before upload, refuses to overwrite a file changed since it was loaded, creates a backup, and asks whether to restart. If the post-install website step was skipped, select the server, open **Configuration**, load its configuration, and edit the **Networking** section. `STATUS_PORT` is Zanik's separately allocated TCP port; `PUBLIC_BASE_URL` is the address users will open. State-changing and QoL features remain off by default.
 
 After a validated asset bundle is activated, Zanik Manager restarts the target when it is currently running. This startup reload is required for native player recipe and quest tracking; an offline target simply loads the catalogs on its next start. Manual asset uploads show this restart in the target confirmation and operation progress.
 

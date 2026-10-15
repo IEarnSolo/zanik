@@ -16,4 +16,6 @@ Allocate a separate TCP port for Zanik in the panel. Do not use the Dragonwilds 
 
 If the egg command cannot be changed, use the explicitly acknowledged command in [installation.md](installation.md). That compatibility mode is non-recommended. Upload a client-built asset bundle to `/home/container/zanik-assets-incoming/CLIENT_BUILD/` without manually extracting it, then activate it only through `/home/container/zanik/scripts/init-assets.sh` as described in [assets.md](assets.md#install-on-pterodactyl).
 
+Steam may restore the official executable over the compatibility launcher during an update or restart. After Manager activates assets and restarts a replacement-mode server, it verifies that Zanik's small launcher is still present. If Steam displaced it, Manager keeps the successfully activated assets and offers a safe repair for that exact server. Repair preserves the updated official executable as `.zanik-original` before restoring the managed launcher.
+
 For an allowlisted administrator, enter `zanik-admin <public-character-id>` in the Pterodactyl console. The canonical launcher intercepts only that command and prints a five-minute, single-use login link; every other console command is forwarded unchanged to the game server.
