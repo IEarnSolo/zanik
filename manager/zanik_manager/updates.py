@@ -16,7 +16,7 @@ from pathlib import Path, PurePosixPath
 
 RELEASE_API = "https://api.github.com/repos/IEarnSolo/zanik/releases/latest"
 STRICT_TAG = re.compile(r"^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
-INTERVAL_SECONDS = 6 * 60 * 60
+INTERVAL_SECONDS = 10 * 60
 USER_AGENT = "Zanik-Manager-Update-Checker"
 REQUIRED_MANAGER_FILES = {
     "VERSION", "ZanikManager.exe", "ZanikManagerUpdater.exe", "payload/payloads.json",

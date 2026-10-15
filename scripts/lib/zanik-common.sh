@@ -11,6 +11,7 @@ zanik_sha256(){ sha256sum "$1" | awk '{print $1}'; }
 zanik_json_escape(){ printf '%s' "$1" | sed 's/\\/\\\\/g;s/"/\\"/g;s/[[:cntrl:]]/?/g'; }
 
 zanik_defaults(){
+  CFG_ZANIK_ENABLED=1
   CFG_STATUS_PORT=${DW_STATUS_PORT:-29105}
   CFG_PUBLIC_BASE_URL=${DW_PUBLIC_BASE_URL:-http://127.0.0.1:$CFG_STATUS_PORT}
   CFG_ADMIN_COOKIE_NAME=${DW_ADMIN_COOKIE_NAME:-zanik_admin}
@@ -32,6 +33,7 @@ zanik_defaults(){
 zanik_set_config(){
   key=$1 value=$2
   case "$key" in
+    ZANIK_ENABLED) CFG_ZANIK_ENABLED=$(zanik_bool "$value") || return 1;;
     STATUS_PORT)
       case "$value" in ''|*[!0-9]*) return 1;; esac
       [ "$value" -ge 1 ] 2>/dev/null && [ "$value" -le 65535 ] 2>/dev/null || return 1
@@ -90,6 +92,7 @@ zanik_export_runtime(){
   export DW_NPC_IDENTITIES=${DW_NPC_IDENTITIES:-$server_root/zanik/assets/current/npc-identities.tsv}
   export ZANIK_INSTALL_MODE=$install_mode
   export ZANIK_CONFIG_VALID=1
+  export ZANIK_ENABLED=$CFG_ZANIK_ENABLED
   export ZANIK_FEATURE_PLAYER_STATUS=$CFG_FEATURE_PLAYER_STATUS
   export ZANIK_FEATURE_KILL_TRACKING=$CFG_FEATURE_KILL_TRACKING
   export ZANIK_FEATURE_MAP=$CFG_FEATURE_MAP

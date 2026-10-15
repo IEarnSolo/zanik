@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "properties": {
+    "ZANIK_ENABLED": {"type": "boolean", "default": true, "category": "general", "title": "Enable Zanik", "description": "Master switch for the entire mod. When disabled, the launcher starts the official game server without loading Zanik; installed files and persistent data are preserved.", "restartRequired": true},
     "STATUS_PORT": {"type": "integer", "default": 29105, "minimum": 1, "maximum": 65535, "category": "networking", "title": "Zanik website TCP port", "description": "Separately allocated and open TCP port for the Zanik website. Do not use the Dragonwilds game port.", "restartRequired": true},
     "PUBLIC_BASE_URL": {"type": "string", "default": "http://127.0.0.1:29105", "pattern": "^https?://", "category": "networking", "title": "Public website URL", "description": "Externally reachable website address used for links, including its public port when needed.", "restartRequired": true},
     "ADMIN_COOKIE_NAME": {"type": "string", "default": "zanik_admin", "pattern": "^[A-Za-z0-9_]{1,64}$", "category": "administration", "title": "Administrator cookie name", "description": "Browser cookie name for administrator sessions.", "restartRequired": true},
@@ -18,6 +19,6 @@
     "FEATURE_ADMIN_GRAVESTONE_MUTATION": {"type": "boolean", "default": false, "category": "mutation", "title": "Gravestone mutation", "description": "Allow authenticated gravestone changes.", "restartRequired": true, "dangerous": true},
     "FEATURE_QOL_AUTO_COMPOST": {"type": "boolean", "default": false, "category": "qol", "title": "Automatic compost equipment (incomplete)", "description": "Reserved for an unfinished feature with no deployable server integration. Keep this disabled.", "restartRequired": true, "dangerous": true}
   },
-  "required": ["STATUS_PORT", "PUBLIC_BASE_URL", "ADMIN_COOKIE_NAME", "FEATURE_PLAYER_STATUS", "FEATURE_KILL_TRACKING", "FEATURE_MAP", "FEATURE_RESOURCE_TRACKING", "FEATURE_NPC_TRACKING", "FEATURE_PLAYER_RECIPE_TRACKING", "FEATURE_PLAYER_QUEST_TRACKING", "FEATURE_ADMIN_READ", "FEATURE_ADMIN_RECIPE_SETTINGS", "FEATURE_ADMIN_TELEPORT", "FEATURE_ADMIN_STORAGE_MUTATION", "FEATURE_ADMIN_GRAVESTONE_MUTATION", "FEATURE_QOL_AUTO_COMPOST"],
+  "required": ["ZANIK_ENABLED", "STATUS_PORT", "PUBLIC_BASE_URL", "ADMIN_COOKIE_NAME", "FEATURE_PLAYER_STATUS", "FEATURE_KILL_TRACKING", "FEATURE_MAP", "FEATURE_RESOURCE_TRACKING", "FEATURE_NPC_TRACKING", "FEATURE_PLAYER_RECIPE_TRACKING", "FEATURE_PLAYER_QUEST_TRACKING", "FEATURE_ADMIN_READ", "FEATURE_ADMIN_RECIPE_SETTINGS", "FEATURE_ADMIN_TELEPORT", "FEATURE_ADMIN_STORAGE_MUTATION", "FEATURE_ADMIN_GRAVESTONE_MUTATION", "FEATURE_QOL_AUTO_COMPOST"],
   "additionalProperties": false
 }

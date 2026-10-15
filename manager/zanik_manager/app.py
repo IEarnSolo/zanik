@@ -160,13 +160,9 @@ class MainWindow(QMainWindow):
         self.activity_signal.connect(self.log)
         self.operation_progress_signal.connect(self.update_operation_progress)
         self.reload_profiles()
-        startup_profile = self.active()
-        if startup_profile:
-            QTimer.singleShot(250, lambda profile_id=startup_profile.id: self.load_startup_config(profile_id))
         QTimer.singleShot(1000, self.retry_pending_asset_cleanup)
         QTimer.singleShot(1500, lambda: self.check_manager_update(False))
-        QTimer.singleShot(2500, lambda: self.check_game_update(False))
-        self.update_timer = QTimer(self); self.update_timer.setInterval(6 * 60 * 60 * 1000)
+        self.update_timer = QTimer(self); self.update_timer.setInterval(10 * 60 * 1000)
         self.update_timer.timeout.connect(self.scheduled_update_checks); self.update_timer.start()
         if prompt_first_run and not self.profiles:
             self.add_server()
@@ -279,7 +275,7 @@ class MainWindow(QMainWindow):
         self.manager_install_button.clicked.connect(self.install_manager_update); self.manager_install_button.hide()
         self.game_update_label = QLabel("Game · No server selected")
         self.game_check_button = button_help(QPushButton("Check"),
-                                             "Ask the active running server to compare its installed dedicated-server build with SteamCMD. This never installs an update.")
+                                             "Compare the active server's installed Dragonwilds build with the public dedicated-server build. This works before Zanik is installed and never installs an update.")
         self.game_check_button.clicked.connect(lambda: self.check_game_update(True))
         for widget in (QLabel("│"), self.manager_update_label, self.manager_check_button,
                        self.manager_install_button, QLabel("│"), self.game_update_label, self.game_check_button):
@@ -350,21 +346,27 @@ class MainWindow(QMainWindow):
                                        "The read-only dedicated-server update check failed. See Activity for details.")
                 self.log(f"Game update check failed for {profile.name}: {error}"); return
             status = result.get("status")
+            mod_state = ("Zanik is not installed." if result.get("zanikInstalled") is False else
+                         "Zanik is installed but disabled." if result.get("zanikEnabled") is False else
+                         "Zanik is installed." if result.get("zanikInstalled") else
+                         "Zanik installation state is unknown.")
             if status == "update-available" or result.get("updateAvailable") is True:
                 self._set_update_label(self.game_update_label, f"Game ({profile.name}) · Update available", "available",
-                                       "Update Dragonwilds through the host or Steam workflow, then revalidate Zanik compatibility and regenerate assets if needed.")
+                                       "Update Dragonwilds through the host or Steam workflow, then revalidate Zanik compatibility and regenerate assets if needed. " + mod_state)
             elif status == "current" or result.get("updateAvailable") is False:
                 suffix = "Current" if result.get("fresh", False) else "Current (cached)"
                 self._set_update_label(self.game_update_label, f"Game ({profile.name}) · {suffix}", "current",
-                                       f"Installed build {result.get('installedBuild', 'unknown')}; latest build {result.get('latestBuild', 'unknown')}.")
+                                       f"Installed build {result.get('installedBuild', 'unknown')}; latest build {result.get('latestBuild', 'unknown')}. {mod_state}")
             else:
                 label = "Offline (cached unavailable)" if status == "offline-no-cache" else "Unknown"
-                explanation = result.get("message") or result.get("reason", "A current launcher and running server are required for a fresh check.")
+                explanation = (result.get("message") or result.get("reason", "The game build could not be checked.")) + " " + mod_state
                 if status in {"launcher-unavailable", "unsupported-or-timeout"}:
                     explanation += " Use Install / repair on the Servers tab if this installation should be running through Zanik."
                 self._set_update_label(self.game_update_label, f"Game ({profile.name}) · {label}", "neutral",
                                        explanation)
-            if manual: self.log(f"Game update check completed for {profile.name}: {status}.")
+            if manual:
+                self.log(f"Game update check completed for {profile.name}: {status}; "
+                         f"Zanik {'installed' if result.get('zanikInstalled') else 'not installed'}.")
         self.run_background("game-update-check", lambda: self.provider(profile, background=True).check_game_update(
             profile.server_id, profile.server_root, force=manual), done)
 
@@ -493,7 +495,7 @@ class MainWindow(QMainWindow):
         profile = self.active()
         if not profile or self.current_config_profile_id != profile.id:
             self.current_config_hash = ""; self.current_config_profile_id = ""
-            self.config_text.clear()
+            self.reset_config_editor()
         if profile:
             for index in range(self.asset_target_box.count()):
                 if self.asset_target_box.itemData(index).id == profile.id:
@@ -501,6 +503,7 @@ class MainWindow(QMainWindow):
                     break
             QTimer.singleShot(150, lambda profile_id=profile.id:
                               self.check_game_update(False) if self.active() and self.active().id == profile_id else None)
+            QTimer.singleShot(250, lambda profile_id=profile.id: self.load_startup_config(profile_id))
         elif hasattr(self, "game_update_label"):
             self._set_update_label(self.game_update_label, "Game · No server selected", "neutral")
             self.game_check_button.setEnabled(False)
@@ -1047,31 +1050,44 @@ class MainWindow(QMainWindow):
     def config_model(self):
         return ConfigModel(resource_path("config", "zanik-config.schema.json"))
 
+    def reset_config_editor(self):
+        self.config_text.clear()
+        for key, value in self.config_model().defaults().items():
+            field = self.config_fields[key]
+            if isinstance(field, QCheckBox): field.setChecked(bool(value))
+            elif isinstance(field, QSpinBox): field.setValue(int(value))
+            else: field.setText(str(value))
+
     def load_startup_config(self, profile_id: str):
         if self.threads:
             QTimer.singleShot(500, lambda: self.load_startup_config(profile_id))
             return
         profile = self.active()
-        if profile and profile.id == profile_id:
+        if profile and profile.id == profile_id and self.current_config_profile_id != profile_id:
             self.load_config(profile, automatic=True)
 
     def load_config(self, profile: ServerProfile | None = None, automatic: bool = False):
         profile = profile or self.active()
         if not profile: return
         def action():
-            try:
-                return {"data": self.provider(profile).client.read_file(
-                    profile.server_id, f"{profile.server_root}/zanik/config/zanik.conf")}
-            except Exception as error:
-                if not automatic:
-                    raise
-                return {"error": str(error)}
+            return self.provider(profile, background=automatic).read_configuration(
+                profile.server_id, profile.server_root)
         def done(result):
-            if result.get("error"):
-                self.log(f"Configuration was not auto-loaded for {profile.name}: {result['error']}")
-                return
             if not self.active() or self.active().id != profile.id:
                 self.log(f"Configuration loaded for {profile.name}, but the active server changed before it could be displayed.")
+                return
+            if result.get("error"):
+                if automatic:
+                    self.log(f"Configuration was not auto-loaded for {profile.name}: {result['error']}")
+                else:
+                    QMessageBox.information(self, "Configuration unavailable", result["error"])
+                return
+            if not result.get("exists"):
+                message = (f"Zanik is not installed on {profile.name}; there is no server configuration to load yet. "
+                           "Install Zanik first, then use the Configuration tab to change its settings.")
+                self.reset_config_editor()
+                if automatic: self.log(message)
+                else: QMessageBox.information(self, "Zanik is not installed", message)
                 return
             data = result["data"]
             try:
@@ -1089,7 +1105,15 @@ class MainWindow(QMainWindow):
                 elif isinstance(field,QSpinBox): field.setValue(int(value))
                 else: field.setText(str(value))
             self.log(f"Loaded configuration from {profile.name}.")
-        self.run_async(action, done, title=f"Loading configuration from {profile.name}…")
+        if automatic:
+            def background_done(result, error):
+                if error:
+                    self.log(f"Configuration was not auto-loaded for {profile.name}: {error}")
+                else:
+                    done(result)
+            self.run_background(f"config-load-{profile.id}", action, background_done)
+        else:
+            self.run_async(action, done, title=f"Loading configuration from {profile.name}…")
 
     def save_config(self):
         profile = self.active()
