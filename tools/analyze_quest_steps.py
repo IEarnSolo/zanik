@@ -9,8 +9,10 @@ import argparse,json,math,re
 from pathlib import Path
 try:
     from asset_filesystem import read_text as read_asset_text
+    from quest_schema import objective_rows
 except ModuleNotFoundError:  # Imported as tools.* by repository tests.
     from tools.asset_filesystem import read_text as read_asset_text
+    from tools.quest_schema import objective_rows
 
 ROOT=CONTENT=OUTPUT=PUBLIC=COVERAGE=OVERRIDES=NPC_IDENTITIES=Path()
 CATALOG={};NPC={}
@@ -250,11 +252,12 @@ def main():
         asset=quest_assets.get(internal)
         if not asset:continue
         quest_path,quest=asset;p=quest.get('Properties') or {};scope=quest_scope_tokens(quest_path,internal,public)
-        objective_tables={table_base((row.get('Value') or {}).get('TableId')) for row in p.get('ObjectiveTexts') or []}
+        normalized_objectives=objective_rows(p)
+        objective_tables={table_base((row.get('Value') or {}).get('TableId')) for row in normalized_objectives}
         objective_tables.discard('')
         quest_landmarks=[row for row in landmarks if table_base(row['table']) in objective_tables or scoped_landmark(row['table'],scope)]
         objectives=[]
-        for index,row in enumerate(p.get('ObjectiveTexts') or []):
+        for index,row in enumerate(normalized_objectives):
             value=row.get('Value') or {};key=row.get('Key') or 'None';objectives.append({'index':index,'key':key,'text':txt(value),'table':value.get('TableId',''),'flowReferenced':False,'locationOperations':[],'candidates':[]})
         relevant=[]
         for path,data in flow_files:

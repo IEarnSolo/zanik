@@ -4,8 +4,10 @@ import argparse,hashlib,json,re,sys
 from pathlib import Path
 try:
     from asset_filesystem import read_json
+    from quest_schema import objective_rows
 except ModuleNotFoundError:  # Imported as tools.* by repository tests.
     from tools.asset_filesystem import read_json
+    from tools.quest_schema import objective_rows
 
 REGIONS={'Brynmoor':'Brynmoor','Ghornfell':'Ghornfell','Fellhollow':'Fellhollow','DowdunReach':'Dowdun Reach','UmbralSands':'Umbral Sands','ScornedWilderness':'Scorned Wilderness'}
 EXCLUDE=('ftue','test','debug','example','template')
@@ -51,7 +53,7 @@ def main():
             marker=(str(path)+' '+export.get('Name','')+' '+name).lower()
             if not qid or not name or any(word in marker for word in EXCLUDE):continue
             objectives=[]
-            for item in p.get('ObjectiveTexts') or []:
+            for item in objective_rows(p):
                 value=text((item or {}).get('Value'))
                 if value and value not in objectives:objectives.append(value)
             override=overrides.get(qid,{})

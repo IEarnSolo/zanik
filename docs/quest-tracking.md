@@ -20,4 +20,16 @@ numeric objectives with too few action markers are downgraded in the audit
 until reviewed. Dynamic objectives intentionally publish no fixed marker rather
 than falling back to a quest giver or quest start.
 
-After every game update, regenerate and review the two catalogs, run the negative catalog/layout tests, then validate start/progress/completion and offline persistence on development. Promotion requires zero slow queries, a maximum query below 1 ms, and enabled-versus-disabled combat testing.
+The cooked quest schema is versioned independently from the native query ABI.
+Generators accept both the legacy `ObjectiveTexts` map and the current
+`Objectives` records whose localized text is stored in `Value.Description`.
+The reviewed asset profile counts quests, player-facing objective texts,
+quest-step states, and published markers separately. A bundle containing the
+right number of quest shells but missing nested objective or marker data is
+incompatible and cannot be activated.
+
+After every game update, regenerate and review the two catalogs, compare all
+nested coverage counts, run the negative catalog/layout tests, then validate
+start/progress/completion and offline persistence on development. Promotion
+requires zero slow queries, a maximum query below 1 ms, and
+enabled-versus-disabled combat testing.

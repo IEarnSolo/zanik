@@ -25,8 +25,10 @@ from typing import Any, Iterable
 
 try:
     from asset_filesystem import read_json as read_json_file
+    from quest_schema import objective_rows
 except ModuleNotFoundError:  # Imported as tools.* by repository tests.
     from tools.asset_filesystem import read_json as read_json_file
+    from tools.quest_schema import objective_rows
 
 
 TRIGGER_LABELS = {
@@ -100,10 +102,12 @@ PUBLIC_HIDDEN_STATION_SECTIONS = {"Air Altar", "Fire Altar"}
 
 def public_recipe_types(entry: dict[str, Any]) -> list[str]:
     """Classify outputs without exposing the internal evidence used to do it."""
-    if entry["kind"] == "building":
-        return []
     internal = str(entry.get("internalName", "")).casefold()
     display = str(entry.get("displayName", "")).casefold()
+    if entry["kind"] == "building":
+        if internal == "da_basebuilding_station_composterultra":
+            return ["farming"]
+        return []
     outputs = " ".join(
         f"{output.get('internalName', '')} {output.get('assetPath', '')}"
         for output in entry.get("output", [])
@@ -430,7 +434,7 @@ def extract_quest_reward_contexts(
             props = record.get("Properties") or {}
             objectives = {
                 str(item.get("Key", "")): text(item.get("Value"))
-                for item in props.get("ObjectiveTexts", []) if isinstance(item, dict)
+                for item in objective_rows(props)
             }
             quest_data[str(record.get("Name", ""))] = {
                 "internalName": record.get("Name", ""),

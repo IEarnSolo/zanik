@@ -62,8 +62,8 @@ OPTIONAL_GROUPS = (
 CATALOG_MINIMUMS = {
     "buildings/catalog.json": {"pieces": 100},
     "npc-catalog.json": {"types": 10, "nodes": 10},
-    "quest-catalog.json": {"quests": 10},
-    "quest-step-locations.json": {"quests": 10},
+    "quest-catalog.json": {"quests": 10, "objectives": 1},
+    "quest-step-locations.json": {"quests": 10, "steps": 1, "markers": 1},
     "recipe-unlocks.json": {"entries": 100},
     "resource-catalog.json": {"types": 5, "nodes": 10},
 }
@@ -265,10 +265,22 @@ def validate_generated(source: Path) -> dict:
                                     if not isinstance(row, dict) or any(not isinstance(row.get(axis), (int, float)) or not math.isfinite(row[axis]) or not 0 <= row[axis] <= 1 for axis in ("x", "y")):
                                         errors.append(f"catalog contains an invalid map coordinate: {relative}:{key}")
                                         break
+                    if relative == "quest-catalog.json" and isinstance(value.get("quests"), list):
+                        counts[f"{relative}:objectives"] = sum(
+                            len(quest.get("objectives", [])) for quest in value["quests"]
+                            if isinstance(quest, dict) and isinstance(quest.get("objectives"), list)
+                        )
+                    if relative == "quest-step-locations.json" and isinstance(value.get("quests"), list):
+                        steps = [step for quest in value["quests"] if isinstance(quest, dict)
+                                 for step in quest.get("steps", []) if isinstance(step, dict)]
+                        counts[f"{relative}:steps"] = len(steps)
+                        counts[f"{relative}:markers"] = sum(
+                            len(step.get("markers", [])) for step in steps
+                            if isinstance(step.get("markers"), list)
+                        )
                     for key, minimum in CATALOG_MINIMUMS.get(relative, {}).items():
-                        rows = value.get(key)
-                        if not isinstance(rows, list) or len(rows) < minimum:
-                            actual = len(rows) if isinstance(rows, list) else "missing"
+                        actual = counts.get(f"{relative}:{key}", "missing")
+                        if not isinstance(actual, int) or actual < minimum:
                             errors.append(f"catalog coverage is below the reviewed minimum: {relative}:{key}={actual} < {minimum}")
             elif path.suffix == ".tsv":
                 first = path.open(encoding="utf-8", errors="strict").readline().rstrip("\r\n")

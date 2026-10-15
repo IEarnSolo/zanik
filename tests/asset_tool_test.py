@@ -36,6 +36,13 @@ with tempfile.TemporaryDirectory() as name:
             value = {}
             if item in shapes:
                 key, count = shapes[item]; value[key] = [{"id": f"{key}-{index}"} for index in range(count)]
+            if item == "quest-catalog.json":
+                for index, quest in enumerate(value["quests"]):
+                    quest["objectives"] = [f"Objective {index}"]
+            if item == "quest-step-locations.json":
+                for index, quest in enumerate(value["quests"]):
+                    quest["steps"] = [{"key": f"step-{index}", "text": f"Objective {index}",
+                                       "markers": [{"map": {"x": 0.5, "y": 0.5}}]}]
             if item in {"npc-catalog.json", "resource-catalog.json"}:
                 value["nodes"] = [{"id": f"node-{index}", "x": 0.5, "y": 0.5} for index in range(10)]
             path.write_text(json.dumps(value) + "\n")
@@ -51,6 +58,12 @@ with tempfile.TemporaryDirectory() as name:
                     "--output", str(second), "--tool-versions-file", str(tool_lock)], check=True, env=env)
     assert hashlib.sha256(first.read_bytes()).digest() == hashlib.sha256(second.read_bytes()).digest()
     subprocess.run([sys.executable, str(TOOL), "validate", "--generated-root", str(generated)], check=True)
+    empty_quests = root / "empty-quests"; shutil.copytree(generated, empty_quests)
+    quest_catalog = json.loads((empty_quests / "quest-catalog.json").read_text())
+    for quest in quest_catalog["quests"]: quest["objectives"] = []
+    (empty_quests / "quest-catalog.json").write_text(json.dumps(quest_catalog))
+    rejected_quests = subprocess.run([sys.executable, str(TOOL), "validate", "--generated-root", str(empty_quests)], capture_output=True)
+    assert rejected_quests.returncode and b"quest-catalog.json:objectives=0" in rejected_quests.stderr
     wrong_map = root / "wrong-map"; shutil.copytree(generated, wrong_map)
     (wrong_map / "world-map.jpg").write_bytes(fake_jpeg(6144, 6144))
     rejected_map = subprocess.run([sys.executable, str(TOOL), "validate", "--generated-root", str(wrong_map)], capture_output=True)
