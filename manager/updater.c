@@ -25,7 +25,7 @@ static void journal_state(const wchar_t *path, const wchar_t *state) {
     swprintf_s(status_path, 32768, L"%s.status", path);
     FILE *file = NULL;
     if (_wfopen_s(&file, status_path, L"w, ccs=UTF-8") == 0 && file) {
-        fwprintf(file, L"{\"schemaVersion\":1,\"state\":\"%s\"}\n", state);
+        fwprintf(file, L"{\"schemaVersion\":1,\"state\":\"%ls\"}\n", state);
         fclose(file);
     }
 }
@@ -51,19 +51,23 @@ static int updater_main(int argc, wchar_t **argv) {
     journal_state(journal, L"swapping");
     if (!MoveFileExW(target, backup, MOVEFILE_WRITE_THROUGH)) { journal_state(journal, L"rollback-needed"); return 5; }
     if (!MoveFileExW(source, target, MOVEFILE_WRITE_THROUGH)) {
-        MoveFileExW(backup, target, MOVEFILE_WRITE_THROUGH);
+        if (!MoveFileExW(backup, target, MOVEFILE_WRITE_THROUGH)) {
+            journal_state(journal, L"rollback-failed"); return 9;
+        }
         journal_state(journal, L"rolled-back"); return 6;
     }
 
-    wchar_t exe[32768], command[65536];
-    swprintf_s(exe, 32768, L"%s\\ZanikManager.exe", target);
-    swprintf_s(command, 65536, L"\"%s\" --update-handshake \"%s\"%s", exe, handshake,
+    wchar_t python[32768], command[65536];
+    swprintf_s(python, 32768, L"%s\\runtime\\pythonw.exe", target);
+    swprintf_s(command, 65536, L"\"%s\" -m zanik_manager.app --update-handshake \"%s\"%s", python, handshake,
                smoke ? L" --smoke-test" : L"");
     STARTUPINFOW startup = {sizeof(startup)};
     PROCESS_INFORMATION process = {0};
-    if (!CreateProcessW(exe, command, NULL, NULL, FALSE, CREATE_UNICODE_ENVIRONMENT, NULL, target, &startup, &process)) {
-        MoveFileExW(target, source, MOVEFILE_WRITE_THROUGH);
-        MoveFileExW(backup, target, MOVEFILE_WRITE_THROUGH);
+    if (!CreateProcessW(python, command, NULL, NULL, FALSE, CREATE_UNICODE_ENVIRONMENT, NULL, target, &startup, &process)) {
+        if (!MoveFileExW(target, source, MOVEFILE_WRITE_THROUGH) ||
+            !MoveFileExW(backup, target, MOVEFILE_WRITE_THROUGH)) {
+            journal_state(journal, L"rollback-failed"); return 9;
+        }
         journal_state(journal, L"rolled-back"); return 7;
     }
     CloseHandle(process.hThread);
@@ -75,10 +79,11 @@ static int updater_main(int argc, wchar_t **argv) {
     if (!ready) {
         TerminateProcess(process.hProcess, 1);
         WaitForSingleObject(process.hProcess, 5000);
-        MoveFileExW(target, source, MOVEFILE_WRITE_THROUGH);
-        MoveFileExW(backup, target, MOVEFILE_WRITE_THROUGH);
-        journal_state(journal, L"rolled-back");
-        CloseHandle(process.hProcess); return 8;
+        if (!MoveFileExW(target, source, MOVEFILE_WRITE_THROUGH) ||
+            !MoveFileExW(backup, target, MOVEFILE_WRITE_THROUGH)) {
+            journal_state(journal, L"rollback-failed"); CloseHandle(process.hProcess); return 9;
+        }
+        journal_state(journal, L"rolled-back"); CloseHandle(process.hProcess); return 8;
     }
     CloseHandle(process.hProcess);
     journal_state(journal, L"complete");
