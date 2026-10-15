@@ -120,8 +120,8 @@
       "note": "Dragon Blood may instead be obtained from Dragon Wolves in Fellhollow. The map shows the four current Dowdun Blue Dragon placements to avoid flooding it with every renewable Dragon Wolf spawn, plus both fixed pickups and Zanik's hand-in.",
       "reason": "The guide and cooked objective require Dragon Blood, Twilight Lily, and Unholy Water. The current world registry provides exact identities for the lily at The Lake and water behind The Cathedral; the NPC catalog contains four Blue Dragons in Dowdun Reach, and DR_SQ3_Zanik is the required delivery point.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "A3D9F580-489D131D-5092F8A4-42ECD820", "displayName": "Twilight Lily — The Lake", "role": "collect"},
-        {"kind": "registry_landmark", "reference": "26470032-49E96542-0CAF80AB-54320698", "displayName": "Unholy Water — behind The Cathedral", "role": "collect"},
+        {"kind": "registry_landmark", "reference": "EEB34833-46E31E54-84E283A1-BB8AC3EF", "displayName": "Twilight Lily — The Lake", "role": "collect"},
+        {"kind": "registry_landmark", "reference": "7FCFD612-4F7C35FA-179C19B6-4826BD13", "displayName": "Unholy Water — behind The Cathedral", "role": "collect"},
         {"kind": "npc", "reference": "blue-dragon", "allowMultiple": true, "displayName": "Blue Dragon — Dragon Blood source", "role": "hunt"},
         {"kind": "quest_marker", "reference": "DR_SQ3_Zanik", "displayName": "Zanik — ingredient hand-in", "role": "return"}
       ]
@@ -155,7 +155,7 @@
       "reason": "Quest booleans name the Rat, Hound, and Demon journals. The current world contains three switchable journal actors whose entry tags and localized display names correspond exactly to those booleans and guide locations.",
       "targets": [
         {"kind": "world_actor", "reference": "BP_Journal_DR_RatMaster_Switchable", "displayName": "Rat Master's Journal — Menagerie", "role": "collect"},
-        {"kind": "world_actor", "reference": "BP_Journal_DR_Houndmaster_Switchable", "displayName": "Hound Master's Journal — Garrison kennels", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_Journal_DR_Houndmaster_Switchable_01", "displayName": "Hound Master's Journal — Garrison kennels", "role": "collect"},
         {"kind": "world_actor", "reference": "BP_Journal__DR_Demonmaster_Switchable", "displayName": "Summoner's Journal — Cathedral crypt", "role": "collect"}
       ]
     },
@@ -167,7 +167,7 @@
       "reason": "Journal collection order is free and the current progress counter alone cannot identify which exact journal interaction remains.",
       "targets": [
         {"kind": "world_actor", "reference": "BP_Journal_DR_RatMaster_Switchable", "displayName": "Rat Master's Journal — Menagerie", "role": "collect"},
-        {"kind": "world_actor", "reference": "BP_Journal_DR_Houndmaster_Switchable", "displayName": "Hound Master's Journal — Garrison kennels", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_Journal_DR_Houndmaster_Switchable_01", "displayName": "Hound Master's Journal — Garrison kennels", "role": "collect"},
         {"kind": "world_actor", "reference": "BP_Journal__DR_Demonmaster_Switchable", "displayName": "Summoner's Journal — Cathedral crypt", "role": "collect"}
       ]
     },
@@ -179,7 +179,7 @@
       "reason": "Journal collection order is free and the current progress counter alone cannot identify the final journal interaction.",
       "targets": [
         {"kind": "world_actor", "reference": "BP_Journal_DR_RatMaster_Switchable", "displayName": "Rat Master's Journal — Menagerie", "role": "collect"},
-        {"kind": "world_actor", "reference": "BP_Journal_DR_Houndmaster_Switchable", "displayName": "Hound Master's Journal — Garrison kennels", "role": "collect"},
+        {"kind": "world_actor", "reference": "BP_Journal_DR_Houndmaster_Switchable_01", "displayName": "Hound Master's Journal — Garrison kennels", "role": "collect"},
         {"kind": "world_actor", "reference": "BP_Journal__DR_Demonmaster_Switchable", "displayName": "Summoner's Journal — Cathedral crypt", "role": "collect"}
       ]
     },
@@ -195,21 +195,21 @@
       "objectiveKey": "DR_SQ1_Temple",
       "destinationMode": "fixed",
       "reason": "The Cathedral branch advances by reading the Scrawled Notes on its upper ledge. The current world registry contains the exact quest-owned note identity at the Cathedral; Doric is the quest giver and must not be carried into this search state.",
-      "targets": [{"kind": "registry_landmark", "reference": "1E6B02E6-471FCF0A-7DD0B08A-072FE962", "displayName": "Scrawled Notes — Cathedral upper ledge", "role": "read"}]
+      "targets": [{"kind": "registry_landmark", "reference": "4B355787-4ACC69CF-364857AC-A0C54BAF", "displayName": "Scrawled Notes — Cathedral upper ledge", "role": "read"}]
     },
     {
       "questId": "vxS7_kzdpGvmWKWwjqF7Jg",
       "objectiveKey": "DR_SQ1_Garrison",
       "destinationMode": "fixed",
       "reason": "The Garrison branch advances by reading the schematics beside its nodestone. The registry identity is the exact placed Scrawled Notes interaction and is more precise than the Nexus portal previously used as a proxy.",
-      "targets": [{"kind": "registry_landmark", "reference": "843B8CD4-4E5E1A28-684CC6A5-8AE67163", "displayName": "Scrawled Notes — Garrison nodestone", "role": "read"}]
+      "targets": [{"kind": "registry_landmark", "reference": "83C2979B-428A880B-1C1CBF8C-9ED98017", "displayName": "Scrawled Notes — Garrison nodestone", "role": "read"}]
     },
     {
       "questId": "vxS7_kzdpGvmWKWwjqF7Jg",
       "objectiveKey": "DR_SQ1_Aquifer",
       "destinationMode": "fixed",
       "reason": "The Demon Gate branch advances by searching the dead Zamorak mage beyond the two shardbound demons. The registry exposes that exact quest-owned body, allowing the marker to replace the broader Aquifer portal proxy.",
-      "targets": [{"kind": "registry_landmark", "reference": "40E5E9B9-4B732365-3BB67AAE-8B01D1EB", "displayName": "Dead Zamorak Mage — Demon Gate", "role": "search"}]
+      "targets": [{"kind": "registry_landmark", "reference": "3C61B416-432A0E43-2AD0A49E-9EFEA643", "displayName": "Dead Zamorak Mage — Demon Gate", "role": "search"}]
     },
     {
       "questId": "vxS7_kzdpGvmWKWwjqF7Jg",
@@ -399,14 +399,14 @@
       "objectiveKey": "GiveWater",
       "destinationMode": "fixed",
       "reason": "The objective explicitly names Efina, and the world registry contains one exact Efina - The Lost NPC placement at the final trail destination.",
-      "targets": [{"kind": "registry_landmark", "reference": "2736394F-4613C7C2-566C60B3-DFA40E46", "displayName": "Efina — The Lost"}]
+      "targets": [{"kind": "registry_landmark", "reference": "206F42D7-4A7B7928-2AFAE2B5-5325C830", "displayName": "Efina — The Lost"}]
     },
     {
       "questId": "0cB0D0QD_L4nrpu6CxZEsw",
       "objectiveKey": "Return",
       "destinationMode": "fixed",
       "reason": "The objective explicitly names Manathep, and the world registry contains one exact Manathep - The Bereaved NPC placement in the Manafem camp.",
-      "targets": [{"kind": "registry_landmark", "reference": "66CC10A1-43D25A90-6B505FAB-74A2DDC2", "displayName": "Manathep — The Bereaved", "role": "return"}]
+      "targets": [{"kind": "registry_landmark", "reference": "46753C30-46E854ED-2C9665A6-9434AF84", "displayName": "Manathep — The Bereaved", "role": "return"}]
     },
     {
       "questId": "sQ91eUA55bcQx0OQ0m59sg",
@@ -463,7 +463,7 @@
       "destinationMode": "fixed",
       "note": "The ingredients have multiple renewable sources; this marker identifies the required hand-in to Lagra rather than pretending there is one mandatory gathering location.",
       "reason": "The objective explicitly brings all three ingredient types to Lagra, and the registry contains one exact Lagra - The Butcher placement. Guides confirm raw farm meat, kalphite shell fragments, and cactus steaks can each be sourced in multiple ways or places.",
-      "targets": [{"kind": "registry_landmark", "reference": "685A686A-4A3B33AE-D302F8B9-E65410FF", "displayName": "Lagra — The Butcher", "role": "return"}]
+      "targets": [{"kind": "registry_landmark", "reference": "8CBA436F-43B0A2E5-D17D6687-70CA8D16", "displayName": "Lagra — The Butcher", "role": "return"}]
     },
     {
       "questId": "XElCtUmXXqK35p63tua9og",
@@ -534,7 +534,7 @@
       "destinationMode": "fixed",
       "note": "Adamant ore and bars can be sourced outside the suggested search area; the required progression interaction is the hand-in to Valas.",
       "reason": "The objective explicitly brings three adamant bars to Valas and the current world registry contains one exact Valas - The Blacksmith placement. The broad TribeA.Task3 area is optional sourcing guidance, not a required destination.",
-      "targets": [{"kind": "registry_landmark", "reference": "F8250830-405F796E-EC7E0581-8790FA54", "displayName": "Valas — The Blacksmith", "role": "return"}]
+      "targets": [{"kind": "registry_landmark", "reference": "FA9876E5-4AD250FE-A335B58F-5B5D3E05", "displayName": "Valas — The Blacksmith", "role": "return"}]
     },
     {
       "questId": "WXRGL036pJRhAU-BWTZ_9g",
@@ -584,29 +584,29 @@
       "questId": "db-ciknQnYrkNHuOcQXhkA",
       "objectiveKey": "AddPartsToTable",
       "destinationMode": "fixed",
-      "reason": "The current-build registry identity B583AF8E-4A86E359-FA1FDF88-8EA67879 is the quest-authored Examination Table in Fenkenstrain's laboratory.",
-      "targets": [{"kind": "registry_landmark", "reference": "B583AF8E-4A86E359-FA1FDF88-8EA67879", "role": "interact"}]
+      "reason": "The current-build registry identity 17B90A2B-42509630-B1EB9B8D-006A8871 is the quest-authored Examination Table in Fenkenstrain's laboratory.",
+      "targets": [{"kind": "registry_landmark", "reference": "17B90A2B-42509630-B1EB9B8D-006A8871", "role": "interact"}]
     },
     {
       "questId": "db-ciknQnYrkNHuOcQXhkA",
       "objectiveKey": "Objecrive3.5",
       "destinationMode": "fixed",
       "reason": "The autopsy is performed on the exact quest-authored Examination Table registry identity, not on one of the several Fenkenstrain stage actors nearby.",
-      "targets": [{"kind": "registry_landmark", "reference": "B583AF8E-4A86E359-FA1FDF88-8EA67879", "role": "interact"}]
+      "targets": [{"kind": "registry_landmark", "reference": "17B90A2B-42509630-B1EB9B8D-006A8871", "role": "interact"}]
     },
     {
       "questId": "db-ciknQnYrkNHuOcQXhkA",
       "objectiveKey": "Objective7",
       "destinationMode": "fixed",
       "reason": "The head is attached at the exact quest-authored Examination Table registry identity.",
-      "targets": [{"kind": "registry_landmark", "reference": "B583AF8E-4A86E359-FA1FDF88-8EA67879", "role": "interact"}]
+      "targets": [{"kind": "registry_landmark", "reference": "17B90A2B-42509630-B1EB9B8D-006A8871", "role": "interact"}]
     },
     {
       "questId": "db-ciknQnYrkNHuOcQXhkA",
       "objectiveKey": "Objective8",
       "destinationMode": "fixed",
       "reason": "The bottled lightning is inserted into the quest-authored Strange Machine registry identity in Fenkenstrain's laboratory.",
-      "targets": [{"kind": "registry_landmark", "reference": "AFA8DDF4-402C43D9-030F73B9-872E4367", "role": "interact"}]
+      "targets": [{"kind": "registry_landmark", "reference": "368139DC-456B0A2D-EC3F1B92-45781C52", "role": "interact"}]
     },
     {
       "questId": "db-ciknQnYrkNHuOcQXhkA",
@@ -786,7 +786,7 @@
       "destinationMode": "fixed",
       "note": "Warren is the first spirit beside the ruined village, southwest of the well; he appears only at night.",
       "reason": "The guide sequence identifies Warren as the interaction that establishes the amulet's purpose. The extracted Restless Spirit registry placement southwest of the authored Well_RG marker is Warren's placed quest actor.",
-      "targets": [{"kind": "registry_landmark", "reference": "689EC4DF-4A18B80D-220E4EB3-ED4ED5AE", "displayName": "Warren", "role": "talk"}]
+      "targets": [{"kind": "registry_landmark", "reference": "551BACF6-4AAE95A0-FCDEF686-33B2D173", "displayName": "Warren", "role": "talk"}]
     },
     {
       "questId": "eKV5vkDqZH89aGWiY_T7GQ",
@@ -795,10 +795,10 @@
       "note": "Speak to Warren, Lazina, Finn, and Kay at night, then remember all four at the Remembrance Shrine. The objective key does not expose which names the character has already learned, so every still-possible interaction is shown.",
       "reason": "The quest flow contains four named remembrance choices and uses QuestFlow.Participant.Memorial_RG for the final interactions. Extracted world data contains exactly four BP_NPC_RestlessGhost_Quest placements and one BP_NPC_RestlessGhostMemorial placement, matching the guide's four spirits plus final shrine sequence.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "689EC4DF-4A18B80D-220E4EB3-ED4ED5AE", "displayName": "Warren", "role": "talk"},
-        {"kind": "registry_landmark", "reference": "9734735E-46C37F16-BDD72EB5-983FAEF2", "displayName": "Lazina", "role": "talk"},
-        {"kind": "registry_landmark", "reference": "07D13459-4DCF3A28-257A81BF-FD5DF0A7", "displayName": "Finn", "role": "talk"},
-        {"kind": "registry_landmark", "reference": "6F4B9D60-494C735B-61CD6695-47C1B657", "displayName": "Kay", "role": "talk"},
+        {"kind": "registry_landmark", "reference": "551BACF6-4AAE95A0-FCDEF686-33B2D173", "displayName": "Warren", "role": "talk"},
+        {"kind": "registry_landmark", "reference": "F9DB1F8B-4B911B49-B1DA9F97-C2A239A0", "displayName": "Lazina", "role": "talk"},
+        {"kind": "registry_landmark", "reference": "60105857-4D836A84-6998BAA7-56BB0AD2", "displayName": "Finn", "role": "talk"},
+        {"kind": "registry_landmark", "reference": "98FF7317-4BD2069A-630E528E-D5475C30", "displayName": "Kay", "role": "talk"},
         {"kind": "world_actor", "reference": "BP_NPC_RestlessGhostMemorial", "displayName": "Remembrance Shrine", "role": "finish"}
       ]
     },
@@ -969,9 +969,9 @@
       "note": "The three spirits can be completed in any order. The sketchbook marker is the authored retrieval interaction for the paint-spattered spirit; return to that spirit afterward.",
       "reason": "The three extracted Ghost landmarks align with the Emberwood house, Hope's Fall gate, and Fellhollow paint-spattered-spirit locations. The current world also places the quest-specific BP_NPC_FHGhostQuest_Sketchbook actor used by the third spirit's flow.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "22DE00B8-4CB15EF4-F101619F-E8B85D27", "displayName": "Windswept Ghost", "role": "help"},
-        {"kind": "registry_landmark", "reference": "8C8F2DE3-4365929A-14A90B8F-3484376E", "displayName": "Reminiscing Ghost", "role": "help"},
-        {"kind": "registry_landmark", "reference": "EB81888F-401988D1-26F7B1AD-CB140DF0", "displayName": "Paint-Spattered Ghost", "role": "talk"},
+        {"kind": "registry_landmark", "reference": "639853C5-46784C92-EC93CFB6-A1AABA2C", "displayName": "Windswept Ghost", "role": "help"},
+        {"kind": "registry_landmark", "reference": "75D9B801-490A8682-5EB0A99C-4DD2A3C4", "displayName": "Reminiscing Ghost", "role": "help"},
+        {"kind": "registry_landmark", "reference": "1FD76AE3-47A4C15C-B5AD4396-20B7310C", "displayName": "Paint-Spattered Ghost", "role": "talk"},
         {"kind": "world_actor", "reference": "BP_NPC_FHGhostQuest_Sketchbook", "displayName": "Dust-covered Sketchbook", "role": "collect"}
       ]
     },
@@ -982,9 +982,9 @@
       "note": "The counter does not identify which spirit is complete, so all three possible spirit locations and the quest-specific sketchbook retrieval remain visible.",
       "reason": "The quest exposes only an aggregate counter while the cooked flow tracks the three spirit branches independently.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "22DE00B8-4CB15EF4-F101619F-E8B85D27", "displayName": "Windswept Ghost", "role": "help"},
-        {"kind": "registry_landmark", "reference": "8C8F2DE3-4365929A-14A90B8F-3484376E", "displayName": "Reminiscing Ghost", "role": "help"},
-        {"kind": "registry_landmark", "reference": "EB81888F-401988D1-26F7B1AD-CB140DF0", "displayName": "Paint-Spattered Ghost", "role": "talk"},
+        {"kind": "registry_landmark", "reference": "639853C5-46784C92-EC93CFB6-A1AABA2C", "displayName": "Windswept Ghost", "role": "help"},
+        {"kind": "registry_landmark", "reference": "75D9B801-490A8682-5EB0A99C-4DD2A3C4", "displayName": "Reminiscing Ghost", "role": "help"},
+        {"kind": "registry_landmark", "reference": "1FD76AE3-47A4C15C-B5AD4396-20B7310C", "displayName": "Paint-Spattered Ghost", "role": "talk"},
         {"kind": "world_actor", "reference": "BP_NPC_FHGhostQuest_Sketchbook", "displayName": "Dust-covered Sketchbook", "role": "collect"}
       ]
     },
@@ -995,9 +995,9 @@
       "note": "One spirit remains, but the aggregate counter does not identify it; all possible spirit locations and the sketchbook retrieval are shown.",
       "reason": "The quest exposes only an aggregate counter while the cooked flow tracks the three spirit branches independently.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "22DE00B8-4CB15EF4-F101619F-E8B85D27", "displayName": "Windswept Ghost", "role": "help"},
-        {"kind": "registry_landmark", "reference": "8C8F2DE3-4365929A-14A90B8F-3484376E", "displayName": "Reminiscing Ghost", "role": "help"},
-        {"kind": "registry_landmark", "reference": "EB81888F-401988D1-26F7B1AD-CB140DF0", "displayName": "Paint-Spattered Ghost", "role": "talk"},
+        {"kind": "registry_landmark", "reference": "639853C5-46784C92-EC93CFB6-A1AABA2C", "displayName": "Windswept Ghost", "role": "help"},
+        {"kind": "registry_landmark", "reference": "75D9B801-490A8682-5EB0A99C-4DD2A3C4", "displayName": "Reminiscing Ghost", "role": "help"},
+        {"kind": "registry_landmark", "reference": "1FD76AE3-47A4C15C-B5AD4396-20B7310C", "displayName": "Paint-Spattered Ghost", "role": "talk"},
         {"kind": "world_actor", "reference": "BP_NPC_FHGhostQuest_Sketchbook", "displayName": "Dust-covered Sketchbook", "role": "collect"}
       ]
     },
@@ -1006,7 +1006,7 @@
       "objectiveKey": "None",
       "destinationMode": "fixed",
       "reason": "The objective explicitly reads the uniquely identified Advert-Inna-Bottle interaction next to Manktongue; Manktongue himself is not the progression interaction for this state.",
-      "targets": [{"kind": "registry_landmark", "reference": "32BD943C-48CB0710-47A20DBF-E46A2612", "displayName": "Advert-Inna-Bottle", "role": "read"}]
+      "targets": [{"kind": "registry_landmark", "reference": "C8199D83-4652434B-CD3B69AD-EFC39A1C", "displayName": "Advert-Inna-Bottle", "role": "read"}]
     },
     {
       "questId": "0WS3LUBsaPUDeuiPT_akhQ",
@@ -1022,7 +1022,7 @@
       "note": "Collect the undead chicken and an undead twig bundle. Pulpknuckle magnetises an iron bar for five law runes at Manktongue's camp; return the components to Manktongue there.",
       "reason": "The quest dialogue explicitly places the chicken due north, the twig bundle at a glowing Bloodblight tree, and Pulpknuckle upstairs at the quest-giver camp. The current world provides exact quest-specific chicken, twig, and BP_NPC_Goblin_Smith interactions; Manktongue remains the separate component hand-in.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "20A409F9-407F5A30-9262E180-5A922918", "displayName": "Undead Chicken", "role": "collect"},
+        {"kind": "registry_landmark", "reference": "12D481EF-47E46A3D-2503288C-A0A220A7", "displayName": "Undead Chicken", "role": "collect"},
         {"kind": "world_actor", "reference": "BP_NPC_Quest_UndeadTwigBundle", "displayName": "Undead Twig Bundle", "role": "collect"},
         {"kind": "world_actor", "reference": "BP_NPC_Goblin_Smith", "displayName": "Pulpknuckle — magnetise iron bar", "role": "craft"},
         {"kind": "npc", "reference": "manktongue", "displayName": "Manktongue — component hand-in", "role": "return"}
@@ -1043,7 +1043,7 @@
       "reason": "The objective is a roaming enemy collection task rather than a single Vannaka interaction. Every published hunt point resolves from a placed BP_SpawnPoint_SpectralChinchompa actor in the current world; Vannaka remains only as the hand-in marker.",
       "targets": [
         {"kind": "npc", "reference": "spectral-chinchompa", "actorType": "BP_SpawnPoint_SpectralChinchompa", "allowMultiple": true, "displayName": "Spectral Chinchompa spawn", "role": "hunt"},
-        {"kind": "registry_landmark", "reference": "4E97E2C0-40F420D4-82DBC3B5-F25FA4D1", "displayName": "Vannaka", "role": "return"}
+        {"kind": "registry_landmark", "reference": "8C089B69-4CBE8152-0AC72CAE-5DA4CFFC", "displayName": "Vannaka", "role": "return"}
       ]
     },
     {
@@ -1051,7 +1051,7 @@
       "objectiveKey": "SpeaktoVannaka",
       "destinationMode": "fixed",
       "reason": "The objective explicitly starts at the uniquely resolved Fellhollow Vannaka placement.",
-      "targets": [{"kind": "registry_landmark", "reference": "4E97E2C0-40F420D4-82DBC3B5-F25FA4D1", "displayName": "Vannaka", "role": "talk"}]
+      "targets": [{"kind": "registry_landmark", "reference": "8C089B69-4CBE8152-0AC72CAE-5DA4CFFC", "displayName": "Vannaka", "role": "talk"}]
     },
     {
       "questId": "d6s4dUyoCduLy7eRc2KndQ",
@@ -1060,9 +1060,9 @@
       "note": "Mine the gypsum deposit at each of the three fixed Moonstone locations west of Alcarrid: the northern cave, the rock platforms, and the southern Ruby Vine cave.",
       "reason": "The quest flow has three separately named Moonstone entry states, and the current world registry publishes exactly three FirstCamp.Task2 Moonstone identities. The three broad search areas surround those exact item placements; Domri is a separate return objective.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "8AAA344F-4CC04E18-8CC04DA1-7670E0CB", "displayName": "Moonstone 1 — northern cave", "role": "collect"},
-        {"kind": "registry_landmark", "reference": "FE794809-49AD55B2-F8E402AC-FC5A9041", "displayName": "Moonstone 2 — rock platforms", "role": "collect"},
-        {"kind": "registry_landmark", "reference": "4E6F5F7D-431A2937-099421B6-E9A69636", "displayName": "Moonstone 3 — Ruby Vine cave", "role": "collect"}
+        {"kind": "registry_landmark", "reference": "17FA618B-482698A3-00B432AE-708F73A7", "displayName": "Moonstone 1 — northern cave", "role": "collect"},
+        {"kind": "registry_landmark", "reference": "5BF5EBC3-4D767D37-D43E8DAA-584ACD94", "displayName": "Moonstone 2 — rock platforms", "role": "collect"},
+        {"kind": "registry_landmark", "reference": "4E846B70-40B45E7C-E27DF99D-77BC58CD", "displayName": "Moonstone 3 — Ruby Vine cave", "role": "collect"}
       ]
     },
     {
@@ -1070,7 +1070,7 @@
       "objectiveKey": "ReturnToShopkeeper",
       "destinationMode": "fixed",
       "reason": "The objective explicitly names Domri, and the current world registry contains one exact Domri - The Merchant placement at the authored TribeA_Task2 target in Alcarrid Camp.",
-      "targets": [{"kind": "registry_landmark", "reference": "8C55BAB3-4DC37D37-300CBB96-D03D2CFB", "displayName": "Domri — The Merchant", "role": "return"}]
+      "targets": [{"kind": "registry_landmark", "reference": "F1423ED7-4BFCE077-643B8A80-E2D83FB4", "displayName": "Domri — The Merchant", "role": "return"}]
     },
     {
       "questId": "A3DOkkGZxXUHc82rPKHznA",
@@ -1099,10 +1099,10 @@
       "note": "Collect the spellbook from Emberwood Village, have Edna make the spectral silver thread, and obtain dragon blood from the nearby green dragon or any valid dragon wolf. Return all three reagents to the mirror.",
       "reason": "The current quest registry exposes an exact Bedraggled Spellbook and mirror identity, while the NPC catalog contains one Edna quest actor and a green dragon only 9,106 world units from the mirror. Cooked dialogue identifies Edna as the thread crafter and permits dragon blood from either the nearby green dragon or dragon wolves.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "AC5081C9-4B94236F-7ADE1F89-5459FBDB", "displayName": "Bedraggled Spellbook — Emberwood windmill", "role": "collect"},
+        {"kind": "registry_landmark", "reference": "6E08BF63-4D61DD19-0BCC84B3-888EDF25", "displayName": "Bedraggled Spellbook — Emberwood windmill", "role": "collect"},
         {"kind": "npc", "reference": "edna", "displayName": "Edna — spectral silver thread", "role": "craft"},
         {"kind": "npc", "reference": "green-dragon", "stateKey": "BP_SpawnPoint_LesserGreenDragon_C_UAID_00BE4395530E077702_1869020511", "displayName": "Nearby Green Dragon — dragon blood", "role": "hunt"},
-        {"kind": "registry_landmark", "reference": "7976CEBB-422FB482-F55B18A1-432B54A2", "displayName": "Magic Mirror — reagent hand-in", "role": "return"}
+        {"kind": "registry_landmark", "reference": "70992B76-483DE155-FA73C686-2AA4E688", "displayName": "Magic Mirror — reagent hand-in", "role": "return"}
       ]
     },
     {
@@ -1112,12 +1112,12 @@
       "note": "Light all six memorial candles: beside the mirror in Fellhollow; at the Fractured Plains lake; on the Stormtouched Highlands cliff; west of the Bloodblight Swamp Garou camp; beside the giant tree in Whispering Swamp; and on the Bramblemead clifftop south of Crasorak Kara.",
       "reason": "The current world registry contains exactly six Candle identities owned by the Mirror Mirror string table. Each exact placement falls within its correspondingly named authored candle search area, and the guide descriptions independently distinguish the same six physical contexts.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "420BCC62-4A08DDD7-C39126A1-8D433769", "displayName": "Memorial Candle — Fellhollow mirror", "role": "light"},
-        {"kind": "registry_landmark", "reference": "E4094A70-43E6966C-FA63549D-B9AC8B47", "displayName": "Memorial Candle — Fractured Plains lake", "role": "light"},
-        {"kind": "registry_landmark", "reference": "43F5A15B-41F9C823-95EC228F-79246B19", "displayName": "Memorial Candle — Stormtouched cliff", "role": "light"},
-        {"kind": "registry_landmark", "reference": "58A8D2F4-4F968512-D4B05C99-D14A27D1", "displayName": "Memorial Candle — Bloodblight Swamp", "role": "light"},
-        {"kind": "registry_landmark", "reference": "0B63B5D7-4A7AC806-5D4EA99C-38CDA14C", "displayName": "Memorial Candle — Whispering Swamp tree", "role": "light"},
-        {"kind": "registry_landmark", "reference": "E6E3E03E-40259DC9-DAB0D6B7-96FE9125", "displayName": "Memorial Candle — Bramblemead clifftop", "role": "light"}
+        {"kind": "registry_landmark", "reference": "116D20FD-47DCF6F9-B097DAAE-C1377230", "displayName": "Memorial Candle — Fellhollow mirror", "role": "light"},
+        {"kind": "registry_landmark", "reference": "3B6BF39D-4CF2371B-7DEF35BE-699CD024", "displayName": "Memorial Candle — Fractured Plains lake", "role": "light"},
+        {"kind": "registry_landmark", "reference": "1DE5FE10-418E9BA2-CFA867AC-0C733351", "displayName": "Memorial Candle — Stormtouched cliff", "role": "light"},
+        {"kind": "registry_landmark", "reference": "E8A93E32-4DE1B4A8-D42D8884-376D5C59", "displayName": "Memorial Candle — Bloodblight Swamp", "role": "light"},
+        {"kind": "registry_landmark", "reference": "28F2686F-46BA12C3-5A67BD93-170F3ECB", "displayName": "Memorial Candle — Whispering Swamp tree", "role": "light"},
+        {"kind": "registry_landmark", "reference": "A2C3CC38-4C6CA694-FF382B9D-0B51C3EA", "displayName": "Memorial Candle — Bramblemead clifftop", "role": "light"}
       ]
     },
     {
@@ -1147,7 +1147,7 @@
       "objectiveKey": "SpeakToPostiePete",
       "destinationMode": "fixed",
       "reason": "This story beat occurs beside the Forgotten Temple exit. Of the two current Postie Pete registry identities, 354D8FA4 is colocated with the quest-owned PostiePeteTarget; the other is the later Dowdun Reach placement.",
-      "targets": [{"kind": "registry_landmark", "reference": "354D8FA4-4054FF1B-FE04DA81-EEF1DFFD", "displayName": "Postie Pete — Forgotten Temple", "role": "talk"}]
+      "targets": [{"kind": "registry_landmark", "reference": "0262D41E-4C3AE9A1-59CCE69E-C20FBA0A", "displayName": "Postie Pete — Forgotten Temple", "role": "talk"}]
     },
     {
       "questId": "uftGB0es-CGrvXyPoxW31w",
@@ -1171,9 +1171,9 @@
       "reason": "The nearest Ghost of Cathan placement is only 760 world units from the authored StandingStonesArea, and the current registry contains exactly three Standing Stone identities inside that same area. Quest flow and guide sequencing require Cathan followed by all three clues.",
       "targets": [
         {"kind": "npc", "reference": "ghost-of-cathan", "actorType": "BP_NPC_GhostCathan_Fellhollow", "displayName": "Cathan — Bleakfields cliff", "role": "talk"},
-        {"kind": "registry_landmark", "reference": "727378D6-40266062-E871B38D-1F069AA6", "displayName": "Standing Stone — first curse clue", "role": "investigate"},
-        {"kind": "registry_landmark", "reference": "3509DF90-4B8870A6-F647E082-800F2459", "displayName": "Standing Stone — second curse clue", "role": "investigate"},
-        {"kind": "registry_landmark", "reference": "80C5DC0C-4E6152BC-DEFD5395-B174BA49", "displayName": "Standing Stone — third curse clue", "role": "investigate"}
+        {"kind": "registry_landmark", "reference": "9855BB65-46874A56-F309B49D-61D07672", "displayName": "Standing Stone — first curse clue", "role": "investigate"},
+        {"kind": "registry_landmark", "reference": "1E3919D7-42FE6D63-5E82B497-E519F78B", "displayName": "Standing Stone — second curse clue", "role": "investigate"},
+        {"kind": "registry_landmark", "reference": "5CBF29B5-41DDC6A5-91B21E94-16F44583", "displayName": "Standing Stone — third curse clue", "role": "investigate"}
       ]
     },
     {
@@ -1183,9 +1183,9 @@
       "note": "Read all three nearby stones; they reveal the village, waterfall, and fortress fragment routes.",
       "reason": "The current flow reveals exactly StandStoneVillage, StandStoneWaterfall, and StandStoneFortress for the 0/3 state. Their duplicate candidates are repeated flow references to the same three authored locations.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "727378D6-40266062-E871B38D-1F069AA6", "displayName": "Standing Stone — village clue", "role": "investigate"},
-        {"kind": "registry_landmark", "reference": "3509DF90-4B8870A6-F647E082-800F2459", "displayName": "Standing Stone — waterfall clue", "role": "investigate"},
-        {"kind": "registry_landmark", "reference": "80C5DC0C-4E6152BC-DEFD5395-B174BA49", "displayName": "Standing Stone — fortress clue", "role": "investigate"}
+        {"kind": "registry_landmark", "reference": "9855BB65-46874A56-F309B49D-61D07672", "displayName": "Standing Stone — village clue", "role": "investigate"},
+        {"kind": "registry_landmark", "reference": "1E3919D7-42FE6D63-5E82B497-E519F78B", "displayName": "Standing Stone — waterfall clue", "role": "investigate"},
+        {"kind": "registry_landmark", "reference": "5CBF29B5-41DDC6A5-91B21E94-16F44583", "displayName": "Standing Stone — fortress clue", "role": "investigate"}
       ]
     },
     {
@@ -1195,10 +1195,10 @@
       "note": "Touch the four Burning Spire pedestals in any order. The 0/4 counter does not identify which pedestal will be used first, so all four valid interactions remain visible.",
       "reason": "The Brink of Extinction string table owns exactly four Pedestal registry identities inside the authored UmS_PedestalRadius. Their current-build coordinates match the guide's north, east, south, and west positions around the Sinking Pyramid.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "6427174B-49675037-E713B9AB-3C3C119D", "displayName": "Fire Pedestal — north of Sinking Pyramid", "role": "touch"},
-        {"kind": "registry_landmark", "reference": "4A50CA20-4FF14D60-F08C37AA-81320C2B", "displayName": "Fire Pedestal — east rock formation", "role": "touch"},
-        {"kind": "registry_landmark", "reference": "CF2EE897-45637E57-6824AEA3-26B04CCB", "displayName": "Fire Pedestal — south of Sinking Pyramid", "role": "touch"},
-        {"kind": "registry_landmark", "reference": "27A8F58C-4E95785F-89FA3792-4946CB91", "displayName": "Fire Pedestal — west of Sinking Pyramid", "role": "touch"}
+        {"kind": "registry_landmark", "reference": "F600345F-4F32215E-7030DB86-306E0732", "displayName": "Fire Pedestal — north of Sinking Pyramid", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "CF5EE654-4AA588AB-2C846581-C4951A29", "displayName": "Fire Pedestal — east rock formation", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "CFF9CEC8-4419E7B2-465B4783-C4F1742E", "displayName": "Fire Pedestal — south of Sinking Pyramid", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "25F184C7-47C16925-D3012595-6EF7A1F4", "displayName": "Fire Pedestal — west of Sinking Pyramid", "role": "touch"}
       ]
     },
     {
@@ -1208,10 +1208,10 @@
       "note": "One pedestal is complete, but the quest counter does not expose its identity. All four possible remaining interactions stay visible rather than guessing which marker to hide.",
       "reason": "This is the 1/4 counter state of the same freely ordered four-pedestal objective; no per-pedestal completion booleans are available in the public snapshot.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "6427174B-49675037-E713B9AB-3C3C119D", "displayName": "Fire Pedestal — north of Sinking Pyramid", "role": "touch"},
-        {"kind": "registry_landmark", "reference": "4A50CA20-4FF14D60-F08C37AA-81320C2B", "displayName": "Fire Pedestal — east rock formation", "role": "touch"},
-        {"kind": "registry_landmark", "reference": "CF2EE897-45637E57-6824AEA3-26B04CCB", "displayName": "Fire Pedestal — south of Sinking Pyramid", "role": "touch"},
-        {"kind": "registry_landmark", "reference": "27A8F58C-4E95785F-89FA3792-4946CB91", "displayName": "Fire Pedestal — west of Sinking Pyramid", "role": "touch"}
+        {"kind": "registry_landmark", "reference": "F600345F-4F32215E-7030DB86-306E0732", "displayName": "Fire Pedestal — north of Sinking Pyramid", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "CF5EE654-4AA588AB-2C846581-C4951A29", "displayName": "Fire Pedestal — east rock formation", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "CFF9CEC8-4419E7B2-465B4783-C4F1742E", "displayName": "Fire Pedestal — south of Sinking Pyramid", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "25F184C7-47C16925-D3012595-6EF7A1F4", "displayName": "Fire Pedestal — west of Sinking Pyramid", "role": "touch"}
       ]
     },
     {
@@ -1221,10 +1221,10 @@
       "note": "Two pedestals are complete, but the quest counter does not expose their identities. All four possible remaining interactions stay visible rather than guessing which markers to hide.",
       "reason": "This is the 2/4 counter state of the same freely ordered four-pedestal objective; no per-pedestal completion booleans are available in the public snapshot.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "6427174B-49675037-E713B9AB-3C3C119D", "displayName": "Fire Pedestal — north of Sinking Pyramid", "role": "touch"},
-        {"kind": "registry_landmark", "reference": "4A50CA20-4FF14D60-F08C37AA-81320C2B", "displayName": "Fire Pedestal — east rock formation", "role": "touch"},
-        {"kind": "registry_landmark", "reference": "CF2EE897-45637E57-6824AEA3-26B04CCB", "displayName": "Fire Pedestal — south of Sinking Pyramid", "role": "touch"},
-        {"kind": "registry_landmark", "reference": "27A8F58C-4E95785F-89FA3792-4946CB91", "displayName": "Fire Pedestal — west of Sinking Pyramid", "role": "touch"}
+        {"kind": "registry_landmark", "reference": "F600345F-4F32215E-7030DB86-306E0732", "displayName": "Fire Pedestal — north of Sinking Pyramid", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "CF5EE654-4AA588AB-2C846581-C4951A29", "displayName": "Fire Pedestal — east rock formation", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "CFF9CEC8-4419E7B2-465B4783-C4F1742E", "displayName": "Fire Pedestal — south of Sinking Pyramid", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "25F184C7-47C16925-D3012595-6EF7A1F4", "displayName": "Fire Pedestal — west of Sinking Pyramid", "role": "touch"}
       ]
     },
     {
@@ -1234,10 +1234,10 @@
       "note": "Three pedestals are complete, but the quest counter does not expose which one remains. All four possible interactions stay visible rather than selecting an unsupported final marker.",
       "reason": "This is the 3/4 counter state of the same freely ordered four-pedestal objective; no per-pedestal completion booleans are available in the public snapshot.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "6427174B-49675037-E713B9AB-3C3C119D", "displayName": "Fire Pedestal — north of Sinking Pyramid", "role": "touch"},
-        {"kind": "registry_landmark", "reference": "4A50CA20-4FF14D60-F08C37AA-81320C2B", "displayName": "Fire Pedestal — east rock formation", "role": "touch"},
-        {"kind": "registry_landmark", "reference": "CF2EE897-45637E57-6824AEA3-26B04CCB", "displayName": "Fire Pedestal — south of Sinking Pyramid", "role": "touch"},
-        {"kind": "registry_landmark", "reference": "27A8F58C-4E95785F-89FA3792-4946CB91", "displayName": "Fire Pedestal — west of Sinking Pyramid", "role": "touch"}
+        {"kind": "registry_landmark", "reference": "F600345F-4F32215E-7030DB86-306E0732", "displayName": "Fire Pedestal — north of Sinking Pyramid", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "CF5EE654-4AA588AB-2C846581-C4951A29", "displayName": "Fire Pedestal — east rock formation", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "CFF9CEC8-4419E7B2-465B4783-C4F1742E", "displayName": "Fire Pedestal — south of Sinking Pyramid", "role": "touch"},
+        {"kind": "registry_landmark", "reference": "25F184C7-47C16925-D3012595-6EF7A1F4", "displayName": "Fire Pedestal — west of Sinking Pyramid", "role": "touch"}
       ]
     },
     {
@@ -1247,9 +1247,9 @@
       "note": "Interact with the three Survey I Moon Sprites on tall locations around Alcarrid Camp. Counter-only progress does not identify which freely ordered sprites were already found, so every verified target remains visible.",
       "reason": "The current world contains exactly three non-b-series survey actors, BP_NPC_UmS_MoonSprite1, 2, and 3. Their positions match three registry identities; the colocated BP_NPC_UmS_MoonSpriteCamp is Anamcara's camp sprite and is deliberately excluded.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "DA7CE8F2-493C74D1-E29B67AC-21F0AB64", "displayName": "Survey I Moon Sprite 1 — east of Alcarrid Camp", "role": "find"},
-        {"kind": "registry_landmark", "reference": "24DAD7DB-47DAF91B-DF1DDEAA-CDE9C121", "displayName": "Survey I Moon Sprite 2 — southeast height", "role": "find"},
-        {"kind": "registry_landmark", "reference": "44DACD8B-48066352-860C6397-2221B764", "displayName": "Survey I Moon Sprite 3 — southwest height", "role": "find"}
+        {"kind": "registry_landmark", "reference": "0940EF70-40802115-3CEEB9A1-8D2E6D73", "displayName": "Survey I Moon Sprite 1 — east of Alcarrid Camp", "role": "find"},
+        {"kind": "registry_landmark", "reference": "BBF6BDC7-40776C89-C3DB52AE-7BA5130E", "displayName": "Survey I Moon Sprite 2 — southeast height", "role": "find"},
+        {"kind": "registry_landmark", "reference": "A09201A2-4774D348-4D2BFF80-20A69393", "displayName": "Survey I Moon Sprite 3 — southwest height", "role": "find"}
       ]
     },
     {
@@ -1259,14 +1259,14 @@
       "note": "Interact with all eight Survey II Moon Sprites across Umbral Sands. Counter-only progress does not identify which freely ordered sprites were already found, so every verified target remains visible.",
       "reason": "The current world contains exactly eight Survey II b-series actors (1b through 7b plus 9b), each matching one registry identity by exact coordinates. The three Survey I actors and Anamcara's camp sprite are excluded.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "BCDC2CE7-40567BB6-0055BBB9-8E0DB2AE", "displayName": "Survey II Moon Sprite 1", "role": "find"},
-        {"kind": "registry_landmark", "reference": "E13773E6-46782333-AB396AB7-35507903", "displayName": "Survey II Moon Sprite 2", "role": "find"},
-        {"kind": "registry_landmark", "reference": "0EC1F4EA-4447FE69-5A2E17B7-8C7C1D97", "displayName": "Survey II Moon Sprite 3", "role": "find"},
-        {"kind": "registry_landmark", "reference": "D05DC1FC-4BC445AE-398275A7-772A4AC1", "displayName": "Survey II Moon Sprite 4", "role": "find"},
-        {"kind": "registry_landmark", "reference": "B4368D72-4DC36E39-76CDDC84-003E54A5", "displayName": "Survey II Moon Sprite 5", "role": "find"},
-        {"kind": "registry_landmark", "reference": "2890F86A-4F1E8EFA-126CBEA7-E46E02AC", "displayName": "Survey II Moon Sprite 6", "role": "find"},
-        {"kind": "registry_landmark", "reference": "AF47C155-4515C0B4-D8A82B8D-1203F227", "displayName": "Survey II Moon Sprite 7", "role": "find"},
-        {"kind": "registry_landmark", "reference": "C0CBAB63-43897DDA-F0B99FAC-04091E16", "displayName": "Survey II Moon Sprite 9", "role": "find"}
+        {"kind": "registry_landmark", "reference": "EA0A8B1D-44CC3489-3CBE79A0-E0837BB9", "displayName": "Survey II Moon Sprite 1", "role": "find"},
+        {"kind": "registry_landmark", "reference": "F5B7695C-4F96171E-33D368AB-A84A09B5", "displayName": "Survey II Moon Sprite 2", "role": "find"},
+        {"kind": "registry_landmark", "reference": "8E0C1F9F-43887FE8-1C01FBB4-BF4F9F97", "displayName": "Survey II Moon Sprite 3", "role": "find"},
+        {"kind": "registry_landmark", "reference": "5F73AF92-442C956A-08BF0782-7A9E51DD", "displayName": "Survey II Moon Sprite 4", "role": "find"},
+        {"kind": "registry_landmark", "reference": "9B9611DF-497EAABF-A7B53CBB-5164CFB0", "displayName": "Survey II Moon Sprite 5", "role": "find"},
+        {"kind": "registry_landmark", "reference": "F0D67A44-47F7EACA-B70A26AA-46FAFD9F", "displayName": "Survey II Moon Sprite 6", "role": "find"},
+        {"kind": "registry_landmark", "reference": "4FD572AC-4235BD37-2E73C496-8E4BCD31", "displayName": "Survey II Moon Sprite 7", "role": "find"},
+        {"kind": "registry_landmark", "reference": "276E20A3-4DCF4F77-97F7ECBD-7E01B14F", "displayName": "Survey II Moon Sprite 9", "role": "find"}
       ]
     },
     {
@@ -1289,7 +1289,7 @@
       "objectiveKey": "ReturnToFirstGarou",
       "destinationMode": "fixed",
       "reason": "The objective specifies Shangruuh in the passage from Dowdun Reach. Of the two current placements, 10014319 is beside the Bastion/Umbral Sands passage; 2DBE7A7B is the later Uzzer-camp copy used by Mark Day.",
-      "targets": [{"kind": "registry_landmark", "reference": "10014319-45A53113-A476CD9E-1A6C7636", "displayName": "Shangruuh — Dowdun Reach passage", "role": "return"}]
+      "targets": [{"kind": "registry_landmark", "reference": "96A7957E-42C5CF44-95609E9D-BA010438", "displayName": "Shangruuh — Dowdun Reach passage", "role": "return"}]
     },
     {
       "questId": "kPtTW0exXrqw2BqELR_bFA",
@@ -1299,8 +1299,8 @@
       "reason": "The quest and walkthrough require lenses from Alcarrid, Manafem, and Uzzer. Cooked camp locations and elder placements distinguish the active camp copies from phase duplicates and unrelated mirror actors.",
       "targets": [
         {"kind": "quest_marker", "reference": "CampLeader_A_Target", "displayName": "Ancamairon — Alcarrid Elder", "role": "talk"},
-        {"kind": "registry_landmark", "reference": "E82A10BB-4F0B9238-2D9DA6AA-46AD12F5", "displayName": "Dúshlánach — Manafem Elder", "role": "talk"},
-        {"kind": "registry_landmark", "reference": "4CD11574-43227F44-A9FB52BA-94B5237B", "displayName": "Gaimbín — Uzzer Elder", "role": "talk"}
+        {"kind": "registry_landmark", "reference": "74B23279-45B4C49C-0DE1F0B3-3AFE3914", "displayName": "Dúshlánach — Manafem Elder", "role": "talk"},
+        {"kind": "registry_landmark", "reference": "165AC67D-41594127-0A1F4FBD-D29A091C", "displayName": "Gaimbín — Uzzer Elder", "role": "talk"}
       ]
     },
     {
@@ -1348,8 +1348,8 @@
       "note": "The saved objective does not identify whether Manafem or Uzzer is the player's final unfinished clan, so both exact elder locations remain visible.",
       "reason": "Alcarrid is completed before this late aggregate state. The final outstanding lens may be earned from either Manafem or Uzzer, and no per-clan completion identity is exposed by this objective key.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "E82A10BB-4F0B9238-2D9DA6AA-46AD12F5", "displayName": "Dúshlánach — Manafem Elder", "role": "possible-final-camp"},
-        {"kind": "registry_landmark", "reference": "4CD11574-43227F44-A9FB52BA-94B5237B", "displayName": "Gaimbín — Uzzer Elder", "role": "possible-final-camp"}
+        {"kind": "registry_landmark", "reference": "74B23279-45B4C49C-0DE1F0B3-3AFE3914", "displayName": "Dúshlánach — Manafem Elder", "role": "possible-final-camp"},
+        {"kind": "registry_landmark", "reference": "165AC67D-41594127-0A1F4FBD-D29A091C", "displayName": "Gaimbín — Uzzer Elder", "role": "possible-final-camp"}
       ]
     },
     {
@@ -1387,7 +1387,7 @@
       "destinationMode": "fixed",
       "note": "Bring an Inspiring Ring of Runecrafting to this box.",
       "reason": "The quest flow reveals JewelleryBox and the current registry contains one quest-owned Jewellery Box identity at exactly that target. All auto-discovered candidates were duplicate representations of the same interaction.",
-      "targets": [{"kind": "registry_landmark", "reference": "7743312F-4E17D80F-A455BE9C-0F55C7F7", "displayName": "Jewellery Box — Inspiring Ring of Runecrafting", "role": "use-ring"}]
+      "targets": [{"kind": "registry_landmark", "reference": "CA757E8A-4E5F14C1-D7183F82-0E9F9A24", "displayName": "Jewellery Box — Inspiring Ring of Runecrafting", "role": "use-ring"}]
     },
     {
       "questId": "O3ruOkgGHBqwIheSH_7BBg",
@@ -1395,7 +1395,7 @@
       "destinationMode": "fixed",
       "note": "Bring the standard Amulet of Magic, not the Inspiring variant.",
       "reason": "The current world registry contains one quest-owned Jewellery Box identity matching the objective; the additional JewelleryBox candidate is its colocated authored target.",
-      "targets": [{"kind": "registry_landmark", "reference": "7743312F-4E17D80F-A455BE9C-0F55C7F7", "displayName": "Jewellery Box — Amulet of Magic", "role": "use-amulet"}]
+      "targets": [{"kind": "registry_landmark", "reference": "CA757E8A-4E5F14C1-D7183F82-0E9F9A24", "displayName": "Jewellery Box — Amulet of Magic", "role": "use-amulet"}]
     },
     {
       "questId": "4G_ph0XQeA1Nc72_CVO6HQ",
@@ -1403,14 +1403,14 @@
       "destinationMode": "area",
       "note": "Build the home around Caratacus; the marker identifies the exact elder placement, not a mandatory building snap point.",
       "reason": "The objective is player construction around the uniquely registered Caratacus the Elder placement.",
-      "targets": [{"kind": "registry_landmark", "reference": "57F6B9DA-420523CE-2261DB92-E304B9DC", "displayName": "Caratacus building site", "role": "build-around"}]
+      "targets": [{"kind": "registry_landmark", "reference": "13CFCB4D-43A1EE3C-D7E66CA7-EEBD4078", "displayName": "Caratacus building site", "role": "build-around"}]
     },
     {
       "questId": "sQ91eUA55bcQx0OQ0m59sg",
       "objectiveKey": "Objective5",
       "destinationMode": "fixed",
       "reason": "The objective explicitly requires using the numbering book at the KotHaar Bouncer, and the registry contains one exact quest-owned Bouncer identity; the other candidate is its colocated quest target.",
-      "targets": [{"kind": "registry_landmark", "reference": "A13E380A-459F8CF7-13BBA1A7-927DDAD3", "displayName": "KotHaar Bouncer", "role": "answer"}]
+      "targets": [{"kind": "registry_landmark", "reference": "96C2D2B9-4734D871-681441BB-454CDD04", "displayName": "KotHaar Bouncer", "role": "answer"}]
     },
     {
       "questId": "A3DOkkGZxXUHc82rPKHznA",
@@ -1502,9 +1502,9 @@
       "note": "The aggregate count does not reveal which standing stones have been read, so all three exact clues remain visible.",
       "reason": "These are progressed counter states of the same three-stone interaction established by the preceding objective; the current registry contains exactly those three stones in the authored area.",
       "targets": [
-        {"kind": "registry_landmark", "reference": "727378D6-40266062-E871B38D-1F069AA6", "displayName": "Standing Stone — village clue", "role": "investigate"},
-        {"kind": "registry_landmark", "reference": "3509DF90-4B8870A6-F647E082-800F2459", "displayName": "Standing Stone — waterfall clue", "role": "investigate"},
-        {"kind": "registry_landmark", "reference": "80C5DC0C-4E6152BC-DEFD5395-B174BA49", "displayName": "Standing Stone — fortress clue", "role": "investigate"}
+        {"kind": "registry_landmark", "reference": "9855BB65-46874A56-F309B49D-61D07672", "displayName": "Standing Stone — village clue", "role": "investigate"},
+        {"kind": "registry_landmark", "reference": "1E3919D7-42FE6D63-5E82B497-E519F78B", "displayName": "Standing Stone — waterfall clue", "role": "investigate"},
+        {"kind": "registry_landmark", "reference": "5CBF29B5-41DDC6A5-91B21E94-16F44583", "displayName": "Standing Stone — fortress clue", "role": "investigate"}
       ]
     },
     {
@@ -1607,7 +1607,7 @@
       "objectiveKey": "ReturnToNPC",
       "destinationMode": "fixed",
       "reason": "The objective explicitly says to speak to the mirror; the registry contains one exact quest-owned Magic Mirror identity at the Fellhollow relay.",
-      "targets": [{"kind": "registry_landmark", "reference": "7976CEBB-422FB482-F55B18A1-432B54A2", "displayName": "Magic Mirror", "role": "talk"}]
+      "targets": [{"kind": "registry_landmark", "reference": "70992B76-483DE155-FA73C686-2AA4E688", "displayName": "Magic Mirror", "role": "talk"}]
     },
     {
       "questId": "Rov9uE687b2NkaKFCTFP3A",

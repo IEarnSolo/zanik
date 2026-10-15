@@ -34,7 +34,7 @@ By default the tool temporarily installs its pinned UE4SS loader, launches the o
 
 Catalog export, generation, ZIP packaging, multipart packaging, and cleanup are journaled. Zanik Manager keeps interrupted work under `%LOCALAPPDATA%\Zanik Manager\asset-work\` and offers **Resume extraction** or **Discard generated work**. A packaging retry reuses the validated generated tree instead of reopening the game. Cleanup problems after both bundle forms validate are warnings; Manager retries verified Zanik-owned cleanup later.
 
-Operational journals are compatible with Windows PowerShell 5.1 and PowerShell 7. On resume, Zanik validates the reviewed JSON counts, every expected UnrealAssetScout texture-batch manifest, the font, mapping, recipe, and source fingerprints before reusing exports. A stale outer stage is repaired only when that complete checkpoint validates; missing or changed exports fail closed without launching the game or deleting retained work. Fresh-server guided setup automatically chooses this verified resume path and then completes upload and activation on the server being installed.
+Operational journals are compatible with Windows PowerShell 5.1 and PowerShell 7. On resume, Zanik validates the reviewed minimum raw-export coverage, every expected UnrealAssetScout texture-batch manifest, the font, mapping, recipe, and source fingerprints before reusing exports. A richer mapping may resolve additional raw packages from the same cooked build; exact generated catalog counts and structural validation remain the publication boundary. A retained JSON-only stage resumes with artwork and font export instead of repeating mapping generation or catalog export. Missing or changed required exports still fail closed without launching the game or deleting retained work. Fresh-server guided setup automatically chooses this verified resume path and then completes upload and activation on the server being installed.
 
 The packaged Windows tools use extended-length filesystem paths for deeply nested cooked exports. Every exported JSON record used by generation must be readable and valid; an unreadable or malformed file stops validation with its filename instead of being silently omitted. This is required even when the outer working directory itself is short because cooked package names can still cross the legacy 260-character Windows limit.
 
@@ -60,7 +60,7 @@ Allow roughly 10–30 minutes and at least 10 GiB of free space for a normal ext
 - A resume message may report an older stage than the files actually reached if the process stopped while updating its journal. Zanik re-derives the effective export stage from validated UnrealAssetScout manifests rather than repeating extraction or trusting the stage string alone.
 - If a complete ZIP and multipart set were produced but cleanup was deferred, the bundles are still valid. Manager retries only the ownership-marked workspace at startup; **Discard generated work** performs the same bounded safe cleanup on demand.
 - If the game or its existing loader changed after a checkpoint, discard the old work and start a new extraction. Zanik deliberately refuses to combine mismatched game, recipe, mapping, or tool inputs.
-- If a generated catalog or icon count drifts, do not bypass compatibility validation. Preserve the work directory and Activity output for review.
+- If a generated catalog or icon count drifts, do not bypass compatibility validation. Preserve the work directory and Activity output for review. Raw JSON/package totals are minimum coverage signals rather than public catalog identities; increases caused by a more complete mapping continue to the exact generated-output checks.
 - Raw exports, mappings, recovery journals, and retained work contain game-derived or machine-local data and must not be attached to support bundles or published.
 
 The output contains:
@@ -68,7 +68,7 @@ The output contains:
 - `zanik-assets-CLIENT_BUILD.zip`, the conventional complete bundle;
 - `zanik-assets-CLIENT_BUILD-parts/bundle-index.json` and checksum-indexed logical ZIP parts, each below 90 MiB.
 
-The manifest records the client build, container and executable fingerprints, mapping hash, exact tool/recipe versions, extraction stage, catalog counts, building-icon source coverage, recipe-route coverage, every generated file hash, cleanup warnings, and reviewed compatibility profile. Build-ID differences are informational. Structural errors or unreviewed catalog-count drift mark the candidate incompatible, and the server refuses to activate it.
+The manifest records the client build, container and executable fingerprints, mapping hash, exact tool/recipe versions, extraction stage, raw-export coverage, catalog counts, building-icon source coverage, recipe-route coverage, every generated file hash, cleanup warnings, and reviewed compatibility profile. Build-ID differences are informational. Raw-export coverage must meet the reviewed floor; structural errors or unreviewed generated-catalog drift mark the candidate incompatible, and the server refuses to activate it.
 
 ## Install on a self-hosted Linux server
 

@@ -46,7 +46,7 @@ npc_counts={kind['id']:kind['count'] for kind in npcs['types']}
 for row in overrides['relationships']:
     for target in row.get('targets',[]):
         if target.get('kind')!='npc' or npc_counts.get(target.get('reference'),0)<=1: continue
-        assert target.get('actorType') or target.get('opaqueId') or target.get('allowMultiple'), (row['questId'],row['objectiveKey'],target)
+        assert target.get('actorType') or target.get('opaqueId') or target.get('stateKey') or target.get('allowMultiple'), (row['questId'],row['objectiveKey'],target)
         if target.get('allowMultiple'): assert row['destinationMode']=='multiple'
 abraxus=next(step for quest in steps['quests'] if quest['id']=='WXRGL036pJRhAU-BWTZ_9g' for step in quest['steps'] if step['key']=='ObjectiveZero')
 assert abraxus['destinationMode']=='fixed' and len(abraxus['markers'])==1

@@ -143,9 +143,34 @@ with tempfile.TemporaryDirectory() as name:
     try:
         pipeline.validate_reviewed_counts({"jsonFiles": 10, "worldPartitionCells": 5},
                                           {"jsonFiles": 11, "worldPartitionCells": 5})
-        raise AssertionError("reviewed export-count drift was accepted")
+        raise AssertionError("reduced reviewed export coverage was accepted")
     except RuntimeError as error:
-        assert "jsonFiles expected 11, got 10" in str(error)
+        assert "jsonFiles expected at least 11, got 10" in str(error)
+    pipeline.validate_reviewed_counts({"jsonFiles": 18, "worldPartitionCells": 8},
+                                      {"jsonFiles": 11, "worldPartitionCells": 5})
+
+    partial = root / "partial-exports"
+    partial_json = partial / "json"; partial_json.mkdir(parents=True)
+    partial_textures = partial / "textures"; partial_font = partial / "font"
+    export_calls = []
+    def fake_export(command, label, quiet=False):
+        export_calls.append((command, label, quiet))
+        output = Path(command[command.index("-o") + 1]); output.mkdir(parents=True, exist_ok=True)
+        mode = command[command.index("export") + 1].casefold()
+        (output / ".uas-manifest.json").write_text(json.dumps({"schema": 2, "mode": mode}))
+        if mode == "textures":
+            (output / "required.png").write_bytes(b"png")
+        else:
+            (output / "Jancient.ufont").write_bytes(b"font")
+    partial_recipe = {"requiredTextureAssets": ["required"], "fontFilter": "font"}
+    with patch.object(pipeline, "referenced_textures", return_value=["basename:required"]), \
+         patch.object(pipeline, "filter_chunks", return_value=["one"]), \
+         patch.object(pipeline, "run", side_effect=fake_export):
+        pipeline.complete_remaining_exports(
+            ["uas"], partial, partial_recipe, partial_json, partial_textures, partial_font)
+    assert len(export_calls) == 2
+    assert (partial_textures / "batch-01/.uas-manifest.json").is_file()
+    assert (partial_font / "Jancient.ufont").is_file()
 
     journal = root / "extraction-journal.json"
     original_journal = {

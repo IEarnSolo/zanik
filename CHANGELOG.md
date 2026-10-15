@@ -2,6 +2,14 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.18] - 2026-10-15
+
+### Fixed
+
+- Accept a richer deterministic UnrealAssetScout raw export when a newly generated mapping resolves at least the reviewed package coverage; exact generated catalog counts and structural checks still fail closed on meaningful drift.
+- Let Zanik Manager resume a retained JSON-only extraction by exporting only its remaining artwork and font inputs instead of repeating mapping generation or targeted catalog export.
+- Update reviewed quest landmark and actor identities to the current cooked world data so all 230 quest relationships and 695 map markers validate against a fresh full export.
+
 ## [0.2.17] - 2026-10-15
 
 ### Fixed
