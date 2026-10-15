@@ -29,10 +29,13 @@ resources = (root / "src" / "engine" / "resources.cpp").read_text()
 assert f'hash=="{server_sha}"' in resources
 
 profile = json.loads((root / "asset-tools" / "extraction-recipes.json").read_text())["catalogProfile"]
-assert profile["version"] == "client-25812671-reviewed-4"
+assert profile["version"] == "client-25812671-reviewed-5"
 assert profile["clientBuild"] == "25812671"
 assert profile["catalogCounts"]["buildings/catalog.json:pieces"] == 827
 assert profile["catalogCounts"]["npc-catalog.json:nodes"] == 2964
 assert profile["catalogCounts"]["recipe-unlocks.json:entries"] == 1576
+assert profile["catalogCounts"]["quest-catalog.json:objectives"] == 219
+assert profile["catalogCounts"]["quest-step-locations.json:steps"] == 230
+assert profile["catalogCounts"]["quest-step-locations.json:markers"] == 695
 
 print("game update 25811348 compatibility checks passed")
