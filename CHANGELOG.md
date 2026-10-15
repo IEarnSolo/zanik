@@ -2,6 +2,13 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.17] - 2026-10-15
+
+### Fixed
+
+- Launch the external Zanik Manager updater from its LocalAppData directory so Windows does not keep the portable installation directory locked during the transactional rename.
+- Have the native updater independently leave the portable directory, retry transient rename locks, and record the precise failed operation and Windows error code in its status journal.
+
 ## [0.2.16] - 2026-10-15
 
 ### Fixed

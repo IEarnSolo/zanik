@@ -4,6 +4,8 @@ Zanik Manager is the recommended Windows interface for installing and maintainin
 
 The bottom-right indicators separately track the Manager release and the active server's Linux Dragonwilds build. Manager checks use stable GitHub releases and offer a verified transactional **Update and relaunch** action. Game checks use the active server's SteamCMD in read-only mode and never install a game update. **Update Zanik server** on the Servers tab updates only the embedded Zanik server payload.
 
+The external updater runs from LocalAppData rather than the portable installation directory, retries short-lived Windows file locks, and records the exact failed swap operation in its LocalAppData journal while preserving or restoring the prior installation.
+
 API keys are stored in Windows Credential Manager, not in the application directory or profile file. When connecting to a remote HTTP panel, the Manager displays a confirmation before sending the key and keeps a compact warning on that profile because its traffic is not encrypted. HTTPS and loopback connections do not display this warning.
 
 The first release supports Pterodactyl. Wrapper and acknowledged executable-replacement installations remain available, while the standalone shell scripts and Windows asset extractor are packaged separately for advanced use.

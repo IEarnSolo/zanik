@@ -4,6 +4,8 @@ Zanik Manager is the recommended installation path for Windows administrators us
 
 The bottom-right status bar quietly tracks two independent update states. **Manager** checks stable public GitHub releases shortly after startup and every six hours; **Check** refreshes it immediately, and **Update and relaunch** appears only after the exact archive, release manifest, size, and SHA-256 digest have been validated. The updater swaps the portable directory transactionally, waits for the new GUI to start, and restores the prior copy if startup fails. Profiles, credentials, cached bundles, and operation journals remain under `%LOCALAPPDATA%` and are not part of that swap.
 
+The updater runs from `%LOCALAPPDATA%\Zanik Manager\updates\`, outside the portable installation it replaces. Transient antivirus or filesystem locks are retried briefly. If an update still fails, the existing installation is preserved or restored and `self-update-journal.json.status` identifies the failed operation and Windows error code for support.
+
 **Game (server name)** checks only the active Pterodactyl profile. A running current Zanik launcher asks that server's own SteamCMD installation whether Linux dedicated-server app `4019830` has a newer public build. This is read-only: it never runs `app_update`, changes files, or stops the server. An offline server shows its last cached result when available. If an update exists, install it through the host or Steam workflow, then run Doctor and revalidate compatibility and assets. Windows-client and Linux-server build IDs are intentionally not compared.
 
 ## First run

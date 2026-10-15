@@ -224,10 +224,12 @@ class GitHubReleaseChecker:
         if not staged.get("ready"):
             raise RuntimeError("The Manager update is not ready to install")
         journal = read_json(Path(staged["journal"]))
-        subprocess.Popen([staged["updater"], "--pid", str(os.getpid()),
+        updater = Path(staged["updater"]).resolve()
+        subprocess.Popen([str(updater), "--pid", str(os.getpid()),
                           "--source", journal["source"], "--target", journal["target"],
                           "--backup", journal["backup"], "--handshake", journal["handshake"],
-                          "--journal", staged["journal"]], close_fds=True)
+                          "--journal", staged["journal"]], close_fds=True,
+                         cwd=str(updater.parent))
 
 
 def current_manager_version(distribution_root: Path) -> str:
