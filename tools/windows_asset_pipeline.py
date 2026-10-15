@@ -65,10 +65,17 @@ def remove_tree(path: Path) -> None:
 
 
 def validate_reviewed_counts(actual: dict[str, int], expected: dict[str, int]) -> None:
-    drift = [f"{key} expected {value}, got {actual.get(key)}"
-             for key, value in expected.items() if actual.get(key) != value]
+    """Require the reviewed raw-export floor without rejecting a richer mapping.
+
+    Raw UAS coverage can increase when a newly generated mapping resolves more
+    packages from the same cooked build. Exact public catalog counts are checked
+    after generation, where additions and removals are meaningful.
+    """
+    drift = [f"{key} expected at least {value}, got {actual.get(key)}"
+             for key, value in expected.items()
+             if not isinstance(actual.get(key), int) or actual[key] < value]
     if drift:
-        raise RuntimeError("reviewed export counts changed: " + "; ".join(drift))
+        raise RuntimeError("reviewed export coverage decreased: " + "; ".join(drift))
 
 
 def validate_catalog_export(json_root: Path, expected_counts: dict[str, int] | None = None) -> None:
@@ -314,6 +321,25 @@ def recover_or_create_export_checkpoint(temporary: Path, recipe: dict,
     return actual
 
 
+def complete_remaining_exports(common: list[str], temporary: Path, recipe: dict,
+                               json_root: Path, texture_root: Path, font_root: Path) -> None:
+    """Finish texture/font exports after a verified retained JSON-only stage."""
+    targets = referenced_textures(json_root, recipe["requiredTextureAssets"])
+    if not targets:
+        raise RuntimeError("no web texture references were discovered in the targeted JSON export")
+    if texture_root.exists():
+        remove_tree(texture_root)
+    if font_root.exists():
+        remove_tree(font_root)
+    for index, expression in enumerate(filter_chunks(targets), 1):
+        batch = texture_root / f"batch-{index:02d}"
+        run(common + ["-f", expression, "export", "Textures", "-o", str(batch), "-c", "-r",
+                      "-l", str(temporary / f"texture-export-{index:02d}.log")],
+            f"Exporting targeted web textures ({index})", quiet=True)
+    run(common + ["-f", recipe["fontFilter"], "export", "Raw", "-o", str(font_root), "-c", "-r",
+                  "-l", str(temporary / "font-export.log")], "Exporting the web font", quiet=True)
+
+
 def reset_partial_generation(temporary: Path) -> None:
     """Remove reproducible output while preserving expensive verified exports."""
     for name in ("web", "internal"):
@@ -359,7 +385,13 @@ def extract(args: argparse.Namespace) -> int:
         internal.mkdir(parents=True, exist_ok=True)
         common = [str(uas), "-p", str(paks), "-g", recipe["engine"], "-u", str(mapping)]
         if args.resume_work:
-            print("[Zanik] Validating retained JSON, texture, font, and mapping exports", flush=True)
+            print("[Zanik] Validating retained extraction work", flush=True)
+            checkpoint_path = temporary / EXPORT_CHECKPOINT
+            if not checkpoint_path.is_file() and json_root.is_dir():
+                validate_catalog_export(json_root, reviewed_counts)
+                _uas_manifest(json_root / ".uas-manifest.json", "json")
+                print("[Zanik] Retained JSON export verified; continuing with artwork and font exports", flush=True)
+                complete_remaining_exports(common, temporary, recipe, json_root, texture_root, font_root)
             recover_or_create_export_checkpoint(temporary, recipe, reviewed_counts, mapping, stage_journal)
             update_stage(stage_journal, "exports")
             print("[Zanik] Retained exports verified; UnrealAssetScout extraction skipped", flush=True)
@@ -377,12 +409,7 @@ def extract(args: argparse.Namespace) -> int:
                     print(f"[Zanik] Catalog export attempt {attempt} was incomplete: {error}", flush=True)
             if last_export_error is not None:
                 raise RuntimeError(f"targeted catalog export remained incomplete after three attempts: {last_export_error}")
-            texture_names = referenced_textures(json_root, recipe["requiredTextureAssets"])
-            if not texture_names: raise RuntimeError("no web texture references were discovered in the targeted JSON export")
-            for index, expression in enumerate(filter_chunks(texture_names), 1):
-                batch = texture_root / f"batch-{index:02d}"
-                run(common + ["-f", expression, "export", "Textures", "-o", str(batch), "-c", "-r", "-l", str(temporary / f"texture-export-{index:02d}.log")], f"Exporting targeted web textures ({index})", quiet=True)
-            run(common + ["-f", recipe["fontFilter"], "export", "Raw", "-o", str(font_root), "-c", "-r", "-l", str(temporary / "font-export.log")], "Exporting the web font", quiet=True)
+            complete_remaining_exports(common, temporary, recipe, json_root, texture_root, font_root)
             recover_or_create_export_checkpoint(temporary, recipe, reviewed_counts, mapping, stage_journal)
             update_stage(stage_journal, "exports")
         reset_partial_generation(temporary)
