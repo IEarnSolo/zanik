@@ -2,6 +2,16 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.16] - 2026-10-15
+
+### Fixed
+
+- Restore native compatibility with Dragonwilds dedicated-server build 25811348 and record the corresponding development-server performance validation.
+- Decode the updated cooked quest-objective schema so player quest cards regain their objective mini-maps and the world map regains all quest-step markers.
+- Require reviewed nested quest-objective, step, and marker coverage during asset validation so an empty catalog cannot be published as compatible after a future schema change.
+- Classify the Large Compost Bucket and Ultra Compost Bin as Farming entries in player recipe collections.
+- Package the corrected quest extraction and validation logic in both Zanik Manager and the standalone Windows asset tool.
+
 ## [0.2.15] - 2026-10-15
 
 ### Added
