@@ -12,5 +12,8 @@
   "questEntries": 41,
   "dispatcherMaximumMicroseconds": 80,
   "dispatcherSlowCalls": 0,
+  "npcMaximumSliceMicroseconds": 708,
+  "npcSlowSlices": 0,
+  "npcDutyCycleBasisPoints": 67,
   "developmentRollback": "/home/container/zanik-backups/compat-20261015T053313Z"
 }
