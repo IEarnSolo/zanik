@@ -8,6 +8,7 @@ import unittest
 import urllib.error
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -103,6 +104,31 @@ class UpdateAwarenessTests(unittest.TestCase):
             (install / "ZanikManager.exe").write_bytes(b"x"); (install / "payload" / "payloads.json").write_text('{}')
             with self.assertRaisesRegex(RuntimeError, "unsafe"):
                 GitHubReleaseChecker(root / "updates", lambda *_args, **_kwargs: Reply(data.getvalue())).stage(result, install)
+
+    def test_updater_launches_outside_portable_install(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            updates = root / "LocalAppData" / "updates"
+            updates.mkdir(parents=True)
+            updater = updates / "ZanikManagerUpdater.exe"
+            updater.write_bytes(b"updater")
+            journal = updates / "self-update-journal.json"
+            journal.write_text(json.dumps({
+                "source": str(root / "staged"), "target": str(root / "portable"),
+                "backup": str(root / "backup"), "handshake": str(updates / "handshake.json"),
+            }))
+            staged = {"ready": True, "updater": str(updater), "journal": str(journal)}
+            with mock.patch("manager.zanik_manager.updates.subprocess.Popen") as popen:
+                GitHubReleaseChecker.launch(staged)
+            self.assertEqual(popen.call_args.kwargs["cwd"], str(updates.resolve()))
+            self.assertTrue(popen.call_args.kwargs["close_fds"])
+            self.assertEqual(Path(popen.call_args.args[0][0]), updater.resolve())
+
+    def test_native_updater_leaves_install_directory_and_retries_rename(self):
+        source = (ROOT / "manager" / "updater.c").read_text(encoding="utf-8")
+        self.assertIn("SetCurrentDirectoryW(updater_path)", source)
+        self.assertIn("move_with_retry(target, backup", source)
+        self.assertIn('L"move-current-to-backup"', source)
 
 
 if __name__ == "__main__": unittest.main()

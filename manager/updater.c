@@ -20,14 +20,27 @@ static int recognized(const wchar_t *root) {
            GetFileAttributesW(payload) != INVALID_FILE_ATTRIBUTES;
 }
 
-static void journal_state(const wchar_t *path, const wchar_t *state) {
+static void journal_status(const wchar_t *path, const wchar_t *state,
+                           const wchar_t *operation, DWORD error) {
     wchar_t status_path[32768];
     swprintf_s(status_path, 32768, L"%s.status", path);
     FILE *file = NULL;
     if (_wfopen_s(&file, status_path, L"w, ccs=UTF-8") == 0 && file) {
-        fwprintf(file, L"{\"schemaVersion\":1,\"state\":\"%ls\"}\n", state);
+        fwprintf(file, L"{\"schemaVersion\":1,\"state\":\"%ls\",\"operation\":\"%ls\",\"windowsError\":%lu}\n",
+                 state, operation ? operation : L"", error);
         fclose(file);
     }
+}
+
+static int move_with_retry(const wchar_t *source, const wchar_t *target, DWORD *last_error) {
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        if (MoveFileExW(source, target, MOVEFILE_WRITE_THROUGH)) return 1;
+        *last_error = GetLastError();
+        if (*last_error != ERROR_ACCESS_DENIED && *last_error != ERROR_SHARING_VIOLATION &&
+            *last_error != ERROR_LOCK_VIOLATION) return 0;
+        Sleep(100);
+    }
+    return 0;
 }
 
 static int updater_main(int argc, wchar_t **argv) {
@@ -41,6 +54,19 @@ static int updater_main(int argc, wchar_t **argv) {
     if (!pid_text || !source || !target || !backup || !handshake || !journal ||
         !recognized(source) || !recognized(target) || _wcsicmp(source, target) == 0) return 2;
 
+    wchar_t updater_path[32768];
+    DWORD updater_length = GetModuleFileNameW(NULL, updater_path, 32768);
+    wchar_t *separator = updater_length ? wcsrchr(updater_path, L'\\') : NULL;
+    if (!separator) {
+        journal_status(journal, L"rollback-needed", L"resolve-updater-directory", GetLastError());
+        return 10;
+    }
+    *separator = L'\0';
+    if (!SetCurrentDirectoryW(updater_path)) {
+        journal_status(journal, L"rollback-needed", L"leave-install-directory", GetLastError());
+        return 10;
+    }
+
     HANDLE old_process = OpenProcess(SYNCHRONIZE, FALSE, wcstoul(pid_text, NULL, 10));
     if (old_process) {
         if (WaitForSingleObject(old_process, 60000) != WAIT_OBJECT_0) { CloseHandle(old_process); return 3; }
@@ -48,13 +74,17 @@ static int updater_main(int argc, wchar_t **argv) {
     }
     DeleteFileW(handshake);
     if (GetFileAttributesW(backup) != INVALID_FILE_ATTRIBUTES) return 4;
-    journal_state(journal, L"swapping");
-    if (!MoveFileExW(target, backup, MOVEFILE_WRITE_THROUGH)) { journal_state(journal, L"rollback-needed"); return 5; }
-    if (!MoveFileExW(source, target, MOVEFILE_WRITE_THROUGH)) {
-        if (!MoveFileExW(backup, target, MOVEFILE_WRITE_THROUGH)) {
-            journal_state(journal, L"rollback-failed"); return 9;
+    DWORD move_error = ERROR_SUCCESS;
+    journal_status(journal, L"swapping", L"move-current-to-backup", ERROR_SUCCESS);
+    if (!move_with_retry(target, backup, &move_error)) {
+        journal_status(journal, L"rollback-needed", L"move-current-to-backup", move_error); return 5;
+    }
+    if (!move_with_retry(source, target, &move_error)) {
+        DWORD install_error = move_error;
+        if (!move_with_retry(backup, target, &move_error)) {
+            journal_status(journal, L"rollback-failed", L"restore-current-after-install-move", move_error); return 9;
         }
-        journal_state(journal, L"rolled-back"); return 6;
+        journal_status(journal, L"rolled-back", L"move-staged-to-current", install_error); return 6;
     }
 
     wchar_t python[32768], command[65536];
@@ -64,11 +94,12 @@ static int updater_main(int argc, wchar_t **argv) {
     STARTUPINFOW startup = {sizeof(startup)};
     PROCESS_INFORMATION process = {0};
     if (!CreateProcessW(python, command, NULL, NULL, FALSE, CREATE_UNICODE_ENVIRONMENT, NULL, target, &startup, &process)) {
-        if (!MoveFileExW(target, source, MOVEFILE_WRITE_THROUGH) ||
-            !MoveFileExW(backup, target, MOVEFILE_WRITE_THROUGH)) {
-            journal_state(journal, L"rollback-failed"); return 9;
+        DWORD launch_error = GetLastError();
+        if (!move_with_retry(target, source, &move_error) ||
+            !move_with_retry(backup, target, &move_error)) {
+            journal_status(journal, L"rollback-failed", L"restore-current-after-launch", move_error); return 9;
         }
-        journal_state(journal, L"rolled-back"); return 7;
+        journal_status(journal, L"rolled-back", L"launch-new-manager", launch_error); return 7;
     }
     CloseHandle(process.hThread);
     int ready = 0;
@@ -79,14 +110,16 @@ static int updater_main(int argc, wchar_t **argv) {
     if (!ready) {
         TerminateProcess(process.hProcess, 1);
         WaitForSingleObject(process.hProcess, 5000);
-        if (!MoveFileExW(target, source, MOVEFILE_WRITE_THROUGH) ||
-            !MoveFileExW(backup, target, MOVEFILE_WRITE_THROUGH)) {
-            journal_state(journal, L"rollback-failed"); CloseHandle(process.hProcess); return 9;
+        if (!move_with_retry(target, source, &move_error) ||
+            !move_with_retry(backup, target, &move_error)) {
+            journal_status(journal, L"rollback-failed", L"restore-current-after-handshake", move_error);
+            CloseHandle(process.hProcess); return 9;
         }
-        journal_state(journal, L"rolled-back"); CloseHandle(process.hProcess); return 8;
+        journal_status(journal, L"rolled-back", L"wait-for-startup-handshake", WAIT_TIMEOUT);
+        CloseHandle(process.hProcess); return 8;
     }
     CloseHandle(process.hProcess);
-    journal_state(journal, L"complete");
+    journal_status(journal, L"complete", L"update-and-relaunch", ERROR_SUCCESS);
     return 0;
 }
 
