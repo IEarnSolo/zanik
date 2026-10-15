@@ -16,8 +16,8 @@ assert 'ValidateTransformLayout()' in npcs
 assert 'Offsets::Actor_RootComponent' in npcs and 'Offsets::SceneComp_RelativeLocation' in npcs
 assert 'value.schema==1&&fingerprintValid' in storage
 assert '$DATA/player-recipe-snapshots.db' in bootstrap
-for check in ('adminBuildingExpectedPieces -eq 822', 'adminBuildingResolvedPieces -eq 822',
-              'adminBuildingUnavailablePieces -eq 0', 'adminBuildingReferences -eq 839'):
+for check in ('adminBuildingExpectedPieces -eq 827', 'adminBuildingResolvedPieces -eq 827',
+              'adminBuildingUnavailablePieces -eq 0', 'adminBuildingReferences -eq 844'):
     assert check in validator
 
 print("recipe/NPC/building compatibility coverage: ok")

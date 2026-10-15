@@ -33,7 +33,7 @@ assert pattern.search("/GameFeatures/DowdunReach/Content/World/Spawners/AI/Spawn
 assert not pattern.search("/Game/Art/Audio/Music/Unrelated.uasset")
 assert not pattern.search("/Game/Art/Characters/Models/Unrelated.uasset")
 assert buildings.EXPECTED_ICON_SOURCES == {
-    "authored-texture": 753,
+    "authored-texture": 758,
     "embedded-build-ui-thumbnail": 68,
     "procedural-thumbnail": 1,
 }
@@ -75,6 +75,8 @@ with tempfile.TemporaryDirectory() as name:
         {"Properties": {"Icon": {"AssetPathName": "/Game/UI/T_Arrows_Bone.T_Arrows_Bone"}}},
         {"Properties": {"DisplayIcon": {"AssetPathName": "/Game/Art/UI/Icons/GeneratedIcons/SM_Flag.SM_Flag"}}},
         {"Properties": {"DisplayIcon": {"AssetPathName": "/Game/Art/UI/Icons/ProceduralThumbnails/T_Tree.T_Tree"}}},
+        {"Properties": {"Icon": {"ObjectName": "BillboardComponent'L_World:PersistentLevel.Icon'",
+                                    "ObjectPath": "/Game/Maps/World/L_World.299"}}},
     ]), encoding="utf-8")
     names = pipeline.referenced_textures(root, ["T_WorldMap_Landmass"])
     assert names == [
@@ -85,12 +87,20 @@ with tempfile.TemporaryDirectory() as name:
         "package:RSDragonwilds/Content/UI/T_Icon_Log",
         "package:RSDragonwilds/Content/UI/T_Icon_Wolf",
     ]
+    assert "package:RSDragonwilds/Content/Maps/World/L_World" not in names
     duplicate_required = pipeline.referenced_textures(root, ["SM_Flag"])
     assert "basename:SM_Flag" not in duplicate_required
     chunks = pipeline.filter_chunks(names, maximum=55)
     assert len(chunks) > 1
     assert any(re.search(chunk, "RSDragonwilds/Content/Art/UI/Icons/GeneratedIcons/SM_Flag.uasset", re.I) for chunk in chunks)
     assert any(re.search(chunk, "/x/T_WorldMap_Landmass.uasset", re.I) for chunk in chunks)
+    exported = root / "textures" / "batch-01" / "RSDragonwilds" / "Content" / "UI"
+    exported.mkdir(parents=True); (exported / "T_Icon_Log.png").write_bytes(b"png")
+    (exported / "T_Icon_Log_Mask.png").write_bytes(b"extra output from the same package")
+    assert pipeline.missing_texture_targets(root / "textures", [
+        "package:RSDragonwilds/Content/UI/T_Icon_Log", "basename:T_Icon_Log"
+    ]) == []
+    assert pipeline.missing_texture_targets(root / "textures", ["basename:T_Missing"]) == ["basename:T_Missing"]
     assert pipeline.cooked_package_path("/UmbralSands/UI/T_Icon.T_Icon") == (
         "RSDragonwilds/Plugins/GameFeatures/UmbralSands/Content/UI/T_Icon"
     )
@@ -154,7 +164,7 @@ with tempfile.TemporaryDirectory() as name:
     (json_root / ".uas-manifest.json").write_text(json.dumps({"schema": 2, "mode": "json"}))
     batch = textures / "batch-01"; batch.mkdir()
     (batch / ".uas-manifest.json").write_text(json.dumps({"schema": 2, "mode": "textures"}))
-    (batch / "icon.png").write_bytes(b"png")
+    (batch / "required.png").write_bytes(b"png")
     (font / ".uas-manifest.json").write_text(json.dumps({"schema": 2, "mode": "raw"}))
     (font / "Jancient.ufont").write_bytes(b"font")
     mapping = root / "Mappings.usmap"; mapping.write_bytes(b"mapping")
@@ -218,14 +228,14 @@ with tempfile.TemporaryDirectory() as name:
         except RuntimeError as error:
             assert "missing=['batch-01']" in str(error)
         moved_batch.rename(batch)
-        (batch / "icon.png").unlink()
+        (batch / "required.png").unlink()
         try:
             pipeline.verified_export_checkpoint(
                 workspace, checkpoint_recipe, {"jsonFiles": 1}, mapping, journal)
             raise AssertionError("empty texture batch was accepted")
         except RuntimeError as error:
             assert "texture export batch is empty" in str(error)
-        (batch / "icon.png").write_bytes(b"png")
+        (batch / "required.png").write_bytes(b"png")
         mapping.write_bytes(b"changed mapping")
         try:
             pipeline.recover_or_create_export_checkpoint(

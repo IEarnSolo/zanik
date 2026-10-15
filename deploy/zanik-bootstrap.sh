@@ -176,8 +176,8 @@ while [ "$i" -lt "$VALIDATE_ATTEMPTS" ]; do
   fi
   building_catalog_validation=failed
   if printf '%s' "$building_catalog" | grep -q '"buildingTabs"' &&
-     printf '%s' "$building_catalog" | grep -q '"expected":822' &&
-     printf '%s' "$building_catalog" | grep -q '"references":839' &&
+     printf '%s' "$building_catalog" | grep -q '"expected":827' &&
+     printf '%s' "$building_catalog" | grep -q '"references":844' &&
      printf '%s' "$building_catalog" | grep -q '"label":"Companions"'; then
     building_catalog_validation=passed
   fi

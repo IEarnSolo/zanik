@@ -199,8 +199,8 @@ removed during the same validation attempt.
 
 Recipe mode uses the cooked `DA_BuildPieceCatalogue_Default` asset rather
 than guessing sections from asset names. `tools/generate_building_catalog.py`
-validates the current shape (8 tabs, 63 sections, 839 ordered references, and
-822 unique runtime pieces), exports localized metadata and icons, and writes the
+validates the current shape (8 tabs, 63 sections, 844 ordered references, and
+827 unique runtime pieces), exports localized metadata and icons, and writes the
 runtime index to `web/buildings/catalog.tsv`. The JSON companion is the
 human-readable update artifact. Intentional General-page duplicates remain
 menu memberships pointing to one recipe identity; Favourites remains empty.
