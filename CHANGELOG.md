@@ -2,6 +2,20 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.14] - 2026-10-14
+
+### Added
+
+- Have Zanik Manager offer to upload and atomically activate a newly extracted asset bundle on the explicitly selected Assets-tab server.
+- Show each cached bundle's local validation timestamp alongside its game build and manifest fingerprint.
+- Add concise hover help to Manager actions and guided-workflow buttons.
+
+### Fixed
+
+- Automatically load the selected startup server's configuration when Manager opens, while preventing a late response from being displayed or saved against another profile.
+- After asset activation restarts a replacement-mode server, verify that Steam did not replace Zanik's compatibility launcher with the official executable. If it did, keep the activated assets and offer a pinned, data-preserving launcher repair.
+- Keep explicitly pinned Manager workflows bound to their intended server when another profile is selected while the operation is in progress.
+
 ## [0.2.13] - 2026-10-14
 
 ### Fixed

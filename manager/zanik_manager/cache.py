@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import datetime as dt
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,6 +16,18 @@ class CachedBundle:
     manifest_hash: str
     pinned: bool
     created_at: str
+
+
+def format_bundle_timestamp(value: str) -> str:
+    if not value:
+        return "time unknown"
+    try:
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt.timezone.utc)
+        return parsed.astimezone().strftime("%Y-%m-%d %I:%M %p %Z").replace(" 0", " ")
+    except ValueError:
+        return value
 
 
 class BundleCache:

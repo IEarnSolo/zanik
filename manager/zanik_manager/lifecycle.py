@@ -219,6 +219,63 @@ class PterodactylProvider(ServerProvider):
             time.sleep(2)
         raise RuntimeError("Server did not stop before the operation timed out")
 
+    def wait_for_restart(self, server_id: str, timeout: float = 240.0,
+                         previous_uptime: int | None = None) -> dict:
+        """Wait for a requested restart without assuming the first running state is the new process."""
+        deadline = time.monotonic() + timeout
+        transition_observed = False
+        time.sleep(2)
+        while time.monotonic() < deadline:
+            resources = self.client.resources(server_id)
+            state = resources.get("current_state", "")
+            uptime = int(resources.get("resources", {}).get("uptime") or 0)
+            if state != "running":
+                transition_observed = True
+            elif transition_observed or (previous_uptime is not None and uptime < previous_uptime):
+                return {"running": True, "transitionObserved": transition_observed,
+                        "uptimeResetObserved": previous_uptime is not None and uptime < previous_uptime}
+            time.sleep(2)
+        state = self.client.resources(server_id).get("current_state", "")
+        return {"running": state == "running", "transitionObserved": transition_observed,
+                "warning": "The server restart could not be observed before the verification timeout."}
+
+    def replacement_launcher_status(self, server_id: str, server_root: str) -> dict:
+        """Verify the small compatibility launcher without downloading a displaced game executable."""
+        root = validate_server_root(server_root)
+        try:
+            state = json.loads(self.client.read_file(server_id, f"{root}/zanik/install-state.json"))
+        except Exception as error:
+            return {"applicable": False, "healthy": False, "reason": "installation-state-unavailable",
+                    "detail": str(error)}
+        if state.get("mode") != "replace-executable":
+            return {"applicable": False, "healthy": True, "mode": state.get("mode", "unknown")}
+        game = f"{root}/{GAME_RELATIVE}"
+        entry = self._entry(server_id, game)
+        if not entry or not entry.get("is_file", False):
+            return {"applicable": True, "healthy": False, "mode": "replace-executable",
+                    "reason": "launcher-missing"}
+        size = int(entry.get("size") or 0)
+        if size > 1024 * 1024:
+            return {"applicable": True, "healthy": False, "mode": "replace-executable",
+                    "reason": "official-executable-replaced-launcher", "size": size}
+        try:
+            content = self.client.read_file(server_id, game)
+        except Exception as error:
+            return {"applicable": True, "healthy": False, "mode": "replace-executable",
+                    "reason": "launcher-unreadable", "detail": str(error)}
+        return {"applicable": True, "healthy": LAUNCHER_MARKER in content,
+                "mode": "replace-executable",
+                "reason": "managed-launcher" if LAUNCHER_MARKER in content else "unknown-small-executable",
+                "size": size}
+
+    def verify_launcher_after_restart(self, server_id: str, server_root: str,
+                                      timeout: float = 240.0,
+                                      previous_uptime: int | None = None) -> dict:
+        restart = self.wait_for_restart(server_id, timeout, previous_uptime)
+        launcher = self.replacement_launcher_status(server_id, server_root)
+        launcher["restart"] = restart
+        return launcher
+
     def install(self, profile_id: str, server_id: str, server_root: str, payload: ReleasePayload,
                 mode: str, acknowledge_replacement: bool = False, stop_server: bool = True,
                 wrapper_adapter: dict | None = None,
@@ -406,6 +463,11 @@ class PterodactylProvider(ServerProvider):
             result["installation"] = state
         except Exception as error:
             return {"healthy": False, "checks": {"installation": str(error)}}
+        replacement = self.replacement_launcher_status(server_id, root)
+        result["launcher"] = replacement
+        if replacement.get("applicable"):
+            result["checks"]["replacementLauncher"] = bool(replacement.get("healthy"))
+            result["healthy"] &= bool(replacement.get("healthy"))
         targets = {"library": ("librarySha256", "bin/libzanik.so"), "analyzer": ("analyzerSha256", "bin/zanik-compat-analyzer"),
                    "launcher": ("launcherSha256", "bin/zanik-server"), "official": ("officialSha256", None)}
         for name, (field, relative) in targets.items():

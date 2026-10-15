@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT))
 from manager.zanik_manager.assets import (AssetDeployer, AssetExtractor, asset_setup_mode,
                                           dragonwilds_is_running, request_dragonwilds_close,
                                           resume_activity_message)
-from manager.zanik_manager.cache import BundleCache
+from manager.zanik_manager.cache import BundleCache, format_bundle_timestamp
 from manager.zanik_manager.config import ConfigError, ConfigModel, content_hash, update_website_settings
 from manager.zanik_manager.journal import JournalStore, OperationJournal
 from manager.zanik_manager.lifecycle import (PterodactylProvider, ReleasePayload, is_exact_legacy_launcher,
@@ -84,6 +84,12 @@ class ManagerTests(unittest.TestCase):
         self.assertIn("def provider(self, profile:", source)
         self.assertIn("Discard stale work and start fresh", source)
         self.assertIn("resume_compatibility(work, root)", source)
+        self.assertIn("Upload and activate now", source)
+        self.assertIn("verify_launcher_after_restart", source)
+        self.assertIn("Repair launcher now", source)
+        self.assertIn("load_startup_config", source)
+        self.assertIn("format_bundle_timestamp", source)
+        self.assertIn("button_help", source)
 
     def test_dragonwilds_process_preflight(self):
         class Result:
@@ -241,6 +247,13 @@ class ManagerTests(unittest.TestCase):
                 bundle = root / f"asset-{index}.zip"; bundle.write_bytes(str(index).encode())
                 cache.add(bundle, "game", {"gameBuild": str(index), "generatedAt": f"2026-01-0{index+1}"})
             self.assertEqual(len(cache.list("game")), 2)
+
+    def test_bundle_timestamp_is_human_readable_and_stable_for_unknown_values(self):
+        label = format_bundle_timestamp("2026-10-14T23:45:00Z")
+        self.assertIn("2026-10-14", label)
+        self.assertNotIn("T23:45:00Z", label)
+        self.assertEqual(format_bundle_timestamp(""), "time unknown")
+        self.assertEqual(format_bundle_timestamp("not-a-time"), "not-a-time")
 
     def test_redaction_and_support_bundle(self):
         token = "ptlc_supersecret"
@@ -450,17 +463,45 @@ class ManagerTests(unittest.TestCase):
     def test_asset_activation_restarts_only_a_running_server(self):
         class Client:
             def __init__(self, state): self.state=state; self.signals=[]
-            def resources(self, _server): return {"current_state": self.state}
+            def resources(self, _server): return {"current_state": self.state, "resources": {"uptime": 1234}}
             def power(self, _server, signal): self.signals.append(signal)
         class Provider:
             def __init__(self, state): self.client=Client(state)
         messages=[]; running=Provider("running")
-        self.assertTrue(AssetDeployer(running)._restart_runtime_if_running("dev", messages.append))
+        self.assertEqual(AssetDeployer(running)._restart_runtime_if_running("dev", messages.append),
+                         {"previousUptime": 1234})
         self.assertEqual(running.client.signals, ["restart"])
         self.assertIn("runtime catalogs", messages[0])
         offline=Provider("offline")
-        self.assertFalse(AssetDeployer(offline)._restart_runtime_if_running("dev", messages.append))
+        self.assertIsNone(AssetDeployer(offline)._restart_runtime_if_running("dev", messages.append))
         self.assertEqual(offline.client.signals, [])
+
+    def test_replacement_launcher_check_detects_steam_displacement_without_downloading_elf(self):
+        root = "/home/container"
+        game = root + "/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping"
+        state = json.dumps({"mode": "replace-executable"}).encode()
+        class Client:
+            def __init__(self): self.size = 230_000_000; self.game_reads = 0
+            def read_file(self, _server, path):
+                if path.endswith("install-state.json"): return state
+                if path == game:
+                    self.game_reads += 1
+                    return b"#!/bin/sh\n# ZANIK_COMPAT_LAUNCHER=1\n"
+                raise PterodactylError("not found", 404)
+            def list_files(self, _server, directory):
+                self.assert_directory = directory
+                return [{"name": Path(game).name, "is_file": True, "size": self.size}]
+        client = Client()
+        with tempfile.TemporaryDirectory() as temporary:
+            provider = PterodactylProvider(client, JournalStore(Path(temporary)))
+            displaced = provider.replacement_launcher_status("dev", root)
+            self.assertFalse(displaced["healthy"])
+            self.assertEqual(displaced["reason"], "official-executable-replaced-launcher")
+            self.assertEqual(client.game_reads, 0)
+            client.size = 128
+            managed = provider.replacement_launcher_status("dev", root)
+            self.assertTrue(managed["healthy"])
+            self.assertEqual(client.game_reads, 1)
 
     def test_replacement_install_and_uninstall_against_synthetic_server(self):
         class FakeClient:
