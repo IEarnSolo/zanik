@@ -32,6 +32,7 @@ class ManagerTests(unittest.TestCase):
         self.assertIn('QPushButton("Check")', source)
         self.assertIn('run_background("manager-update-check"', source)
         self.assertIn('run_background("game-update-check"', source)
+        self.assertIn('prompt_first_run=not smoke_test and not update_handshake', source)
 
     def test_origin_and_http_policy_helpers(self):
         self.assertEqual(normalize_origin("EXAMPLE.com/"), "https://example.com")

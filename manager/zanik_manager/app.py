@@ -1133,9 +1133,10 @@ class MainWindow(QMainWindow):
 def main() -> int:
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
     smoke_test = "--smoke-test" in sys.argv
+    update_handshake = "--update-handshake" in sys.argv
     application = QApplication(sys.argv); application.setApplicationName("Zanik Manager")
-    window = MainWindow(prompt_first_run=not smoke_test); window.show()
-    if "--update-handshake" in sys.argv:
+    window = MainWindow(prompt_first_run=not smoke_test and not update_handshake); window.show()
+    if update_handshake:
         try:
             handshake = Path(sys.argv[sys.argv.index("--update-handshake") + 1])
             QTimer.singleShot(500, lambda: (write_startup_handshake(handshake, window.manager_version),
@@ -1143,7 +1144,7 @@ def main() -> int:
         except (IndexError, ValueError):
             pass
     if smoke_test:
-        QTimer.singleShot(250, application.quit)
+        QTimer.singleShot(1000 if update_handshake else 250, application.quit)
     return application.exec()
 
 

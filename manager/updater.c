@@ -37,6 +37,7 @@ static int updater_main(int argc, wchar_t **argv) {
     const wchar_t *backup = arg_value(argc, argv, L"--backup");
     const wchar_t *handshake = arg_value(argc, argv, L"--handshake");
     const wchar_t *journal = arg_value(argc, argv, L"--journal");
+    const wchar_t *smoke = arg_value(argc, argv, L"--smoke-test");
     if (!pid_text || !source || !target || !backup || !handshake || !journal ||
         !recognized(source) || !recognized(target) || _wcsicmp(source, target) == 0) return 2;
 
@@ -56,7 +57,8 @@ static int updater_main(int argc, wchar_t **argv) {
 
     wchar_t exe[32768], command[65536];
     swprintf_s(exe, 32768, L"%s\\ZanikManager.exe", target);
-    swprintf_s(command, 65536, L"\"%s\" --update-handshake \"%s\"", exe, handshake);
+    swprintf_s(command, 65536, L"\"%s\" --update-handshake \"%s\"%s", exe, handshake,
+               smoke ? L" --smoke-test" : L"");
     STARTUPINFOW startup = {sizeof(startup)};
     PROCESS_INFORMATION process = {0};
     if (!CreateProcessW(exe, command, NULL, NULL, FALSE, CREATE_UNICODE_ENVIRONMENT, NULL, target, &startup, &process)) {
