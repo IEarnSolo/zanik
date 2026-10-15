@@ -37,7 +37,7 @@ static int updater_main(int argc, wchar_t **argv) {
     const wchar_t *backup = arg_value(argc, argv, L"--backup");
     const wchar_t *handshake = arg_value(argc, argv, L"--handshake");
     const wchar_t *journal = arg_value(argc, argv, L"--journal");
-    const wchar_t *smoke = arg_value(argc, argv, L"--smoke-test");
+    int smoke = arg_value(argc, argv, L"--smoke-test") != NULL;
     if (!pid_text || !source || !target || !backup || !handshake || !journal ||
         !recognized(source) || !recognized(target) || _wcsicmp(source, target) == 0) return 2;
 
@@ -90,8 +90,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command_line, 
     wchar_t **argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     if (!argv) return 1;
     int result = updater_main(argc, argv);
+    int smoke = arg_value(argc, argv, L"--smoke-test") != NULL;
     LocalFree(argv);
-    if (result != 0) {
+    if (result != 0 && !smoke) {
         MessageBoxW(NULL, L"Zanik Manager could not complete the update. The previous portable installation was preserved or restored. See the update journal in LocalAppData for details.",
                     L"Zanik Manager update", MB_ICONERROR);
     }
