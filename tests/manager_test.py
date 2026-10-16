@@ -252,6 +252,40 @@ class ManagerTests(unittest.TestCase):
             store.save(journal); self.assertEqual(store.incomplete("profile")[0].operation_id, journal.operation_id)
             journal.state = "complete"; store.save(journal); self.assertEqual(store.incomplete("profile"), [])
 
+    def test_newer_success_archives_only_superseded_failed_journal(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); store = JournalStore(root)
+            failed = OperationJournal.create("profile", "install")
+            failed.created_at = "2026-10-12T23:40:15+00:00"; failed.state = "failed"
+            interrupted = OperationJournal.create("profile", "install")
+            interrupted.created_at = "2026-10-13T00:00:00+00:00"; interrupted.state = "activating"
+            complete = OperationJournal.create("profile", "install")
+            complete.created_at = "2026-10-14T05:36:26+00:00"; complete.state = "complete"
+            for journal in (failed, interrupted, complete): store.save(journal)
+
+            incomplete = store.incomplete("profile")
+
+            self.assertEqual([item.operation_id for item in incomplete], [interrupted.operation_id])
+            self.assertFalse((root / f"{failed.operation_id}.json").exists())
+            self.assertTrue((root / "archive" / f"{failed.operation_id}.json").exists())
+
+    def test_newer_success_does_not_archive_newer_failure_or_other_action(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); store = JournalStore(root)
+            complete = OperationJournal.create("profile", "install")
+            complete.created_at = "2026-10-14T05:36:26+00:00"; complete.state = "complete"
+            newer_failure = OperationJournal.create("profile", "install")
+            newer_failure.created_at = "2026-10-15T05:36:26+00:00"; newer_failure.state = "failed"
+            asset_failure = OperationJournal.create("profile", "activate-assets")
+            asset_failure.created_at = "2026-10-12T05:36:26+00:00"; asset_failure.state = "failed"
+            for journal in (complete, newer_failure, asset_failure): store.save(journal)
+
+            incomplete = store.incomplete("profile")
+
+            self.assertEqual({item.operation_id for item in incomplete},
+                             {newer_failure.operation_id, asset_failure.operation_id})
+            self.assertFalse((root / "archive").exists())
+
     def test_cache_keeps_two_unpinned_bundles(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); cache = BundleCache(root / "cache")

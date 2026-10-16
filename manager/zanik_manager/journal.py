@@ -38,10 +38,40 @@ class JournalStore:
     def load(self, path: Path) -> OperationJournal:
         return OperationJournal(**json.loads(path.read_text(encoding="utf-8")))
 
+    @staticmethod
+    def _created_at(journal: OperationJournal) -> dt.datetime | None:
+        try:
+            value = dt.datetime.fromisoformat(journal.created_at.replace("Z", "+00:00"))
+            return value if value.tzinfo else value.replace(tzinfo=dt.timezone.utc)
+        except (AttributeError, TypeError, ValueError):
+            return None
+
+    def _archive_superseded_failures(self, records: list[tuple[Path, OperationJournal]]) -> None:
+        """Archive failed work made obsolete by a later successful equivalent operation."""
+        completed: dict[str, dt.datetime] = {}
+        for _path, journal in records:
+            if journal.state != "complete":
+                continue
+            created = self._created_at(journal)
+            if created is not None and (journal.action not in completed or created > completed[journal.action]):
+                completed[journal.action] = created
+        archive = self.root / "archive"
+        for path, journal in records:
+            if journal.state != "failed" or journal.action not in completed:
+                continue
+            created = self._created_at(journal)
+            if created is None or completed[journal.action] <= created:
+                continue
+            archive.mkdir(parents=True, exist_ok=True)
+            path.replace(archive / path.name)
+
     def incomplete(self, profile_id: str) -> list[OperationJournal]:
-        result = []
+        records = []
         for path in self.root.glob("*.json"):
             journal = self.load(path)
-            if journal.profile_id == profile_id and journal.state not in {"complete", "rolled-back"}:
-                result.append(journal)
+            if journal.profile_id == profile_id:
+                records.append((path, journal))
+        self._archive_superseded_failures(records)
+        result = [journal for path, journal in records
+                  if path.exists() and journal.state not in {"complete", "rolled-back"}]
         return sorted(result, key=lambda item: item.created_at)
