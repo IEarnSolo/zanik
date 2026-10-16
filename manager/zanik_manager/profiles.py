@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -46,6 +46,33 @@ class ServerProfile:
     @classmethod
     def create(cls, **values):
         return cls(id=str(uuid.uuid4()), **values)
+
+
+def rename_profile(profiles: list[ServerProfile], profile_id: str, name: str) -> list[ServerProfile]:
+    normalized = name.strip()
+    if not normalized:
+        raise ValueError("Server profile names cannot be empty")
+    if not any(profile.id == profile_id for profile in profiles):
+        raise ValueError("Server profile was not found")
+    return [replace(profile, name=normalized) if profile.id == profile_id else replace(profile)
+            for profile in profiles]
+
+
+def move_profile(profiles: list[ServerProfile], profile_id: str, offset: int) -> list[ServerProfile]:
+    result = [replace(profile) for profile in profiles]
+    index = next((number for number, profile in enumerate(result) if profile.id == profile_id), None)
+    if index is None:
+        raise ValueError("Server profile was not found")
+    destination = max(0, min(len(result) - 1, index + offset))
+    if destination != index:
+        result.insert(destination, result.pop(index))
+    return result
+
+
+def remove_profile(profiles: list[ServerProfile], profile_id: str) -> list[ServerProfile]:
+    if not any(profile.id == profile_id for profile in profiles):
+        raise ValueError("Server profile was not found")
+    return [replace(profile) for profile in profiles if profile.id != profile_id]
 
 
 class ProfileStore:

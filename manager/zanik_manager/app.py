@@ -9,8 +9,8 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
-                               QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
-                               QPlainTextEdit, QProgressBar, QProgressDialog, QPushButton, QScrollArea,
+                               QFormLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
+                               QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar, QProgressDialog, QPushButton, QScrollArea,
                                QSpinBox, QTabWidget, QVBoxLayout, QWidget)
 from PySide6.QtCore import QUrl
 
@@ -25,7 +25,7 @@ from .onboarding import PanelDiscovery, discover_panel, is_remote_http
 from .paths import ensure_layout
 from .payload_contract import compatibility_summary
 from .preferences import PreferenceStore, preferred_profile_index
-from .profiles import ProfileStore, ServerProfile
+from .profiles import ProfileStore, ServerProfile, move_profile, remove_profile, rename_profile
 from .pterodactyl import PterodactylClient
 from .security import CredentialVault, credential_target, redact
 from .support import create_support_bundle
@@ -137,6 +137,92 @@ class AddServerDialog(QDialog):
         self.accept()
 
 
+class EditServersDialog(QDialog):
+    """Edit local Manager profiles without modifying any Pterodactyl server."""
+
+    def __init__(self, profiles: list[ServerProfile], parent=None):
+        super().__init__(parent)
+        self.profiles = [ServerProfile(**vars(profile)) for profile in profiles]
+        self.setWindowTitle("Edit server profiles")
+        self.resize(660, 420)
+        layout = QVBoxLayout(self)
+        explanation = QLabel(
+            "Rename or reorder the server profiles shown in Zanik Manager. Removing a profile only removes it "
+            "from this PC; it does not delete or modify the Pterodactyl server.")
+        explanation.setWordWrap(True)
+        self.server_list = QListWidget()
+        self.server_list.currentRowChanged.connect(self.update_buttons)
+        actions = QHBoxLayout()
+        self.rename_button = button_help(QPushButton("Rename…"), "Change this profile's display name in Zanik Manager.")
+        self.up_button = button_help(QPushButton("Move up"), "Move this profile earlier in the server lists.")
+        self.down_button = button_help(QPushButton("Move down"), "Move this profile later in the server lists.")
+        self.delete_button = button_help(QPushButton("Delete profile"),
+                                         "Remove this local Manager profile without changing the Pterodactyl server or its files.")
+        self.rename_button.clicked.connect(self.rename_selected)
+        self.up_button.clicked.connect(lambda: self.move_selected(-1))
+        self.down_button.clicked.connect(lambda: self.move_selected(1))
+        self.delete_button.clicked.connect(self.delete_selected)
+        for button in (self.rename_button, self.up_button, self.down_button, self.delete_button):
+            actions.addWidget(button)
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Save).setToolTip("Save profile names, order, and removals on this PC.")
+        buttons.button(QDialogButtonBox.Cancel).setToolTip("Discard these profile changes.")
+        buttons.accepted.connect(self.accept); buttons.rejected.connect(self.reject)
+        layout.addWidget(explanation); layout.addWidget(self.server_list, 1); layout.addLayout(actions); layout.addWidget(buttons)
+        self.refresh_list(0)
+
+    def refresh_list(self, selected_row: int = 0):
+        self.server_list.clear()
+        for profile in self.profiles:
+            self.server_list.addItem(f"{profile.name}\n{profile.panel_origin} · {profile.server_id}")
+        if self.profiles:
+            self.server_list.setCurrentRow(max(0, min(selected_row, len(self.profiles) - 1)))
+        self.update_buttons(self.server_list.currentRow())
+
+    def update_buttons(self, row: int):
+        selected = 0 <= row < len(self.profiles)
+        self.rename_button.setEnabled(selected)
+        self.delete_button.setEnabled(selected)
+        self.up_button.setEnabled(selected and row > 0)
+        self.down_button.setEnabled(selected and row < len(self.profiles) - 1)
+
+    def rename_selected(self):
+        row = self.server_list.currentRow()
+        if not 0 <= row < len(self.profiles):
+            return
+        profile = self.profiles[row]
+        name, accepted = QInputDialog.getText(self, "Rename server profile", "Profile name", text=profile.name)
+        if not accepted:
+            return
+        try:
+            self.profiles = rename_profile(self.profiles, profile.id, name)
+        except ValueError as error:
+            QMessageBox.warning(self, "Invalid profile name", str(error)); return
+        self.refresh_list(row)
+
+    def move_selected(self, offset: int):
+        row = self.server_list.currentRow()
+        if not 0 <= row < len(self.profiles):
+            return
+        profile_id = self.profiles[row].id
+        self.profiles = move_profile(self.profiles, profile_id, offset)
+        self.refresh_list(row + offset)
+
+    def delete_selected(self):
+        row = self.server_list.currentRow()
+        if not 0 <= row < len(self.profiles):
+            return
+        profile = self.profiles[row]
+        answer = QMessageBox.question(
+            self, "Delete server profile",
+            f"Remove '{profile.name}' from Zanik Manager on this PC?\n\nThe Pterodactyl server and all of its files will remain untouched.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer != QMessageBox.Yes:
+            return
+        self.profiles = remove_profile(self.profiles, profile.id)
+        self.refresh_list(row)
+
+
 class MainWindow(QMainWindow):
     activity_signal = Signal(str)
     operation_progress_signal = Signal(str, int)
@@ -149,6 +235,7 @@ class MainWindow(QMainWindow):
         self.vault = CredentialVault(); self.profiles = self.store.load(); self.current_config_hash = ""
         self.current_config_profile_id = ""
         self.installation_states = {}
+        self.website_states = {}
         self.threads = []; self.background_threads = []; self.busy_dialog = None; self.last_progress_message = ""
         self.manager_version = current_manager_version(distribution_root())
         self.release_checker = GitHubReleaseChecker(self.paths["updates"])
@@ -157,8 +244,12 @@ class MainWindow(QMainWindow):
         central = QWidget(); outer = QVBoxLayout(central)
         target = QHBoxLayout(); self.profile_box = QComboBox(); self.add_button = button_help(
             QPushButton("Add server"), "Add a Pterodactyl panel connection and select one server to manage.")
-        self.add_button.clicked.connect(self.add_server); self.profile_box.currentIndexChanged.connect(self.active_profile_changed)
-        target.addWidget(QLabel("Active server:")); target.addWidget(self.profile_box, 1); target.addWidget(self.add_button)
+        self.edit_servers_button = button_help(
+            QPushButton("Edit servers"), "Rename, reorder, or remove local Manager profiles without modifying the Pterodactyl servers.")
+        self.add_button.clicked.connect(self.add_server); self.edit_servers_button.clicked.connect(self.edit_servers)
+        self.profile_box.currentIndexChanged.connect(self.active_profile_changed)
+        target.addWidget(QLabel("Active server:")); target.addWidget(self.profile_box, 1)
+        target.addWidget(self.edit_servers_button); target.addWidget(self.add_button)
         self.warning = QLabel(); self.warning.setStyleSheet("color:#b45309;font-weight:600")
         outer.addLayout(target); outer.addWidget(self.warning)
         self.tabs = QTabWidget(); outer.addWidget(self.tabs, 1); self.setCentralWidget(central)
@@ -177,6 +268,7 @@ class MainWindow(QMainWindow):
     def _servers_tab(self):
         page = QWidget(); layout = QVBoxLayout(page)
         self.server_summary = QLabel("Add a server to begin."); self.server_summary.setWordWrap(True)
+        self.server_summary.setTextFormat(Qt.PlainText)
         row = QHBoxLayout()
         refresh = button_help(QPushButton("Refresh"), "Run a quick, read-only health check and refresh the selected server summary.")
         refresh.clicked.connect(self.run_doctor); row.addWidget(refresh)
@@ -186,6 +278,10 @@ class MainWindow(QMainWindow):
         self.update_server_button = button_help(QPushButton("Update / repair Zanik"),
                                                 "Reinstall the embedded Zanik payload using the existing mode, preserve data and assets, then validate website setup and asset compatibility.")
         self.update_server_button.clicked.connect(self.update_or_repair); self.update_server_button.setEnabled(False); row.addWidget(self.update_server_button)
+        self.open_website_button = button_help(QPushButton("Open website"),
+                                               "Open the configured public Zanik website for the selected server.")
+        self.open_website_button.clicked.connect(self.open_website); self.open_website_button.setEnabled(False)
+        row.addWidget(self.open_website_button)
         actions = (("Recover interrupted", self.recover_interrupted, "Resume or roll back an interrupted Manager transaction for this server."),
                    ("Uninstall", self.uninstall, "Remove verified Zanik-managed files while preserving server data by default."),
                    ("Open panel", self.open_panel, "Open this server's page in the configured Pterodactyl panel."))
@@ -508,20 +604,28 @@ class MainWindow(QMainWindow):
             self.profile_box.setCurrentIndex(selected)
             self.preference_store.save_last_profile(self.profiles[selected].id)
             self.preferences["lastProfileId"] = self.profiles[selected].id
+        else:
+            self.preference_store.save_last_profile("")
+            self.preferences["lastProfileId"] = ""
         self.profile_box.blockSignals(False)
+        self.edit_servers_button.setEnabled(bool(self.profiles))
         self.refresh_asset_targets(); self.refresh_header(); self.refresh_bundles()
         self.active_profile_changed()
 
     def active_profile_changed(self):
         self.refresh_header()
         profile = self.active()
+        needs_config_load = bool(profile and self.current_config_profile_id != profile.id)
         if not profile or self.current_config_profile_id != profile.id:
             self.current_config_hash = ""; self.current_config_profile_id = ""
             self.reset_config_editor()
         if profile:
             self.preference_store.save_last_profile(profile.id); self.preferences["lastProfileId"] = profile.id
             self.install_button.setEnabled(False); self.update_server_button.setEnabled(False)
-            self.server_summary.setText(f"{profile.name}\nChecking installation…")
+            self.installation_states[profile.id] = {"checking": True}
+            if needs_config_load or profile.id not in self.website_states:
+                self.website_states[profile.id] = {"status": "checking"}
+            self.render_server_summary(profile)
             for index in range(self.asset_target_box.count()):
                 if self.asset_target_box.itemData(index).id == profile.id:
                     self.asset_target_box.setCurrentIndex(index)
@@ -531,6 +635,8 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(250, lambda profile_id=profile.id: self.load_startup_config(profile_id))
             QTimer.singleShot(100, lambda profile_id=profile.id: self.check_installation_state(profile_id))
         elif hasattr(self, "game_update_label"):
+            self.server_summary.setText("Add a server to begin.")
+            self.open_website_button.setEnabled(False)
             self._set_update_label(self.game_update_label, "Game · No server selected", "neutral")
             self.game_check_button.setEnabled(False)
             self.install_button.setEnabled(False); self.update_server_button.setEnabled(False)
@@ -549,18 +655,67 @@ class MainWindow(QMainWindow):
         profile = self.active()
         insecure = bool(profile and profile.allow_insecure_http and is_remote_http(profile.panel_origin))
         self.warning.setText("⚠ This panel connection uses HTTP; API traffic is not encrypted." if insecure else "")
-        if profile: self.server_summary.setText(f"{profile.name}\n{profile.panel_origin} · {profile.server_id}\nInstall mode: {profile.install_mode}")
+        self.render_server_summary(profile)
         if profile:
             incomplete=JournalStore(self.paths["journals"]).incomplete(profile.id)
             if incomplete:
                 self.warning.setText((self.warning.text()+"\n" if self.warning.text() else "")+f"An interrupted {incomplete[-1].action} operation needs attention.")
+
+    def render_server_summary(self, profile: ServerProfile | None = None):
+        profile = profile or self.active()
+        if not profile:
+            self.server_summary.setText("Add a server to begin.")
+            self.open_website_button.setEnabled(False)
+            return
+        installation = self.installation_states.get(profile.id)
+        if not installation or installation.get("checking"):
+            install_line = "Checking installation…"
+            mode = profile.install_mode or "unknown"
+        elif installation.get("error"):
+            install_line = "Installation state unavailable; use Refresh to retry."
+            mode = profile.install_mode or "unknown"
+        elif installation.get("installed"):
+            install_line = compatibility_summary(installation, self.manager_version, self.manager_release_status)
+            mode = installation.get("mode") or profile.install_mode or "unknown"
+        else:
+            install_line = "Zanik is not installed"
+            mode = "Not installed"
+
+        website = self.website_states.get(profile.id, {"status": "checking"})
+        website_status = website.get("status")
+        url = str(website.get("url") or profile.web_base_url or "")
+        if website_status == "ready":
+            website_line = f"Website: {url}"
+            port_line = f"Website port: {website.get('port')}"
+        elif website_status == "not-installed":
+            website_line = "Website: Not configured (Zanik is not installed)"
+            port_line = "Website port: Not configured"
+        elif website_status == "invalid":
+            website_line = "Website: Configuration is invalid"
+            port_line = "Website port: Unknown"
+        elif website_status == "unavailable":
+            website_line = "Website: Configuration unavailable"
+            port_line = "Website port: Unknown"
+        else:
+            website_line = "Website: Loading configuration…"
+            port_line = "Website port: Loading…"
+        self.server_summary.setText(
+            f"{profile.name}\nPanel: {profile.panel_origin} · {profile.server_id}\n{install_line}\n"
+            f"Install mode: {mode}\n{website_line}\n{port_line}")
+        openable = website_status == "ready" and website_configuration_ready(
+            {"STATUS_PORT": website.get("port"), "PUBLIC_BASE_URL": url})
+        self.open_website_button.setEnabled(openable)
+        self.open_website_button.setToolTip(
+            f"Open {url} in your default browser." if openable else
+            "Configure a non-local public website URL for this server before opening it.")
 
     def check_installation_state(self, profile_id: str | None = None):
         profile = self.active()
         if not profile or (profile_id and profile.id != profile_id):
             return
         self.install_button.setEnabled(False); self.update_server_button.setEnabled(False)
-        self.server_summary.setText(f"{profile.name}\nChecking installation…")
+        self.installation_states[profile.id] = {"checking": True}
+        self.render_server_summary(profile)
         selected_id = profile.id
         try:
             payload_metadata = json.loads(resource_path("payload", "server-payload.json").read_text(encoding="utf-8-sig"))
@@ -577,8 +732,8 @@ class MainWindow(QMainWindow):
             if not self.active() or self.active().id != selected_id:
                 return
             if error:
-                self.installation_states.pop(selected_id, None)
-                self.server_summary.setText(f"{profile.name}\nInstallation state unavailable; use Refresh to retry.")
+                self.installation_states[selected_id] = {"error": True}
+                self.render_server_summary(profile)
                 self.log(f"Could not determine Zanik installation state for {profile.name}: {error}")
                 return
             self.installation_states[selected_id] = result
@@ -587,10 +742,9 @@ class MainWindow(QMainWindow):
             self.update_server_button.setEnabled(installed)
             if installed:
                 mode = result.get("mode") or profile.install_mode or "unknown mode"
-                summary = compatibility_summary(result, self.manager_version, self.manager_release_status)
-                self.server_summary.setText(f"{profile.name}\n{summary}\nInstall mode: {mode}")
-            else:
-                self.server_summary.setText(f"{profile.name}\nZanik is not installed")
+                if mode != profile.install_mode:
+                    profile.install_mode = mode; self.store.save(self.profiles)
+            self.render_server_summary(profile)
         self.run_background(f"installation-state-{selected_id}",
                             lambda: self.provider(profile, background=True).installation_status(
                                 profile.server_id, profile.server_root, expected_contract, legacy_contracts), done)
@@ -601,6 +755,22 @@ class MainWindow(QMainWindow):
             self.profiles.append(dialog.profile); self.store.save(self.profiles)
             self.preference_store.save_last_profile(dialog.profile.id); self.preferences["lastProfileId"] = dialog.profile.id
             self.reload_profiles()
+
+    def edit_servers(self):
+        if not self.profiles:
+            return
+        active_id = self.active().id if self.active() else ""
+        dialog = EditServersDialog(self.profiles, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        self.profiles = dialog.profiles
+        self.store.save(self.profiles)
+        remaining_ids = {profile.id for profile in self.profiles}
+        self.installation_states = {key: value for key, value in self.installation_states.items() if key in remaining_ids}
+        self.website_states = {key: value for key, value in self.website_states.items() if key in remaining_ids}
+        selected = active_id if active_id in remaining_ids else (self.profiles[0].id if self.profiles else "")
+        self.preference_store.save_last_profile(selected); self.preferences["lastProfileId"] = selected
+        self.reload_profiles()
 
     def recover_interrupted(self):
         profile=self.active()
@@ -625,6 +795,14 @@ class MainWindow(QMainWindow):
 
     def open_panel(self):
         if self.active(): QDesktopServices.openUrl(QUrl(self.active().panel_origin + "/server/" + self.active().server_id))
+
+    def open_website(self):
+        profile = self.active()
+        website = self.website_states.get(profile.id, {}) if profile else {}
+        url = str(website.get("url") or "")
+        if profile and website.get("status") == "ready" and website_configuration_ready(
+                {"STATUS_PORT": website.get("port"), "PUBLIC_BASE_URL": url}):
+            QDesktopServices.openUrl(QUrl(url))
 
     def install(self):
         self.install_profile(self.active())
@@ -750,7 +928,8 @@ class MainWindow(QMainWindow):
         if not profile: return
         self.run_async(lambda: self.provider().diagnose(profile.server_id, profile.server_root, deep),
                        lambda result: (self.doctor_output.setPlainText(json.dumps(result, indent=2, sort_keys=True)),
-                                       self.server_summary.setText("Healthy" if result.get("healthy") else "Doctor found problems"),
+                                       self.log("Doctor reports a healthy installation." if result.get("healthy") else
+                                                "Doctor found installation problems; review the Doctor tab."),
                                        self.check_installation_state(profile.id)),
                        title="Running deep Doctor…" if deep else "Running Doctor…")
 
@@ -879,6 +1058,12 @@ class MainWindow(QMainWindow):
                                         safe_message + "\n\nYou can retry later from the Configuration tab. Website asset setup can still continue.")
                 else:
                     result = outcome["result"]
+                    profile.web_base_url = public_url.text().strip()
+                    self.website_states[profile.id] = {"status": "ready", "port": port.value(),
+                                                       "url": profile.web_base_url}
+                    self.store.save(self.profiles)
+                    if self.active() and self.active().id == profile.id:
+                        self.render_server_summary(profile)
                     self.log(f"Website settings saved; backup: {result['backup']}")
                 continue_flow()
             self.run_async(action, saved, title="Saving website settings…", determinate=True)
@@ -1244,12 +1429,16 @@ class MainWindow(QMainWindow):
                 self.log(f"Configuration loaded for {profile.name}, but the active server changed before it could be displayed.")
                 return
             if result.get("error"):
+                self.website_states[profile.id] = {"status": "unavailable"}
+                self.render_server_summary(profile)
                 if automatic:
                     self.log(f"Configuration was not auto-loaded for {profile.name}: {result['error']}")
                 else:
                     QMessageBox.information(self, "Configuration unavailable", result["error"])
                 return
             if not result.get("exists"):
+                self.website_states[profile.id] = {"status": "not-installed"}
+                self.render_server_summary(profile)
                 message = (f"Zanik is not installed on {profile.name}; there is no server configuration to load yet. "
                            "Install Zanik first, then use the Configuration tab to change its settings.")
                 self.reset_config_editor()
@@ -1260,11 +1449,18 @@ class MainWindow(QMainWindow):
             try:
                 values = self.config_model().parse(data.decode())
             except Exception as error:
+                self.website_states[profile.id] = {"status": "invalid"}
+                self.render_server_summary(profile)
                 if automatic:
                     self.log(f"Configuration from {profile.name} could not be displayed: {error}")
                     return
                 QMessageBox.critical(self, "Invalid server configuration", str(error)); return
             self.current_config_hash = content_hash(data); self.current_config_profile_id = profile.id
+            profile.web_base_url = str(values["PUBLIC_BASE_URL"])
+            self.website_states[profile.id] = {"status": "ready", "port": int(values["STATUS_PORT"]),
+                                               "url": profile.web_base_url}
+            self.store.save(self.profiles)
+            self.render_server_summary(profile)
             self.config_text.setPlainText(data.decode())
             for key,value in values.items():
                 field=self.config_fields[key]
@@ -1275,6 +1471,9 @@ class MainWindow(QMainWindow):
         if automatic:
             def background_done(result, error):
                 if error:
+                    self.website_states[profile.id] = {"status": "unavailable"}
+                    if self.active() and self.active().id == profile.id:
+                        self.render_server_summary(profile)
                     self.log(f"Configuration was not auto-loaded for {profile.name}: {error}")
                 else:
                     done(result)
@@ -1303,6 +1502,11 @@ class MainWindow(QMainWindow):
         def done(result):
             self.current_config_hash = result["sha256"]
             self.current_config_profile_id = profile.id
+            values = self.config_model().parse(rendered)
+            profile.web_base_url = str(values["PUBLIC_BASE_URL"])
+            self.website_states[profile.id] = {"status": "ready", "port": int(values["STATUS_PORT"]),
+                                               "url": profile.web_base_url}
+            self.store.save(self.profiles); self.render_server_summary(profile)
             if QMessageBox.question(self, "Configuration saved", "Restart the server now to apply these settings?",
                                     QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
                 self.provider().client.power(profile.server_id, "restart")
