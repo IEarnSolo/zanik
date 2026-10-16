@@ -23,7 +23,11 @@ If the panel's normal file-contents route reports a transient node-side `5xx` er
 
 Long-running operations use an application-modal progress window and record each stage in **Activity**. This prevents another server mutation from starting while an install, update, asset operation, or diagnostic is still running. Guided asset setup is a separate transaction: a mapping, extraction, or upload failure never rolls back a successful server installation, and a completed local bundle remains cached for Retry.
 
-The Servers-tab **Update Zanik server** action updates only the Linux Zanik payload embedded in the current Manager. It does not update the Manager application or Dragonwilds.
+The Servers tab separates first installation from maintenance. **Install Zanik** is enabled only when the selected server is unmodded and runs the complete mode, website, and asset setup workflow. **Update / repair Zanik** is enabled only for an existing installation, reuses its recorded mode, and reinstalls the Linux payload embedded in Manager even when the version already matches. It preserves configuration, authorization, persistent data, sessions, and active assets; it does not update Manager or Dragonwilds.
+
+After update or repair, Manager checks the preserved networking configuration without contacting the public website. It also validates the active asset manifest against the packaged extraction-recipe and reviewed-profile versions and hashes only the critical representative files. Matching assets are retained without prompting; missing, incompatible, stale-contract, or critically damaged assets produce an offer to extract and deploy a new bundle. Full remote per-file verification remains a deep Doctor operation.
+
+The last selected server is restored from `%LOCALAPPDATA%\Zanik Manager\preferences.json` on startup. This preference contains only the stable local profile identifier; API keys remain exclusively in Windows Credential Manager.
 
 The Assets tab always shows its explicit **Target server**. Before a manual upload, Manager confirms the bundle, profile, panel, and server identifier so changing the active server cannot silently redirect an upload. After a standalone extraction succeeds, Manager offers **Upload and activate now** for that displayed target; choosing **Later** keeps the validated bundle in the local cache. Cached bundle entries include the time they were validated, the client build, and a manifest fingerprint.
 

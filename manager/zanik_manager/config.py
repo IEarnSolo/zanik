@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 TRUE_VALUES = {"1", "true", "yes", "on"}
 FALSE_VALUES = {"0", "false", "no", "off"}
@@ -89,3 +90,13 @@ def update_website_settings(model: ConfigModel, text: str, port: int, public_url
     values["STATUS_PORT"] = port
     values["PUBLIC_BASE_URL"] = public_url.strip()
     return model.render(values)
+
+
+def website_configuration_ready(values: dict[str, object]) -> bool:
+    """Return true only when saved networking values are no longer local placeholders."""
+    try:
+        port = int(values["STATUS_PORT"])
+        host = (urlsplit(str(values["PUBLIC_BASE_URL"])).hostname or "").lower()
+    except (KeyError, TypeError, ValueError):
+        return False
+    return 1 <= port <= 65535 and host not in {"", "localhost", "127.0.0.1", "::1"}

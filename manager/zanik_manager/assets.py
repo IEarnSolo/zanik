@@ -33,6 +33,21 @@ CRITICAL_REMOTE_ASSETS = {
 GAME_EXECUTABLE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 
 
+def expected_asset_contract(tool_root: Path) -> dict:
+    candidates = (tool_root / "asset-tools" / "extraction-recipes.json",
+                  tool_root / "extraction-recipes.json")
+    path = next((candidate for candidate in candidates if candidate.is_file()), None)
+    if path is None:
+        raise RuntimeError("The packaged extraction recipe is missing")
+    value = json.loads(path.read_text(encoding="utf-8"))
+    recipe = value.get("schemaVersion")
+    profile = value.get("catalogProfile", {}).get("version")
+    if not isinstance(recipe, int) or recipe < 1 or not isinstance(profile, str) or not profile:
+        raise RuntimeError("The packaged extraction recipe contract is invalid")
+    return {"extractionRecipeVersion": recipe, "compatibilityProfileVersion": profile,
+            "criticalFiles": sorted(CRITICAL_REMOTE_ASSETS - {"asset-manifest.json"})}
+
+
 def asset_setup_mode(use_cached: bool, resume_status: dict | None) -> str:
     """Choose the cheapest safe source for a guided asset setup."""
     if use_cached:

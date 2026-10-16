@@ -22,7 +22,7 @@ Zanik is a native `LD_PRELOAD` library. The recommended installation leaves the 
 
 For detailed Manager instructions, see [docs/manager.md](docs/manager.md).
 
-Zanik has three distinct update paths. **Update and relaunch** updates the Windows Manager from a verified stable GitHub release. **Update Zanik server** installs the server payload embedded in that Manager. A **Game update available** indicator is informational: update the Linux Dragonwilds dedicated server through Steam or your host, then revalidate Zanik and regenerate website assets when the game build changes. Manager never updates Dragonwilds automatically.
+Zanik has three distinct update paths. **Update and relaunch** updates the Windows Manager from a verified stable GitHub release. **Update / repair Zanik** reinstalls the server payload embedded in that Manager using the existing installation mode. A **Game update available** indicator is informational: update the Linux Dragonwilds dedicated server through Steam or your host, then revalidate Zanik and regenerate website assets when the game build changes. Manager never updates Dragonwilds automatically.
 
 ## Choose an installation
 

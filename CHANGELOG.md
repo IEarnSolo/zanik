@@ -2,6 +2,19 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.21] - 2026-10-16
+
+### Added
+
+- Remember the last selected server and restore it when Zanik Manager starts.
+- Validate preserved website assets against the packaged extraction recipe, reviewed compatibility profile, manifest coverage, and a bounded critical-file subset after server maintenance.
+
+### Changed
+
+- Separate the full **Install Zanik** workflow from **Update / repair Zanik**, which reuses the existing installation mode and preserves configuration, data, sessions, and compatible assets.
+- Enable installation and maintenance actions only after Manager determines whether the selected server already has Zanik installed.
+- After update or repair, offer website configuration or asset extraction only when the preserved configuration or assets actually require attention.
+
 ## [0.2.20] - 2026-10-16
 
 ### Fixed
