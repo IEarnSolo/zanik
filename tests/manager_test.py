@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import hashlib
 import sys
 import tempfile
 import unittest
@@ -21,12 +22,40 @@ from manager.zanik_manager.lifecycle import (PterodactylProvider, ReleasePayload
 from manager.zanik_manager.onboarding import discover_panel, is_remote_http
 from manager.zanik_manager.profiles import ProfileStore, ServerProfile, is_local_origin, normalize_origin
 from manager.zanik_manager.preferences import PreferenceStore, preferred_profile_index
+from manager.zanik_manager.payload_contract import compatibility_summary, contract_from_entries
 from manager.zanik_manager.pterodactyl import PterodactylClient, PterodactylError, Response, api_file_path
 from manager.zanik_manager.security import credential_target, redact
 from manager.zanik_manager.support import create_support_bundle
 from tools.prune_pyside_runtime import KEEP_FILES, prune
 
+
+def write_payload_archive(archive: Path, files: dict[str, bytes], version: str = "0.2.0") -> dict:
+    with zipfile.ZipFile(archive, "w") as package:
+        for name, data in files.items():
+            package.writestr(name, data)
+    with zipfile.ZipFile(archive) as package:
+        entries = [{"path": item.filename, "size": item.file_size,
+                    "sha256": hashlib.sha256(package.read(item)).hexdigest(),
+                    "mode": (item.external_attr >> 16) & 0o777 or 0o644}
+                   for item in package.infolist() if not item.is_dir()]
+    contract = contract_from_entries(entries, version)
+    with zipfile.ZipFile(archive, "a") as package:
+        package.writestr("payload-contract.json", json.dumps(contract))
+    return contract
+
 class ManagerTests(unittest.TestCase):
+    def test_server_payload_contract_ignores_release_docs_but_tracks_operational_files(self):
+        base = [{"path": "bin/libzanik.so", "size": 3, "sha256": "a" * 64, "mode": 0o755},
+                {"path": "scripts/install.sh", "size": 4, "sha256": "b" * 64, "mode": 0o755},
+                {"path": "README.md", "size": 5, "sha256": "c" * 64, "mode": 0o644}]
+        original = contract_from_entries(base, "0.2.21")
+        manager_only = contract_from_entries([{**item, "sha256": "d" * 64} if item["path"] == "README.md" else item
+                                              for item in base], "0.2.22")
+        server_change = contract_from_entries([{**item, "sha256": "e" * 64} if item["path"] == "scripts/install.sh" else item
+                                               for item in base], "0.2.22")
+        self.assertEqual(original["contractSha256"], manager_only["contractSha256"])
+        self.assertNotEqual(original["contractSha256"], server_change["contractSha256"])
+
     def test_update_controls_are_distinct_and_non_modal_by_default(self):
         source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
         self.assertIn('QPushButton("Install Zanik")', source)
@@ -476,6 +505,32 @@ class ManagerTests(unittest.TestCase):
         self.assertTrue(installed["installed"]); self.assertEqual(installed["mode"], "wrapper")
         self.assertFalse(absent["installed"])
 
+    def test_installation_status_and_summary_use_payload_contract_not_release_version(self):
+        contract = "a" * 64
+        critical = {"bin/libzanik.so": "b" * 64, "bin/zanik-compat-analyzer": "c" * 64,
+                    "bin/zanik-server": "d" * 64}
+        install = {"version": "0.2.21", "mode": "replace-executable", "librarySha256": critical["bin/libzanik.so"],
+                   "analyzerSha256": critical["bin/zanik-compat-analyzer"], "launcherSha256": critical["bin/zanik-server"]}
+        class Client:
+            def list_files(self, _server, directory):
+                return ([{"name": "VERSION", "is_file": True}, {"name": "install-state.json", "is_file": True}]
+                        if directory.endswith("/zanik") else [])
+            def read_file(self, _server, path):
+                return json.dumps(install).encode() if path.endswith("install-state.json") else b"0.2.21\n"
+        legacy = {"0.2.21": {"contractSchemaVersion": 1, "contractSha256": contract,
+                              "criticalHashes": critical}}
+        with tempfile.TemporaryDirectory() as temporary:
+            result = PterodactylProvider(Client(), JournalStore(Path(temporary))).installation_status(
+                "dev", "/home/container", {"schemaVersion": 1, "contractSha256": contract}, legacy)
+        self.assertEqual(result["payloadCompatibility"], "current")
+        self.assertTrue(result["legacyContractRecognized"])
+        self.assertEqual(compatibility_summary(result, "0.2.22"),
+                         "Zanik 0.2.21 · Up to date with Manager 0.2.22")
+        latest = {"updateAvailable": True, "latestVersion": "0.2.23",
+                  "serverPayload": {"contractSha256": "e" * 64}}
+        self.assertEqual(compatibility_summary(result, "0.2.22", latest),
+                         "Zanik 0.2.21 · Update Manager to 0.2.23, then update Zanik")
+
     def test_asset_contract_status_checks_metadata_and_critical_hashes(self):
         payloads = {"world-map.jpg": b"map", "quest-catalog.json": b"{}"}
         entries = [{"path": name, "sha256": content_hash(data), "size": len(data)}
@@ -509,10 +564,11 @@ class ManagerTests(unittest.TestCase):
             required = ["bin/libzanik.so", "bin/zanik-server", "bin/zanik-compat-analyzer", "scripts/compat-launcher.sh",
                         "scripts/verify-assets.sh", "scripts/check-game-update.sh",
                         "config/zanik.conf.example", "compatibility/compatibility.tsv", "VERSION"]
-            with zipfile.ZipFile(archive, "w") as package:
-                for name in required: package.writestr(name, b"0.2.0" if name == "VERSION" else b"payload")
+            files = {name: b"0.2.0" if name == "VERSION" else b"payload" for name in required}
+            write_payload_archive(archive, files)
             payload = ReleasePayload(archive)
-            self.assertEqual(len(payload.manifest()["files"]), len(required))
+            self.assertEqual(len(payload.manifest()["files"]), len(required) + 1)
+            self.assertEqual(payload.manifest()["payloadContractSha256"], payload.contract["contractSha256"])
             with self.assertRaises(ValueError): safe_archive_name("../secret")
 
     def test_server_root_and_exact_legacy_launcher(self):
@@ -727,8 +783,7 @@ class ManagerTests(unittest.TestCase):
                      "scripts/verify-assets.sh": b"#!/bin/sh\nexit 0\n", "scripts/check-game-update.sh": b"#!/bin/sh\nexit 0\n",
                      "config/zanik.conf.example": b"FEATURE_MAP=true\n",
                      "config/zanik-config.schema.json": b"{}", "compatibility/compatibility.tsv": b"sha\toffsets\n", "VERSION": b"0.2.0\n"}
-            with zipfile.ZipFile(archive, "w") as package:
-                for name, data in files.items(): package.writestr(name, data)
+            write_payload_archive(archive, files)
             client=FakeClient(); provider=PterodactylProvider(client, JournalStore(root/"journals"))
             result=provider.install("profile", "dev", "/home/container", ReleasePayload(archive), "replace-executable", True)
             game="/home/container/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping"
@@ -741,8 +796,7 @@ class ManagerTests(unittest.TestCase):
             client.files[config_path] = b"FEATURE_MAP=false\n"
             files["scripts/compat-launcher.sh"] = b"#!/bin/sh\n# ZANIK_COMPAT_LAUNCHER=1\n# updated\n"
             files["VERSION"] = b"0.2.1\n"
-            with zipfile.ZipFile(archive, "w") as package:
-                for name, data in files.items(): package.writestr(name, data)
+            write_payload_archive(archive, files, "0.2.1")
             update = provider.install("profile", "dev", "/home/container", ReleasePayload(archive), "replace-executable", True)
             self.assertEqual(update["installation"]["version"], "0.2.1")
             self.assertNotEqual(client.files[game], original_launcher)

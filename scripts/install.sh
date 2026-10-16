@@ -78,6 +78,7 @@ copy_required "$SOURCE_DIR/lib/zanik-common.sh" "$install_dir/lib/zanik-common.s
 copy_required "$SOURCE_DIR/config/zanik.conf.example" "$install_dir/config/zanik.conf.example"
 copy_required "$SOURCE_DIR/config/zanik-config.schema.json" "$install_dir/config/zanik-config.schema.json"
 copy_required "$SOURCE_DIR/compatibility/compatibility.tsv" "$install_dir/compatibility.tsv"
+copy_required "$SOURCE_DIR/payload-contract.json" "$install_dir/payload-contract.json"
 for command in install update uninstall doctor init-assets verify-assets; do copy_required "$SOURCE_DIR/scripts/$command.sh" "$install_dir/scripts/$command.sh"; done
 copy_required "$SOURCE_DIR/scripts/compat-launcher.sh" "$install_dir/scripts/compat-launcher.sh"
 copy_required "$SOURCE_DIR/tools/zanik_assets.py" "$install_dir/tools/zanik_assets.py"
@@ -115,9 +116,12 @@ game_sha=$(zanik_sha256 "$game_target")
 library_sha=$(zanik_sha256 "$install_dir/bin/libzanik.so")
 analyzer_sha=$(zanik_sha256 "$install_dir/bin/zanik-compat-analyzer")
 launcher_sha=$(zanik_sha256 "$install_dir/bin/zanik-server")
+payload_contract_schema=$(sed -n 's/.*"schemaVersion": \([0-9][0-9]*\).*/\1/p' "$SOURCE_DIR/payload-contract.json" | head -n 1)
+payload_contract_sha=$(sed -n 's/.*"contractSha256": "\([0-9a-f][0-9a-f]*\)".*/\1/p' "$SOURCE_DIR/payload-contract.json" | head -n 1)
+[ "$payload_contract_schema" = 1 ] && [ "${#payload_contract_sha}" -eq 64 ] || { zanik_log 'Release payload contract is malformed'; exit 1; }
 installed_at=$(date -u +%FT%TZ)
 cat > "$install_dir/install-state.json.tmp" <<EOF
-{"schemaVersion":1,"version":"$(zanik_json_escape "$version")","mode":"$mode","serverRoot":"$(zanik_json_escape "$server_root")","officialExecutable":"$(zanik_json_escape "$game_target")","officialSha256":"$game_sha","librarySha256":"$library_sha","analyzerSha256":"$analyzer_sha","launcherSha256":"$launcher_sha","installedAt":"$installed_at"}
+{"schemaVersion":2,"version":"$(zanik_json_escape "$version")","mode":"$mode","serverRoot":"$(zanik_json_escape "$server_root")","officialExecutable":"$(zanik_json_escape "$game_target")","officialSha256":"$game_sha","librarySha256":"$library_sha","analyzerSha256":"$analyzer_sha","launcherSha256":"$launcher_sha","payloadContractSchemaVersion":$payload_contract_schema,"payloadContractSha256":"$payload_contract_sha","installedAt":"$installed_at"}
 EOF
 mv "$install_dir/install-state.json.tmp" "$install_dir/install-state.json"
 chmod 600 "$install_dir/install-state.json"

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "releases": {
+    "0.2.21": {
+      "contractSchemaVersion": 1,
+      "contractSha256": "cd41e24179602d75dcb9ef5e7b8fb23cb6e81887be22162c4dc9a4a4e45a4db3",
+      "criticalHashes": {
+        "bin/libzanik.so": "3d3c0a4b29d0c7449d4bb9535c0643976517aa9504f317fc833fb1056510f28e",
+        "bin/zanik-compat-analyzer": "7fd42f3129d41cd7c0004b722d5d25a258dc0f47fc5c4beb90589e828bb5bcc8",
+        "bin/zanik-server": "bf3ef9b7c4f20722b4abde607961dbb8c43963bdd273eee336abea7dba819c9c"
+      }
+    }
+  }
+}

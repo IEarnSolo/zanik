@@ -58,6 +58,8 @@ class UpdateAwarenessTests(unittest.TestCase):
         archive = manager_zip("0.2.16")
         digest = hashlib.sha256(archive).hexdigest()
         manifest = {"schemaVersion": 2, "version": "0.2.16", "tag": "v0.2.16",
+                    "serverPayload": {"releaseVersion": "0.2.16", "contractSchemaVersion": 1,
+                                      "contractSha256": "c" * 64},
                     "files": [{"name": "zanik-manager-windows-x86_64-0.2.16.zip",
                                "size": len(archive), "sha256": digest}]}
         release = {"tag_name": "v0.2.16", "draft": False, "prerelease": False, "html_url": "https://example/release",
@@ -74,6 +76,7 @@ class UpdateAwarenessTests(unittest.TestCase):
             root = Path(temporary); checker = GitHubReleaseChecker(root / "updates", opener)
             result = checker.check("0.2.15", force=True)
             self.assertTrue(result["updateAvailable"])
+            self.assertEqual(result["serverPayload"]["contractSha256"], "c" * 64)
             install = root / "Zanik Manager"; (install / "payload").mkdir(parents=True)
             (install / "ZanikManager.exe").write_bytes(b"old")
             (install / "ZanikManagerUpdater.exe").write_bytes(b"updater")
@@ -93,6 +96,23 @@ class UpdateAwarenessTests(unittest.TestCase):
             return Reply(json.dumps(release if request.full_url.endswith("latest") else manifest).encode())
         with tempfile.TemporaryDirectory() as temporary:
             with self.assertRaisesRegex(RuntimeError, "digest"):
+                GitHubReleaseChecker(Path(temporary), opener).check("0.2.15", force=True)
+
+    def test_invalid_server_payload_metadata_fails_closed(self):
+        archive = manager_zip("0.2.16"); digest = hashlib.sha256(archive).hexdigest()
+        manifest = {"schemaVersion": 2, "version": "0.2.16", "tag": "v0.2.16",
+                    "serverPayload": {"releaseVersion": "0.2.15", "contractSchemaVersion": 1,
+                                      "contractSha256": "c" * 64},
+                    "files": [{"name": "zanik-manager-windows-x86_64-0.2.16.zip",
+                               "size": len(archive), "sha256": digest}]}
+        release = {"tag_name": "v0.2.16", "draft": False, "prerelease": False,
+                   "assets": [{"name": "zanik-manager-windows-x86_64-0.2.16.zip", "size": len(archive),
+                               "browser_download_url": "https://example/manager"},
+                              {"name": "release-manifest.json", "browser_download_url": "https://example/manifest"}]}
+        def opener(request, timeout=0):
+            return Reply(json.dumps(release if request.full_url.endswith("latest") else manifest).encode())
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(RuntimeError, "server payload"):
                 GitHubReleaseChecker(Path(temporary), opener).check("0.2.15", force=True)
 
     def test_recent_cache_is_recomputed_for_the_running_version(self):

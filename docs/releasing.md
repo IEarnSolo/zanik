@@ -2,6 +2,8 @@
 
 `VERSION` is the release version source of truth. Stable releases use an annotated tag named exactly `v<VERSION>`, such as `v0.1.0`. Release notes come from the matching `CHANGELOG.md` section.
 
+Every server archive contains `payload-contract.json`, a deterministic contract over operational binaries, launchers, scripts, tools, configuration, and compatibility metadata. Manager code, documentation, changelogs, licenses, generated assets, and display-version files are excluded. Release validation must prove the Manager, nested server archive, and public release manifest report the same contract. A Manager-only release is expected to retain the prior contract.
+
 ## One-time release configuration
 
 Protect the tag wildcard `v*` under **Settings > Repository > Protected tags** and allow only Maintainers to create it. If protected environments are available, protect `curseforge-production` for Maintainers as well.
