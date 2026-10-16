@@ -70,6 +70,16 @@ class ManagerTests(unittest.TestCase):
         self.assertIn('f"Website port: {website.get(\'port\')}"', source)
         self.assertIn("website_configuration_ready", source)
 
+    def test_guided_configuration_descriptions_use_dedicated_wrapping_labels(self):
+        source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)", source)
+        self.assertIn("form.setRowWrapPolicy(QFormLayout.WrapLongRows)", source)
+        self.assertIn('field=QCheckBox(); field.setChecked(bool(spec["default"]))', source)
+        self.assertIn('description=QLabel(spec["description"]); description.setWordWrap(True)', source)
+        self.assertIn("description.setMaximumWidth(420)", source)
+        self.assertIn("field_layout.addWidget(field,0,Qt.AlignTop); field_layout.addWidget(description,1)", source)
+        self.assertNotIn('QCheckBox(spec["description"])', source)
+
     def test_server_payload_compatibility_presentation_uses_shared_status_states_and_tooltips(self):
         current = compatibility_presentation(
             {"version": "0.2.15", "payloadCompatibility": "current", "payloadContractSha256": "a" * 64},

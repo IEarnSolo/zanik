@@ -331,19 +331,37 @@ class MainWindow(QMainWindow):
     def _config_tab(self):
         page = QWidget(); layout = QVBoxLayout(page)
         self.config_editors=QTabWidget(); form_page=QWidget(); form=QFormLayout(form_page); self.config_fields={}
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         model=self.config_model(); current_category=""
         for key,spec in model.properties.items():
             if spec["category"] != current_category:
                 current_category=spec["category"]; heading=QLabel(current_category.replace("-"," ").title()); heading.setStyleSheet("font-weight:700;margin-top:8px")
                 form.addRow(heading)
             if spec["type"]=="boolean":
-                field=QCheckBox(spec["description"]); field.setChecked(bool(spec["default"]))
-                if spec.get("dangerous"): field.setStyleSheet("color:#b45309")
+                field=QCheckBox(); field.setChecked(bool(spec["default"]))
+                field_widget=QWidget(); field_layout=QHBoxLayout(field_widget)
+                field_layout.setContentsMargins(0,0,0,0); field_layout.setSpacing(6)
+                description=QLabel(spec["description"]); description.setWordWrap(True)
+                description.setMaximumWidth(420)
+                description.setTextFormat(Qt.PlainText)
+                if spec.get("dangerous"): description.setStyleSheet("color:#b45309")
+                field_layout.addWidget(field,0,Qt.AlignTop); field_layout.addWidget(description,1)
             elif spec["type"]=="integer":
                 field=QSpinBox(); field.setRange(spec.get("minimum",0),spec.get("maximum",2147483647)); field.setValue(spec["default"]); field.setToolTip(spec["description"])
+                field_widget=QWidget(); field_layout=QVBoxLayout(field_widget)
+                field_layout.setContentsMargins(0,0,0,0); field_layout.setSpacing(3)
+                description=QLabel(spec["description"]); description.setWordWrap(True); description.setMaximumWidth(420)
+                description.setTextFormat(Qt.PlainText)
+                field_layout.addWidget(field); field_layout.addWidget(description)
             else:
                 field=QLineEdit(str(spec["default"])); field.setToolTip(spec["description"])
-            self.config_fields[key]=field; form.addRow(spec["title"],field)
+                field_widget=QWidget(); field_layout=QVBoxLayout(field_widget)
+                field_layout.setContentsMargins(0,0,0,0); field_layout.setSpacing(3)
+                description=QLabel(spec["description"]); description.setWordWrap(True); description.setMaximumWidth(420)
+                description.setTextFormat(Qt.PlainText)
+                field_layout.addWidget(field); field_layout.addWidget(description)
+            self.config_fields[key]=field; form.addRow(spec["title"],field_widget)
         scroll=QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(form_page)
         self.config_text = QPlainTextEdit(); self.config_text.setPlaceholderText("Load the server configuration to edit it.")
         self.config_editors.addTab(scroll,"Guided settings"); self.config_editors.addTab(self.config_text,"Advanced raw editor")
