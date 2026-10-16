@@ -6,7 +6,7 @@ The compatibility line appears directly below the server name and above its pane
 
 Use **Edit servers** beside the active-server selector to rename, reorder, or remove saved Manager profiles. Removing a profile affects only Zanik Manager on the current PC; it does not delete the Pterodactyl server or change any remote files.
 
-The guided Configuration tab displays a wrapping description for every setting. Boolean descriptions remain directly beside their checkbox, and continued lines align beneath the description text. Numeric and text rows reserve the full wrapped description height so following settings never cover their guidance.
+The guided Configuration tab displays a responsive description for every setting. Descriptions use the complete available width and wrap only when necessary, without horizontal scrolling or clipping. Boolean descriptions remain directly beside their checkbox. Compact networking and cookie controls leave the remainder of the row available to their full-width guidance.
 
 Zanik Manager is the recommended installation path for Windows administrators using Pterodactyl. Download `zanik-manager-windows-x86_64-VERSION.zip`, extract the complete folder, and open `ZanikManager.exe`. It includes the matching server package and Windows asset extractor and does not require Python, SSH, or administrator rights.
 

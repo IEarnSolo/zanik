@@ -11,7 +11,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                QFormLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
                                QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar, QProgressDialog, QPushButton, QScrollArea,
-                               QSpinBox, QTabWidget, QVBoxLayout, QWidget)
+                               QSizePolicy, QSpinBox, QTabWidget, QVBoxLayout, QWidget)
 from PySide6.QtCore import QUrl
 
 from .assets import (AssetDeployer, AssetExtractor, asset_setup_mode, discover_steam_game_roots,
@@ -49,6 +49,27 @@ def resource_path(*parts: str) -> Path:
 def button_help(button: QPushButton, text: str) -> QPushButton:
     button.setToolTip(text)
     return button
+
+
+class WrappingLabel(QLabel):
+    """A word-wrapped label whose row height follows its current width."""
+
+    def __init__(self, text: str):
+        super().__init__(text)
+        self.setWordWrap(True)
+        self.setTextFormat(Qt.PlainText)
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+
+    def heightForWidth(self, width: int) -> int:
+        bounds = self.fontMetrics().boundingRect(0, 0, max(1, width), 10000,
+                                                 Qt.TextWordWrap | Qt.AlignLeft, self.text())
+        return max(self.fontMetrics().lineSpacing(), bounds.height())
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        height = self.heightForWidth(event.size().width())
+        if self.minimumHeight() != height or self.maximumHeight() != height:
+            self.setFixedHeight(height)
 
 
 class Worker(QObject):
@@ -335,9 +356,7 @@ class MainWindow(QMainWindow):
         form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         model=self.config_model(); current_category=""
         def config_description(text: str, dangerous: bool = False) -> QLabel:
-            description = QLabel(text); description.setWordWrap(True); description.setMaximumWidth(420)
-            description.setTextFormat(Qt.PlainText)
-            description.setMinimumHeight(description.heightForWidth(420))
+            description = WrappingLabel(text)
             if dangerous: description.setStyleSheet("color:#b45309")
             return description
         for key,spec in model.properties.items():
@@ -345,26 +364,33 @@ class MainWindow(QMainWindow):
                 current_category=spec["category"]; heading=QLabel(current_category.replace("-"," ").title()); heading.setStyleSheet("font-weight:700;margin-top:8px")
                 form.addRow(heading)
             if spec["type"]=="boolean":
-                field=QCheckBox(); field.setChecked(bool(spec["default"]))
-                field_widget=QWidget(); field_layout=QHBoxLayout(field_widget)
+                field=QCheckBox(); field.setChecked(bool(spec["default"])); field.setFixedWidth(20)
+                field_layout=QHBoxLayout()
                 field_layout.setContentsMargins(0,0,0,0); field_layout.setSpacing(6)
                 description=config_description(spec["description"], bool(spec.get("dangerous")))
-                field_layout.addWidget(field,0,Qt.AlignTop); field_layout.addWidget(description,0,Qt.AlignTop)
-                field_layout.addStretch(1)
+                field_layout.addWidget(field,0,Qt.AlignTop); field_layout.addWidget(description,1,Qt.AlignTop)
             elif spec["type"]=="integer":
                 field=QSpinBox(); field.setRange(spec.get("minimum",0),spec.get("maximum",2147483647)); field.setValue(spec["default"]); field.setToolTip(spec["description"])
-                field_widget=QWidget(); field_layout=QVBoxLayout(field_widget)
+                if key=="STATUS_PORT": field.setFixedWidth(150)
+                field_layout=QVBoxLayout()
                 field_layout.setContentsMargins(0,0,0,0); field_layout.setSpacing(3)
                 description=config_description(spec["description"])
-                field_layout.addWidget(field); field_layout.addWidget(description)
+                field_row=QHBoxLayout(); field_row.setContentsMargins(0,0,0,0)
+                field_row.addWidget(field); field_row.addStretch(1)
+                field_layout.addLayout(field_row); field_layout.addWidget(description)
             else:
                 field=QLineEdit(str(spec["default"])); field.setToolTip(spec["description"])
-                field_widget=QWidget(); field_layout=QVBoxLayout(field_widget)
+                if key=="PUBLIC_BASE_URL": field.setFixedWidth(380)
+                elif key=="ADMIN_COOKIE_NAME": field.setFixedWidth(240)
+                field_layout=QVBoxLayout()
                 field_layout.setContentsMargins(0,0,0,0); field_layout.setSpacing(3)
                 description=config_description(spec["description"])
-                field_layout.addWidget(field); field_layout.addWidget(description)
-            self.config_fields[key]=field; form.addRow(spec["title"],field_widget)
-        scroll=QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(form_page)
+                field_row=QHBoxLayout(); field_row.setContentsMargins(0,0,0,0)
+                field_row.addWidget(field); field_row.addStretch(1)
+                field_layout.addLayout(field_row); field_layout.addWidget(description)
+            self.config_fields[key]=field; form.addRow(spec["title"],field_layout)
+        scroll=QScrollArea(); scroll.setWidgetResizable(True); scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(form_page)
         self.config_text = QPlainTextEdit(); self.config_text.setPlaceholderText("Load the server configuration to edit it.")
         self.config_editors.addTab(scroll,"Guided settings"); self.config_editors.addTab(self.config_text,"Advanced raw editor")
         row = QHBoxLayout(); load = button_help(QPushButton("Load from server"),
