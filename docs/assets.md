@@ -52,7 +52,11 @@ An experienced operator may avoid the temporary loader and use a mapping already
 
 `-KeepWork` retains the targeted intermediate exports for debugging and prints their location. Those files are game-derived: do not publish or commit them. `-CatalogsOnly` still keeps any artwork reachable from a generated runtime catalog so it cannot create broken URLs.
 
-Allow roughly 10–30 minutes and at least 10 GiB of free space for a normal extraction; game updates, storage speed, antivirus scanning, and mapping generation can change the total. The final bundle is much smaller than the temporary targeted exports.
+Allow roughly 10–30 minutes and at least 10 GiB of free space for the first extraction; game updates, storage speed, antivirus scanning, and mapping generation can change the total. The final bundle is much smaller than the private targeted-export cache.
+
+After the first successful extraction, Zanik Manager retains the verified UnrealAssetScout workspace under `%LOCALAPPDATA%\Zanik Manager\asset-work\`. UnrealAssetScout compares package fingerprints on later runs and exports only changed or newly added targets while deleting outputs for removed targets. Zanik then regenerates and validates the complete website bundle from that updated cache. The server continues to receive one complete atomic bundle; raw exports and mappings are never uploaded.
+
+Use **Discard generated work** to remove this private cache. Validated ZIPs are retained, but the next extraction will be a full extraction. A bundle created before incremental caching was introduced, or a bundle copied from another computer, cannot reconstruct the raw cache and therefore requires one final full extraction. Changes to the pinned extraction tool also require a full rebuild because carrying old outputs across tool versions would not be reproducible.
 
 ## Extraction troubleshooting
 
@@ -133,4 +137,4 @@ Restart the Pterodactyl server after the initializer succeeds. This is required 
 
 Zanik-authored placeholders cover genuinely unavailable optional artwork. Missing required catalogs or static assets never produce a partially activated bundle.
 
-If Dragonwilds updates while an extraction is paused, its saved mapping and raw exports are treated as stale. Zanik Manager checks the saved game, recipe, and tool fingerprints before resuming. Choose **Discard stale work and start fresh** when prompted; validated bundles already in the local cache are not deleted. Guided setup will not offer an older cached bundle for a different client executable.
+If Dragonwilds updates while an extraction is paused, the incomplete mapping and exports remain fail-closed and cannot be resumed. A completed verified workspace follows the incremental path instead: Manager generates a current mapping when necessary, and UnrealAssetScout updates only changed, added, or removed targets. Guided setup never offers a cached final bundle whose game executable, exact extraction-recipe SHA-256, recipe version, or reviewed compatibility profile differs from the current contract.

@@ -2,6 +2,17 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.29] - 2026-10-16
+
+### Added
+
+- Zanik Manager now retains a private local UnrealAssetScout cache so later game and extraction-recipe updates export only changed, added, or removed targeted packages.
+- Regenerate and fully validate a complete atomic server bundle after each incremental update.
+
+### Fixed
+
+- Require locally cached and remotely active bundles to match the Manager's exact extraction-recipe SHA-256, recipe version, and reviewed-profile contract before reuse.
+
 ## [0.2.28] - 2026-10-16
 
 ### Fixed

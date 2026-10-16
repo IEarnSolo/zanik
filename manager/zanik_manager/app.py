@@ -279,7 +279,6 @@ class MainWindow(QMainWindow):
         self.activity_signal.connect(self.log)
         self.operation_progress_signal.connect(self.update_operation_progress)
         self.reload_profiles()
-        QTimer.singleShot(1000, self.retry_pending_asset_cleanup)
         QTimer.singleShot(1500, lambda: self.check_manager_update(False))
         self.update_timer = QTimer(self); self.update_timer.setInterval(10 * 60 * 1000)
         self.update_timer.timeout.connect(self.scheduled_update_checks); self.update_timer.start()
@@ -619,22 +618,6 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "Operation failed", safe_message + "\n\nTechnical details are available in Activity.")
         self.activity.appendPlainText("Operation failed: " + safe_message + "\n" + safe_details)
         self.statusBar().showMessage("Operation failed: " + safe_message, 5000)
-
-    def retry_pending_asset_cleanup(self):
-        if self.threads:
-            QTimer.singleShot(1000, self.retry_pending_asset_cleanup)
-            return
-        extractor = AssetExtractor(resource_path("asset-tools"), BundleCache(self.paths["assets"]))
-        pending = [path for path in self.paths["asset_work"].iterdir()
-                   if path.is_dir() and (extractor.resumable(path) or {}).get("stage") == "complete"]
-        if not pending:
-            return
-        def done(cleaned):
-            if cleaned:
-                self.log(f"Cleaned {len(cleaned)} completed deferred asset workspace(s).")
-            self.refresh_bundles()
-        self.run_async(lambda: extractor.cleanup_completed(self.paths["asset_work"]), done,
-                       title="Checking deferred asset cleanup…")
 
     def active(self) -> ServerProfile | None:
         return self.profile_box.currentData()
@@ -1013,11 +996,18 @@ class MainWindow(QMainWindow):
                 str(item.path))
         tool_root = resource_path("asset-tools")
         status = AssetExtractor(tool_root, BundleCache(self.paths["assets"])).resumable(self.asset_work_root(root))
-        self.resume_extract_button.setEnabled(bool(status)); self.discard_extract_button.setEnabled(bool(status))
-        if status:
+        complete = bool(status and status.get("stage") == "complete")
+        self.resume_extract_button.setEnabled(bool(status) and not complete)
+        self.discard_extract_button.setEnabled(bool(status))
+        if complete:
+            self.resume_extract_button.setText("Incremental cache ready")
+            self.discard_extract_button.setToolTip(
+                "Delete the private raw extraction cache. Validated bundles remain, but the next update will require a full extraction.")
+        elif status:
             self.resume_extract_button.setText(f"Resume extraction ({status['stage']})")
         else:
             self.resume_extract_button.setText("Resume extraction")
+            self.discard_extract_button.setToolTip("Delete a verified incomplete extraction workspace without removing validated bundles.")
 
     def asset_recovery_root(self, root: Path) -> Path:
         return self.paths["mapping_recovery"] / game_root_id(root)
@@ -1217,12 +1207,13 @@ class MainWindow(QMainWindow):
         if not root: return
         tool_root = resource_path("asset-tools"); cache = BundleCache(self.paths["assets"])
         extractor = AssetExtractor(tool_root, cache)
+        contract = expected_asset_contract(tool_root)
         all_cached = cache.list(game_root_id(root))
         current_executable = extractor.current_fingerprints(root)["gameExecutableSha256"] if all_cached else None
         cached = [item for item in all_cached
-                  if extractor.bundle_compatible_with_game(item.path, root, current_executable)]
+                  if extractor.bundle_compatible_with_game(item.path, root, current_executable, contract)]
         if all_cached and not cached:
-            self.log("Existing cached asset bundles target an older Dragonwilds executable and will not be reused.")
+            self.log("Existing cached asset bundles target an older game build or extraction contract and will not be reused.")
         use_cached = False
         if cached:
             use_cached = QMessageBox.question(
@@ -1238,7 +1229,11 @@ class MainWindow(QMainWindow):
         mode = asset_setup_mode(use_cached, resume_status)
         if mode == "resume":
             self.log(resume_activity_message(resume_status["stage"]))
-        preflight = (False, False) if mode != "new" else self.confirm_asset_preflight(root, extractor)
+        if mode == "incremental":
+            changed = ", ".join(resume_status.get("mismatches", [])) or "game package contents"
+            self.log(f"Using the retained incremental asset cache; changed inputs: {changed}.")
+        needs_mapping = mode == "new" or (mode == "incremental" and resume_status.get("mappingRequired"))
+        preflight = self.confirm_asset_preflight(root, extractor) if needs_mapping else (False, False)
         if preflight is None: return
         close_game, preserve = preflight
         output = self.paths["root"] / "extraction-output"
@@ -1255,7 +1250,7 @@ class MainWindow(QMainWindow):
             if mode == "cached":
                 item = cached[0]
                 self.operation_progress_signal.emit("Validating the cached asset bundle", 20)
-                extractor.validate_bundle(item.path)
+                extractor.validate_bundle(item.path, contract)
             else:
                 if preserve: self.operation_progress_signal.emit("Preserving the existing UE4SS installation", 10)
                 if mode == "resume":
@@ -1263,7 +1258,8 @@ class MainWindow(QMainWindow):
                         f"Resuming verified extraction from {resume_status['stage']}", 15)
                 item = extractor.extract(root, output, event, preserve_existing_loader=preserve,
                                          recovery_root=self.asset_recovery_root(root),
-                                         work_root=work, resume=(mode == "resume"))
+                                         work_root=work, resume=(mode == "resume"),
+                                         incremental=(mode == "incremental"))
             self.operation_progress_signal.emit(f"Uploading assets to {profile.name}", 70)
             def progress(current, total, path):
                 self.operation_progress_signal.emit(f"Uploading and verifying {path}", 70 + int(current * 20 / max(total, 1)))
@@ -1288,8 +1284,9 @@ class MainWindow(QMainWindow):
             if activated.get("restartRequested"):
                 self.log(f"Restart requested for {profile.name} so native catalog tracking loads the activated assets")
             self.asset_activation_complete(profile, activated)
-        title = (f"Resuming and deploying website assets on {profile.name}…" if mode == "resume"
-                 else f"Setting up website assets on {profile.name}…")
+        title = (f"Resuming and deploying website assets on {profile.name}…" if mode == "resume" else
+                 f"Updating and deploying website assets on {profile.name}…" if mode == "incremental" else
+                 f"Setting up website assets on {profile.name}…")
         self.run_async(action, done, title=title, determinate=True)
 
     def extract_assets(self):
@@ -1303,13 +1300,17 @@ class MainWindow(QMainWindow):
             self.offer_stale_asset_cleanup(root, extractor, resume_status, self.extract_assets)
             return
         if resume_status:
+            incremental = bool(resume_status.get("incremental"))
+            prompt = ("Use the retained private extraction cache and export only changed, added, or removed game packages?"
+                      if incremental else resume_activity_message(resume_status["stage"]) + " Resume now?")
             if QMessageBox.question(
-                    self, "Resume verified extraction",
-                    resume_activity_message(resume_status["stage"]) + " Resume now?",
+                    self, "Update assets incrementally" if incremental else "Resume verified extraction", prompt,
                     QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Yes) != QMessageBox.Yes:
                 return
-            preflight = (False, False)
+            preflight = (self.confirm_asset_preflight(root, extractor)
+                         if incremental and resume_status.get("mappingRequired") else (False, False))
         else:
+            incremental = False
             preflight = self.confirm_asset_preflight(root, extractor)
         if preflight is None: return
         close_game, preserve = preflight
@@ -1325,10 +1326,12 @@ class MainWindow(QMainWindow):
                     raise RuntimeError("Dragonwilds did not close normally. Close it manually and retry; it was not force-terminated.")
             return extractor.extract(root, output, event, preserve_existing_loader=preserve,
                                      recovery_root=self.asset_recovery_root(root),
-                                     work_root=work, resume=bool(resume_status))
+                                     work_root=work, resume=bool(resume_status) and not incremental,
+                                     incremental=incremental)
         self.run_async(action,
                        lambda item: self.asset_extraction_complete(item, resumed=False),
-                       title=(f"Resuming asset extraction from {resume_status['stage']}…" if resume_status
+                       title=("Updating Dragonwilds web assets incrementally…" if incremental else
+                              f"Resuming asset extraction from {resume_status['stage']}…" if resume_status
                               else "Extracting Dragonwilds web assets…"), determinate=True)
 
     def resume_asset_extraction(self):
@@ -1340,6 +1343,8 @@ class MainWindow(QMainWindow):
         if not status:
             QMessageBox.information(self, "Nothing to resume", "No verified Zanik extraction workspace exists for this game installation.")
             self.refresh_bundles(); return
+        if status.get("incremental"):
+            self.extract_assets(); return
         if not status["compatible"]:
             self.offer_stale_asset_cleanup(root, extractor, status, self.extract_assets)
             return
@@ -1363,11 +1368,12 @@ class MainWindow(QMainWindow):
         if not status:
             self.refresh_bundles(); return
         if QMessageBox.question(self, "Discard generated work",
-                                f"Discard the verified Zanik extraction workspace at stage {status['stage']}?\n\nValidated cached bundles are not removed.",
+                                f"Discard the verified Zanik extraction workspace at stage {status['stage']}?\n\n"
+                                "Validated bundles are not removed, but the next asset update will require a full extraction.",
                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
             return
         self.run_async(lambda: extractor.discard(work),
-                       lambda _: (self.refresh_bundles(), self.log("Discarded the incomplete asset extraction workspace.")),
+                       lambda _: (self.refresh_bundles(), self.log("Discarded the private incremental extraction workspace.")),
                        title="Discarding generated work…")
 
     def offer_stale_asset_cleanup(self, root: Path, extractor: AssetExtractor, status: dict, retry):
@@ -1432,6 +1438,8 @@ class MainWindow(QMainWindow):
             percent = 15 + int(current * 75 / max(total, 1))
             self.operation_progress_signal.emit(f"Uploading and verifying {path}", percent)
         def action():
+            AssetExtractor(resource_path("asset-tools"), BundleCache(self.paths["assets"])).validate_bundle(
+                bundle, expected_asset_contract(resource_path("asset-tools")))
             provider = self.provider(profile)
             result = AssetDeployer(provider).activate(
                 profile.id, profile.server_id, profile.server_root, bundle, progress,

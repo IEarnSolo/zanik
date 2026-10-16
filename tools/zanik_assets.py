@@ -400,7 +400,8 @@ def container_fingerprint(path: Path) -> dict:
 
 def manifest_for(root: Path, source: Path, files: list[Path], validation: dict,
                  mapping_path: Path | None = None, tool_versions: dict | None = None,
-                 recipe_version: int = EXTRACTION_RECIPE_VERSION, profile: dict | None = None) -> dict:
+                 recipe_version: int = EXTRACTION_RECIPE_VERSION, profile: dict | None = None,
+                 extraction_mode: str = "full", recipe_sha256: str | None = None) -> dict:
     containers = container_paths(root)
     epoch = int(os.environ.get("SOURCE_DATE_EPOCH", str(int(time.time()))))
     expected = (profile or {}).get("catalogProfile", {}).get("catalogCounts", {})
@@ -430,6 +431,8 @@ def manifest_for(root: Path, source: Path, files: list[Path], validation: dict,
         "mappingSha256": digest(mapping_path) if mapping_path and mapping_path.is_file() else None,
         "toolVersions": tool_versions or {},
         "extractionRecipeVersion": recipe_version,
+        "extractionRecipeSha256": recipe_sha256,
+        "extractionMode": extraction_mode,
         "extractionStage": "validated-and-packaged",
         "cleanupWarnings": [],
         "compatibility": "compatible" if validation["valid"] and not drift else "incompatible",
@@ -465,9 +468,12 @@ def build(args: argparse.Namespace) -> int:
     else:
         tool_versions = json.loads(args.tool_versions) if getattr(args, "tool_versions", None) else {}
     mapping = Path(args.mapping).resolve() if getattr(args, "mapping", None) else None
-    profile = json.loads(Path(args.profile).read_text(encoding="utf-8")) if getattr(args, "profile", None) else None
+    profile_path = Path(args.profile) if getattr(args, "profile", None) else None
+    profile = json.loads(profile_path.read_text(encoding="utf-8")) if profile_path else None
     manifest = manifest_for(root, source, files, validation, mapping, tool_versions,
-                            getattr(args, "recipe_version", 1), profile)
+                            getattr(args, "recipe_version", 1), profile,
+                            getattr(args, "extraction_mode", "full"),
+                            digest(profile_path) if profile_path else None)
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         info = zipfile.ZipInfo("asset-manifest.json", date_time=(1980, 1, 1, 0, 0, 0))
@@ -895,6 +901,7 @@ def main() -> int:
     create.add_argument("--tool-versions-file")
     create.add_argument("--recipe-version", type=int, default=EXTRACTION_RECIPE_VERSION)
     create.add_argument("--profile")
+    create.add_argument("--extraction-mode", choices=("full", "incremental"), default="full")
     create.set_defaults(run=build)
     bundle = commands.add_parser("bundle")
     bundle.add_argument("--game-root", required=True)
@@ -905,6 +912,7 @@ def main() -> int:
     bundle.add_argument("--tool-versions-file")
     bundle.add_argument("--recipe-version", type=int, default=EXTRACTION_RECIPE_VERSION)
     bundle.add_argument("--profile")
+    bundle.add_argument("--extraction-mode", choices=("full", "incremental"), default="full")
     bundle.set_defaults(run=build)
     parts = commands.add_parser("bundle-set")
     parts.add_argument("--bundle", required=True)

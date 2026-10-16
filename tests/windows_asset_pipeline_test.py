@@ -169,8 +169,22 @@ with tempfile.TemporaryDirectory() as name:
         pipeline.complete_remaining_exports(
             ["uas"], partial, partial_recipe, partial_json, partial_textures, partial_font)
     assert len(export_calls) == 2
+    assert all("-r" in command for command, _label, _quiet in export_calls)
     assert (partial_textures / "batch-01/.uas-manifest.json").is_file()
     assert (partial_font / "Jancient.ufont").is_file()
+
+    export_calls.clear()
+    stale_batch = partial_textures / "batch-02"; stale_batch.mkdir()
+    (stale_batch / "old.png").write_bytes(b"old")
+    with patch.object(pipeline, "referenced_textures", return_value=["basename:required"]), \
+         patch.object(pipeline, "filter_chunks", return_value=["one"]), \
+         patch.object(pipeline, "run", side_effect=fake_export):
+        pipeline.complete_remaining_exports(
+            ["uas"], partial, partial_recipe, partial_json, partial_textures, partial_font,
+            incremental=True)
+    assert len(export_calls) == 2
+    assert all("-r" not in command for command, _label, _quiet in export_calls)
+    assert not stale_batch.exists(), "obsolete texture batches must be removed from incremental state"
 
     journal = root / "extraction-journal.json"
     original_journal = {
