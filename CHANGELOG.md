@@ -2,6 +2,14 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.25] - 2026-10-16
+
+### Changed
+
+- Move the Zanik Manager server-payload compatibility line above the Pterodactyl panel details.
+- Place **Open panel** and **Open website** directly after **Update / repair Zanik** and before recovery actions.
+- Keep status labels color-coded while rendering their hover-tooltip text in white for consistent contrast, including game-update status tooltips.
+
 ## [0.2.24] - 2026-10-16
 
 ### Changed

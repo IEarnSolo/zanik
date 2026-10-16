@@ -282,15 +282,17 @@ class MainWindow(QMainWindow):
         self.update_server_button = button_help(QPushButton("Update / repair Zanik"),
                                                 "Reinstall the embedded Zanik payload using the existing mode, preserve data and assets, then validate website setup and asset compatibility.")
         self.update_server_button.clicked.connect(self.update_or_repair); self.update_server_button.setEnabled(False); row.addWidget(self.update_server_button)
-        actions = (("Recover interrupted", self.recover_interrupted, "Resume or roll back an interrupted Manager transaction for this server."),
-                   ("Uninstall", self.uninstall, "Remove verified Zanik-managed files while preserving server data by default."),
-                   ("Open panel", self.open_panel, "Open this server's page in the configured Pterodactyl panel."))
-        for label, handler, tooltip in actions:
-            button = button_help(QPushButton(label), tooltip); button.clicked.connect(handler); row.addWidget(button)
+        open_panel_button = button_help(QPushButton("Open panel"),
+                                        "Open this server's page in the configured Pterodactyl panel.")
+        open_panel_button.clicked.connect(self.open_panel); row.addWidget(open_panel_button)
         self.open_website_button = button_help(QPushButton("Open website"),
                                                "Open the configured public Zanik website for the selected server.")
         self.open_website_button.clicked.connect(self.open_website); self.open_website_button.setEnabled(False)
         row.addWidget(self.open_website_button)
+        actions = (("Recover interrupted", self.recover_interrupted, "Resume or roll back an interrupted Manager transaction for this server."),
+                   ("Uninstall", self.uninstall, "Remove verified Zanik-managed files while preserving server data by default."))
+        for label, handler, tooltip in actions:
+            button = button_help(QPushButton(label), tooltip); button.clicked.connect(handler); row.addWidget(button)
         layout.addWidget(self.server_summary); layout.addWidget(self.server_compatibility)
         layout.addWidget(self.server_details); layout.addLayout(row); layout.addStretch(); self.tabs.addTab(page, "Servers")
 
@@ -398,7 +400,9 @@ class MainWindow(QMainWindow):
     @staticmethod
     def _set_update_label(label: QLabel, text: str, state: str, tooltip: str = ""):
         colors = {"current": "#2f855a", "available": "#b7791f", "neutral": "#6b7280"}
-        label.setText(text); label.setStyleSheet(f"color:{colors[state]};font-weight:600")
+        label.setText(text)
+        label.setStyleSheet(
+            f"QLabel {{ color:{colors[state]};font-weight:600; }} QToolTip {{ color:#ffffff; }}")
         label.setToolTip(tooltip)
 
     def run_background(self, key: str, function, completed):
@@ -715,9 +719,10 @@ class MainWindow(QMainWindow):
         else:
             website_line = "Website: Loading configuration…"
             port_line = "Website port: Loading…"
-        self.server_summary.setText(f"{profile.name}\nPanel: {profile.panel_origin} · {profile.server_id}")
+        self.server_summary.setText(profile.name)
         self._set_update_label(self.server_compatibility, install_line, install_state, install_tooltip)
-        self.server_details.setText(f"Install mode: {mode}\n{website_line}\n{port_line}")
+        self.server_details.setText(
+            f"Panel: {profile.panel_origin} · {profile.server_id}\nInstall mode: {mode}\n{website_line}\n{port_line}")
         openable = website_status == "ready" and website_configuration_ready(
             {"STATUS_PORT": website.get("port"), "PUBLIC_BASE_URL": url})
         self.open_website_button.setEnabled(openable)
