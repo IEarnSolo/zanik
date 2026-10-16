@@ -68,20 +68,45 @@ def validate_contract(document: Mapping[str, Any], entries: Iterable[Mapping[str
 
 def compatibility_summary(state: Mapping[str, Any], manager_version: str,
                           latest_release: Mapping[str, Any] | None = None) -> str:
+    return compatibility_presentation(state, manager_version, latest_release)["text"]
+
+
+def compatibility_presentation(state: Mapping[str, Any], manager_version: str,
+                               latest_release: Mapping[str, Any] | None = None) -> dict[str, str]:
     installed_version = str(state.get("version") or "unknown version")
     installed_contract = state.get("payloadContractSha256")
     latest_release = latest_release or {}
     latest_payload = latest_release.get("serverPayload") or {}
     if latest_release.get("updateAvailable") and installed_contract and latest_payload.get("contractSha256"):
         if installed_contract != latest_payload["contractSha256"]:
-            return (f"Zanik {installed_version} · Update Manager to {latest_release['latestVersion']}, "
-                    "then update Zanik")
+            latest_version = str(latest_release["latestVersion"])
+            return {
+                "text": f"Zanik {installed_version} · Update Manager to {latest_version}, then update Zanik",
+                "state": "available",
+                "tooltip": (f"Zanik Manager {latest_version} contains changed server-side Zanik files. "
+                            "Update Manager first, then use Update / repair Zanik to install and verify that newer payload."),
+            }
     compatibility = state.get("payloadCompatibility")
     if compatibility == "current":
-        return f"Zanik {installed_version} · Up to date with Manager {manager_version}"
+        return {
+            "text": f"Zanik {installed_version} · Up to date with Manager {manager_version}",
+            "state": "current",
+            "tooltip": ("The installed Zanik release may have an older version number than this Manager, but its "
+                        "server-side files match the payload bundled with this Manager. No server update is required."),
+        }
     if compatibility == "update-available":
-        return f"Zanik {installed_version} · Update available in Manager {manager_version}"
-    return f"Zanik {installed_version} · Compatibility unknown with Manager {manager_version} · Repair recommended"
+        return {
+            "text": f"Zanik {installed_version} · Update available in Manager {manager_version}",
+            "state": "available",
+            "tooltip": (f"Zanik Manager {manager_version} contains changed server-side Zanik files. Use Update / repair "
+                        "Zanik to install and verify them while preserving configuration, data, and compatible assets."),
+        }
+    return {
+        "text": f"Zanik {installed_version} · Compatibility unknown with Manager {manager_version} · Repair recommended",
+        "state": "neutral",
+        "tooltip": ("Manager cannot prove that this installation's server-side files match its bundled payload. "
+                    "Use Update / repair Zanik to restore the verified files and record current compatibility metadata."),
+    }
 
 
 def main() -> int:

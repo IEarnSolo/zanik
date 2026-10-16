@@ -2,6 +2,14 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.24] - 2026-10-16
+
+### Changed
+
+- Color the Zanik server-payload compatibility line green when current and amber when an update is available, matching Zanik Manager's update indicators.
+- Explain server-payload compatibility and required update actions in hover tooltips, including why an older Zanik release number may still be fully current.
+- Place **Open panel** immediately before **Open website** on the Servers tab.
+
 ## [0.2.23] - 2026-10-16
 
 ### Added
