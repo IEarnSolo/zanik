@@ -45,6 +45,7 @@ def expected_asset_contract(tool_root: Path) -> dict:
     if not isinstance(recipe, int) or recipe < 1 or not isinstance(profile, str) or not profile:
         raise RuntimeError("The packaged extraction recipe contract is invalid")
     return {"extractionRecipeVersion": recipe, "compatibilityProfileVersion": profile,
+            "extractionRecipeSha256": hashlib.sha256(path.read_bytes()).hexdigest(),
             "criticalFiles": sorted(CRITICAL_REMOTE_ASSETS - {"asset-manifest.json"})}
 
 
@@ -52,6 +53,8 @@ def asset_setup_mode(use_cached: bool, resume_status: dict | None) -> str:
     """Choose the cheapest safe source for a guided asset setup."""
     if use_cached:
         return "cached"
+    if resume_status and resume_status.get("incremental"):
+        return "incremental"
     if resume_status:
         return "resume"
     return "new"
@@ -181,12 +184,26 @@ class AssetExtractor:
             raise RuntimeError("Asset preflight failed: " + (completed.stderr or completed.stdout).strip())
         return json.loads(completed.stdout)
 
-    def validate_bundle(self, bundle: Path) -> None:
+    def validate_bundle(self, bundle: Path, contract: dict | None = None) -> None:
         tool = self.tool_root / "tools" / "zanik_assets.py"
         completed = subprocess.run([self._python(), str(tool), "validate", "--bundle", str(bundle)],
                                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
         if completed.returncode:
             raise RuntimeError("Cached asset bundle validation failed")
+        if contract:
+            try:
+                with zipfile.ZipFile(bundle) as archive:
+                    manifest = json.loads(archive.read("asset-manifest.json"))
+            except (OSError, KeyError, zipfile.BadZipFile, json.JSONDecodeError) as error:
+                raise RuntimeError("Cached asset bundle manifest is unreadable") from error
+            if (manifest.get("extractionRecipeVersion") != contract.get("extractionRecipeVersion")
+                    or manifest.get("compatibilityProfile", {}).get("version") !=
+                    contract.get("compatibilityProfileVersion")
+                    or manifest.get("extractionRecipeSha256") !=
+                    contract.get("extractionRecipeSha256")):
+                raise RuntimeError(
+                    "The selected asset bundle uses an older extraction recipe or compatibility profile. "
+                    "Update the retained incremental cache or perform a new extraction before uploading it.")
 
     @staticmethod
     def _file_sha256(path: Path) -> str:
@@ -214,16 +231,29 @@ class AssetExtractor:
         current = self.current_fingerprints(game_root)
         expected = status.get("fingerprints", {})
         mismatches = [name for name, value in current.items() if expected.get(name) != value]
-        return {**status, "compatible": not mismatches, "mismatches": mismatches}
+        incremental = status.get("stage") == "complete"
+        unsafe = [name for name in mismatches if name == "toolLockSha256"]
+        return {**status, "compatible": not (unsafe if incremental else mismatches),
+                "incremental": incremental, "mappingRequired": "gameExecutableSha256" in mismatches,
+                "mismatches": mismatches, "unsafeMismatches": unsafe}
 
     def bundle_compatible_with_game(self, bundle: Path, game_root: Path,
-                                    executable_sha256: str | None = None) -> bool:
+                                    executable_sha256: str | None = None,
+                                    contract: dict | None = None) -> bool:
         try:
             with zipfile.ZipFile(bundle) as archive:
                 manifest = json.loads(archive.read("asset-manifest.json"))
             source = manifest.get("sourceExecutable") or {}
             current = executable_sha256 or self.current_fingerprints(game_root)["gameExecutableSha256"]
-            return source.get("sha256") == current
+            if source.get("sha256") != current:
+                return False
+            if contract and (manifest.get("extractionRecipeVersion") != contract.get("extractionRecipeVersion")
+                             or manifest.get("compatibilityProfile", {}).get("version") !=
+                             contract.get("compatibilityProfileVersion")
+                             or manifest.get("extractionRecipeSha256") !=
+                             contract.get("extractionRecipeSha256")):
+                return False
+            return True
         except (OSError, KeyError, ValueError, zipfile.BadZipFile, json.JSONDecodeError, RuntimeError):
             return False
 
@@ -231,7 +261,7 @@ class AssetExtractor:
                 usmap: Path | None = None, keep_work: bool = False,
                 preserve_existing_loader: bool = False,
                 recovery_root: Path | None = None, work_root: Path | None = None,
-                resume: bool = False) -> CachedBundle:
+                resume: bool = False, incremental: bool = False) -> CachedBundle:
         script = self.tool_root / "init-assets.ps1"
         if not script.exists():
             raise FileNotFoundError("The bundled Windows asset extractor is missing")
@@ -254,6 +284,8 @@ class AssetExtractor:
             command += ["-WorkDirectory", str(work_root)]
         if resume:
             command.append("-Resume")
+        if incremental:
+            command.append("-Incremental")
         event({"phase": "extract", "message": self.toolchain_summary(game_root)})
         event({"phase": "extract", "message": "Starting the Windows client asset extractor"})
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -306,18 +338,6 @@ class AssetExtractor:
         if completed.returncode:
             raise RuntimeError("Could not safely discard the extraction workspace: " +
                                (completed.stderr or completed.stdout).strip())
-
-    def cleanup_completed(self, parent: Path) -> list[str]:
-        cleaned: list[str] = []
-        if not parent.is_dir():
-            return cleaned
-        for work_root in sorted(path for path in parent.iterdir() if path.is_dir()):
-            status = self.resumable(work_root)
-            if status and status.get("stage") == "complete":
-                self.discard(work_root)
-                cleaned.append(work_root.name)
-        return cleaned
-
 
 class AssetDeployer:
     def __init__(self, provider: PterodactylProvider):

@@ -10,6 +10,7 @@ param(
     [string]$RecoveryDirectory,
     [string]$WorkDirectory,
     [switch]$Resume,
+    [switch]$Incremental,
     [string]$InstallBundle,
     [string]$Destination
 )
@@ -41,7 +42,16 @@ $Pipeline = Join-Path $Root 'tools\windows_asset_pipeline.py'
 $Recipe = Join-Path $Root 'asset-tools\extraction-recipes.json'
 $ToolLock = Join-Path $Root 'asset-tools\tools.lock.json'
 $RecipeVersion = (Get-Content -LiteralPath $Recipe -Raw | ConvertFrom-Json).schemaVersion
-$Work = if ($WorkDirectory) { [IO.Path]::GetFullPath($WorkDirectory) } else { Join-Path ([IO.Path]::GetTempPath()) ("zw-" + [Guid]::NewGuid().ToString('N').Substring(0, 8)) }
+$Work = if ($WorkDirectory) {
+    [IO.Path]::GetFullPath($WorkDirectory)
+} else {
+    $StateRoot = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Zanik Manager\asset-work-standalone' } else { Join-Path ([IO.Path]::GetTempPath()) 'Zanik-asset-work-standalone' }
+    $Hasher = [Security.Cryptography.SHA256]::Create()
+    try {
+        $RootHash = ([BitConverter]::ToString($Hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($GameRoot.ToLowerInvariant())))).Replace('-', '').Substring(0, 16).ToLowerInvariant()
+    } finally { $Hasher.Dispose() }
+    Join-Path $StateRoot $RootHash
+}
 $JournalPath = Join-Path $Work 'extraction-journal.json'
 $MarkerPath = Join-Path $Work '.zanik-asset-work.json'
 $StateOrder = @{ created = 0; mappings = 1; exports = 2; generating = 3; generated = 4; bundled = 5; parts = 6; complete = 7 }
@@ -63,12 +73,30 @@ $Fingerprint = @{
     recipeSha256 = (Get-FileHash -LiteralPath $Recipe -Algorithm SHA256).Hash.ToLowerInvariant()
     toolLockSha256 = (Get-FileHash -LiteralPath $ToolLock -Algorithm SHA256).Hash.ToLowerInvariant()
 }
+if (-not $Resume -and -not $Incremental -and (Test-Path -LiteralPath $JournalPath)) {
+    $ExistingJournal = Get-Content -LiteralPath $JournalPath -Raw | ConvertFrom-Json
+    if ($ExistingJournal.stage -eq 'complete') { $Incremental = $true }
+}
+if ($Resume -and $Incremental) { throw '-Resume and -Incremental cannot be used together.' }
 if ($Resume) {
     if (-not (Test-Path -LiteralPath $JournalPath)) { throw "No resumable extraction exists at '$Work'." }
     $Journal = Get-Content -LiteralPath $JournalPath -Raw | ConvertFrom-Json
     foreach ($Name in $Fingerprint.Keys) {
         if ($Journal.fingerprints.$Name -ne $Fingerprint[$Name]) { throw "The resumable extraction no longer matches the game or packaged tools ($Name changed). Discard it and start again." }
     }
+} elseif ($Incremental) {
+    if (-not (Test-Path -LiteralPath $JournalPath)) { throw "No incremental extraction cache exists at '$Work'." }
+    $Journal = Get-Content -LiteralPath $JournalPath -Raw | ConvertFrom-Json
+    if ($Journal.stage -ne 'complete') { throw "The extraction workspace is incomplete at stage '$($Journal.stage)'; resume it before starting an incremental update." }
+    if ($Journal.fingerprints.toolLockSha256 -ne $Fingerprint.toolLockSha256) {
+        throw 'The packaged extraction tools changed and cannot safely reuse this raw cache. Discard it once and perform a full extraction.'
+    }
+    $GameChanged = $Journal.fingerprints.gameExecutableSha256 -ne $Fingerprint.gameExecutableSha256
+    $Journal.fingerprints = $Fingerprint
+    $Journal.stage = if ($GameChanged) { 'created' } else { 'mappings' }
+    $Journal.updatedAt = [DateTime]::UtcNow.ToString('o')
+    Write-JsonAtomic $JournalPath $Journal
+    Write-ZanikEvent 'incremental' 'Updating the retained private asset cache; only changed, added, or removed game packages will be exported'
 } else {
     if (Test-Path -LiteralPath $JournalPath) { throw "A resumable extraction already exists at '$Work'. Resume or discard it before starting another extraction." }
     New-Item -ItemType Directory -Path $Work -Force | Out-Null
@@ -102,12 +130,15 @@ if ($StateOrder[$Journal.stage] -lt $StateOrder['mappings'] -and -not $UsmapPath
 if ($StateOrder[$Journal.stage] -lt $StateOrder['generated']) {
 $PipelineWorkspace = Join-Path $Work 'pipeline'
 $PipelineArguments = @($Pipeline, '--game-root', $GameRoot, '--output', $Generated, '--tool-root', $Root, '--usmap-path', $UsmapPath, '--recipe', $Recipe, '--work-root', $Work, '--stage-journal', $JournalPath)
-$ResumePipeline = (($Resume -and (Test-Path -LiteralPath $PipelineWorkspace -PathType Container)) -or $Journal.stage -in @('exports', 'generating'))
+$IncrementalPipeline = $Incremental -and (Test-Path -LiteralPath $PipelineWorkspace -PathType Container)
+$ResumePipeline = (($Resume -and (Test-Path -LiteralPath $PipelineWorkspace -PathType Container)) -or ($Journal.stage -in @('exports', 'generating') -and -not $IncrementalPipeline))
 if ($ResumePipeline) { $PipelineArguments += @('--resume-work', $PipelineWorkspace) }
+elseif ($IncrementalPipeline) { $PipelineArguments += @('--incremental-work', $PipelineWorkspace) }
 else { $PipelineArguments += @('--workspace', $PipelineWorkspace) }
 if ($KeepWork) { $PipelineArguments += '--keep-work' }
 if ($CatalogsOnly) { Write-Warning '-CatalogsOnly retains artwork referenced by runtime catalogs and omits only unreachable exports.' }
-if ($ResumePipeline) { Write-ZanikEvent 'extract' 'Validating retained exports; game launch and UnrealAssetScout extraction are skipped' }
+if ($IncrementalPipeline) { Write-ZanikEvent 'extract' 'Checking retained exports and applying only changed, added, or removed packages' }
+elseif ($ResumePipeline) { Write-ZanikEvent 'extract' 'Validating retained exports; game launch and UnrealAssetScout extraction are skipped' }
 else { Write-ZanikEvent 'extract' 'Exporting targeted catalogs and artwork' }
 & $Python @PipelineArguments
 if ($LASTEXITCODE -ne 0) { throw "Asset extraction failed with exit code $LASTEXITCODE" }
@@ -120,7 +151,8 @@ if (-not $Build) { $Build = 'unknown' }
 $Bundle = Join-Path $OutputDirectory "zanik-assets-$Build.zip"
 if ($StateOrder[$Journal.stage] -lt $StateOrder['bundled']) {
 Write-ZanikEvent 'bundle' 'Validating and packaging the complete asset bundle'
-& $Python $AssetTool bundle --game-root $GameRoot --generated-root $Generated --output $Bundle --mapping $UsmapPath --tool-versions-file $ToolLock --recipe-version $RecipeVersion --profile $Recipe
+$ExtractionMode = if ($Incremental) { 'incremental' } else { 'full' }
+& $Python $AssetTool bundle --game-root $GameRoot --generated-root $Generated --output $Bundle --mapping $UsmapPath --tool-versions-file $ToolLock --recipe-version $RecipeVersion --profile $Recipe --extraction-mode $ExtractionMode
 if ($LASTEXITCODE -ne 0) { throw "Asset bundling failed with exit code $LASTEXITCODE" }
 Set-ExtractionStage 'bundled'
 } elseif (-not (Test-Path -LiteralPath $Bundle)) {
@@ -149,13 +181,7 @@ Write-Host "Upload the part directory to /home/container/zanik-assets-incoming/$
     if ($KeepWork) {
         Write-Warning "Intermediate game exports remain at '$Work'. They are game-derived and must not be redistributed."
     } elseif ($Succeeded -and (Test-Path -LiteralPath $Work)) {
-        $PendingCleanup = Join-Path (Split-Path -Parent $Work) ("pending-cleanup-" + [IO.Path]::GetFileName($Work) + '.json')
-        & $Python $AssetTool cleanup-work --work-root $Work --pending-journal $PendingCleanup
-        if ($LASTEXITCODE -eq 3) {
-            Write-ZanikEvent 'cleanup-warning' "The validated bundle is ready, but temporary files are pending cleanup. Zanik Manager will retry safely."
-        } elseif ($LASTEXITCODE -ne 0) {
-            Write-Warning "Validated bundles are ready, but cleanup could not be completed."
-        }
+        Write-ZanikEvent 'incremental-cache' "Retained the private incremental extraction cache at '$Work'. Use Discard generated work to remove it; the next update would then require a full extraction."
     } elseif (-not $Succeeded) {
         Write-ZanikEvent 'resume' "Extraction work was preserved at '$Work' and can be resumed from stage $($Journal.stage)."
     }

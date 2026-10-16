@@ -322,21 +322,30 @@ def recover_or_create_export_checkpoint(temporary: Path, recipe: dict,
 
 
 def complete_remaining_exports(common: list[str], temporary: Path, recipe: dict,
-                               json_root: Path, texture_root: Path, font_root: Path) -> None:
+                               json_root: Path, texture_root: Path, font_root: Path,
+                               *, incremental: bool = False) -> None:
     """Finish texture/font exports after a verified retained JSON-only stage."""
     targets = referenced_textures(json_root, recipe["requiredTextureAssets"])
     if not targets:
         raise RuntimeError("no web texture references were discovered in the targeted JSON export")
-    if texture_root.exists():
+    if texture_root.exists() and not incremental:
         remove_tree(texture_root)
-    if font_root.exists():
+    if font_root.exists() and not incremental:
         remove_tree(font_root)
-    for index, expression in enumerate(filter_chunks(targets), 1):
+    chunks = filter_chunks(targets)
+    expected_batches = {f"batch-{index:02d}" for index in range(1, len(chunks) + 1)}
+    for index, expression in enumerate(chunks, 1):
         batch = texture_root / f"batch-{index:02d}"
-        run(common + ["-f", expression, "export", "Textures", "-o", str(batch), "-c", "-r",
+        rebuild = [] if incremental else ["-r"]
+        run(common + ["-f", expression, "export", "Textures", "-o", str(batch), "-c", *rebuild,
                       "-l", str(temporary / f"texture-export-{index:02d}.log")],
             f"Exporting targeted web textures ({index})", quiet=True)
-    run(common + ["-f", recipe["fontFilter"], "export", "Raw", "-o", str(font_root), "-c", "-r",
+    if incremental and texture_root.is_dir():
+        for stale in (path for path in texture_root.iterdir()
+                      if path.is_dir() and path.name.startswith("batch-") and path.name not in expected_batches):
+            remove_tree(stale)
+    rebuild = [] if incremental else ["-r"]
+    run(common + ["-f", recipe["fontFilter"], "export", "Raw", "-o", str(font_root), "-c", *rebuild,
                   "-l", str(temporary / "font-export.log")], "Exporting the web font", quiet=True)
 
 
@@ -369,8 +378,8 @@ def extract(args: argparse.Namespace) -> int:
     work_parent.mkdir(parents=True, exist_ok=True)
     if os.name == "nt" and len(str(work_parent)) > 70:
         raise ValueError("the intermediate work root is too deep for cooked asset paths; use a short path such as $env:TEMP\\zw-assets")
-    if args.resume_work:
-        temporary = args.resume_work.resolve()
+    if args.resume_work or args.incremental_work:
+        temporary = (args.resume_work or args.incremental_work).resolve()
     elif args.workspace:
         temporary = args.workspace.resolve()
         if temporary.exists() and any(temporary.iterdir()):
@@ -378,7 +387,7 @@ def extract(args: argparse.Namespace) -> int:
         temporary.mkdir(parents=True, exist_ok=True)
     else:
         temporary = Path(tempfile.mkdtemp(prefix="zx-", dir=work_parent))
-    keep = bool(args.keep_work or args.resume_work or args.workspace)
+    keep = bool(args.keep_work or args.resume_work or args.incremental_work or args.workspace)
     stage_journal = args.stage_journal.resolve() if args.stage_journal else None
     try:
         json_root = temporary / "json"; texture_root = temporary / "textures"; font_root = temporary / "font"; web = temporary / "web"; internal = temporary / "internal"
@@ -396,10 +405,12 @@ def extract(args: argparse.Namespace) -> int:
             update_stage(stage_journal, "exports")
             print("[Zanik] Retained exports verified; UnrealAssetScout extraction skipped", flush=True)
         else:
+            incremental = bool(args.incremental_work)
             last_export_error: Exception | None = None
             for attempt in range(1, 4):
-                if json_root.exists(): remove_tree(json_root)
-                run(common + ["-f", recipe["jsonFilter"], "export", "Json", "-b", "-o", str(json_root), "-c", "-r", "-l", str(temporary / f"json-export-{attempt}.log")], f"Exporting targeted catalog data (attempt {attempt}/3)", quiet=True)
+                if json_root.exists() and not incremental: remove_tree(json_root)
+                rebuild = [] if incremental else ["-r"]
+                run(common + ["-f", recipe["jsonFilter"], "export", "Json", "-b", "-o", str(json_root), "-c", *rebuild, "-l", str(temporary / f"json-export-{attempt}.log")], f"{'Updating' if incremental else 'Exporting'} targeted catalog data (attempt {attempt}/3)", quiet=True)
                 try:
                     validate_catalog_export(json_root, reviewed_counts)
                     last_export_error = None
@@ -409,8 +420,14 @@ def extract(args: argparse.Namespace) -> int:
                     print(f"[Zanik] Catalog export attempt {attempt} was incomplete: {error}", flush=True)
             if last_export_error is not None:
                 raise RuntimeError(f"targeted catalog export remained incomplete after three attempts: {last_export_error}")
-            complete_remaining_exports(common, temporary, recipe, json_root, texture_root, font_root)
-            recover_or_create_export_checkpoint(temporary, recipe, reviewed_counts, mapping, stage_journal)
+            complete_remaining_exports(common, temporary, recipe, json_root, texture_root, font_root,
+                                       incremental=incremental)
+            if incremental:
+                write_json_atomic(temporary / EXPORT_CHECKPOINT,
+                                  verified_export_checkpoint(temporary, recipe, reviewed_counts,
+                                                             mapping, stage_journal))
+            else:
+                recover_or_create_export_checkpoint(temporary, recipe, reviewed_counts, mapping, stage_journal)
             update_stage(stage_journal, "exports")
         reset_partial_generation(temporary)
         update_stage(stage_journal, "generating")
@@ -464,6 +481,7 @@ def main() -> int:
     parser.add_argument("--work-root", type=Path)
     parser.add_argument("--keep-work", action="store_true")
     parser.add_argument("--resume-work", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--incremental-work", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--workspace", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--stage-journal", type=Path, help=argparse.SUPPRESS)
     return extract(parser.parse_args())

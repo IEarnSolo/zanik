@@ -601,6 +601,9 @@ class PterodactylProvider(ServerProvider):
             reasons.append("The active bundle reports missing required assets.")
         if manifest.get("extractionRecipeVersion") != contract.get("extractionRecipeVersion"):
             reasons.append("The active bundle uses a different extraction recipe version.")
+        if (contract.get("extractionRecipeSha256")
+                and manifest.get("extractionRecipeSha256") != contract.get("extractionRecipeSha256")):
+            reasons.append("The active bundle was generated from different extraction rules.")
         profile_version = manifest.get("compatibilityProfile", {}).get("version")
         if profile_version != contract.get("compatibilityProfileVersion"):
             reasons.append("The active bundle uses a different reviewed compatibility profile.")
@@ -623,6 +626,7 @@ class PterodactylProvider(ServerProvider):
         return {"valid": not reasons, "installed": True, "reasons": reasons,
                 "gameBuild": manifest.get("gameBuild") or manifest.get("clientBuild"),
                 "extractionRecipeVersion": manifest.get("extractionRecipeVersion"),
+                "extractionRecipeSha256": manifest.get("extractionRecipeSha256"),
                 "compatibilityProfileVersion": profile_version}
 
     def _read_game_update_report(self, server_id: str, root: str) -> dict:

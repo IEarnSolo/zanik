@@ -75,6 +75,8 @@ with tempfile.TemporaryDirectory() as name:
         "python-embed-windows-x86_64": "3.12.10",
         "unreal-asset-scout-windows-x86_64": "0.5.0",
     }
+    assert bundled_manifest["extractionMode"] == "full"
+    assert bundled_manifest["extractionRecipeSha256"] is None
     subprocess.run([sys.executable, str(TOOL), "install-bundle", "--bundle", str(first), "--destination", str(destination)], check=True)
     current = destination / "current"; manifest = json.loads((current / "asset-manifest.json").read_text())
     assert manifest["sourceKind"] == "linux-dedicated-server" and not manifest["missingRequired"]
@@ -89,8 +91,13 @@ with tempfile.TemporaryDirectory() as name:
     profile.write_text(json.dumps({"catalogProfile": {"version": "test", "catalogCounts": {"npc-catalog.json:types": 999}}}))
     incompatible = root / "incompatible.zip"
     subprocess.run([sys.executable, str(TOOL), "bundle", "--game-root", str(game), "--generated-root", str(generated),
-                    "--output", str(incompatible), "--profile", str(profile)], check=True, env=env)
+                    "--output", str(incompatible), "--profile", str(profile),
+                    "--extraction-mode", "incremental"], check=True, env=env)
     subprocess.run([sys.executable, str(TOOL), "validate", "--bundle", str(incompatible)], check=True)
+    with zipfile.ZipFile(incompatible) as archive:
+        incremental_manifest = json.loads(archive.read("asset-manifest.json"))
+    assert incremental_manifest["extractionMode"] == "incremental"
+    assert incremental_manifest["extractionRecipeSha256"] == hashlib.sha256(profile.read_bytes()).hexdigest()
     rejected_drift = subprocess.run([sys.executable, str(TOOL), "install-bundle", "--bundle", str(incompatible),
                                      "--destination", str(root / "drift-assets")], capture_output=True)
     assert rejected_drift.returncode and b"marked incompatible" in rejected_drift.stderr

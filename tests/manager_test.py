@@ -273,7 +273,7 @@ class ManagerTests(unittest.TestCase):
             }), encoding="utf-8-sig")
             self.assertEqual(extractor.resumable(work)["stage"], "mappings")
 
-    def test_resume_and_cache_compatibility_reject_game_updates(self):
+    def test_incomplete_resume_rejects_game_updates_and_complete_cache_updates_incrementally(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); tools = root / "asset-tools"; work = root / "work"
             game = root / "game"
@@ -301,6 +301,32 @@ class ManagerTests(unittest.TestCase):
             self.assertFalse(status["compatible"])
             self.assertEqual(status["mismatches"], ["gameExecutableSha256"])
             self.assertFalse(extractor.bundle_compatible_with_game(bundle, game))
+            journal = json.loads((work / "extraction-journal.json").read_text())
+            journal["stage"] = "complete"
+            (work / "extraction-journal.json").write_text(json.dumps(journal))
+            status = extractor.resume_compatibility(work, game)
+            self.assertTrue(status["compatible"])
+            self.assertTrue(status["incremental"])
+            self.assertTrue(status["mappingRequired"])
+
+            contract = {"extractionRecipeVersion": 5,
+                        "compatibilityProfileVersion": "reviewed-5",
+                        "extractionRecipeSha256": "a" * 64}
+            manifest.update({"extractionRecipeVersion": 5,
+                             "extractionRecipeSha256": "a" * 64,
+                             "compatibilityProfile": {"version": "reviewed-5"}})
+            with zipfile.ZipFile(bundle, "w") as archive:
+                archive.writestr("asset-manifest.json", json.dumps(manifest))
+            executable.write_bytes(b"game-v1")
+            self.assertTrue(extractor.bundle_compatible_with_game(bundle, game, contract=contract))
+            self.assertFalse(extractor.bundle_compatible_with_game(
+                bundle, game, contract={**contract, "extractionRecipeVersion": 6}))
+            self.assertFalse(extractor.bundle_compatible_with_game(
+                bundle, game, contract={**contract, "extractionRecipeSha256": "b" * 64}))
+            (tools / "asset-tools/tools.lock.json").write_text("changed-tools")
+            status = extractor.resume_compatibility(work, game)
+            self.assertFalse(status["compatible"])
+            self.assertEqual(status["unsafeMismatches"], ["toolLockSha256"])
 
     def test_manager_exposes_resume_and_safe_discard_controls(self):
         source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
@@ -313,6 +339,11 @@ class ManagerTests(unittest.TestCase):
         self.assertIn("UnrealAssetScout", assets_source)
         self.assertIn("UE4SS", assets_source)
         self.assertIn("game_build", assets_source)
+        self.assertIn('command.append("-Incremental")', assets_source)
+        script_source = (ROOT / "scripts" / "init-assets.ps1").read_text(encoding="utf-8")
+        self.assertIn("[switch]$Incremental", script_source)
+        self.assertIn("only changed, added, or removed game packages", script_source)
+        self.assertNotIn("cleanup-work --work-root $Work", script_source)
         lifecycle_source = (ROOT / "manager" / "zanik_manager" / "lifecycle.py").read_text(encoding="utf-8")
         self.assertIn('"buildingIconSources": manifest.get("buildingIconSources", {})', lifecycle_source)
         self.assertIn('"recipeRouteCoverage": manifest.get("recipeRouteCoverage", {})', lifecycle_source)
@@ -321,10 +352,12 @@ class ManagerTests(unittest.TestCase):
         status = {"stage": "mappings", "updatedAt": "2026-10-13T00:00:00Z"}
         self.assertEqual(asset_setup_mode(True, status), "cached")
         self.assertEqual(asset_setup_mode(False, status), "resume")
+        self.assertEqual(asset_setup_mode(False, {**status, "incremental": True}), "incremental")
         self.assertEqual(asset_setup_mode(False, None), "new")
         source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
         self.assertIn("resume_status = None if use_cached else extractor.resume_compatibility(work, root)", source)
         self.assertIn('resume=(mode == "resume")', source)
+        self.assertIn('incremental=(mode == "incremental")', source)
         self.assertIn('resume_activity_message(resume_status["stage"])', source)
         self.assertIn("Dragonwilds will not reopen", resume_activity_message("mappings"))
         self.assertIn("will continue with catalog and artwork export", resume_activity_message("mappings"))
@@ -386,6 +419,8 @@ class ManagerTests(unittest.TestCase):
         recipe = json.loads((ROOT / "asset-tools/extraction-recipes.json").read_text())
         self.assertEqual(contract["extractionRecipeVersion"], recipe["schemaVersion"])
         self.assertEqual(contract["compatibilityProfileVersion"], recipe["catalogProfile"]["version"])
+        self.assertEqual(contract["extractionRecipeSha256"], hashlib.sha256(
+            (ROOT / "asset-tools/extraction-recipes.json").read_bytes()).hexdigest())
         self.assertIn("world-map.jpg", contract["criticalFiles"])
 
     def test_journal_persistence_and_incomplete_filter(self):
@@ -619,6 +654,7 @@ class ManagerTests(unittest.TestCase):
                    for name, data in payloads.items()]
         manifest = {"compatibility": "compatible", "extractionStage": "validated-and-packaged",
                     "missingRequired": [], "extractionRecipeVersion": 5,
+                    "extractionRecipeSha256": "a" * 64,
                     "compatibilityProfile": {"version": "reviewed-5"},
                     "generatedFileCount": len(entries), "files": entries}
         class Client:
@@ -627,16 +663,21 @@ class ManagerTests(unittest.TestCase):
                 raise PterodactylError("missing", 404)
             def download_file(self, _server, path): return payloads[path.rsplit("/", 1)[-1]]
         contract = {"extractionRecipeVersion": 5, "compatibilityProfileVersion": "reviewed-5",
+                    "extractionRecipeSha256": "a" * 64,
                     "criticalFiles": sorted(payloads)}
         with tempfile.TemporaryDirectory() as temporary:
             provider = PterodactylProvider(Client(), JournalStore(Path(temporary)))
             valid = provider.asset_contract_status("dev", "/home/container", contract)
             stale = provider.asset_contract_status("dev", "/home/container", {**contract, "extractionRecipeVersion": 6})
+            changed_rules = provider.asset_contract_status(
+                "dev", "/home/container", {**contract, "extractionRecipeSha256": "b" * 64})
             missing = provider.asset_contract_status(
                 "dev", "/home/container", {**contract, "criticalFiles": contract["criticalFiles"] + ["recipe-unlocks.json"]})
         self.assertTrue(valid["valid"])
         self.assertFalse(stale["valid"])
         self.assertTrue(any("recipe version" in reason for reason in stale["reasons"]))
+        self.assertFalse(changed_rules["valid"])
+        self.assertTrue(any("different extraction rules" in reason for reason in changed_rules["reasons"]))
         self.assertFalse(missing["valid"])
         self.assertTrue(any("recipe-unlocks.json" in reason for reason in missing["reasons"]))
 
