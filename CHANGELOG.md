@@ -2,6 +2,14 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.28] - 2026-10-16
+
+### Fixed
+
+- Let Zanik Manager configuration descriptions use the complete available width and wrap only when the window requires it.
+- Prevent the guided configuration view from creating a horizontal scrollbar.
+- Use compact controls for the website port, public URL, and administrator cookie name while keeping their descriptions full-width.
+
 ## [0.2.27] - 2026-10-16
 
 ### Fixed
