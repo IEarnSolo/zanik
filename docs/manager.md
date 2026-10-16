@@ -1,5 +1,9 @@
 # Zanik Manager
 
+The Servers tab shows the active server's Zanik compatibility, installation mode, public website URL, and dedicated website port. **Open website** opens the configured public URL in your default browser. It remains disabled until the server has a non-local public URL saved in its Zanik configuration.
+
+Use **Edit servers** beside the active-server selector to rename, reorder, or remove saved Manager profiles. Removing a profile affects only Zanik Manager on the current PC; it does not delete the Pterodactyl server or change any remote files.
+
 Zanik Manager is the recommended installation path for Windows administrators using Pterodactyl. Download `zanik-manager-windows-x86_64-VERSION.zip`, extract the complete folder, and open `ZanikManager.exe`. It includes the matching server package and Windows asset extractor and does not require Python, SSH, or administrator rights.
 
 The bottom-right status bar quietly tracks two independent update states. **Manager** checks stable public GitHub releases shortly after startup and every ten minutes; **Check** refreshes it immediately, and **Update and relaunch** appears only after the exact archive, release manifest, size, and SHA-256 digest have been validated. The updater swaps the portable directory transactionally, waits for the new GUI to start, and restores the prior copy if startup fails. Profiles, credentials, cached bundles, and operation journals remain under `%LOCALAPPDATA%` and are not part of that swap.

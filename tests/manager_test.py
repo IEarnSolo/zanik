@@ -20,7 +20,8 @@ from manager.zanik_manager.journal import JournalStore, OperationJournal
 from manager.zanik_manager.lifecycle import (PterodactylProvider, ReleasePayload, is_exact_legacy_launcher,
                                              safe_archive_name, validate_server_root)
 from manager.zanik_manager.onboarding import discover_panel, is_remote_http
-from manager.zanik_manager.profiles import ProfileStore, ServerProfile, is_local_origin, normalize_origin
+from manager.zanik_manager.profiles import (ProfileStore, ServerProfile, is_local_origin, move_profile,
+                                             normalize_origin, remove_profile, rename_profile)
 from manager.zanik_manager.preferences import PreferenceStore, preferred_profile_index
 from manager.zanik_manager.payload_contract import compatibility_summary, contract_from_entries
 from manager.zanik_manager.pterodactyl import PterodactylClient, PterodactylError, Response, api_file_path
@@ -44,6 +45,31 @@ def write_payload_archive(archive: Path, files: dict[str, bytes], version: str =
     return contract
 
 class ManagerTests(unittest.TestCase):
+    def test_server_profile_rename_reorder_and_delete_are_local_and_deterministic(self):
+        first = ServerProfile.create(name="First", panel_origin="https://panel.example", account_id="1",
+                                     credential_target="one", server_id="aaa")
+        second = ServerProfile.create(name="Second", panel_origin="https://panel.example", account_id="1",
+                                      credential_target="one", server_id="bbb")
+        profiles = rename_profile([first, second], second.id, "  Main Server  ")
+        self.assertEqual([profile.name for profile in profiles], ["First", "Main Server"])
+        profiles = move_profile(profiles, second.id, -1)
+        self.assertEqual([profile.id for profile in profiles], [second.id, first.id])
+        profiles = remove_profile(profiles, first.id)
+        self.assertEqual([profile.id for profile in profiles], [second.id])
+        self.assertEqual(first.name, "First")
+        with self.assertRaises(ValueError):
+            rename_profile(profiles, second.id, "  ")
+
+    def test_manager_server_information_and_profile_editor_contract(self):
+        source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('QPushButton("Edit servers")', source)
+        self.assertIn('QPushButton("Open website")', source)
+        self.assertIn("class EditServersDialog", source)
+        self.assertIn("Removing a profile only removes it", source)
+        self.assertIn('f"Website: {url}"', source)
+        self.assertIn('f"Website port: {website.get(\'port\')}"', source)
+        self.assertIn("website_configuration_ready", source)
+
     def test_server_payload_contract_ignores_release_docs_but_tracks_operational_files(self):
         base = [{"path": "bin/libzanik.so", "size": 3, "sha256": "a" * 64, "mode": 0o755},
                 {"path": "scripts/install.sh", "size": 4, "sha256": "b" * 64, "mode": 0o755},

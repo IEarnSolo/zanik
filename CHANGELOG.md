@@ -2,6 +2,18 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.23] - 2026-10-16
+
+### Added
+
+- Show the configured public website URL and dedicated website port in the selected server's Zanik Manager information.
+- Add an **Open website** action for configured public URLs.
+- Add an **Edit servers** dialog for renaming, reordering, and removing local Manager profiles without modifying their Pterodactyl servers.
+
+### Changed
+
+- Combine asynchronous installation and configuration results into one stable server summary instead of allowing the last completed check to overwrite other information.
+
 ## [0.2.22] - 2026-10-16
 
 ### Added
