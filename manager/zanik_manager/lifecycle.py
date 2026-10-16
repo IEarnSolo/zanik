@@ -16,6 +16,7 @@ from typing import Callable
 from .config import content_hash
 from .game_updates import INTERVAL_SECONDS, PublicSteamBuildChecker, installed_build
 from .journal import JournalStore, OperationJournal
+from .payload_contract import CONTRACT_SCHEMA_VERSION, validate_contract
 from .pterodactyl import PterodactylClient, PterodactylError, api_file_path
 from .provider import ServerProvider
 
@@ -75,17 +76,25 @@ class ReleasePayload:
                 self.entries[name] = PayloadEntry(name, len(data), sha256(data), mode)
         required = {"bin/libzanik.so", "bin/zanik-server", "scripts/compat-launcher.sh",
                     "scripts/verify-assets.sh", "scripts/check-game-update.sh",
-                    "config/zanik.conf.example", "compatibility/compatibility.tsv", "VERSION"}
+                    "config/zanik.conf.example", "compatibility/compatibility.tsv", "VERSION",
+                    "payload-contract.json"}
         missing = required - set(self.entries)
         if missing:
             raise ValueError(f"Server payload is missing {', '.join(sorted(missing))}")
+        try:
+            self.contract = json.loads(self.read("payload-contract.json"))
+            validate_contract(self.contract, self.entries.values())
+        except (KeyError, json.JSONDecodeError, ValueError) as error:
+            raise ValueError(f"Server payload contract is invalid: {error}") from error
 
     def read(self, name: str) -> bytes:
         with zipfile.ZipFile(self.archive) as package:
             return package.read(name)
 
     def manifest(self) -> dict:
-        return {"schemaVersion": 1, "archive": self.archive.name, "archiveSha256": content_hash(self.archive.read_bytes()),
+        return {"schemaVersion": 2, "archive": self.archive.name, "archiveSha256": content_hash(self.archive.read_bytes()),
+                "payloadContractSchemaVersion": self.contract["schemaVersion"],
+                "payloadContractSha256": self.contract["contractSha256"],
                 "files": [asdict(self.entries[name]) for name in sorted(self.entries)]}
 
 
@@ -394,11 +403,13 @@ class PterodactylProvider(ServerProvider):
                 official_data = self.client.download_file(server_id, official)
             version = self.client.read_file(server_id, f"{root}/zanik/VERSION").decode().strip()
             progress("Writing and verifying installation metadata", 90)
-            state = {"schemaVersion": 1, "version": version, "mode": mode, "serverRoot": root,
+            state = {"schemaVersion": 2, "version": version, "mode": mode, "serverRoot": root,
                      "officialExecutable": official, "officialSha256": sha256(official_data),
                      "librarySha256": payload.entries["bin/libzanik.so"].sha256,
                      "analyzerSha256": payload.entries["bin/zanik-compat-analyzer"].sha256,
                      "launcherSha256": payload.entries["bin/zanik-server"].sha256,
+                     "payloadContractSchemaVersion": payload.contract["schemaVersion"],
+                     "payloadContractSha256": payload.contract["contractSha256"],
                      "installedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
             self.client.write_file(server_id, f"{root}/zanik/install-state.json", (json.dumps(state, separators=(",", ":")) + "\n").encode())
             self.client.chmod(server_id, f"{root}/zanik", [("install-state.json", 0o600)])
@@ -525,13 +536,15 @@ class PterodactylProvider(ServerProvider):
             result["gameUpdate"] = {"schemaVersion": 1, "status": "unchecked"}
         return result
 
-    def installation_status(self, server_id: str, server_root: str) -> dict:
+    def installation_status(self, server_id: str, server_root: str, expected_contract: dict | None = None,
+                            legacy_contracts: dict | None = None) -> dict:
         """Return lightweight recognized installation state without running Doctor."""
         root = validate_server_root(server_root)
         state = self._zanik_state(server_id, root)
         if not state["zanikInstalled"]:
             return {**state, "installed": False, "version": None, "mode": None}
-        result = {**state, "installed": True, "version": None, "mode": None, "repairRequired": False}
+        result = {**state, "installed": True, "version": None, "mode": None, "repairRequired": False,
+                  "payloadCompatibility": "unknown"}
         try:
             install = json.loads(self.client.read_file(server_id, f"{root}/zanik/install-state.json"))
             version = str(install.get("version", "")).strip()
@@ -539,6 +552,28 @@ class PterodactylProvider(ServerProvider):
             if not version or mode not in {"wrapper", "replace-executable"}:
                 raise ValueError("installation metadata is incomplete")
             result.update({"version": version, "mode": mode, "installation": install})
+            installed_contract = str(install.get("payloadContractSha256", "")).lower()
+            installed_schema = install.get("payloadContractSchemaVersion")
+            if (installed_schema != CONTRACT_SCHEMA_VERSION or len(installed_contract) != 64 or
+                    any(character not in "0123456789abcdef" for character in installed_contract)):
+                legacy = (legacy_contracts or {}).get(version, {})
+                critical = legacy.get("criticalHashes", {})
+                fields = {"bin/libzanik.so": "librarySha256", "bin/zanik-compat-analyzer": "analyzerSha256",
+                          "bin/zanik-server": "launcherSha256"}
+                if (legacy.get("contractSchemaVersion") == CONTRACT_SCHEMA_VERSION and
+                        len(str(legacy.get("contractSha256", ""))) == 64 and critical and
+                        all(install.get(field) == critical.get(path) for path, field in fields.items())):
+                    installed_contract = legacy["contractSha256"]
+                    installed_schema = CONTRACT_SCHEMA_VERSION
+                    result["legacyContractRecognized"] = True
+            result["payloadContractSchemaVersion"] = installed_schema
+            result["payloadContractSha256"] = installed_contract or None
+            if expected_contract:
+                expected_digest = expected_contract.get("contractSha256")
+                expected_schema = expected_contract.get("schemaVersion")
+                if installed_schema == expected_schema == CONTRACT_SCHEMA_VERSION and installed_contract:
+                    result["payloadCompatibility"] = "current" if installed_contract == expected_digest else "update-available"
+                result["expectedPayloadContractSha256"] = expected_digest
         except Exception as error:
             result.update({"repairRequired": True, "detail": str(error)})
             try:

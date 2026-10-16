@@ -1,6 +1,6 @@
 # Upgrades
 
-Do not confuse the three update types. Zanik Manager updates itself from a verified stable GitHub release through **Update and relaunch**. The Servers-tab **Update / repair Zanik** action reinstalls the matching Zanik payload on the selected server using its existing installation mode. Dragonwilds dedicated-server updates remain an operator/hosting responsibility; Manager only reports their availability and never runs Steam `app_update`.
+Do not confuse the three update types. Zanik Manager updates itself from a verified stable GitHub release through **Update and relaunch**. Manager compares the installed operational server-payload contract with the embedded and latest published contracts; Manager-only releases do not require a server reinstall. The Servers-tab **Update / repair Zanik** action remains available for an intentional repair or a real payload update and always reuses the existing installation mode. Dragonwilds dedicated-server updates remain an operator/hosting responsibility; Manager only reports their availability and never runs Steam `app_update`.
 
 Stop the server, download the new server archive and `SHA256SUMS`, and follow the versioned staging and checksum steps in [installation.md](installation.md). Extract each version into its own `SERVER_ROOT/zanik-release/VERSION/payload/` directory, then run:
 

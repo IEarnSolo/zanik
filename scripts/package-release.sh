@@ -25,6 +25,7 @@ install -m 0644 "$ROOT/tools/zanik_assets.py" "$WORK/server/tools/zanik_assets.p
 install -m 0644 "$ROOT/tools/asset_filesystem.py" "$WORK/server/tools/asset_filesystem.py"
 install -m 0644 "$ROOT/VERSION" "$ROOT/CHANGELOG.md" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/README.md" "$WORK/server/"
 for file in installation.md linux.md pterodactyl.md docker.md upgrades.md uninstall.md configuration.md assets.md security.md hosting.md curseforge.md releasing.md contributor-architecture.md manager.md; do install -m 0644 "$ROOT/docs/$file" "$WORK/server/docs/$file"; done
+python3 "$ROOT/manager/zanik_manager/payload_contract.py" --root "$WORK/server" --release-version "$VERSION" --output "$WORK/server/payload-contract.json"
 
 normalize(){ find "$1" -type f -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +; find "$1" -type d -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +; }
 normalize "$WORK/server"
@@ -99,6 +100,7 @@ import site
 EOF
 cp -p "$SERVER_ZIP" "$WORK/manager/payload/server.zip"
 cp -p "$ROOT/config/zanik-config.schema.json" "$WORK/manager/config/zanik-config.schema.json"
+cp -p "$ROOT/config/server-payload-legacy-contracts.json" "$WORK/manager/config/server-payload-legacy-contracts.json"
 cp -p "$ROOT/manager/README.md" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/manager/tools.lock.json" "$WORK/manager/"
 cp -p "$ROOT/VERSION" "$WORK/manager/VERSION"
 cp -p /usr/share/common-licenses/LGPL-3 "$WORK/manager/LICENSE-LGPL-3.0.txt"
@@ -125,11 +127,12 @@ with zipfile.ZipFile(root/'payload/server.zip') as archive:
         if item.is_dir(): continue
         data=archive.read(item); name=item.filename.lstrip('./')
         files.append({'path':name,'size':len(data),'sha256':hashlib.sha256(data).hexdigest(),'mode':(item.external_attr>>16)&0o777 or 0o644})
-(root/'payload/server-payload.json').write_text(json.dumps({'schemaVersion':1,'version':version,'archive':'server.zip','archiveSha256':digest(root/'payload/server.zip'),'files':sorted(files,key=lambda x:x['path'])},indent=2,sort_keys=True)+'\n')
+    contract=json.loads(archive.read('payload-contract.json'))
+(root/'payload/server-payload.json').write_text(json.dumps({'schemaVersion':2,'version':version,'archive':'server.zip','archiveSha256':digest(root/'payload/server.zip'),'payloadContractSchemaVersion':contract['schemaVersion'],'payloadContractSha256':contract['contractSha256'],'files':sorted(files,key=lambda x:x['path'])},indent=2,sort_keys=True)+'\n')
 asset_files=[]
 for path in sorted((root/'asset-tools').rglob('*')):
     if path.is_file(): asset_files.append({'path':path.relative_to(root/'asset-tools').as_posix(),'size':path.stat().st_size,'sha256':digest(path)})
-(root/'payload/payloads.json').write_text(json.dumps({'schemaVersion':1,'version':version,'serverSha256':digest(root/'payload/server.zip'),'assetToolsFiles':asset_files},indent=2,sort_keys=True)+'\n')
+(root/'payload/payloads.json').write_text(json.dumps({'schemaVersion':2,'version':version,'serverSha256':digest(root/'payload/server.zip'),'serverReleaseVersion':contract['releaseVersion'],'serverPayloadContractSchemaVersion':contract['schemaVersion'],'serverPayloadContractSha256':contract['contractSha256'],'assetToolsFiles':asset_files},indent=2,sort_keys=True)+'\n')
 PY
 normalize "$WORK/manager"
 MANAGER_ZIP=$OUT/zanik-manager-windows-x86_64-$VERSION.zip

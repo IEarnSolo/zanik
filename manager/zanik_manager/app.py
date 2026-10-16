@@ -23,6 +23,7 @@ from .journal import JournalStore
 from .lifecycle import PterodactylProvider, ReleasePayload
 from .onboarding import PanelDiscovery, discover_panel, is_remote_http
 from .paths import ensure_layout
+from .payload_contract import compatibility_summary
 from .preferences import PreferenceStore, preferred_profile_index
 from .profiles import ProfileStore, ServerProfile
 from .pterodactyl import PterodactylClient
@@ -152,6 +153,7 @@ class MainWindow(QMainWindow):
         self.manager_version = current_manager_version(distribution_root())
         self.release_checker = GitHubReleaseChecker(self.paths["updates"])
         self.validated_manager_update = None
+        self.manager_release_status = None
         central = QWidget(); outer = QVBoxLayout(central)
         target = QHBoxLayout(); self.profile_box = QComboBox(); self.add_button = button_help(
             QPushButton("Add server"), "Add a Pterodactyl panel connection and select one server to manage.")
@@ -325,6 +327,7 @@ class MainWindow(QMainWindow):
                 self._set_update_label(self.manager_update_label, f"Manager {self.manager_version} · Unknown", "neutral",
                                        "The last update check failed. See Activity for details.")
                 self.log(f"Manager update check failed: {error}"); return
+            self.manager_release_status = result
             self.validated_manager_update = result if result.get("updateAvailable") else None
             if result.get("updateAvailable"):
                 latest = result["latestVersion"]
@@ -335,6 +338,8 @@ class MainWindow(QMainWindow):
                 self._set_update_label(self.manager_update_label, f"Manager {self.manager_version} · Up to date", "current")
                 self.manager_install_button.hide()
             if manual: self.log("Manager update check completed.")
+            if self.active():
+                self.check_installation_state(self.active().id)
         self.run_background("manager-update-check", lambda: self.release_checker.check(self.manager_version, force=manual), done)
 
     def check_game_update(self, manual: bool = False):
@@ -557,6 +562,17 @@ class MainWindow(QMainWindow):
         self.install_button.setEnabled(False); self.update_server_button.setEnabled(False)
         self.server_summary.setText(f"{profile.name}\nChecking installation…")
         selected_id = profile.id
+        try:
+            payload_metadata = json.loads(resource_path("payload", "server-payload.json").read_text(encoding="utf-8-sig"))
+            expected_contract = {"schemaVersion": payload_metadata["payloadContractSchemaVersion"],
+                                 "contractSha256": payload_metadata["payloadContractSha256"]}
+        except (OSError, ValueError, KeyError, TypeError):
+            expected_contract = None
+        try:
+            legacy_contracts = json.loads(resource_path("config", "server-payload-legacy-contracts.json").read_text(
+                encoding="utf-8-sig")).get("releases", {})
+        except (OSError, ValueError, TypeError):
+            legacy_contracts = {}
         def done(result, error):
             if not self.active() or self.active().id != selected_id:
                 return
@@ -570,15 +586,14 @@ class MainWindow(QMainWindow):
             self.install_button.setEnabled(not installed)
             self.update_server_button.setEnabled(installed)
             if installed:
-                version = result.get("version") or "unknown version"
                 mode = result.get("mode") or profile.install_mode or "unknown mode"
-                suffix = " · repair recommended" if result.get("repairRequired") else ""
-                self.server_summary.setText(f"{profile.name}\nZanik {version} · {mode}{suffix}")
+                summary = compatibility_summary(result, self.manager_version, self.manager_release_status)
+                self.server_summary.setText(f"{profile.name}\n{summary}\nInstall mode: {mode}")
             else:
                 self.server_summary.setText(f"{profile.name}\nZanik is not installed")
         self.run_background(f"installation-state-{selected_id}",
                             lambda: self.provider(profile, background=True).installation_status(
-                                profile.server_id, profile.server_root), done)
+                                profile.server_id, profile.server_root, expected_contract, legacy_contracts), done)
 
     def add_server(self):
         dialog = AddServerDialog(self.vault, self)
@@ -630,9 +645,13 @@ class MainWindow(QMainWindow):
             return
         embedded = resource_path("VERSION").read_text(encoding="utf-8").strip()
         current = state.get("version") or "unknown"
-        message = (f"Update or repair {profile.name} from Zanik {current} to the embedded Zanik {embedded} using {mode} mode?\n\n"
-                   "Configuration, authorization, persistent data, sessions, and active website assets will be preserved. "
-                   "The repair runs even when the versions match.")
+        if state.get("payloadCompatibility") == "current":
+            action = (f"Repair {profile.name} using the server payload already compatible with Manager {embedded}?\n\n"
+                      f"The installed Zanik release is {current}. This is an intentional verified repair; no server update is required.")
+        else:
+            action = f"Update or repair {profile.name} from Zanik {current} using the server payload in Manager {embedded}?"
+        message = (action + f"\n\nInstallation mode: {mode}. Configuration, authorization, persistent data, sessions, "
+                   "and active website assets will be preserved.")
         if mode == "replace-executable":
             message += "\n\nThis mode manages the game executable path while preserving the verified official executable."
         if QMessageBox.warning(self, "Update / repair Zanik", message,

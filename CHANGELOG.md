@@ -2,6 +2,19 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.22] - 2026-10-16
+
+### Added
+
+- Track a deterministic operational server-payload contract independently from the Zanik Manager release version.
+- Show whether the installed Zanik payload is current with the running Manager, requires an embedded update, or requires updating Manager first.
+
+### Changed
+
+- Display the installed Zanik version and installation mode on separate lines in the server summary.
+- Keep **Update / repair Zanik** available for intentional same-contract repairs without implying that every Manager update requires a server reinstall.
+- Publish verified server-payload contract metadata in installation, Manager payload, and release manifests.
+
 ## [0.2.21] - 2026-10-16
 
 ### Added

@@ -117,6 +117,13 @@ class GitHubReleaseChecker:
         manifest = json.loads(manifest_body.decode("utf-8"))
         if manifest.get("schemaVersion") != 2 or manifest.get("tag") != tag or manifest.get("version") != version:
             raise RuntimeError("GitHub release manifest does not match the release tag")
+        server_payload = manifest.get("serverPayload")
+        if server_payload is not None:
+            digest = str(server_payload.get("contractSha256", "")).lower()
+            if (server_payload.get("contractSchemaVersion") != 1 or
+                    server_payload.get("releaseVersion") != version or len(digest) != 64 or
+                    any(character not in "0123456789abcdef" for character in digest)):
+                raise RuntimeError("GitHub release manifest has invalid server payload metadata")
         records = [entry for entry in manifest.get("files", []) if entry.get("name") == expected_zip]
         if len(records) != 1:
             raise RuntimeError("GitHub release manifest has no unique Manager archive record")
@@ -132,6 +139,7 @@ class GitHubReleaseChecker:
             "currentVersion": current_version, "latestVersion": version, "tag": tag,
             "updateAvailable": latest > current, "releaseUrl": release.get("html_url", ""),
             "etag": headers.get("ETag") or headers.get("Etag") or "",
+            "serverPayload": server_payload,
             "manager": {"name": expected_zip, "url": zip_asset["browser_download_url"],
                         "size": int(record["size"]), "sha256": record["sha256"]},
         }

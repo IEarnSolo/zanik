@@ -14,6 +14,7 @@ cp "$ROOT/deploy/compatibility.tsv" "$RELEASE/compatibility/compatibility.tsv"
 cp "$ROOT/tools/zanik_assets.py" "$RELEASE/tools/zanik_assets.py"
 cp "$ROOT/VERSION" "$RELEASE/VERSION"
 for f in install update uninstall doctor init-assets compat-launcher verify-assets; do cp "$ROOT/scripts/$f.sh" "$RELEASE/scripts/$f.sh"; done
+python3 "$ROOT/manager/zanik_manager/payload_contract.py" --root "$RELEASE" --release-version "$(cat "$ROOT/VERSION")" --output "$RELEASE/payload-contract.json" >/dev/null
 GAME=$SERVER/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping
 printf '#!/bin/sh\nprintf "%%s|%%s\\n" "${LD_PRELOAD-}" "$*" > "$0.ran"\n' > "$GAME"; chmod +x "$GAME"
 ORIGINAL=$(sha256sum "$GAME" | awk '{print $1}')
@@ -21,6 +22,7 @@ ORIGINAL=$(sha256sum "$GAME" | awk '{print $1}')
 "$RELEASE/scripts/install.sh" --server-root "$SERVER" --mode wrapper
 [ "$(sha256sum "$GAME" | awk '{print $1}')" = "$ORIGINAL" ]
 grep -q '"mode":"wrapper"' "$SERVER/zanik/install-state.json"
+grep -q '"payloadContractSchemaVersion":1' "$SERVER/zanik/install-state.json"
 [ -f "$SERVER/zanik/config/zanik-config.schema.json" ]
 [ "$(stat -c %a "$SERVER/zanik-data/console-admin.key")" = 600 ]
 "$SERVER/zanik/scripts/doctor.sh" --server-root "$SERVER" --json | grep -q '"healthy":true'
