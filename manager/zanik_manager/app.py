@@ -23,7 +23,7 @@ from .journal import JournalStore
 from .lifecycle import PterodactylProvider, ReleasePayload
 from .onboarding import PanelDiscovery, discover_panel, is_remote_http
 from .paths import ensure_layout
-from .payload_contract import compatibility_summary
+from .payload_contract import compatibility_presentation
 from .preferences import PreferenceStore, preferred_profile_index
 from .profiles import ProfileStore, ServerProfile, move_profile, remove_profile, rename_profile
 from .pterodactyl import PterodactylClient
@@ -269,6 +269,10 @@ class MainWindow(QMainWindow):
         page = QWidget(); layout = QVBoxLayout(page)
         self.server_summary = QLabel("Add a server to begin."); self.server_summary.setWordWrap(True)
         self.server_summary.setTextFormat(Qt.PlainText)
+        self.server_compatibility = QLabel(); self.server_compatibility.setWordWrap(True)
+        self.server_compatibility.setTextFormat(Qt.PlainText)
+        self.server_details = QLabel(); self.server_details.setWordWrap(True)
+        self.server_details.setTextFormat(Qt.PlainText)
         row = QHBoxLayout()
         refresh = button_help(QPushButton("Refresh"), "Run a quick, read-only health check and refresh the selected server summary.")
         refresh.clicked.connect(self.run_doctor); row.addWidget(refresh)
@@ -278,16 +282,17 @@ class MainWindow(QMainWindow):
         self.update_server_button = button_help(QPushButton("Update / repair Zanik"),
                                                 "Reinstall the embedded Zanik payload using the existing mode, preserve data and assets, then validate website setup and asset compatibility.")
         self.update_server_button.clicked.connect(self.update_or_repair); self.update_server_button.setEnabled(False); row.addWidget(self.update_server_button)
-        self.open_website_button = button_help(QPushButton("Open website"),
-                                               "Open the configured public Zanik website for the selected server.")
-        self.open_website_button.clicked.connect(self.open_website); self.open_website_button.setEnabled(False)
-        row.addWidget(self.open_website_button)
         actions = (("Recover interrupted", self.recover_interrupted, "Resume or roll back an interrupted Manager transaction for this server."),
                    ("Uninstall", self.uninstall, "Remove verified Zanik-managed files while preserving server data by default."),
                    ("Open panel", self.open_panel, "Open this server's page in the configured Pterodactyl panel."))
         for label, handler, tooltip in actions:
             button = button_help(QPushButton(label), tooltip); button.clicked.connect(handler); row.addWidget(button)
-        layout.addWidget(self.server_summary); layout.addLayout(row); layout.addStretch(); self.tabs.addTab(page, "Servers")
+        self.open_website_button = button_help(QPushButton("Open website"),
+                                               "Open the configured public Zanik website for the selected server.")
+        self.open_website_button.clicked.connect(self.open_website); self.open_website_button.setEnabled(False)
+        row.addWidget(self.open_website_button)
+        layout.addWidget(self.server_summary); layout.addWidget(self.server_compatibility)
+        layout.addWidget(self.server_details); layout.addLayout(row); layout.addStretch(); self.tabs.addTab(page, "Servers")
 
     def _assets_tab(self):
         page = QWidget(); layout = QFormLayout(page)
@@ -665,20 +670,31 @@ class MainWindow(QMainWindow):
         profile = profile or self.active()
         if not profile:
             self.server_summary.setText("Add a server to begin.")
+            self._set_update_label(self.server_compatibility, "", "neutral")
+            self.server_details.clear()
             self.open_website_button.setEnabled(False)
             return
         installation = self.installation_states.get(profile.id)
         if not installation or installation.get("checking"):
             install_line = "Checking installation…"
+            install_state = "neutral"
+            install_tooltip = "Manager is checking the installed Zanik server payload."
             mode = profile.install_mode or "unknown"
         elif installation.get("error"):
             install_line = "Installation state unavailable; use Refresh to retry."
+            install_state = "neutral"
+            install_tooltip = "Manager could not determine whether the installed server payload matches this Manager."
             mode = profile.install_mode or "unknown"
         elif installation.get("installed"):
-            install_line = compatibility_summary(installation, self.manager_version, self.manager_release_status)
+            presentation = compatibility_presentation(installation, self.manager_version, self.manager_release_status)
+            install_line = presentation["text"]
+            install_state = presentation["state"]
+            install_tooltip = presentation["tooltip"]
             mode = installation.get("mode") or profile.install_mode or "unknown"
         else:
             install_line = "Zanik is not installed"
+            install_state = "neutral"
+            install_tooltip = "Install Zanik to add the Manager's verified server payload to this server."
             mode = "Not installed"
 
         website = self.website_states.get(profile.id, {"status": "checking"})
@@ -699,9 +715,9 @@ class MainWindow(QMainWindow):
         else:
             website_line = "Website: Loading configuration…"
             port_line = "Website port: Loading…"
-        self.server_summary.setText(
-            f"{profile.name}\nPanel: {profile.panel_origin} · {profile.server_id}\n{install_line}\n"
-            f"Install mode: {mode}\n{website_line}\n{port_line}")
+        self.server_summary.setText(f"{profile.name}\nPanel: {profile.panel_origin} · {profile.server_id}")
+        self._set_update_label(self.server_compatibility, install_line, install_state, install_tooltip)
+        self.server_details.setText(f"Install mode: {mode}\n{website_line}\n{port_line}")
         openable = website_status == "ready" and website_configuration_ready(
             {"STATUS_PORT": website.get("port"), "PUBLIC_BASE_URL": url})
         self.open_website_button.setEnabled(openable)

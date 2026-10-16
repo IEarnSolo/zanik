@@ -23,7 +23,7 @@ from manager.zanik_manager.onboarding import discover_panel, is_remote_http
 from manager.zanik_manager.profiles import (ProfileStore, ServerProfile, is_local_origin, move_profile,
                                              normalize_origin, remove_profile, rename_profile)
 from manager.zanik_manager.preferences import PreferenceStore, preferred_profile_index
-from manager.zanik_manager.payload_contract import compatibility_summary, contract_from_entries
+from manager.zanik_manager.payload_contract import compatibility_presentation, compatibility_summary, contract_from_entries
 from manager.zanik_manager.pterodactyl import PterodactylClient, PterodactylError, Response, api_file_path
 from manager.zanik_manager.security import credential_target, redact
 from manager.zanik_manager.support import create_support_bundle
@@ -69,6 +69,33 @@ class ManagerTests(unittest.TestCase):
         self.assertIn('f"Website: {url}"', source)
         self.assertIn('f"Website port: {website.get(\'port\')}"', source)
         self.assertIn("website_configuration_ready", source)
+
+    def test_server_payload_compatibility_presentation_uses_shared_status_states_and_tooltips(self):
+        current = compatibility_presentation(
+            {"version": "0.2.15", "payloadCompatibility": "current", "payloadContractSha256": "a" * 64},
+            "0.2.24")
+        self.assertEqual(current["state"], "current")
+        self.assertIn("Up to date with Manager 0.2.24", current["text"])
+        self.assertIn("older version number", current["tooltip"])
+        self.assertIn("No server update is required", current["tooltip"])
+
+        available = compatibility_presentation(
+            {"version": "0.2.15", "payloadCompatibility": "update-available"}, "0.2.24")
+        self.assertEqual(available["state"], "available")
+        self.assertIn("changed server-side Zanik files", available["tooltip"])
+        self.assertIn("Update / repair Zanik", available["tooltip"])
+
+        newer_manager = compatibility_presentation(
+            {"version": "0.2.15", "payloadCompatibility": "current", "payloadContractSha256": "a" * 64},
+            "0.2.24", {"updateAvailable": True, "latestVersion": "0.2.25",
+                       "serverPayload": {"contractSha256": "b" * 64}})
+        self.assertEqual(newer_manager["state"], "available")
+        self.assertIn("Update Manager to 0.2.25", newer_manager["text"])
+
+        source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
+        self.assertLess(source.index('("Open panel", self.open_panel'),
+                        source.index('QPushButton("Open website")'))
+        self.assertIn('colors = {"current": "#2f855a", "available": "#b7791f"', source)
 
     def test_server_payload_contract_ignores_release_docs_but_tracks_operational_files(self):
         base = [{"path": "bin/libzanik.so", "size": 3, "sha256": "a" * 64, "mode": 0o755},

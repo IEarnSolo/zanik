@@ -2,6 +2,8 @@
 
 The Servers tab shows the active server's Zanik compatibility, installation mode, public website URL, and dedicated website port. **Open website** opens the configured public URL in your default browser. It remains disabled until the server has a non-local public URL saved in its Zanik configuration.
 
+The compatibility line uses the same status colors as the update indicators: green means the installed server-side files match this Manager, amber means an update is available, and gray means compatibility could not be proven. Hover over the line for an explanation. Zanik's displayed release number can be older than the Manager version while still being current when a Manager-only release did not change any server-side files.
+
 Use **Edit servers** beside the active-server selector to rename, reorder, or remove saved Manager profiles. Removing a profile affects only Zanik Manager on the current PC; it does not delete the Pterodactyl server or change any remote files.
 
 Zanik Manager is the recommended installation path for Windows administrators using Pterodactyl. Download `zanik-manager-windows-x86_64-VERSION.zip`, extract the complete folder, and open `ZanikManager.exe`. It includes the matching server package and Windows asset extractor and does not require Python, SSH, or administrator rights.
