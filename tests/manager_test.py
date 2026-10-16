@@ -93,9 +93,17 @@ class ManagerTests(unittest.TestCase):
         self.assertIn("Update Manager to 0.2.25", newer_manager["text"])
 
         source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
-        self.assertLess(source.index('("Open panel", self.open_panel'),
-                        source.index('QPushButton("Open website")'))
+        update_at = source.index('QPushButton("Update / repair Zanik")')
+        panel_at = source.index('QPushButton("Open panel")')
+        website_at = source.index('QPushButton("Open website")')
+        recover_at = source.index('("Recover interrupted", self.recover_interrupted')
+        self.assertLess(update_at, panel_at)
+        self.assertLess(panel_at, website_at)
+        self.assertLess(website_at, recover_at)
         self.assertIn('colors = {"current": "#2f855a", "available": "#b7791f"', source)
+        self.assertIn('QToolTip {{ color:#ffffff; }}', source)
+        self.assertIn('self.server_summary.setText(profile.name)', source)
+        self.assertIn('f"Panel: {profile.panel_origin}', source)
 
     def test_server_payload_contract_ignores_release_docs_but_tracks_operational_files(self):
         base = [{"path": "bin/libzanik.so", "size": 3, "sha256": "a" * 64, "mode": 0o755},
