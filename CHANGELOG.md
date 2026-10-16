@@ -2,6 +2,13 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.20] - 2026-10-16
+
+### Fixed
+
+- Archive an older failed Zanik Manager transaction when a newer operation of the same type succeeds for that server, preventing obsolete install failures from showing a recovery warning forever.
+- Keep genuinely interrupted operations visible when they stopped in a critical in-progress state or have not been superseded by a later success.
+
 ## [0.2.19] - 2026-10-15
 
 ### Added
