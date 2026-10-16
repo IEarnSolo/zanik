@@ -2,6 +2,14 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.26] - 2026-10-16
+
+### Changed
+
+- Wrap every guided Zanik Manager configuration description to the available window width.
+- Align continued boolean-description lines beneath the beginning of the description instead of beneath the checkbox.
+- Show wrapped descriptions beneath numeric and text configuration fields instead of limiting that guidance to hover tooltips.
+
 ## [0.2.25] - 2026-10-16
 
 ### Changed
