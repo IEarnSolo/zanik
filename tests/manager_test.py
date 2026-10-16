@@ -75,9 +75,11 @@ class ManagerTests(unittest.TestCase):
         self.assertIn("form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)", source)
         self.assertIn("form.setRowWrapPolicy(QFormLayout.WrapLongRows)", source)
         self.assertIn('field=QCheckBox(); field.setChecked(bool(spec["default"]))', source)
-        self.assertIn('description=QLabel(spec["description"]); description.setWordWrap(True)', source)
-        self.assertIn("description.setMaximumWidth(420)", source)
-        self.assertIn("field_layout.addWidget(field,0,Qt.AlignTop); field_layout.addWidget(description,1)", source)
+        self.assertIn("def config_description(text: str, dangerous: bool = False)", source)
+        self.assertIn("description.setWordWrap(True); description.setMaximumWidth(420)", source)
+        self.assertIn("description.setMinimumHeight(description.heightForWidth(420))", source)
+        self.assertIn("field_layout.addWidget(field,0,Qt.AlignTop); field_layout.addWidget(description,0,Qt.AlignTop)", source)
+        self.assertIn("field_layout.addStretch(1)", source)
         self.assertNotIn('QCheckBox(spec["description"])', source)
 
     def test_server_payload_compatibility_presentation_uses_shared_status_states_and_tooltips(self):

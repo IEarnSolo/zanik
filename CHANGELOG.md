@@ -2,6 +2,13 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.27] - 2026-10-16
+
+### Fixed
+
+- Keep Zanik Manager toggle descriptions close to their checkboxes instead of separating them with elastic whitespace.
+- Reserve the full wrapped height of guided configuration descriptions so the website-port and public-URL guidance is no longer clipped by following rows.
+
 ## [0.2.26] - 2026-10-16
 
 ### Changed
