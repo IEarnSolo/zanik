@@ -525,6 +525,71 @@ class PterodactylProvider(ServerProvider):
             result["gameUpdate"] = {"schemaVersion": 1, "status": "unchecked"}
         return result
 
+    def installation_status(self, server_id: str, server_root: str) -> dict:
+        """Return lightweight recognized installation state without running Doctor."""
+        root = validate_server_root(server_root)
+        state = self._zanik_state(server_id, root)
+        if not state["zanikInstalled"]:
+            return {**state, "installed": False, "version": None, "mode": None}
+        result = {**state, "installed": True, "version": None, "mode": None, "repairRequired": False}
+        try:
+            install = json.loads(self.client.read_file(server_id, f"{root}/zanik/install-state.json"))
+            version = str(install.get("version", "")).strip()
+            mode = install.get("mode")
+            if not version or mode not in {"wrapper", "replace-executable"}:
+                raise ValueError("installation metadata is incomplete")
+            result.update({"version": version, "mode": mode, "installation": install})
+        except Exception as error:
+            result.update({"repairRequired": True, "detail": str(error)})
+            try:
+                result["version"] = self.client.read_file(server_id, f"{root}/zanik/VERSION").decode().strip() or None
+            except Exception:
+                pass
+        return result
+
+    def asset_contract_status(self, server_id: str, server_root: str, contract: dict) -> dict:
+        """Validate active asset metadata and a bounded critical subset."""
+        root = validate_server_root(server_root)
+        manifest_path = f"{root}/zanik/assets/current/asset-manifest.json"
+        try:
+            manifest = json.loads(self.client.read_file(server_id, manifest_path))
+        except Exception as error:
+            return {"valid": False, "installed": False,
+                    "reasons": ["No readable active asset manifest was found."], "detail": str(error)}
+        reasons = []
+        compatibility = manifest.get("compatibility", manifest.get("compatible"))
+        if compatibility in {False, "incompatible"}:
+            reasons.append("The active bundle is marked incompatible.")
+        if manifest.get("extractionStage") != "validated-and-packaged":
+            reasons.append("The active bundle did not complete validation and packaging.")
+        if manifest.get("missingRequired"):
+            reasons.append("The active bundle reports missing required assets.")
+        if manifest.get("extractionRecipeVersion") != contract.get("extractionRecipeVersion"):
+            reasons.append("The active bundle uses a different extraction recipe version.")
+        profile_version = manifest.get("compatibilityProfile", {}).get("version")
+        if profile_version != contract.get("compatibilityProfileVersion"):
+            reasons.append("The active bundle uses a different reviewed compatibility profile.")
+        entries = manifest.get("files", [])
+        if not isinstance(entries, list) or manifest.get("generatedFileCount") != len(entries):
+            reasons.append("The active bundle manifest file count is inconsistent.")
+            entries = []
+        by_path = {entry.get("path"): entry for entry in entries if isinstance(entry, dict)}
+        for relative in contract.get("criticalFiles", []):
+            entry = by_path.get(relative)
+            if not entry or not isinstance(entry.get("sha256"), str):
+                reasons.append(f"The active bundle manifest is missing required file {relative}.")
+                continue
+            try:
+                actual = sha256(self.client.download_file(server_id, f"{root}/zanik/assets/current/{relative}"))
+                if actual != entry["sha256"]:
+                    reasons.append(f"The active critical asset failed verification: {relative}.")
+            except Exception:
+                reasons.append(f"The active critical asset is unavailable: {relative}.")
+        return {"valid": not reasons, "installed": True, "reasons": reasons,
+                "gameBuild": manifest.get("gameBuild") or manifest.get("clientBuild"),
+                "extractionRecipeVersion": manifest.get("extractionRecipeVersion"),
+                "compatibilityProfileVersion": profile_version}
+
     def _read_game_update_report(self, server_id: str, root: str) -> dict:
         raw = self.client.read_file(server_id, f"{root}/zanik/state/game-update-status.json")
         report = json.loads(raw.decode("utf-8"))
@@ -556,7 +621,7 @@ class PterodactylProvider(ServerProvider):
             return {**state, "exists": False, "data": None}
         if not self._exists(server_id, path):
             return {**state, "exists": False, "data": None,
-                    "error": "Zanik is installed but its configuration file is missing. Use Install / repair."}
+                    "error": "Zanik is installed but its configuration file is missing. Use Update / repair Zanik."}
         return {**state, "exists": True, "data": self.client.read_file(server_id, path)}
 
     def check_game_update(self, server_id: str, server_root: str, timeout: float = 110.0,

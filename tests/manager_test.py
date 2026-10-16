@@ -10,15 +10,17 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from manager.zanik_manager.assets import (AssetDeployer, AssetExtractor, asset_setup_mode,
-                                          dragonwilds_is_running, request_dragonwilds_close,
-                                          resume_activity_message)
+                                          dragonwilds_is_running, expected_asset_contract,
+                                          request_dragonwilds_close, resume_activity_message)
 from manager.zanik_manager.cache import BundleCache, format_bundle_timestamp
-from manager.zanik_manager.config import ConfigError, ConfigModel, content_hash, update_website_settings
+from manager.zanik_manager.config import (ConfigError, ConfigModel, content_hash, update_website_settings,
+                                          website_configuration_ready)
 from manager.zanik_manager.journal import JournalStore, OperationJournal
 from manager.zanik_manager.lifecycle import (PterodactylProvider, ReleasePayload, is_exact_legacy_launcher,
                                              safe_archive_name, validate_server_root)
 from manager.zanik_manager.onboarding import discover_panel, is_remote_http
 from manager.zanik_manager.profiles import ProfileStore, ServerProfile, is_local_origin, normalize_origin
+from manager.zanik_manager.preferences import PreferenceStore, preferred_profile_index
 from manager.zanik_manager.pterodactyl import PterodactylClient, PterodactylError, Response, api_file_path
 from manager.zanik_manager.security import credential_target, redact
 from manager.zanik_manager.support import create_support_bundle
@@ -27,7 +29,9 @@ from tools.prune_pyside_runtime import KEEP_FILES, prune
 class ManagerTests(unittest.TestCase):
     def test_update_controls_are_distinct_and_non_modal_by_default(self):
         source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
-        self.assertIn('"Update Zanik server"', source)
+        self.assertIn('QPushButton("Install Zanik")', source)
+        self.assertIn('QPushButton("Update / repair Zanik")', source)
+        self.assertIn("def update_or_repair", source)
         self.assertIn('QPushButton("Update and relaunch")', source)
         self.assertIn('QPushButton("Check")', source)
         self.assertIn('run_background("manager-update-check"', source)
@@ -246,6 +250,33 @@ class ManagerTests(unittest.TestCase):
         self.assertTrue(values["FEATURE_MAP"])
         self.assertFalse(values["FEATURE_QOL_AUTO_COMPOST"])
 
+    def test_website_configuration_requires_non_loopback_public_url(self):
+        self.assertFalse(website_configuration_ready({"STATUS_PORT": 29105, "PUBLIC_BASE_URL": "http://127.0.0.1:29105"}))
+        self.assertFalse(website_configuration_ready({"STATUS_PORT": 29105, "PUBLIC_BASE_URL": "http://localhost:29105"}))
+        self.assertTrue(website_configuration_ready({"STATUS_PORT": 29105, "PUBLIC_BASE_URL": "https://game.example:29105"}))
+
+    def test_preferences_remember_last_profile_and_ignore_invalid_state(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "preferences.json"; store = PreferenceStore(path)
+            self.assertEqual(store.load()["lastProfileId"], "")
+            store.save_last_profile("profile-two")
+            self.assertEqual(store.load()["lastProfileId"], "profile-two")
+            path.write_text("not-json", encoding="utf-8")
+            self.assertEqual(store.load()["lastProfileId"], "")
+            profiles = [ServerProfile.create(name="one", panel_origin="https://panel", account_id="a",
+                                             credential_target="one", server_id="one"),
+                        ServerProfile.create(name="two", panel_origin="https://panel", account_id="a",
+                                             credential_target="two", server_id="two")]
+            self.assertEqual(preferred_profile_index(profiles, profiles[1].id), 1)
+            self.assertEqual(preferred_profile_index(profiles, "deleted-profile"), 0)
+
+    def test_packaged_asset_contract_uses_recipe_and_reviewed_profile(self):
+        contract = expected_asset_contract(ROOT / "asset-tools")
+        recipe = json.loads((ROOT / "asset-tools/extraction-recipes.json").read_text())
+        self.assertEqual(contract["extractionRecipeVersion"], recipe["schemaVersion"])
+        self.assertEqual(contract["compatibilityProfileVersion"], recipe["catalogProfile"]["version"])
+        self.assertIn("world-map.jpg", contract["criticalFiles"])
+
     def test_journal_persistence_and_incomplete_filter(self):
         with tempfile.TemporaryDirectory() as temporary:
             store = JournalStore(Path(temporary)); journal = OperationJournal.create("profile", "install")
@@ -420,6 +451,57 @@ class ManagerTests(unittest.TestCase):
             provider = PterodactylProvider(Client(), JournalStore(Path(temporary)))
             self.assertIsNone(provider._entry("dev", "/home/container/zanik/install-state.json"))
         self.assertEqual(calls, ["/home/container/zanik", "/home/container"])
+
+    def test_lightweight_installation_status_distinguishes_installed_and_absent(self):
+        class Client:
+            def __init__(self, installed): self.installed = installed
+            def list_files(self, _server, directory):
+                if not self.installed: return []
+                if directory == "/home/container/zanik":
+                    return [{"name": "config", "is_file": False}, {"name": "VERSION", "is_file": True},
+                            {"name": "install-state.json", "is_file": True}]
+                if directory == "/home/container/zanik/config":
+                    return [{"name": "zanik.conf", "is_file": True}]
+                return []
+            def read_file(self, _server, path):
+                if path.endswith("zanik.conf"): return b"ZANIK_ENABLED=true\n"
+                if path.endswith("install-state.json"):
+                    return json.dumps({"version": "0.2.21", "mode": "wrapper"}).encode()
+                if path.endswith("VERSION"): return b"0.2.21\n"
+                raise PterodactylError("missing", 404)
+        with tempfile.TemporaryDirectory() as temporary:
+            journals = JournalStore(Path(temporary))
+            installed = PterodactylProvider(Client(True), journals).installation_status("dev", "/home/container")
+            absent = PterodactylProvider(Client(False), journals).installation_status("dev", "/home/container")
+        self.assertTrue(installed["installed"]); self.assertEqual(installed["mode"], "wrapper")
+        self.assertFalse(absent["installed"])
+
+    def test_asset_contract_status_checks_metadata_and_critical_hashes(self):
+        payloads = {"world-map.jpg": b"map", "quest-catalog.json": b"{}"}
+        entries = [{"path": name, "sha256": content_hash(data), "size": len(data)}
+                   for name, data in payloads.items()]
+        manifest = {"compatibility": "compatible", "extractionStage": "validated-and-packaged",
+                    "missingRequired": [], "extractionRecipeVersion": 5,
+                    "compatibilityProfile": {"version": "reviewed-5"},
+                    "generatedFileCount": len(entries), "files": entries}
+        class Client:
+            def read_file(self, _server, path):
+                if path.endswith("asset-manifest.json"): return json.dumps(manifest).encode()
+                raise PterodactylError("missing", 404)
+            def download_file(self, _server, path): return payloads[path.rsplit("/", 1)[-1]]
+        contract = {"extractionRecipeVersion": 5, "compatibilityProfileVersion": "reviewed-5",
+                    "criticalFiles": sorted(payloads)}
+        with tempfile.TemporaryDirectory() as temporary:
+            provider = PterodactylProvider(Client(), JournalStore(Path(temporary)))
+            valid = provider.asset_contract_status("dev", "/home/container", contract)
+            stale = provider.asset_contract_status("dev", "/home/container", {**contract, "extractionRecipeVersion": 6})
+            missing = provider.asset_contract_status(
+                "dev", "/home/container", {**contract, "criticalFiles": contract["criticalFiles"] + ["recipe-unlocks.json"]})
+        self.assertTrue(valid["valid"])
+        self.assertFalse(stale["valid"])
+        self.assertTrue(any("recipe version" in reason for reason in stale["reasons"]))
+        self.assertFalse(missing["valid"])
+        self.assertTrue(any("recipe-unlocks.json" in reason for reason in missing["reasons"]))
 
     def test_release_payload_manifest_and_traversal(self):
         with tempfile.TemporaryDirectory() as temporary:

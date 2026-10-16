@@ -2,7 +2,9 @@
 
 Zanik Manager is the recommended Windows interface for installing and maintaining Zanik on a Pterodactyl-hosted Dragonwilds server. It is portable: extract the complete archive and open `ZanikManager.exe`.
 
-The bottom-right indicators separately track the Manager release and the active server's Linux Dragonwilds build every ten minutes. Manager checks use stable GitHub releases and offer a verified transactional **Update and relaunch** action. Game checks read the selected server's Steam manifest and public dedicated-server metadata, work without Zanik installed, and never install a game update. **Update Zanik server** on the Servers tab updates only the embedded Zanik server payload.
+The bottom-right indicators separately track the Manager release and the active server's Linux Dragonwilds build every ten minutes. Manager checks use stable GitHub releases and offer a verified transactional **Update and relaunch** action. Game checks read the selected server's Steam manifest and public dedicated-server metadata, work without Zanik installed, and never install a game update. **Install Zanik** is available only on an unmodded server. **Update / repair Zanik** reuses an existing installation's mode and reinstalls only the embedded server payload.
+
+Manager remembers the last selected server in `%LOCALAPPDATA%\Zanik Manager\preferences.json`. The file contains only a profile identifier and no panel credentials.
 
 The external updater runs from LocalAppData rather than the portable installation directory, retries short-lived Windows file locks, and records the exact failed swap operation in its LocalAppData journal while preserving or restoring the prior installation.
 
