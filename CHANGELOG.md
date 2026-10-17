@@ -2,6 +2,12 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.35] - 2026-10-17
+
+### Changed
+
+- Restyle Zanik Manager's Changelog sections as clean, borderless disclosure rows with compact text carets, subtle dividers, and indented release notes.
+
 ## [0.2.34] - 2026-10-17
 
 ### Fixed

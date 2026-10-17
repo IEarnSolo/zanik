@@ -7,7 +7,7 @@ import traceback
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal, Slot
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QCursor, QDesktopServices
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                QFormLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
                                QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar, QProgressDialog, QPushButton, QScrollArea,
@@ -82,19 +82,24 @@ class ChangelogSection(QWidget):
         title = f"Version {release.version}"
         if release.date:
             title += f" · {release.date}"
-        self.toggle = QToolButton(); self.toggle.setText(title); self.toggle.setCheckable(True)
-        self.toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.toggle.setStyleSheet("QToolButton { font-weight: 600; text-align: left; padding: 6px; }")
+        self.title = title
+        self.toggle = QToolButton(); self.toggle.setCheckable(True)
+        self.toggle.setToolButtonStyle(Qt.ToolButtonTextOnly); self.toggle.setCursor(QCursor(Qt.PointingHandCursor))
+        self.toggle.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.toggle.setStyleSheet(
+            "QToolButton { border: none; border-bottom: 1px solid #454545; border-radius: 0; "
+            "background: transparent; font-weight: 600; text-align: left; padding: 8px 4px; } "
+            "QToolButton:hover { background-color: rgba(128, 128, 128, 24); }")
         self.body = QLabel(release.changes or "No detailed changes were recorded for this version.")
         self.body.setTextFormat(Qt.MarkdownText); self.body.setWordWrap(True)
         self.body.setTextInteractionFlags(Qt.TextBrowserInteraction); self.body.setOpenExternalLinks(True)
-        self.body.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.body.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred); self.body.setContentsMargins(22, 4, 8, 10)
         self.toggle.toggled.connect(self.set_expanded)
         layout.addWidget(self.toggle); layout.addWidget(self.body)
         self.toggle.setChecked(expanded); self.set_expanded(expanded)
 
     def set_expanded(self, expanded: bool):
-        self.toggle.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+        self.toggle.setText(f"{'▾' if expanded else '›'}  {self.title}")
         self.body.setVisible(expanded)
 
 
