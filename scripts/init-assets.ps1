@@ -73,6 +73,7 @@ $Fingerprint = @{
     recipeSha256 = (Get-FileHash -LiteralPath $Recipe -Algorithm SHA256).Hash.ToLowerInvariant()
     toolLockSha256 = (Get-FileHash -LiteralPath $ToolLock -Algorithm SHA256).Hash.ToLowerInvariant()
 }
+$GameChanged = $false
 if (-not $Resume -and -not $Incremental -and (Test-Path -LiteralPath $JournalPath)) {
     $ExistingJournal = Get-Content -LiteralPath $JournalPath -Raw | ConvertFrom-Json
     if ($ExistingJournal.stage -eq 'complete') { $Incremental = $true }
@@ -91,7 +92,9 @@ if ($Resume) {
     if ($Journal.fingerprints.toolLockSha256 -ne $Fingerprint.toolLockSha256) {
         throw 'The packaged extraction tools changed and cannot safely reuse this raw cache. Discard it once and perform a full extraction.'
     }
-    $GameChanged = $Journal.fingerprints.gameExecutableSha256 -ne $Fingerprint.gameExecutableSha256
+    $PreviousFingerprints = $Journal.fingerprints
+    $GameChanged = $PreviousFingerprints.gameExecutableSha256 -ne $Fingerprint.gameExecutableSha256
+    $Journal | Add-Member -NotePropertyName previousFingerprints -NotePropertyValue $PreviousFingerprints -Force
     $Journal.fingerprints = $Fingerprint
     $Journal.stage = if ($GameChanged) { 'created' } else { 'mappings' }
     $Journal.updatedAt = [DateTime]::UtcNow.ToString('o')
@@ -135,6 +138,7 @@ $ResumePipeline = (($Resume -and (Test-Path -LiteralPath $PipelineWorkspace -Pat
 if ($ResumePipeline) { $PipelineArguments += @('--resume-work', $PipelineWorkspace) }
 elseif ($IncrementalPipeline) { $PipelineArguments += @('--incremental-work', $PipelineWorkspace) }
 else { $PipelineArguments += @('--workspace', $PipelineWorkspace) }
+if ($GameChanged) { $PipelineArguments += '--game-changed' }
 if ($KeepWork) { $PipelineArguments += '--keep-work' }
 if ($CatalogsOnly) { Write-Warning '-CatalogsOnly retains artwork referenced by runtime catalogs and omits only unreachable exports.' }
 if ($IncrementalPipeline) { Write-ZanikEvent 'extract' 'Checking retained exports and applying only changed, added, or removed packages' }

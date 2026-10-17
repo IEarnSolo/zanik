@@ -2,6 +2,19 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.39] - 2026-10-17
+
+### Changed
+
+- Make Zanik Manager's retained Windows asset refreshes structurally incremental: unchanged catalog selectors, texture targets, and the web font now make no UnrealAssetScout calls.
+- Export only newly added catalog selectors and texture targets, remove only retired cached outputs, and then regenerate and validate the complete atomic website bundle.
+- Retain a versioned extraction-recipe selector history so caches created by earlier Managers can be upgraded without repeating unchanged broad scans.
+
+### Fixed
+
+- Stop an unchanged-client asset refresh from running the full catalog, texture, and font discovery passes merely because the operator requested an incremental rebuild.
+- Remove empty retired texture batches without invalidating the remaining verified incremental cache.
+
 ## [0.2.38] - 2026-10-17
 
 ### Added

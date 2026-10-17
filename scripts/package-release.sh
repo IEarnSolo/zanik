@@ -67,7 +67,7 @@ install -m 0644 "$ROOT/tools/asset_filesystem.py" "$WORK/asset-linux/tools/asset
 for file in zanik_assets windows_mapping windows_asset_pipeline generate_building_catalog generate_plan_item_catalog generate_world_catalogs generate_quest_catalog generate_web_assets generate_recipe_unlock_catalog analyze_quest_steps asset_filesystem quest_schema; do
   install -m 0644 "$ROOT/tools/$file.py" "$WORK/asset-windows/tools/$file.py"
 done
-install -m 0644 "$ROOT/asset-tools/tools.lock.json" "$ROOT/asset-tools/extraction-recipes.json" "$ROOT/asset-tools/catalog-rules.json" "$WORK/asset-windows/asset-tools/"
+install -m 0644 "$ROOT/asset-tools/tools.lock.json" "$ROOT/asset-tools/extraction-recipes.json" "$ROOT/asset-tools/extraction-recipe-history.json" "$ROOT/asset-tools/catalog-rules.json" "$WORK/asset-windows/asset-tools/"
 install -m 0644 "$ROOT/asset-tools/LICENSE-UnrealAssetScout.txt" "$WORK/asset-windows/third_party/uas/LICENSE.txt"
 install -m 0644 "$ROOT/deploy/quest-overrides.json" "$ROOT/deploy/quest-step-overrides.json" "$WORK/asset-windows/deploy/"
 for dir in asset-linux asset-windows; do
