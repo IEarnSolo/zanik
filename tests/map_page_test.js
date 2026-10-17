@@ -9,3 +9,6 @@ for(const script of scripts)new Function(script);
 for(const token of ['id="questPanel"','id="questSteps"','id="questTip"','/api/quests/steps','renderQuestMarkers','focusQuestMarker','dragonwilds.map.questSteps']){
   if(!page[1].includes(token))throw new Error('missing quest-map token: '+token);
 }
+if(!page[1].includes("/assets/lodestone-icon.png?v=lodestone-map-icon-2")){
+  throw new Error('lodestone map icon must use a revisioned URL so corrected artwork replaces cached responses');
+}
