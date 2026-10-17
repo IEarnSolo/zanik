@@ -320,6 +320,16 @@ class AssetExtractor:
         except (OSError, KeyError, ValueError, zipfile.BadZipFile, json.JSONDecodeError, RuntimeError):
             return False
 
+    def compatible_cached_bundles(self, game_root: Path, contract: dict) -> list[CachedBundle]:
+        """Return validated cache entries that already satisfy the current extraction contract."""
+        items = self.cache.list(game_root_id(game_root))
+        if not items:
+            return []
+        executable_sha256 = self.current_fingerprints(game_root)["gameExecutableSha256"]
+        return [item for item in items
+                if self.bundle_compatible_with_game(item.path, game_root,
+                                                    executable_sha256, contract)]
+
     def extract(self, game_root: Path, output: Path, event=lambda event: None,
                 usmap: Path | None = None, keep_work: bool = False,
                 preserve_existing_loader: bool = False,
