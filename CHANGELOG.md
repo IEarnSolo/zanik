@@ -2,6 +2,16 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.31] - 2026-10-17
+
+### Added
+
+- Tell Zanik Manager users before and during asset setup that extraction can take several minutes.
+
+### Fixed
+
+- Stamp generated asset ZIPs and Pterodactyl upload parts with their real generation time instead of the ZIP-format 1980 epoch.
+
 ## [0.2.30] - 2026-10-17
 
 ### Fixed

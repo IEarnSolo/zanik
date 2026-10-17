@@ -56,6 +56,8 @@ Allow roughly 10–30 minutes and at least 10 GiB of free space for the first ex
 
 After the first successful extraction, Zanik Manager retains the verified UnrealAssetScout workspace under `%LOCALAPPDATA%\Zanik Manager\asset-work\`. UnrealAssetScout compares package fingerprints on later runs and exports only changed or newly added targets while deleting outputs for removed targets. Zanik then regenerates and validates the complete website bundle from that updated cache. The server continues to receive one complete atomic bundle; raw exports and mappings are never uploaded.
 
+Generated ZIP entries use the bundle's generation time, and multipart archives preserve it when Pterodactyl extracts them. Asset files deployed from older Zanik bundles may display December 31, 1979 in western time zones because those archives used the ZIP format's January 1, 1980 minimum timestamp; that date is cosmetic and is corrected the next time a newly generated bundle is uploaded.
+
 Use **Discard generated work** to remove this private cache. Validated ZIPs are retained, but the next extraction will be a full extraction. A bundle created before incremental caching was introduced, or a bundle copied from another computer, cannot reconstruct the raw cache and therefore requires one final full extraction. Changes to the pinned extraction tool also require a full rebuild because carrying old outputs across tool versions would not be reproducible.
 
 ## Extraction troubleshooting

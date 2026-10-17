@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory() as name:
             if item in {"npc-catalog.json", "resource-catalog.json"}:
                 value["nodes"] = [{"id": f"node-{index}", "x": 0.5, "y": 0.5} for index in range(10)]
             path.write_text(json.dumps(value) + "\n")
-    first = root / "one.zip"; second = root / "two.zip"; env = dict(os.environ, SOURCE_DATE_EPOCH="1")
+    first = root / "one.zip"; second = root / "two.zip"; env = dict(os.environ, SOURCE_DATE_EPOCH="1767225600")
     tool_lock = root / "tools.lock.json"
     tool_lock.write_text(json.dumps({"tools": {
         "python-embed-windows-x86_64": {"version": "3.12.10"},
@@ -71,6 +71,7 @@ with tempfile.TemporaryDirectory() as name:
     subprocess.run([sys.executable, str(TOOL), "validate", "--bundle", str(first)], check=True)
     with zipfile.ZipFile(first) as archive:
         bundled_manifest = json.loads(archive.read("asset-manifest.json"))
+        assert {item.date_time for item in archive.infolist()} == {(2026, 1, 1, 0, 0, 0)}
     assert bundled_manifest["toolVersions"] == {
         "python-embed-windows-x86_64": "3.12.10",
         "unreal-asset-scout-windows-x86_64": "0.5.0",
@@ -104,6 +105,8 @@ with tempfile.TemporaryDirectory() as name:
 
     parts = root / "parts"
     subprocess.run([sys.executable, str(TOOL), "bundle-set", "--bundle", str(first), "--output-dir", str(parts), "--max-part-bytes", str(1024 * 1024)], check=True)
+    with zipfile.ZipFile(next(parts.glob("part-*.zip"))) as archive:
+        assert {item.date_time for item in archive.infolist()} == {(2026, 1, 1, 0, 0, 0)}
     set_destination = root / "set-assets"
     subprocess.run([sys.executable, str(TOOL), "install-bundle-set", "--index", str(parts / "bundle-index.json"), "--destination", str(set_destination)], check=True)
     full_hashes = {p.relative_to(current.resolve()).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in current.resolve().rglob("*") if p.is_file()}
