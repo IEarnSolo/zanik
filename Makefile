@@ -58,6 +58,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(PYTHON) tests/quest_schema_test.py
 	sh tests/config_test.sh
 	$(PYTHON) tests/asset_tool_test.py
+	$(PYTHON) tests/asset_delta_test.py
 	$(PYTHON) tests/generate_web_assets_test.py
 	$(PYTHON) tests/recipe_icon_resolution_test.py
 	$(PYTHON) tests/windows_asset_pipeline_test.py

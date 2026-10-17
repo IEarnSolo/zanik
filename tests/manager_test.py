@@ -828,7 +828,7 @@ class ManagerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             archive = Path(temporary) / "server.zip"
             required = ["bin/libzanik.so", "bin/zanik-server", "bin/zanik-compat-analyzer", "scripts/compat-launcher.sh",
-                        "scripts/verify-assets.sh", "scripts/check-game-update.sh",
+                        "scripts/verify-assets.sh", "scripts/check-game-update.sh", "scripts/apply-asset-delta.sh",
                         "config/zanik.conf.example", "compatibility/compatibility.tsv", "VERSION"]
             files = {name: b"0.2.0" if name == "VERSION" else b"payload" for name in required}
             write_payload_archive(archive, files)
@@ -865,6 +865,29 @@ class ManagerTests(unittest.TestCase):
                 with zipfile.ZipFile(part) as archive:
                     self.assertEqual({item.date_time for item in archive.infolist()},
                                      {(2026, 10, 17, 4, 20, 0)})
+
+    def test_asset_delta_plan_uploads_only_changed_and_added_files(self):
+        base = {"files": [{"path": "same.png", "sha256": "a" * 64},
+                           {"path": "changed.png", "sha256": "b" * 64},
+                           {"path": "removed.png", "sha256": "c" * 64}]}
+        target = {"files": [{"path": "same.png", "sha256": "a" * 64},
+                             {"path": "changed.png", "sha256": "d" * 64},
+                             {"path": "added.png", "sha256": "e" * 64}]}
+        changed, removed = AssetDeployer._delta_plan(base, target)
+        self.assertEqual([record["path"] for record in changed], ["added.png", "changed.png"])
+        self.assertEqual(removed, ["removed.png"])
+
+    def test_asset_delta_semantics_ignore_generation_timestamp_only(self):
+        files = [{"path": "same.png", "sha256": "a" * 64}]
+        base = {"schemaVersion": 2, "generatedAt": "old", "extractionRecipeVersion": 6,
+                "extractionRecipeSha256": "b" * 64, "compatibility": "compatible",
+                "compatibilityProfile": {"version": "reviewed-6"}, "missingRequired": [], "files": files}
+        target = {**base, "generatedAt": "new"}
+        self.assertEqual(AssetDeployer._delta_plan(base, target), ([], []))
+        self.assertEqual(AssetDeployer._manifest_contract(base), AssetDeployer._manifest_contract(target))
+        changed_contract = {**target, "extractionRecipeVersion": 7}
+        self.assertNotEqual(AssetDeployer._manifest_contract(base),
+                            AssetDeployer._manifest_contract(changed_contract))
 
     def test_remote_asset_subset_verification_uses_large_file_download_route(self):
         class Client:
@@ -1052,6 +1075,7 @@ class ManagerTests(unittest.TestCase):
             files = {"bin/libzanik.so": b"library", "bin/zanik-server": b"launcher", "bin/zanik-compat-analyzer": b"analyzer",
                      "scripts/compat-launcher.sh": b"#!/bin/sh\n# ZANIK_COMPAT_LAUNCHER=1\n",
                      "scripts/verify-assets.sh": b"#!/bin/sh\nexit 0\n", "scripts/check-game-update.sh": b"#!/bin/sh\nexit 0\n",
+                     "scripts/apply-asset-delta.sh": b"#!/bin/sh\nexit 0\n",
                      "config/zanik.conf.example": b"FEATURE_MAP=true\n",
                      "config/zanik-config.schema.json": b"{}", "compatibility/compatibility.tsv": b"sha\toffsets\n", "VERSION": b"0.2.0\n"}
             write_payload_archive(archive, files)

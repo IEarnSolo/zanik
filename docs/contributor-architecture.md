@@ -1,5 +1,8 @@
 # Distribution architecture rules
 
+- Remote asset updates use manifest-to-manifest deltas only when the running server exposes the trusted helper. The helper locally clones, patches, completely validates, and atomically swaps the candidate. Never mutate the active tree in place.
+- Exact asset-manifest matches perform zero uploads and zero restarts. Keep full bundles authoritative and retain full deployment for compatibility fallback. Never add Pterodactyl per-file comparison loops to the normal path; deep remote verification is diagnostic-only.
+
 - Linux x86-64 uses a native process-scoped `LD_PRELOAD` library. Wrapper mode is canonical; managed executable replacement is compatibility-only.
 - Read-only features default on. Every state-changing or gameplay QoL feature owns an off-by-default gate and must not initialize native work when disabled.
 - `ZANIK_ENABLED` is the master runtime gate. When false, the canonical launcher must execute the verified official binary without `LD_PRELOAD` or any Zanik runtime initialization while preserving installation and persistent data.

@@ -148,6 +148,23 @@ while kill -0 "$game_pid" 2>/dev/null && IFS= read -r command; do
     zanik-check-game-update)
       zanik_log 'Usage: zanik-check-game-update <request-id>'
       ;;
+    zanik-apply-asset-delta\ *)
+      request_id=${command#zanik-apply-asset-delta }
+      case "$request_id" in
+        ''|*[!0-9a-f]*) zanik_log 'Usage: zanik-apply-asset-delta <request-id>' ;;
+        *)
+          if [ ${#request_id} -lt 16 ] || [ ${#request_id} -gt 64 ]; then
+            zanik_log 'Usage: zanik-apply-asset-delta <request-id>'
+          else
+            "$ZANIK_DIR/scripts/apply-asset-delta.sh" --server-root "$server_root" --request-id "$request_id" >/dev/null 2>&1 &
+            zanik_log "Started atomic asset delta activation $request_id."
+          fi
+          ;;
+      esac
+      ;;
+    zanik-apply-asset-delta)
+      zanik_log 'Usage: zanik-apply-asset-delta <request-id>'
+      ;;
     *) printf '%s\n' "$command" >&3;;
   esac
 done

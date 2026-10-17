@@ -2,6 +2,22 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.40] - 2026-10-17
+
+### Added
+
+- Make Zanik Manager upload only added and changed website asset files during compatible deployments, with an explicit removal list for retired files.
+- Apply asset deltas through a trusted server-side helper that clones the active tree locally, proves the base and target manifests, validates the complete candidate, and atomically activates it.
+
+### Changed
+
+- Skip website asset uploads and server restarts entirely when the selected local bundle already matches the active server manifest.
+- Retain full-bundle deployment as a compatibility fallback for missing, invalid, offline, or older installations that do not support atomic deltas.
+
+### Fixed
+
+- Avoid re-uploading thousands of unchanged website files after a targeted incremental extraction.
+
 ## [0.2.39] - 2026-10-17
 
 ### Changed

@@ -1633,21 +1633,37 @@ class MainWindow(QMainWindow):
                        title="Uploading and activating web assets…", determinate=True)
 
     def asset_activation_complete(self, profile: ServerProfile, result: dict):
-        self.log(f"Activated {result['fileCount']} asset files on {profile.name}")
+        if result.get("unchanged"):
+            self.log(f"Assets on {profile.name} already match the selected bundle; no upload or restart was needed")
+        elif result.get("deltaUpload"):
+            self.log(f"Activated {result.get('uploadedFileCount', 0)} changed and removed "
+                     f"{result.get('removedFileCount', 0)} retired asset files on {profile.name}")
+        else:
+            self.log(f"Activated {result['fileCount']} asset files on {profile.name}")
         if self.active() and self.active().id == profile.id:
             self.check_asset_contract_state(profile)
         launcher = result.get("launcherStatus", {})
         if launcher.get("applicable") and not launcher.get("healthy"):
             self.offer_launcher_repair(profile, launcher)
             return
+        if result.get("unchanged"):
+            message = "The server already has this exact validated asset bundle. Nothing was uploaded or restarted."
+        elif result.get("deltaUpload"):
+            message = (f"Uploaded and atomically activated {result.get('uploadedFileCount', 0)} changed asset files"
+                       f" and {result.get('removedFileCount', 0)} removals on {profile.name}. ")
+            message += ("The running game server was restarted to load the changed catalogs."
+                        if result.get("restartRequested") else
+                        "The changed catalogs will load the next time the game server starts.")
+        else:
+            message = (f"Activated {result['fileCount']} validated asset files on {profile.name}. "
+                       + ("The server restarted, and the replacement launcher was verified."
+                          if result.get("restartRequested") and launcher.get("applicable") else
+                          "The running game server was restarted to load recipe and quest tracking."
+                          if result.get("restartRequested") else
+                          "The catalogs will load the next time the game server starts."))
         QMessageBox.information(
             self, "Assets activated",
-            f"Activated {result['fileCount']} validated asset files on {profile.name}. "
-            + ("The server restarted, and the replacement launcher was verified."
-               if result.get("restartRequested") and launcher.get("applicable") else
-               "The running game server was restarted to load recipe and quest tracking."
-               if result.get("restartRequested") else
-               "The catalogs will load the next time the game server starts."))
+            message)
 
     def open_asset_folder(self):
         value = self.bundle_box.currentData()
