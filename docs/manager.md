@@ -10,6 +10,8 @@ The guided Configuration tab displays a responsive description for every setting
 
 Zanik Manager is the recommended installation path for Windows administrators using Pterodactyl. Download `zanik-manager-windows-x86_64-VERSION.zip`, extract the complete folder, and open `ZanikManager.exe`. It includes the matching server package and Windows asset extractor and does not require Python, SSH, or administrator rights.
 
+Asset extraction and its PowerShell coordinator run as hidden Manager workers. Progress and errors appear in the modal operation view and Activity tab; no separate console window needs to remain open. The standalone `init-assets.ps1` command continues to use the terminal from which an advanced operator launches it.
+
 The bottom-right status bar quietly tracks two independent update states. **Manager** checks stable public GitHub releases shortly after startup and every ten minutes; **Check** refreshes it immediately, and **Update and relaunch** appears only after the exact archive, release manifest, size, and SHA-256 digest have been validated. The updater swaps the portable directory transactionally, waits for the new GUI to start, and restores the prior copy if startup fails. Profiles, credentials, cached bundles, and operation journals remain under `%LOCALAPPDATA%` and are not part of that swap.
 
 The updater runs from `%LOCALAPPDATA%\Zanik Manager\updates\`, outside the portable installation it replaces. Transient antivirus or filesystem locks are retried briefly. If an update still fails, the existing installation is preserved or restored and `self-update-journal.json.status` identifies the failed operation and Windows error code for support.

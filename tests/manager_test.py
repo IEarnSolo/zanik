@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 import json
 import hashlib
+import subprocess
 import sys
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from manager.zanik_manager.assets import (AssetDeployer, AssetExtractor, asset_setup_mode,
+                                          background_creation_flags,
                                           dragonwilds_is_running, expected_asset_contract,
                                           request_dragonwilds_close, resume_activity_message)
 from manager.zanik_manager.cache import BundleCache, format_bundle_timestamp
@@ -225,7 +228,13 @@ class ManagerTests(unittest.TestCase):
             calls.append((command, kwargs)); return Result()
         self.assertTrue(dragonwilds_is_running(running, "nt"))
         self.assertEqual(calls[0][0][0], "powershell.exe")
+        self.assertEqual(calls[0][1]["creationflags"], background_creation_flags("nt"))
         self.assertFalse(dragonwilds_is_running(running, "posix"))
+
+    def test_background_helpers_hide_their_windows_console(self):
+        with mock.patch.object(subprocess, "CREATE_NO_WINDOW", 0x08000000, create=True):
+            self.assertEqual(background_creation_flags("nt"), 0x08000000)
+            self.assertEqual(background_creation_flags("posix"), 0)
 
     def test_graceful_close_never_terminates_process(self):
         calls = []
