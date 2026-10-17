@@ -16,7 +16,7 @@ WINDOWS_ASSET_REQUIRED={'init-assets.ps1','runtime/python.exe','runtime/LICENSE.
     'tools/generate_world_catalogs.py','deploy/quest-overrides.json','deploy/quest-step-overrides.json'}
 MANAGER_REQUIRED={'ZanikManager.exe','ZanikManagerUpdater.exe','VERSION','runtime/pythonw.exe','app/zanik_manager/app.py','app/zanik_manager/pterodactyl.py','app/zanik_manager/payload_contract.py',
     'config/zanik-config.schema.json','config/server-payload-legacy-contracts.json','asset-tools/init-assets.ps1','payload/server.zip',
-    'payload/server-payload.json','payload/payloads.json','README.md','LICENSE','LICENSE-LGPL-3.0.txt','THIRD_PARTY_NOTICES.md','tools.lock.json'}
+    'payload/server-payload.json','payload/payloads.json','README.md','CHANGELOG.md','LICENSE','LICENSE-LGPL-3.0.txt','THIRD_PARTY_NOTICES.md','tools.lock.json'}
 MANAGER_RUNTIME_REQUIRED={'runtime/Lib/site-packages/PySide6/QtCore.pyd','runtime/Lib/site-packages/PySide6/QtGui.pyd',
     'runtime/Lib/site-packages/PySide6/QtWidgets.pyd','runtime/Lib/site-packages/PySide6/Qt6Core.dll',
     'runtime/Lib/site-packages/PySide6/Qt6Gui.dll','runtime/Lib/site-packages/PySide6/Qt6Widgets.dll',

@@ -8,6 +8,8 @@ Use **Edit servers** beside the active-server selector to rename, reorder, or re
 
 The guided Configuration tab displays a responsive description for every setting. Descriptions use the complete available width and wrap only when necessary, without horizontal scrolling or clipping. Boolean descriptions remain directly beside their checkbox. Compact networking and cookie controls leave the remainder of the row available to their full-width guidance.
 
+The **Changelog** tab shows the release notes bundled with the running portable Manager. Each version has its own collapsible section, newest first; the newest included version starts expanded. Notes from a newer release are never shown until that Manager version is installed. Every line written to **Activity**, including captured technical errors, is prefixed with the local date and time so operation reports can be correlated with panel and server logs.
+
 Zanik Manager is the recommended installation path for Windows administrators using Pterodactyl. Download `zanik-manager-windows-x86_64-VERSION.zip`, extract the complete folder, and open `ZanikManager.exe`. It includes the matching server package and Windows asset extractor and does not require Python, SSH, or administrator rights.
 
 Asset extraction can take several minutes on the first run, and Manager states that before setup and throughout the modal operation. Its PowerShell coordinator runs as a hidden Manager worker. Progress and errors appear in the modal operation view and Activity tab; no separate console window needs to remain open. The standalone `init-assets.ps1` command continues to use the terminal from which an advanced operator launches it.

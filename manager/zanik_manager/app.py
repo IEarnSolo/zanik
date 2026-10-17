@@ -11,13 +11,15 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                QFormLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
                                QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar, QProgressDialog, QPushButton, QScrollArea,
-                               QSizePolicy, QSpinBox, QTabWidget, QVBoxLayout, QWidget)
+                               QSizePolicy, QSpinBox, QTabWidget, QToolButton, QVBoxLayout, QWidget)
 from PySide6.QtCore import QUrl
 
+from .activity import format_activity_entry
 from .assets import (AssetDeployer, AssetExtractor, asset_setup_mode, discover_steam_game_roots,
                      expected_asset_contract, game_root_id, request_dragonwilds_close,
                      resume_activity_message)
 from .cache import BundleCache, format_bundle_timestamp
+from .changelog import ChangelogRelease, parse_changelog
 from .config import ConfigModel, content_hash, update_website_settings, website_configuration_ready
 from .journal import JournalStore
 from .lifecycle import PterodactylProvider, ReleasePayload
@@ -70,6 +72,29 @@ class WrappingLabel(QLabel):
         height = self.heightForWidth(event.size().width())
         if self.minimumHeight() != height or self.maximumHeight() != height:
             self.setFixedHeight(height)
+
+
+class ChangelogSection(QWidget):
+    def __init__(self, release: ChangelogRelease, expanded: bool = False, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self); layout.setContentsMargins(0, 0, 0, 8); layout.setSpacing(4)
+        title = f"Version {release.version}"
+        if release.date:
+            title += f" · {release.date}"
+        self.toggle = QToolButton(); self.toggle.setText(title); self.toggle.setCheckable(True)
+        self.toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.toggle.setStyleSheet("QToolButton { font-weight: 600; text-align: left; padding: 6px; }")
+        self.body = QLabel(release.changes or "No detailed changes were recorded for this version.")
+        self.body.setTextFormat(Qt.MarkdownText); self.body.setWordWrap(True)
+        self.body.setTextInteractionFlags(Qt.TextBrowserInteraction); self.body.setOpenExternalLinks(True)
+        self.body.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.toggle.toggled.connect(self.set_expanded)
+        layout.addWidget(self.toggle); layout.addWidget(self.body)
+        self.toggle.setChecked(expanded); self.set_expanded(expanded)
+
+    def set_expanded(self, expanded: bool):
+        self.toggle.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+        self.body.setVisible(expanded)
 
 
 class Worker(QObject):
@@ -274,7 +299,7 @@ class MainWindow(QMainWindow):
         self.warning = QLabel(); self.warning.setStyleSheet("color:#b45309;font-weight:600")
         outer.addLayout(target); outer.addWidget(self.warning)
         self.tabs = QTabWidget(); outer.addWidget(self.tabs, 1); self.setCentralWidget(central)
-        self._servers_tab(); self._assets_tab(); self._config_tab(); self._doctor_tab(); self._activity_tab()
+        self._servers_tab(); self._assets_tab(); self._config_tab(); self._doctor_tab(); self._changelog_tab(); self._activity_tab()
         self._update_status_bar()
         self.activity_signal.connect(self.log)
         self.operation_progress_signal.connect(self.update_operation_progress)
@@ -419,8 +444,29 @@ class MainWindow(QMainWindow):
         self.progress = QProgressBar(); self.progress.setRange(0, 100)
         layout.addWidget(self.activity, 1); layout.addWidget(self.progress); self.tabs.addTab(page, "Activity")
 
+    def _changelog_tab(self):
+        page = QWidget(); layout = QVBoxLayout(page)
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        content = QWidget(); releases_layout = QVBoxLayout(content); releases_layout.setContentsMargins(8, 8, 8, 8)
+        try:
+            releases = parse_changelog(resource_path("CHANGELOG.md").read_text(encoding="utf-8-sig"),
+                                       self.manager_version)
+        except (OSError, UnicodeError, ValueError) as error:
+            releases = []
+            message = QLabel(f"The bundled changelog could not be loaded: {error}"); message.setWordWrap(True)
+            releases_layout.addWidget(message)
+        if not releases:
+            releases_layout.addWidget(QLabel("No release notes are available for this Manager version."))
+        for index, release in enumerate(releases):
+            releases_layout.addWidget(ChangelogSection(release, expanded=index == 0))
+        releases_layout.addStretch(); scroll.setWidget(content); layout.addWidget(scroll)
+        self.tabs.addTab(page, "Changelog")
+
+    def append_activity(self, message: str):
+        self.activity.appendPlainText(format_activity_entry(redact(message)))
+
     def log(self, message: str):
-        self.activity.appendPlainText(redact(message)); self.statusBar().showMessage(message, 5000)
+        self.append_activity(message); self.statusBar().showMessage(message, 5000)
 
     def _update_status_bar(self):
         container = QWidget(); layout = QHBoxLayout(container)
@@ -616,7 +662,7 @@ class MainWindow(QMainWindow):
                 else:
                     safe_message += "\n\nThe saved extraction belongs to an older game or tool version. Discard it from the Assets tab before starting fresh."
         QMessageBox.critical(self, "Operation failed", safe_message + "\n\nTechnical details are available in Activity.")
-        self.activity.appendPlainText("Operation failed: " + safe_message + "\n" + safe_details)
+        self.append_activity("Operation failed: " + safe_message + "\n" + safe_details)
         self.statusBar().showMessage("Operation failed: " + safe_message, 5000)
 
     def active(self) -> ServerProfile | None:
@@ -1110,7 +1156,7 @@ class MainWindow(QMainWindow):
             def saved(outcome):
                 if outcome.get("error"):
                     safe_message = redact(outcome["error"]); safe_details = redact(outcome["details"])
-                    self.activity.appendPlainText("Website settings were not saved: " + safe_message + "\n" + safe_details)
+                    self.append_activity("Website settings were not saved: " + safe_message + "\n" + safe_details)
                     QMessageBox.warning(self, "Website settings were not saved",
                                         safe_message + "\n\nYou can retry later from the Configuration tab. Website asset setup can still continue.")
                 else:

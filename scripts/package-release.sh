@@ -101,7 +101,7 @@ EOF
 cp -p "$SERVER_ZIP" "$WORK/manager/payload/server.zip"
 cp -p "$ROOT/config/zanik-config.schema.json" "$WORK/manager/config/zanik-config.schema.json"
 cp -p "$ROOT/config/server-payload-legacy-contracts.json" "$WORK/manager/config/server-payload-legacy-contracts.json"
-cp -p "$ROOT/manager/README.md" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/manager/tools.lock.json" "$WORK/manager/"
+cp -p "$ROOT/manager/README.md" "$ROOT/CHANGELOG.md" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/manager/tools.lock.json" "$WORK/manager/"
 cp -p "$ROOT/VERSION" "$WORK/manager/VERSION"
 cp -p /usr/share/common-licenses/LGPL-3 "$WORK/manager/LICENSE-LGPL-3.0.txt"
 x86_64-w64-mingw32-gcc -municode -mwindows -Os -s "$ROOT/manager/launcher.c" -o "$WORK/manager/ZanikManager.exe"

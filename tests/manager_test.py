@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -16,7 +17,9 @@ from manager.zanik_manager.assets import (AssetDeployer, AssetExtractor, asset_s
                                           background_creation_flags,
                                           dragonwilds_is_running, expected_asset_contract,
                                           request_dragonwilds_close, resume_activity_message)
+from manager.zanik_manager.activity import format_activity_entry
 from manager.zanik_manager.cache import BundleCache, format_bundle_timestamp
+from manager.zanik_manager.changelog import parse_changelog
 from manager.zanik_manager.config import (ConfigError, ConfigModel, content_hash, update_website_settings,
                                           website_configuration_ready)
 from manager.zanik_manager.journal import JournalStore, OperationJournal
@@ -31,6 +34,28 @@ from manager.zanik_manager.pterodactyl import PterodactylClient, PterodactylErro
 from manager.zanik_manager.security import credential_target, redact
 from manager.zanik_manager.support import create_support_bundle
 from tools.prune_pyside_runtime import KEEP_FILES, prune
+
+
+class ChangelogTests(unittest.TestCase):
+    def test_changelog_is_sorted_and_hides_versions_newer_than_manager(self):
+        markdown = """# Changelog
+## [2.0.0] - 2030-01-01
+- Future
+## [1.2.0] - 2026-10-17
+### Added
+- Current
+## [1.1.9] - 2026-10-01
+- Previous
+"""
+        releases = parse_changelog(markdown, "1.2.0")
+        self.assertEqual([release.version for release in releases], ["1.2.0", "1.1.9"])
+        self.assertEqual(releases[0].date, "2026-10-17")
+        self.assertIn("Current", releases[0].changes)
+
+    def test_activity_entries_timestamp_every_displayed_line(self):
+        stamp = datetime(2026, 10, 17, 15, 4, 5, tzinfo=timezone.utc)
+        self.assertEqual(format_activity_entry("First\nSecond", stamp),
+                         "[2026-10-17 15:04:05] First\n[2026-10-17 15:04:05] Second")
 
 
 def write_payload_archive(archive: Path, files: dict[str, bytes], version: str = "0.2.0") -> dict:
