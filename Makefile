@@ -55,6 +55,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(PYTHON) tests/release_automation_test.py
 	$(PYTHON) tests/github_release_test.py
 	$(PYTHON) tests/game_update_25811348_test.py
+	$(PYTHON) tests/game_update_25991736_test.py
 	$(PYTHON) tests/quest_schema_test.py
 	sh tests/config_test.sh
 	$(PYTHON) tests/asset_tool_test.py

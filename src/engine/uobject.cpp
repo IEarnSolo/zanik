@@ -214,7 +214,7 @@ uintptr_t Engine::GetWorld() const {
        Mem::ReadPtr(cachedWorld+Offsets::World_PersistentLevel)){
         worldSource="cached-object-sweep";return cachedWorld;
     }
-    for(uintptr_t offset:{Offsets::GWorld_25811348,Offsets::GWorld_25630937,Offsets::GWorld_25501739,Offsets::GWorld}){
+    for(uintptr_t offset:{Offsets::GWorld_25991736,Offsets::GWorld_25811348,Offsets::GWorld_25630937,Offsets::GWorld_25501739,Offsets::GWorld}){
         uintptr_t world=Mem::ReadPtr(moduleBase+offset);
         if(world&&GetObjectClassName(world)=="World"&&
            Mem::ReadPtr(world+Offsets::World_PersistentLevel)){
@@ -436,8 +436,9 @@ std::string Engine::GetPlayerStorageJson(const std::string& characterGuid) const
     static const std::string expectedSha="445f8b65047d208adb04a3cb03bc7706f069306d814172ae29caec16c15bec7e";
     static const std::string updatedSha="ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac";
     static const std::string umbralHotfixSha="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c";
+    static const std::string latestSha="b5017cf67bc6127dbec443e00fed1f818e82afd5d6d17f912d959a1dd87d5687";
     static const std::string executableSha=FileSha256("/proc/self/exe");
-    if(executableSha!=expectedSha&&executableSha!=updatedSha&&executableSha!=umbralHotfixSha)return "";
+    if(executableSha!=expectedSha&&executableSha!=updatedSha&&executableSha!=umbralHotfixSha&&executableSha!=latestSha)return "";
     auto escape=[](const std::string& s){std::string out;for(unsigned char c:s){if(c=='"'||c=='\\'){out+='\\';out+=char(c);}else if(c>=32)out+=char(c);}return out;};
     auto cleanType=[](std::string value){
         auto exact=BuildingActorDisplayNames().find(value);if(exact!=BuildingActorDisplayNames().end())return exact->second;
@@ -459,10 +460,22 @@ std::string Engine::GetPlayerStorageJson(const std::string& characterGuid) const
     using GetDisplayStringFn=const FString* (*)(const void*);
     using GetSlotCountFn=int (*)(const void*);
     using GetMaxStackSizeFn=int(*)(void*);
-    const bool umbralHotfix=executableSha==umbralHotfixSha;
-    auto displayString=reinterpret_cast<GetDisplayStringFn>(moduleBase+(umbralHotfix?0x04ACAA80:0x04AA1A80));
-    auto getEmptySlots=reinterpret_cast<GetSlotCountFn>(moduleBase+(umbralHotfix?0x0A65A7A0:0x0A618DE0));
-    auto getFilledSlots=reinterpret_cast<GetSlotCountFn>(moduleBase+(umbralHotfix?0x0A65D220:0x0A61B860));
+    const bool currentFamily=executableSha==umbralHotfixSha||executableSha==latestSha;
+    const uintptr_t displayAddress=moduleBase+(currentFamily?0x04ACAA80:0x04AA1A80);
+    const uintptr_t emptyAddress=moduleBase+(executableSha==latestSha?0x0A65A8B0:(currentFamily?0x0A65A7A0:0x0A618DE0));
+    const uintptr_t filledAddress=moduleBase+(executableSha==latestSha?0x0A65D330:(currentFamily?0x0A65D220:0x0A61B860));
+    const unsigned char displaySignature[]={0x53,0x48,0x89,0xfb,0x48,0x8b,0x3f,0x48,0x85,0xff,0x74,0x18};
+    const unsigned char emptySignature[]={0x8b,0x87,0xd8,0x01,0x00,0x00,0x48,0x63,0x8f,0x70,0x01,0x00,0x00,0x29,0xc8};
+    const unsigned char filledSignature[]={0x8b,0x87,0xd8,0x01,0x00,0x00,0x48,0x63,0x8f,0x70,0x01,0x00,0x00,0x41,0x89,0xc0};
+    if(!Mem::Readable(reinterpret_cast<void*>(displayAddress),sizeof(displaySignature))||
+       !Mem::Readable(reinterpret_cast<void*>(emptyAddress),sizeof(emptySignature))||
+       !Mem::Readable(reinterpret_cast<void*>(filledAddress),sizeof(filledSignature))||
+       std::memcmp(reinterpret_cast<void*>(displayAddress),displaySignature,sizeof(displaySignature))||
+       std::memcmp(reinterpret_cast<void*>(emptyAddress),emptySignature,sizeof(emptySignature))||
+       std::memcmp(reinterpret_cast<void*>(filledAddress),filledSignature,sizeof(filledSignature)))return "";
+    auto displayString=reinterpret_cast<GetDisplayStringFn>(displayAddress);
+    auto getEmptySlots=reinterpret_cast<GetSlotCountFn>(emptyAddress);
+    auto getFilledSlots=reinterpret_cast<GetSlotCountFn>(filledAddress);
     std::vector<std::pair<uintptr_t,uintptr_t>> orderedInventories(inventories.begin(),inventories.end());
     auto storageOrder=[&](const std::pair<uintptr_t,uintptr_t>& entry){
         const uintptr_t actor=entry.first;std::uint32_t pieceId=0xffffffffu;const int32_t offset=FindPropertyOffset(actor,"BuildingPieceID");

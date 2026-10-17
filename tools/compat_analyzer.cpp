@@ -307,7 +307,8 @@ int main(int argc,char** argv){
                         hash=="d12145525d88f3828ebeac0aec3865f5b16ba4771861efe65108754a89bbb090"||
                         hash=="445f8b65047d208adb04a3cb03bc7706f069306d814172ae29caec16c15bec7e"||
                         hash=="ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac"||
-                        hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c";
+                        hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"||
+                        hash=="b5017cf67bc6127dbec443e00fed1f818e82afd5d6d17f912d959a1dd87d5687";
     std::cout<<hash<<'\t'<<"0x"<<std::hex<<killedAt<<'\t'<<"0x"<<textOffset<<'\t'<<"0x"<<textSize<<'\t'<<"0x"<<displayAt<<'\t'<<"0x"<<mapRegionAt<<'\t'<<"0x"<<regionNameOffset<<'\t'<<"0x"<<dungeonAt<<'\t'<<"0x"<<dungeonNameOffset<<'\t'<<"0x"<<dungeonEntranceOffset
              <<std::dec<<'\t'<<(knownMap?-11075:0)<<'\t'<<(knownMap?-117685:0)<<'\t'<<(knownMap?420000:0)<<'\t'<<(knownMap?"world-map-1.0.0.2":"-")
              <<'\t'<<"0x"<<std::hex<<registryInstanceAt<<'\t'<<"0x"<<registryLodestonesAt<<'\t'<<"0x"<<lodestoneLocationAt
