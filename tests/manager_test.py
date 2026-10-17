@@ -41,10 +41,12 @@ from tools.prune_pyside_runtime import KEEP_FILES, prune
 class ChangelogTests(unittest.TestCase):
     def test_changelog_uses_compact_borderless_disclosure_rows(self):
         source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
-        self.assertIn("Qt.ToolButtonTextOnly", source)
+        self.assertIn("self.toggle.setFlat(True)", source)
         self.assertIn("border: none; border-bottom", source)
+        self.assertIn("text-align: left", source)
         self.assertIn("'▾' if expanded else '›'", source)
         self.assertNotIn("self.toggle.setArrowType", source)
+        self.assertIn("setContentsMargins(10, 4, 8, 10)", source)
 
     def test_changelog_is_sorted_and_hides_versions_newer_than_manager(self):
         markdown = """# Changelog

@@ -149,6 +149,11 @@ with tempfile.TemporaryDirectory() as name:
     pipeline.validate_reviewed_counts({"jsonFiles": 18, "worldPartitionCells": 8},
                                       {"jsonFiles": 11, "worldPartitionCells": 5})
 
+    empty_json = root / "empty-json"; empty_json.mkdir()
+    exact_required = "package:RSDragonwilds/Content/Art/UI/Icons/T_LodestoneMapIcon"
+    assert exact_required in pipeline.referenced_textures(empty_json, [exact_required])
+    assert "basename:ordinary" in pipeline.referenced_textures(empty_json, ["ordinary"])
+
     partial = root / "partial-exports"
     partial_json = partial / "json"; partial_json.mkdir(parents=True)
     partial_textures = partial / "textures"; partial_font = partial / "font"

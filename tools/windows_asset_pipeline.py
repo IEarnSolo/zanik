@@ -21,7 +21,7 @@ except ModuleNotFoundError:  # Imported as tools.* by repository tests.
     from tools.asset_filesystem import extended_path, read_json as read_json_file
 
 
-RECIPE_VERSION = 5
+RECIPE_VERSION = 6
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 EXPORT_CHECKPOINT = "export-checkpoint.json"
 
@@ -164,7 +164,8 @@ def cooked_package_path(value: str) -> str | None:
 
 
 def referenced_textures(json_root: Path, required: list[str]) -> list[str]:
-    targets = {f"basename:{name}" for name in required}
+    targets = {name if name.startswith(("package:", "basename:")) else f"basename:{name}"
+               for name in required}
     def web_texture_package(reference: object) -> str:
         package = cooked_package_path(str(reference or ""))
         normalized = package.replace("\\", "/").casefold()
