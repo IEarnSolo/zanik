@@ -2,6 +2,17 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.42] - 2026-10-17
+
+### Fixed
+
+- Restore read-only native compatibility with Dragonwilds dedicated-server build `25991736`, including validated Unreal globals, resource lifecycle tracking, storage display, and the bounded recipe/quest query dispatcher.
+- Keep storage, gravestone, teleport, and unfinished automatic-compost mutations independently fail-closed on the new build until their complete native paths are separately revalidated.
+
+### Changed
+
+- Record the guarded game-update procedure and feature-specific compatibility evidence so Zanik Manager can safely distribute the October 17 dedicated-server compatibility update.
+
 ## [0.2.41] - 2026-10-17
 
 ### Fixed

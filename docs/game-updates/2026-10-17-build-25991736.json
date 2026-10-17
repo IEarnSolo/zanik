@@ -1,0 +1,21 @@
+{
+  "date": "2026-10-17",
+  "build": "25991736",
+  "executableSha256": "b5017cf67bc6127dbec443e00fed1f818e82afd5d6d17f912d959a1dd87d5687",
+  "executableSize": 230033416,
+  "developmentValidation": "passed-read-only-awaiting-gameplay",
+  "productionValidation": "not-run",
+  "saveTreeUnchangedDuringUpdate": true,
+  "assetCompatibility": "compatible",
+  "mapLabels": 33,
+  "resourceCatalogNodes": 31910,
+  "npcPlacements": 2964,
+  "recipeEntries": 1576,
+  "questEntries": 41,
+  "dispatcherMaximumMicroseconds": 17,
+  "dispatcherSlowCalls": 0,
+  "npcMaximumSliceMicroseconds": 598,
+  "npcSlowSlices": 0,
+  "npcDutyCycleBasisPoints": 51,
+  "developmentRollback": "/home/container/zanik-backups/game-update/20261017T161840Z-25811348-to-latest"
+}

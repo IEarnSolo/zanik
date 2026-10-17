@@ -41,6 +41,11 @@ constexpr uintptr_t GWorld_25630937   = 0x0DD565F8;
 constexpr uintptr_t GObjects_25811348 = 0x0DC96510;
 constexpr uintptr_t GNames_25811348   = 0x0DBDAFF8;
 constexpr uintptr_t GWorld_25811348   = 0x0DDB25F8;
+// Build 25991736 added 0x1000 to the writable ELF sections while retaining
+// the reviewed Unreal layouts. Runtime structural validation remains required.
+constexpr uintptr_t GObjects_25991736 = 0x0DC97510;
+constexpr uintptr_t GNames_25991736   = 0x0DBDBFF8;
+constexpr uintptr_t GWorld_25991736   = 0x0DDB35F8;
 
 // TUObjectArray / FUObjectItem - Source: RSDWSDK/CppSDK/SDK/Basic.hpp
 constexpr uintptr_t ObjArray_Objects     = 0x00;
