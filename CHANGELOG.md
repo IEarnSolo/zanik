@@ -2,6 +2,12 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.34] - 2026-10-17
+
+### Fixed
+
+- Retry Zanik Manager update-staging cleanup while the native updater completes its startup handshake, preventing a first-launch race from retaining otherwise recognized historical versions.
+
 ## [0.2.33] - 2026-10-17
 
 ### Added

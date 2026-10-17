@@ -13,7 +13,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from manager.zanik_manager.updates import GitHubReleaseChecker, parse_version, prune_update_staging
+from manager.zanik_manager.updates import (GitHubReleaseChecker, parse_version, prune_update_staging,
+                                           update_staging_cleanup_pending)
 from manager.zanik_manager.game_updates import PublicSteamBuildChecker, installed_build
 
 
@@ -190,6 +191,9 @@ class UpdateAwarenessTests(unittest.TestCase):
             (verified / "payload" / "payloads.json").write_text("{}", encoding="utf-8")
             self.assertEqual(prune_update_staging(updates), (0, 0))
             self.assertTrue(verified.is_dir())
+            self.assertTrue(update_staging_cleanup_pending(updates))
+            (updates / "self-update-journal.json.status").write_text(json.dumps({"state": "complete"}))
+            self.assertFalse(update_staging_cleanup_pending(updates))
 
 
 if __name__ == "__main__": unittest.main()
