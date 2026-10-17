@@ -37,6 +37,12 @@ def contract_from_zip_bytes(data):
                             'mode':(item.external_attr >> 16) & 0o777 or 0o644})
         document=json.loads(archive.read('payload-contract.json'))
     return validate_contract(document, entries)
+def asset_contract_from_zip(path):
+    with zipfile.ZipFile(path) as archive:
+        data=archive.read('asset-tools/extraction-recipes.json'); recipe=json.loads(data)
+    return {'extractionRecipeVersion':recipe['schemaVersion'],
+            'compatibilityProfileVersion':recipe['catalogProfile']['version'],
+            'extractionRecipeSha256':hashlib.sha256(data).hexdigest()}
 def inspect(path):
     entries=names(path)
     for name in entries:
@@ -91,6 +97,8 @@ def inspect(path):
                     raise SystemExit('manager does not contain the published sibling server payload')
                 asset_sibling=path.parent/f'zanik-asset-tools-windows-x86_64-{version}.zip'
                 if not asset_sibling.is_file(): raise SystemExit('standalone Windows asset-tool sibling is missing')
+                if payloads.get('assetContract') != asset_contract_from_zip(asset_sibling):
+                    raise SystemExit('manager asset contract metadata mismatch')
                 with zipfile.ZipFile(asset_sibling) as standalone:
                     standalone_files={clean(item.filename):(item.file_size,hashlib.sha256(standalone.read(item)).hexdigest()) for item in standalone.infolist() if not item.is_dir()}
                 manager_files={record['path']:(record['size'],record['sha256']) for record in payloads.get('assetToolsFiles',[])}
@@ -120,6 +128,9 @@ server_contract=contract_from_zip_bytes(server_zip.read_bytes())
 if manifest.get('serverPayload') != {'releaseVersion':server_contract['releaseVersion'],
     'contractSchemaVersion':server_contract['schemaVersion'],'contractSha256':server_contract['contractSha256']}:
     raise SystemExit('release manifest server payload contract mismatch')
+asset_zip=root/f'zanik-asset-tools-windows-x86_64-{manifest.get("version")}.zip'
+if manifest.get('assetContract') != asset_contract_from_zip(asset_zip):
+    raise SystemExit('release manifest asset contract mismatch')
 for record in manifest['files']:
     path=root/record['name']; actual=hashlib.sha256(path.read_bytes()).hexdigest()
     if actual!=record['sha256'] or path.stat().st_size!=record['size']: raise SystemExit(f'manifest mismatch: {path.name}')

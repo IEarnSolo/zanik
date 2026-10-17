@@ -4,6 +4,8 @@
 
 Every server archive contains `payload-contract.json`, a deterministic contract over operational binaries, launchers, scripts, tools, configuration, and compatibility metadata. Manager code, documentation, changelogs, licenses, generated assets, and display-version files are excluded. Release validation must prove the Manager, nested server archive, and public release manifest report the same contract. A Manager-only release is expected to retain the prior contract.
 
+`release-manifest.json` also records the Windows extraction asset contract: recipe version, reviewed compatibility-profile version, and exact recipe hash. Manager treats this independently from the server payload so it can explain whether a release requires only a Manager update, a Zanik server update, an asset refresh, or both. Never infer either requirement from the shared release number alone.
+
 ## One-time release configuration
 
 Protect the tag wildcard `v*` under **Settings > Repository > Protected tags** and allow only Maintainers to create it. If protected environments are available, protect `curseforge-production` for Maintainers as well.

@@ -2,6 +2,17 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.38] - 2026-10-17
+
+### Added
+
+- Show website-asset compatibility as a separate status on the Zanik Manager Servers tab, including explicit guidance to update Manager and then refresh assets when a newer release changes the extraction contract.
+- Publish the extraction recipe, reviewed compatibility profile, and recipe hash in release and Manager payload metadata so future Managers can distinguish Manager-only, server-payload, and asset-refresh updates.
+
+### Changed
+
+- Re-evaluate active asset compatibility after server selection, release update checks, and successful asset activation. Asset-only releases no longer imply that the Zanik server payload needs reinstalling.
+
 ## [0.2.37] - 2026-10-17
 
 ### Changed

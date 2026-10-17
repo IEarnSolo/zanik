@@ -132,7 +132,9 @@ with zipfile.ZipFile(root/'payload/server.zip') as archive:
 asset_files=[]
 for path in sorted((root/'asset-tools').rglob('*')):
     if path.is_file(): asset_files.append({'path':path.relative_to(root/'asset-tools').as_posix(),'size':path.stat().st_size,'sha256':digest(path)})
-(root/'payload/payloads.json').write_text(json.dumps({'schemaVersion':2,'version':version,'serverSha256':digest(root/'payload/server.zip'),'serverReleaseVersion':contract['releaseVersion'],'serverPayloadContractSchemaVersion':contract['schemaVersion'],'serverPayloadContractSha256':contract['contractSha256'],'assetToolsFiles':asset_files},indent=2,sort_keys=True)+'\n')
+recipe_path=root/'asset-tools/asset-tools/extraction-recipes.json'; recipe=json.loads(recipe_path.read_text())
+asset_contract={'extractionRecipeVersion':recipe['schemaVersion'],'compatibilityProfileVersion':recipe['catalogProfile']['version'],'extractionRecipeSha256':digest(recipe_path)}
+(root/'payload/payloads.json').write_text(json.dumps({'schemaVersion':2,'version':version,'serverSha256':digest(root/'payload/server.zip'),'serverReleaseVersion':contract['releaseVersion'],'serverPayloadContractSchemaVersion':contract['schemaVersion'],'serverPayloadContractSha256':contract['contractSha256'],'assetContract':asset_contract,'assetToolsFiles':asset_files},indent=2,sort_keys=True)+'\n')
 PY
 normalize "$WORK/manager"
 MANAGER_ZIP=$OUT/zanik-manager-windows-x86_64-$VERSION.zip
