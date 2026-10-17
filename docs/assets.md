@@ -6,6 +6,8 @@ Building artwork comes from the client's authored build-interface assets. Most p
 
 Resource markers whose world actors do not expose a direct item reference use a reviewed mapping to the harvested inventory item. Item artwork is selected from the explicit cooked `Icon` reference by full package path; it is never guessed from a filename or replaced by a generated marker. Missing resource artwork makes extraction fail before bundling.
 
+The lodestone map marker comes from the client's authored `/Game/Art/UI/Icons/T_LodestoneMapIcon` package. It is intentionally distinct from the similarly named building-piece icon, and the extraction recipe identifies it by its complete cooked package path.
+
 ## Build on Windows
 
 Extract `zanik-asset-tools-windows-x86_64-VERSION.zip`, open PowerShell in that directory, close Dragonwilds, and run:

@@ -24,6 +24,10 @@ with tempfile.TemporaryDirectory(prefix="zanik-web-assets-") as temporary:
         (textures / f"T_Icon_SkillTree_{skill}.png").write_bytes(b"skill-tree:" + skill.encode())
         (textures / f"T_Icon_Tag_Skill_{skill}.png").write_bytes(b"tag-skill:" + skill.encode())
     (textures / "T_WorldMap_Landmass.png").write_bytes(b"map")
+    (textures / "T_Icon_Lodestone.png").write_bytes(b"wrong-building-icon")
+    lodestone_map_icon = (textures / "batch-01" / generator.LODESTONE_MAP_ICON_PACKAGE).with_suffix(".png")
+    lodestone_map_icon.parent.mkdir(parents=True)
+    lodestone_map_icon.write_bytes(b"correct-map-icon")
     (textures / "T_Arrows_Bone.png").write_bytes(b"fang-arrow")
     (textures / "T_Icon_Cactus_Steak_Raw.png").write_bytes(b"cactus")
     (json_root / "ammo.json").write_text(json.dumps([
@@ -61,5 +65,6 @@ with tempfile.TemporaryDirectory(prefix="zanik-web-assets-") as temporary:
     assert (web / "items" / "ITEM_Ammo_Arrows_Bone_Bodkin.png").read_bytes() == b"fang-arrow"
     assert (web / "items" / "ITEM_Ammo_Arrows_Bone_Poison.png").read_bytes() == b"fang-arrow"
     assert (web / "resources" / "barrel-cactus.png").read_bytes() == b"cactus"
+    assert (web / "lodestone-icon.png").read_bytes() == b"correct-map-icon"
 
 print("web asset selection tests passed")

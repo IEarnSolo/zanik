@@ -25,6 +25,7 @@ MAP_SIZE = 4096
 # texels contain white RGB values, so saving it directly as JPEG creates white
 # seams. This color matches the ocean used by Zanik's original web map.
 MAP_OCEAN_RGB = (79, 107, 110)
+LODESTONE_MAP_ICON_PACKAGE = "RSDragonwilds/Content/Art/UI/Icons/T_LodestoneMapIcon"
 
 
 def png_chunk(kind: bytes, data: bytes) -> bytes:
@@ -65,6 +66,19 @@ def copy(index: dict[str, Path], name: str, destination: Path) -> bool:
     source = index.get(name.casefold())
     if not source: return False
     destination.parent.mkdir(parents=True, exist_ok=True); copy_file(source, destination); return True
+
+
+def copy_package(root: Path, package: str, destination: Path) -> bool:
+    """Copy one exact cooked texture package, tolerating identical batch duplicates."""
+    matches = sorted(root.glob(f"batch-*/{package}.png"))
+    if not matches:
+        return False
+    payload = read_bytes(matches[0])
+    if any(read_bytes(path) != payload for path in matches[1:]):
+        raise RuntimeError(f"conflicting exports for required texture package {package}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    copy_file(matches[0], destination)
+    return True
 
 
 def svg(path: Path, main: bool) -> None:
@@ -155,8 +169,9 @@ def main() -> int:
         candidates = [f"T_Icon_Tag_Skill_{skill}", f"T_Icon_{skill}", f"T_Icon_SkillTree_{skill}"]
         if not next((copy(images, candidate, web / "skills" / f"{skill}.png") for candidate in candidates), False):
             placeholder(web / "skills" / f"{skill}.png", (193, 166, 77, 255)); missing.append(f"skill:{skill}")
+    if not copy_package(args.texture_root, LODESTONE_MAP_ICON_PACKAGE, web / "lodestone-icon.png"):
+        placeholder(web / "lodestone-icon.png", (67, 155, 219, 255)); missing.append("lodestone-icon.png")
     for target, candidates, color in (
-        ("lodestone-icon.png", ("T_Icon_Lodestone",), (67, 155, 219, 255)),
         ("nodestone-icon.png", ("T_Icon_Nodestone", "T_Icon_NodeStone"), (126, 196, 223, 255)),
         ("gravestone-icon.png", ("T_Icon_Gravestone",), (180, 180, 180, 255)),
     ):

@@ -29,7 +29,7 @@ resources = (root / "src" / "engine" / "resources.cpp").read_text()
 assert f'hash=="{server_sha}"' in resources
 
 profile = json.loads((root / "asset-tools" / "extraction-recipes.json").read_text())["catalogProfile"]
-assert profile["version"] == "client-25812671-reviewed-5"
+assert profile["version"] == "client-25812671-reviewed-6"
 assert profile["clientBuild"] == "25812671"
 assert profile["catalogCounts"]["buildings/catalog.json:pieces"] == 827
 assert profile["catalogCounts"]["npc-catalog.json:nodes"] == 2964

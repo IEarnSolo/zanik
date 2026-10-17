@@ -2,6 +2,16 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.37] - 2026-10-17
+
+### Changed
+
+- Left-align Zanik Manager's Changelog version headings and reduce the indentation of expanded release notes.
+
+### Fixed
+
+- Extract the authored `T_LodestoneMapIcon` texture for world-map lodestone markers instead of the similarly named building-piece icon. Extraction recipe 6 makes existing bundles eligible for a targeted incremental refresh.
+
 ## [0.2.36] - 2026-10-17
 
 ### Fixed

@@ -71,6 +71,8 @@ Validated bundles are stored below `%LOCALAPPDATA%\Zanik Manager\assets\`. The n
 
 Before a manual extraction, Manager checks those validated bundles against the selected client's executable fingerprint and the packaged extraction-recipe SHA-256, recipe version, and reviewed compatibility profile. An exact match is selected immediately without launching Dragonwilds or UnrealAssetScout. **Run extraction anyway** remains available only as an explicit troubleshooting choice. A changed game or extraction contract continues through the retained incremental cache so only changed, added, or removed package outputs are refreshed.
 
+Changelog releases use compact, left-aligned disclosure headings. Expanded notes sit just inside their heading rather than using a deep nested indent.
+
 Resume accepts journals created by both Windows PowerShell 5.1 and PowerShell 7. If targeted JSON export finished but later export stages did not, Manager verifies that retained JSON and continues with artwork and font export without reopening Dragonwilds or repeating the catalog pass. If UnrealAssetScout finished every export, Manager verifies every expected batch and resumes catalog generation. This recovery is also automatic in the fresh-server guided setup flow, which continues through upload and activation on the pinned server. Manager never infers completion from directory existence alone.
 
 Manager handles deeply nested exports with Windows extended-length paths. If any retained JSON or artwork cannot be read, generation fails with the affected filename rather than publishing a partial catalog. Corrected builds can resume the same retained exports after such a failure.
