@@ -11,7 +11,7 @@ REQUIRED={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scri
 EXECUTABLE={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','scripts/verify-assets.sh','scripts/check-game-update.sh'}
 WINDOWS_ASSET_REQUIRED={'init-assets.ps1','runtime/python.exe','runtime/LICENSE.txt','third_party/uas/uas.exe',
     'third_party/uas/LICENSE.txt','third_party/ue4ss/dwmapi.dll','third_party/ue4ss/ue4ss/UE4SS.dll',
-    'third_party/ue4ss/ue4ss/LICENSE','asset-tools/extraction-recipes.json','tools/zanik_assets.py',
+    'third_party/ue4ss/ue4ss/LICENSE','asset-tools/extraction-recipes.json','asset-tools/extraction-recipe-history.json','tools/zanik_assets.py',
     'tools/windows_mapping.py','tools/windows_asset_pipeline.py','tools/generate_web_assets.py','tools/asset_filesystem.py','tools/quest_schema.py',
     'tools/generate_world_catalogs.py','deploy/quest-overrides.json','deploy/quest-step-overrides.json'}
 MANAGER_REQUIRED={'ZanikManager.exe','ZanikManagerUpdater.exe','VERSION','runtime/pythonw.exe','app/zanik_manager/app.py','app/zanik_manager/pterodactyl.py','app/zanik_manager/payload_contract.py',
@@ -40,9 +40,16 @@ def contract_from_zip_bytes(data):
 def asset_contract_from_zip(path):
     with zipfile.ZipFile(path) as archive:
         data=archive.read('asset-tools/extraction-recipes.json'); recipe=json.loads(data)
+        history=json.loads(archive.read('asset-tools/extraction-recipe-history.json'))
+    digest=hashlib.sha256(data).hexdigest()
+    record=next((item for item in history.get('recipes',[]) if item.get('sha256')==digest),None)
+    if not record or not isinstance(record.get('jsonTargets'),list):
+        raise SystemExit(f'{path.name} lacks the structural selector inventory for its current extraction recipe')
+    if recipe.get('jsonFilter')!='(?:'+'|'.join(record['jsonTargets'])+')':
+        raise SystemExit(f'{path.name} structural selector inventory differs from jsonFilter')
     return {'extractionRecipeVersion':recipe['schemaVersion'],
             'compatibilityProfileVersion':recipe['catalogProfile']['version'],
-            'extractionRecipeSha256':hashlib.sha256(data).hexdigest()}
+            'extractionRecipeSha256':digest}
 def inspect(path):
     entries=names(path)
     for name in entries:

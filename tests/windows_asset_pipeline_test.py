@@ -19,9 +19,13 @@ world_spec = importlib.util.spec_from_file_location("generate_world_catalogs", R
 world = importlib.util.module_from_spec(world_spec); world_spec.loader.exec_module(world)
 
 recipe = json.loads((ROOT / "asset-tools/extraction-recipes.json").read_text(encoding="utf-8"))
+recipe["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
 assert pipeline.RECIPE_VERSION == recipe["schemaVersion"], (
     "the pipeline and extraction recipe versions must be bumped together"
 )
+snapshot = pipeline.recipe_snapshot(recipe)
+assert snapshot["jsonTargets"]
+assert recipe["jsonFilter"] == "(?:" + "|".join(snapshot["jsonTargets"]) + ")"
 pattern = re.compile(recipe["jsonFilter"], re.I)
 assert pattern.search("/Game/Maps/World/L_World.umap")
 assert pattern.search("/Game/Maps/World/L_World/_Generated_/ABC.umap")
@@ -57,6 +61,19 @@ assert str(asset_filesystem.extended_path(
 
 with tempfile.TemporaryDirectory() as name:
     root = Path(name)
+    migrated = root / "migrated-cache"; migrated_json = migrated / "json"; migrated_json.mkdir(parents=True)
+    migration_journal = root / "migration-journal.json"
+    migration_journal.write_text(json.dumps({
+        "fingerprints": {"recipeSha256": pipeline.sha256(Path(recipe["_path"]))},
+        "previousFingerprints": {"recipeSha256": pipeline.sha256(Path(recipe["_path"]))},
+    }), encoding="utf-8")
+    prior = pipeline.load_prior_incremental_state(migrated, recipe, migration_journal)
+    assert prior and prior["recipe"]["jsonTargets"] == snapshot["jsonTargets"]
+    pipeline.write_incremental_state(migrated, recipe, ["basename:example"], migration_journal)
+    recorded_state = json.loads((migrated / pipeline.INCREMENTAL_STATE).read_text(encoding="utf-8"))
+    assert recorded_state["recipe"]["jsonTargets"] == snapshot["jsonTargets"]
+    assert recorded_state["textureTargets"] == ["basename:example"]
+
     exact = root / "exact.png"; first = root / "first.png"; second = root / "second.png"
     exact.write_bytes(b"exact"); first.write_bytes(b"first"); second.write_bytes(b"second")
     icon_asset = "/Game/Art/UI/Icons/GeneratedIcons/SM_Flag.SM_Flag"
@@ -97,6 +114,10 @@ with tempfile.TemporaryDirectory() as name:
     exported = root / "textures" / "batch-01" / "RSDragonwilds" / "Content" / "UI"
     exported.mkdir(parents=True); (exported / "T_Icon_Log.png").write_bytes(b"png")
     (exported / "T_Icon_Log_Mask.png").write_bytes(b"extra output from the same package")
+    assert pipeline.texture_target_inventory(root / "textures") == [
+        "package:RSDragonwilds/Content/UI/T_Icon_Log",
+        "package:RSDragonwilds/Content/UI/T_Icon_Log_Mask",
+    ]
     assert pipeline.missing_texture_targets(root / "textures", [
         "package:RSDragonwilds/Content/UI/T_Icon_Log", "basename:T_Icon_Log"
     ]) == []
@@ -191,6 +212,58 @@ with tempfile.TemporaryDirectory() as name:
     assert all("-r" not in command for command, _label, _quiet in export_calls)
     assert not stale_batch.exists(), "obsolete texture batches must be removed from incremental state"
 
+    delta_json = root / "delta-json"; delta_json.mkdir()
+    (delta_json / ".uas-manifest.json").write_text(json.dumps({"schema": 2, "mode": "json"}))
+    old_json = delta_json / "RSDragonwilds/Content/Gameplay/Old/retired.json"
+    keep_json = delta_json / "RSDragonwilds/Content/Gameplay/Keep/current.json"
+    old_json.parent.mkdir(parents=True); keep_json.parent.mkdir(parents=True)
+    old_json.write_text("{}", encoding="utf-8"); keep_json.write_text("{}", encoding="utf-8")
+    json_delta_calls = []
+    def fake_json_delta(command, label, quiet=False):
+        json_delta_calls.append(command)
+        output = Path(command[command.index("-o") + 1]); output.mkdir(parents=True)
+        (output / ".uas-manifest.json").write_text(json.dumps({"schema": 2, "mode": "json"}))
+        added_file = output / "RSDragonwilds/Content/Gameplay/New/added.json"
+        added_file.parent.mkdir(parents=True); added_file.write_text("{}", encoding="utf-8")
+    with patch.object(pipeline, "run", side_effect=fake_json_delta):
+        pipeline.apply_json_delta(["uas"], root, delta_json,
+                                  [r"/Gameplay/Old/", r"/Gameplay/Keep/"],
+                                  [r"/Gameplay/Keep/", r"/Gameplay/New/"])
+    assert not old_json.exists() and keep_json.exists()
+    assert (delta_json / "RSDragonwilds/Content/Gameplay/New/added.json").is_file()
+    assert len(json_delta_calls) == 1
+    json_delta_calls.clear()
+    with patch.object(pipeline, "run", side_effect=fake_json_delta):
+        pipeline.apply_json_delta(["uas"], root, delta_json,
+                                  [r"/Gameplay/Keep/", r"/Gameplay/New/"],
+                                  [r"/Gameplay/Keep/", r"/Gameplay/New/"])
+    assert json_delta_calls == [], "unchanged catalog selectors must make zero exporter calls"
+
+    delta_textures = root / "delta-textures"
+    retired_batch = delta_textures / "batch-01"; retained_batch = delta_textures / "batch-02"
+    retired_batch.mkdir(parents=True); retained_batch.mkdir()
+    (retired_batch / "retired.png").write_bytes(b"old")
+    (retained_batch / "shared.png").write_bytes(b"shared")
+    texture_delta_calls = []
+    def fake_texture_delta(command, label, quiet=False):
+        texture_delta_calls.append(command)
+        output = Path(command[command.index("-o") + 1]); output.mkdir(parents=True, exist_ok=True)
+        (output / ".uas-manifest.json").write_text(json.dumps({"schema": 2, "mode": "textures"}))
+        (output / "added.png").write_bytes(b"new")
+    with patch.object(pipeline, "run", side_effect=fake_texture_delta), \
+         patch.object(pipeline, "filter_chunks", return_value=["new-filter"]):
+        pipeline.apply_texture_delta(["uas"], root, delta_textures,
+                                     ["basename:retired", "basename:shared"],
+                                     ["basename:shared", "basename:added"])
+    assert not retired_batch.exists() and (retained_batch / "shared.png").is_file()
+    assert len(texture_delta_calls) == 1
+    texture_delta_calls.clear()
+    with patch.object(pipeline, "run", side_effect=fake_texture_delta):
+        pipeline.apply_texture_delta(["uas"], root, delta_textures,
+                                     ["basename:shared", "basename:added"],
+                                     ["basename:shared", "basename:added"])
+    assert texture_delta_calls == [], "unchanged texture inventory must make zero exporter calls"
+
     journal = root / "extraction-journal.json"
     original_journal = {
         "schemaVersion": 1, "stage": "mappings", "updatedAt": "old",
@@ -228,6 +301,12 @@ with tempfile.TemporaryDirectory() as name:
         assert checkpoint["fingerprints"] == original_journal["fingerprints"]
         pipeline.recover_or_create_export_checkpoint(
             workspace, checkpoint_recipe, {"jsonFiles": 1}, mapping, journal)
+        with patch.object(pipeline, "referenced_textures",
+                          side_effect=AssertionError("retained JSON was rescanned")):
+            overridden = pipeline.verified_export_checkpoint(
+                workspace, checkpoint_recipe, {"jsonFiles": 1}, mapping, journal,
+                ["basename:required"])
+            assert overridden["textureTargets"] == 1
         json_manifest = json_root / ".uas-manifest.json"
         original_json_manifest = json_manifest.read_text()
         json_manifest.write_text("not json")
@@ -256,21 +335,22 @@ with tempfile.TemporaryDirectory() as name:
             assert "missing its generated mapping" in str(error)
         mapping.write_bytes(b"mapping")
         extra = textures / "batch-02"; extra.mkdir()
+        (extra / ".uas-manifest.json").write_text(json.dumps({"schema": 2, "mode": "textures"}))
         try:
             pipeline.verified_export_checkpoint(
                 workspace, checkpoint_recipe, {"jsonFiles": 1}, mapping, journal)
-            raise AssertionError("unexpected texture batch was accepted")
+            raise AssertionError("empty texture batch was accepted")
         except RuntimeError as error:
-            assert "extra=['batch-02']" in str(error)
-        extra.rmdir()
+            assert "texture export batch is empty: batch-02" in str(error)
+        (extra / ".uas-manifest.json").unlink(); extra.rmdir()
         moved_batch = textures / "held-batch"
         batch.rename(moved_batch)
         try:
             pipeline.verified_export_checkpoint(
                 workspace, checkpoint_recipe, {"jsonFiles": 1}, mapping, journal)
-            raise AssertionError("missing texture batch was accepted")
+            raise AssertionError("workspace without a recognized texture batch was accepted")
         except RuntimeError as error:
-            assert "missing=['batch-01']" in str(error)
+            assert "contains no verified batches" in str(error)
         moved_batch.rename(batch)
         (batch / "required.png").unlink()
         try:

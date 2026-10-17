@@ -24,6 +24,7 @@ except ModuleNotFoundError:  # Imported as tools.* by repository tests.
 RECIPE_VERSION = 6
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 EXPORT_CHECKPOINT = "export-checkpoint.json"
+INCREMENTAL_STATE = "incremental-state.json"
 
 
 def sha256(path: Path) -> str:
@@ -221,6 +222,183 @@ def filter_chunks(targets: list[str], maximum: int = 28000) -> list[str]:
     return ["(?:" + "|".join(chunk) + r")\.uasset$" for chunk in chunks if chunk]
 
 
+def _recipe_history(recipe: dict) -> list[dict]:
+    history_path = Path(recipe["_path"]).with_name("extraction-recipe-history.json")
+    if not history_path.is_file():
+        return []
+    history = read_operational_json(history_path)
+    records = history.get("recipes", [])
+    return records if isinstance(records, list) else []
+
+
+def recipe_snapshot(recipe: dict) -> dict:
+    """Retain only Zanik-authored fields that determine extraction work."""
+    snapshot = {key: recipe.get(key) for key in (
+        "schemaVersion", "engine", "jsonFilter", "fontFilter", "requiredTextureAssets", "catalogProfile")}
+    recipe_sha = sha256(Path(recipe["_path"]))
+    for record in _recipe_history(recipe):
+        if record.get("sha256") == recipe_sha and isinstance(record.get("jsonTargets"), list):
+            snapshot["jsonTargets"] = record["jsonTargets"]
+            break
+    return snapshot
+
+
+def load_prior_incremental_state(temporary: Path, recipe: dict,
+                                 stage_journal: Path | None) -> dict | None:
+    state_path = temporary / INCREMENTAL_STATE
+    if state_path.is_file():
+        value = read_operational_json(state_path)
+        if value.get("schemaVersion") == 1 and isinstance(value.get("recipe"), dict):
+            return value
+    # Upgrade completed caches produced before incremental-state.json existed.
+    journal = read_operational_json(stage_journal) if stage_journal and stage_journal.is_file() else {}
+    previous = journal.get("previousFingerprints", {})
+    previous_sha = previous.get("recipeSha256")
+    current_sha = sha256(Path(recipe["_path"]))
+    old_recipe = recipe_snapshot(recipe) if previous_sha in {None, current_sha} else None
+    if old_recipe is None:
+        for record in _recipe_history(recipe):
+            if record.get("sha256") == previous_sha and isinstance(record.get("recipe"), dict):
+                old_recipe = dict(record["recipe"])
+                if isinstance(record.get("jsonTargets"), list):
+                    old_recipe["jsonTargets"] = record["jsonTargets"]
+                break
+    json_root = temporary / "json"
+    if old_recipe is None or not json_root.is_dir():
+        return None
+    texture_root = temporary / "textures"
+    targets = texture_target_inventory(texture_root) if texture_root.is_dir() else referenced_textures(
+        json_root, old_recipe.get("requiredTextureAssets", []))
+    return {"schemaVersion": 1, "recipeSha256": previous_sha or current_sha,
+            "recipe": old_recipe,
+            "textureTargets": targets}
+
+
+def write_incremental_state(temporary: Path, recipe: dict, targets: list[str],
+                            stage_journal: Path | None) -> None:
+    fingerprints = read_operational_json(stage_journal).get("fingerprints", {}) if stage_journal else {}
+    write_json_atomic(temporary / INCREMENTAL_STATE, {
+        "schemaVersion": 1,
+        "recipeSha256": sha256(Path(recipe["_path"])),
+        "recipe": recipe_snapshot(recipe),
+        "textureTargets": targets,
+        "fingerprints": fingerprints,
+    })
+
+
+def texture_matches_target(image: Path, texture_root: Path, target: str) -> bool:
+    parts = image.relative_to(texture_root).parts
+    if len(parts) < 2 or not parts[0].startswith("batch-"):
+        return False
+    kind, value = target.split(":", 1)
+    return (Path(*parts[1:]).with_suffix("").as_posix().casefold() == value.casefold()
+            if kind == "package" else image.stem.casefold() == value.casefold())
+
+
+def texture_target_inventory(texture_root: Path) -> list[str]:
+    targets: set[str] = set()
+    for image in texture_root.rglob("*.png"):
+        parts = image.relative_to(texture_root).parts
+        if len(parts) < 2 or not parts[0].startswith("batch-"):
+            continue
+        if len(parts) == 2:
+            targets.add("basename:" + image.stem)
+        else:
+            targets.add("package:" + Path(*parts[1:]).with_suffix("").as_posix())
+    return sorted(targets, key=str.casefold)
+
+
+def _json_export_name(path: Path, json_root: Path) -> str:
+    relative = path.relative_to(json_root).with_suffix("").as_posix()
+    lowered = relative.casefold()
+    marker = "/content/"
+    if marker in lowered:
+        offset = lowered.index(marker) + len(marker) - 1
+        prefix = relative[:offset]
+        if "/plugins/gamefeatures/" in prefix.casefold():
+            match = re.search(r"/plugins/gamefeatures/([^/]+)", prefix.replace("\\", "/"), re.I)
+            if not match:
+                raise RuntimeError(f"cannot derive GameFeatures package path from {relative}")
+            plugin = match.group(1)
+            return f"/GameFeatures/{plugin}/Content/{relative[offset + 1:]}"
+        return "/" + relative[offset + 1:]
+    return "/" + relative
+
+
+def json_matches_target(path: Path, json_root: Path, target: str) -> bool:
+    return re.search(target, _json_export_name(path, json_root), re.I) is not None
+
+
+def apply_json_delta(common: list[str], temporary: Path, json_root: Path,
+                     old_targets: list[str], new_targets: list[str]) -> None:
+    removed = sorted(set(old_targets) - set(new_targets), key=str.casefold)
+    added = sorted(set(new_targets) - set(old_targets), key=str.casefold)
+    removed_files = 0
+    if removed:
+        for exported in list(json_root.rglob("*.json")):
+            if exported.name == ".uas-manifest.json":
+                continue
+            if (any(json_matches_target(exported, json_root, target) for target in removed)
+                    and not any(json_matches_target(exported, json_root, target) for target in new_targets)):
+                exported.unlink()
+                removed_files += 1
+    if removed:
+        print(f"[Zanik] Removed {removed_files} cached catalog file(s) for {len(removed)} retired selector(s)", flush=True)
+    if not added:
+        print("[Zanik] Catalog selectors unchanged; retained JSON verified and UnrealAssetScout catalog pass skipped", flush=True)
+        return
+    for target in added:
+        identity = hashlib.sha256(target.encode("utf-8")).hexdigest()[:12]
+        delta = temporary / f"json-delta-{identity}"
+        if delta.exists():
+            remove_tree(delta)
+        run(common + ["-f", target, "export", "Json", "-b", "-o", str(delta), "-c", "-r",
+                      "-l", str(temporary / f"json-delta-{identity}.log")],
+            "Exporting one newly required catalog selector", quiet=True)
+        _uas_manifest(delta / ".uas-manifest.json", "json")
+        copied = 0
+        for source in delta.rglob("*.json"):
+            if source.name == ".uas-manifest.json":
+                continue
+            destination = json_root / source.relative_to(delta)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+            copied += 1
+        if copied == 0:
+            raise RuntimeError(f"new catalog selector exported no JSON files: {target}")
+        remove_tree(delta)
+    print(f"[Zanik] Exported {len(added)} newly required catalog selector(s)", flush=True)
+
+
+def apply_texture_delta(common: list[str], temporary: Path, texture_root: Path,
+                        old_targets: list[str], new_targets: list[str]) -> None:
+    removed = sorted(set(old_targets) - set(new_targets), key=str.casefold)
+    added = sorted(set(new_targets) - set(old_targets), key=str.casefold)
+    if removed:
+        for image in list(texture_root.rglob("*.png")):
+            if (any(texture_matches_target(image, texture_root, target) for target in removed)
+                    and not any(texture_matches_target(image, texture_root, target) for target in new_targets)):
+                image.unlink()
+        for batch in list(texture_root.iterdir()):
+            if (batch.is_dir() and batch.name.startswith("batch-")
+                    and not any(batch.rglob("*.png"))):
+                remove_tree(batch)
+        print(f"[Zanik] Removed {len(removed)} retired texture target(s) from the retained cache", flush=True)
+    if not added:
+        print("[Zanik] No new texture exports are required; UnrealAssetScout texture passes skipped", flush=True)
+        return
+    additions = missing_texture_targets(texture_root, added)
+    if not additions:
+        print("[Zanik] No new texture exports are required; UnrealAssetScout texture passes skipped", flush=True)
+        return
+    for expression in filter_chunks(additions):
+        identity = hashlib.sha256(expression.encode("utf-8")).hexdigest()[:12]
+        batch = texture_root / f"batch-delta-{identity}"
+        run(common + ["-f", expression, "export", "Textures", "-o", str(batch), "-c", "-r",
+                      "-l", str(temporary / f"texture-delta-{identity}.log")],
+            f"Exporting {len(additions)} newly required web texture target(s)", quiet=True)
+
+
 def missing_texture_targets(texture_root: Path, targets: list[str]) -> list[str]:
     packages: set[str] = set()
     basenames: set[str] = set()
@@ -252,7 +430,8 @@ def _uas_manifest(path: Path, mode: str) -> dict:
 
 
 def verified_export_checkpoint(temporary: Path, recipe: dict, reviewed_counts: dict[str, int] | None,
-                               mapping: Path, stage_journal: Path | None) -> dict:
+                               mapping: Path, stage_journal: Path | None,
+                               texture_targets: list[str] | None = None) -> dict:
     if not mapping.is_file():
         raise RuntimeError(f"resume workspace is missing its generated mapping: {mapping}")
     json_root = temporary / "json"; texture_root = temporary / "textures"; font_root = temporary / "font"
@@ -261,16 +440,15 @@ def verified_export_checkpoint(temporary: Path, recipe: dict, reviewed_counts: d
     validate_catalog_export(json_root, reviewed_counts)
     json_manifest = json_root / ".uas-manifest.json"
     _uas_manifest(json_manifest, "json")
-    targets = referenced_textures(json_root, recipe["requiredTextureAssets"])
-    expected_batches = [f"batch-{index:02d}" for index, _ in enumerate(filter_chunks(targets), 1)]
-    actual_batches = sorted(path.name for path in texture_root.iterdir() if path.is_dir())
-    if actual_batches != expected_batches:
-        missing = sorted(set(expected_batches) - set(actual_batches))
-        extra = sorted(set(actual_batches) - set(expected_batches))
-        raise RuntimeError(f"texture export batches do not match the extraction recipe (missing={missing}, extra={extra})")
+    targets = texture_targets if texture_targets is not None else referenced_textures(
+        json_root, recipe["requiredTextureAssets"])
+    actual_batches = sorted(path.name for path in texture_root.iterdir()
+                            if path.is_dir() and path.name.startswith("batch-"))
+    if not actual_batches:
+        raise RuntimeError("completed texture export contains no verified batches")
     batches = []
     texture_pngs = 0
-    for name in expected_batches:
+    for name in actual_batches:
         batch = texture_root / name
         manifest = batch / ".uas-manifest.json"
         _uas_manifest(manifest, "textures")
@@ -299,6 +477,8 @@ def verified_export_checkpoint(temporary: Path, recipe: dict, reviewed_counts: d
         "worldPartitionCells": world_cells,
         "json": {"manifestSha256": sha256(json_manifest)},
         "textureTargets": len(targets),
+        "textureTargetInventorySha256": hashlib.sha256(
+            json.dumps(targets, separators=(",", ":")).encode("utf-8")).hexdigest(),
         "texturePngs": texture_pngs,
         "textureBatches": batches,
         "font": {"manifestSha256": sha256(font_manifest), "path": "Jancient.ufont"},
@@ -348,6 +528,13 @@ def complete_remaining_exports(common: list[str], temporary: Path, recipe: dict,
     rebuild = [] if incremental else ["-r"]
     run(common + ["-f", recipe["fontFilter"], "export", "Raw", "-o", str(font_root), "-c", *rebuild,
                   "-l", str(temporary / "font-export.log")], "Exporting the web font", quiet=True)
+
+
+def validate_font_export(font_root: Path) -> None:
+    _uas_manifest(font_root / ".uas-manifest.json", "raw")
+    fonts = list(font_root.rglob("Jancient.ufont"))
+    if len(fonts) != 1 or not fonts[0].is_file():
+        raise RuntimeError(f"completed font export must contain exactly one Jancient.ufont; found {len(fonts)}")
 
 
 def reset_partial_generation(temporary: Path) -> None:
@@ -403,32 +590,71 @@ def extract(args: argparse.Namespace) -> int:
                 print("[Zanik] Retained JSON export verified; continuing with artwork and font exports", flush=True)
                 complete_remaining_exports(common, temporary, recipe, json_root, texture_root, font_root)
             recover_or_create_export_checkpoint(temporary, recipe, reviewed_counts, mapping, stage_journal)
+            write_incremental_state(temporary, recipe,
+                                    referenced_textures(json_root, recipe["requiredTextureAssets"]),
+                                    stage_journal)
             update_stage(stage_journal, "exports")
             print("[Zanik] Retained exports verified; UnrealAssetScout extraction skipped", flush=True)
         else:
             incremental = bool(args.incremental_work)
+            prior = load_prior_incremental_state(temporary, recipe, stage_journal) if incremental else None
+            previous_recipe = prior.get("recipe", {}) if prior else {}
+            selective = bool(prior and not args.game_changed
+                             and previous_recipe.get("engine") == recipe.get("engine"))
             last_export_error: Exception | None = None
-            for attempt in range(1, 4):
-                if json_root.exists() and not incremental: remove_tree(json_root)
-                rebuild = [] if incremental else ["-r"]
-                run(common + ["-f", recipe["jsonFilter"], "export", "Json", "-b", "-o", str(json_root), "-c", *rebuild, "-l", str(temporary / f"json-export-{attempt}.log")], f"{'Updating' if incremental else 'Exporting'} targeted catalog data (attempt {attempt}/3)", quiet=True)
-                try:
-                    validate_catalog_export(json_root, reviewed_counts)
-                    last_export_error = None
-                    break
-                except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:
-                    last_export_error = error
-                    print(f"[Zanik] Catalog export attempt {attempt} was incomplete: {error}", flush=True)
+            old_json_targets = previous_recipe.get("jsonTargets")
+            new_json_targets = recipe_snapshot(recipe).get("jsonTargets")
+            structural_json = (selective and isinstance(old_json_targets, list)
+                               and isinstance(new_json_targets, list) and json_root.is_dir())
+            if structural_json:
+                apply_json_delta(common, temporary, json_root, old_json_targets, new_json_targets)
+                validate_catalog_export(json_root, reviewed_counts)
+                _uas_manifest(json_root / ".uas-manifest.json", "json")
+            elif selective and previous_recipe.get("jsonFilter") == recipe.get("jsonFilter"):
+                validate_catalog_export(json_root, reviewed_counts)
+                _uas_manifest(json_root / ".uas-manifest.json", "json")
+                print("[Zanik] Catalog extraction filter unchanged; retained JSON verified and UnrealAssetScout catalog pass skipped", flush=True)
+            else:
+                for attempt in range(1, 4):
+                    if json_root.exists() and not incremental: remove_tree(json_root)
+                    rebuild = [] if incremental else ["-r"]
+                    run(common + ["-f", recipe["jsonFilter"], "export", "Json", "-b", "-o", str(json_root), "-c", *rebuild, "-l", str(temporary / f"json-export-{attempt}.log")], f"{'Updating' if incremental else 'Exporting'} targeted catalog data (attempt {attempt}/3)", quiet=True)
+                    try:
+                        validate_catalog_export(json_root, reviewed_counts)
+                        last_export_error = None
+                        break
+                    except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:
+                        last_export_error = error
+                        print(f"[Zanik] Catalog export attempt {attempt} was incomplete: {error}", flush=True)
             if last_export_error is not None:
                 raise RuntimeError(f"targeted catalog export remained incomplete after three attempts: {last_export_error}")
-            complete_remaining_exports(common, temporary, recipe, json_root, texture_root, font_root,
-                                       incremental=incremental)
+            old_targets = prior.get("textureTargets", []) if prior else []
+            target_inputs_unchanged = (structural_json and old_json_targets == new_json_targets
+                                       and previous_recipe.get("requiredTextureAssets")
+                                       == recipe.get("requiredTextureAssets"))
+            new_targets = old_targets if target_inputs_unchanged else referenced_textures(
+                json_root, recipe["requiredTextureAssets"])
+            if selective and isinstance(old_targets, list) and texture_root.is_dir():
+                apply_texture_delta(common, temporary, texture_root, old_targets, new_targets)
+                if previous_recipe.get("fontFilter") == recipe.get("fontFilter"):
+                    validate_font_export(font_root)
+                    print("[Zanik] Web-font filter unchanged; retained font verified and UnrealAssetScout font pass skipped", flush=True)
+                else:
+                    run(common + ["-f", recipe["fontFilter"], "export", "Raw", "-o", str(font_root), "-c",
+                                  "-l", str(temporary / "font-export.log")],
+                        "Updating the web font", quiet=True)
+            else:
+                if incremental and not selective:
+                    print("[Zanik] A game/tool change or legacy cache requires broad package discovery", flush=True)
+                complete_remaining_exports(common, temporary, recipe, json_root, texture_root, font_root,
+                                           incremental=incremental)
             if incremental:
                 write_json_atomic(temporary / EXPORT_CHECKPOINT,
                                   verified_export_checkpoint(temporary, recipe, reviewed_counts,
-                                                             mapping, stage_journal))
+                                                             mapping, stage_journal, new_targets))
             else:
                 recover_or_create_export_checkpoint(temporary, recipe, reviewed_counts, mapping, stage_journal)
+            write_incremental_state(temporary, recipe, new_targets, stage_journal)
             update_stage(stage_journal, "exports")
         reset_partial_generation(temporary)
         update_stage(stage_journal, "generating")
@@ -483,6 +709,7 @@ def main() -> int:
     parser.add_argument("--keep-work", action="store_true")
     parser.add_argument("--resume-work", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--incremental-work", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--game-changed", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--workspace", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--stage-journal", type=Path, help=argparse.SUPPRESS)
     return extract(parser.parse_args())
