@@ -13,7 +13,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from manager.zanik_manager.assets import (AssetDeployer, AssetExtractor, asset_setup_mode,
+from manager.zanik_manager.assets import (AssetDeployer, AssetExtractor, asset_contract_presentation, asset_setup_mode,
                                           background_creation_flags,
                                           cleanup_extraction_output, compact_completed_asset_work,
                                           dragonwilds_is_running, expected_asset_contract,
@@ -197,6 +197,35 @@ class ManagerTests(unittest.TestCase):
         self.assertIn('QToolTip {{ color:#ffffff; }}', source)
         self.assertIn('self.server_summary.setText(profile.name)', source)
         self.assertIn('f"Panel: {profile.panel_origin}', source)
+
+    def test_asset_contract_presentation_distinguishes_refresh_from_server_update(self):
+        active = {"installed": True, "valid": True, "extractionRecipeVersion": 5,
+                  "compatibilityProfileVersion": "reviewed-5", "extractionRecipeSha256": "a" * 64}
+        current = asset_contract_presentation(active, "0.2.36")
+        self.assertEqual(current["state"], "current")
+        self.assertIn("Up to date with Manager 0.2.36", current["text"])
+        latest = {"updateAvailable": True, "latestVersion": "0.2.37", "assetContract": {
+            "extractionRecipeVersion": 6, "compatibilityProfileVersion": "reviewed-6",
+            "extractionRecipeSha256": "b" * 64}}
+        refresh = asset_contract_presentation(active, "0.2.36", latest, {
+            "extractionRecipeVersion": 5, "compatibilityProfileVersion": "reviewed-5",
+            "extractionRecipeSha256": "a" * 64})
+        self.assertEqual(refresh["state"], "available")
+        self.assertIn("Update Manager to 0.2.37, then refresh assets", refresh["text"])
+        self.assertIn("updating the Zanik server payload is not required", refresh["tooltip"])
+        unchanged_latest = {**latest, "assetContract": {
+            "extractionRecipeVersion": 5, "compatibilityProfileVersion": "reviewed-5",
+            "extractionRecipeSha256": "a" * 64}}
+        missing = asset_contract_presentation({"installed": False, "valid": False}, "0.2.36",
+                                              unchanged_latest, unchanged_latest["assetContract"])
+        self.assertEqual(missing["text"], "Website assets · Missing")
+        embedded_stale = asset_contract_presentation({**active, "valid": False}, "0.2.37")
+        self.assertIn("Refresh available in Manager 0.2.37", embedded_stale["text"])
+
+        source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("self.server_assets = QLabel()", source)
+        self.assertIn("def check_asset_contract_state", source)
+        self.assertIn("self.check_asset_contract_state(profile)", source)
 
     def test_server_payload_contract_ignores_release_docs_but_tracks_operational_files(self):
         base = [{"path": "bin/libzanik.so", "size": 3, "sha256": "a" * 64, "mode": 0o755},

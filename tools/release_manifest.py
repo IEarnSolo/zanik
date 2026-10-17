@@ -21,4 +21,11 @@ with zipfile.ZipFile(server_zip) as archive:
     contract=json.loads(archive.read('payload-contract.json'))
 server_payload={'releaseVersion':contract['releaseVersion'],'contractSchemaVersion':contract['schemaVersion'],
                 'contractSha256':contract['contractSha256']}
-output.write_text(json.dumps({'schemaVersion':2,'version':a.version,'tag':a.tag or None,'commit':a.commit or None,'buildTimestamp':timestamp,'sourceDateEpoch':a.source_date_epoch,'serverPayload':server_payload,'files':files},indent=2,sort_keys=True)+'\n',encoding='utf-8')
+asset_zip=root/f'zanik-asset-tools-windows-x86_64-{a.version}.zip'
+with zipfile.ZipFile(asset_zip) as archive:
+    recipe_bytes=archive.read('asset-tools/extraction-recipes.json')
+    recipe=json.loads(recipe_bytes)
+asset_contract={'extractionRecipeVersion':recipe['schemaVersion'],
+                'compatibilityProfileVersion':recipe['catalogProfile']['version'],
+                'extractionRecipeSha256':hashlib.sha256(recipe_bytes).hexdigest()}
+output.write_text(json.dumps({'schemaVersion':2,'version':a.version,'tag':a.tag or None,'commit':a.commit or None,'buildTimestamp':timestamp,'sourceDateEpoch':a.source_date_epoch,'serverPayload':server_payload,'assetContract':asset_contract,'files':files},indent=2,sort_keys=True)+'\n',encoding='utf-8')

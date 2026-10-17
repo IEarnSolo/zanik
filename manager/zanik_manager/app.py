@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDia
 from PySide6.QtCore import QUrl
 
 from .activity import format_activity_entry
-from .assets import (AssetDeployer, AssetExtractor, asset_setup_mode, cleanup_extraction_output,
+from .assets import (AssetDeployer, AssetExtractor, asset_contract_presentation, asset_setup_mode, cleanup_extraction_output,
                      compact_completed_asset_work, discover_steam_game_roots,
                      expected_asset_contract, game_root_id, request_dragonwilds_close,
                      resume_activity_message)
@@ -33,7 +33,7 @@ from .pterodactyl import PterodactylClient
 from .security import CredentialVault, credential_target, redact
 from .support import create_support_bundle
 from .updates import (GitHubReleaseChecker, current_manager_version, prune_update_staging, prune_updater_backups,
-                      update_staging_cleanup_pending, write_startup_handshake)
+                      release_update_components, update_staging_cleanup_pending, write_startup_handshake)
 
 
 def distribution_root() -> Path:
@@ -288,6 +288,7 @@ class MainWindow(QMainWindow):
         self.current_config_profile_id = ""
         self.installation_states = {}
         self.website_states = {}
+        self.asset_contract_states = {}
         self.threads = []; self.background_threads = []; self.busy_dialog = None; self.last_progress_message = ""
         self.manager_version = current_manager_version(distribution_root())
         self.release_checker = GitHubReleaseChecker(self.paths["updates"])
@@ -323,6 +324,8 @@ class MainWindow(QMainWindow):
         self.server_summary.setTextFormat(Qt.PlainText)
         self.server_compatibility = QLabel(); self.server_compatibility.setWordWrap(True)
         self.server_compatibility.setTextFormat(Qt.PlainText)
+        self.server_assets = QLabel(); self.server_assets.setWordWrap(True)
+        self.server_assets.setTextFormat(Qt.PlainText)
         self.server_details = QLabel(); self.server_details.setWordWrap(True)
         self.server_details.setTextFormat(Qt.PlainText)
         row = QHBoxLayout()
@@ -345,7 +348,7 @@ class MainWindow(QMainWindow):
                    ("Uninstall", self.uninstall, "Remove verified Zanik-managed files while preserving server data by default."))
         for label, handler, tooltip in actions:
             button = button_help(QPushButton(label), tooltip); button.clicked.connect(handler); row.addWidget(button)
-        layout.addWidget(self.server_summary); layout.addWidget(self.server_compatibility)
+        layout.addWidget(self.server_summary); layout.addWidget(self.server_compatibility); layout.addWidget(self.server_assets)
         layout.addWidget(self.server_details); layout.addLayout(row); layout.addStretch(); self.tabs.addTab(page, "Servers")
 
     def _assets_tab(self):
@@ -560,15 +563,27 @@ class MainWindow(QMainWindow):
             self.validated_manager_update = result if result.get("updateAvailable") else None
             if result.get("updateAvailable"):
                 latest = result["latestVersion"]
-                self._set_update_label(self.manager_update_label, f"Manager {self.manager_version} · {latest} available", "available",
-                                       f"Stable Zanik Manager {latest} is available from GitHub and its release metadata was validated.")
+                try:
+                    payload = json.loads(resource_path("payload", "server-payload.json").read_text(encoding="utf-8-sig"))
+                    current_server = {"contractSha256": payload.get("payloadContractSha256")}
+                    current_assets = expected_asset_contract(resource_path("asset-tools"))
+                    components = release_update_components(result, current_server, current_assets)
+                except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+                    components = ["Manager only"]
+                scope = " + ".join(components)
+                guidance = ("Update Manager first. The Servers tab will then offer the required Zanik update or "
+                            "incremental asset refresh." if components != ["Manager only"] else
+                            "This release does not change the embedded Zanik server or website asset contracts.")
+                self._set_update_label(self.manager_update_label,
+                                       f"Manager {self.manager_version} · {latest} available · {scope}", "available",
+                                       f"Stable Zanik Manager {latest} is available from GitHub. {guidance}")
                 self.manager_install_button.show()
             else:
                 self._set_update_label(self.manager_update_label, f"Manager {self.manager_version} · Up to date", "current")
                 self.manager_install_button.hide()
             if manual: self.log("Manager update check completed.")
             if self.active():
-                self.check_installation_state(self.active().id)
+                self.render_server_summary(self.active())
         self.run_background("manager-update-check", lambda: self.release_checker.check(self.manager_version, force=manual), done)
 
     def check_game_update(self, manual: bool = False):
@@ -783,6 +798,7 @@ class MainWindow(QMainWindow):
         if not profile:
             self.server_summary.setText("Add a server to begin.")
             self._set_update_label(self.server_compatibility, "", "neutral")
+            self._set_update_label(self.server_assets, "", "neutral")
             self.server_details.clear()
             self.open_website_button.setEnabled(False)
             return
@@ -829,6 +845,18 @@ class MainWindow(QMainWindow):
             port_line = "Website port: Loading…"
         self.server_summary.setText(profile.name)
         self._set_update_label(self.server_compatibility, install_line, install_state, install_tooltip)
+        if installation and installation.get("installed"):
+            try:
+                current_asset_contract = expected_asset_contract(resource_path("asset-tools"))
+            except Exception:
+                current_asset_contract = None
+            asset_presentation = asset_contract_presentation(
+                self.asset_contract_states.get(profile.id, {"checking": True}),
+                self.manager_version, self.manager_release_status, current_asset_contract)
+            self._set_update_label(self.server_assets, asset_presentation["text"],
+                                   asset_presentation["state"], asset_presentation["tooltip"])
+        else:
+            self._set_update_label(self.server_assets, "", "neutral")
         self.server_details.setText(
             f"Panel: {profile.panel_origin} · {profile.server_id}\nInstall mode: {mode}\n{website_line}\n{port_line}")
         openable = website_status == "ready" and website_configuration_ready(
@@ -874,9 +902,41 @@ class MainWindow(QMainWindow):
                 if mode != profile.install_mode:
                     profile.install_mode = mode; self.store.save(self.profiles)
             self.render_server_summary(profile)
+            if installed:
+                self.check_asset_contract_state(profile)
+            else:
+                self.asset_contract_states.pop(selected_id, None)
         self.run_background(f"installation-state-{selected_id}",
                             lambda: self.provider(profile, background=True).installation_status(
                                 profile.server_id, profile.server_root, expected_contract, legacy_contracts), done)
+
+    def check_asset_contract_state(self, profile: ServerProfile | None = None):
+        profile = profile or self.active()
+        if not profile:
+            return
+        selected_id = profile.id
+        try:
+            contract = expected_asset_contract(resource_path("asset-tools"))
+        except Exception as error:
+            self.asset_contract_states[selected_id] = {"installed": True, "valid": False,
+                                                       "reasons": [str(error)]}
+            self.render_server_summary(profile)
+            return
+        self.asset_contract_states[selected_id] = {"checking": True}
+        self.render_server_summary(profile)
+        def done(result, error):
+            if not self.active() or self.active().id != selected_id:
+                return
+            if error:
+                self.asset_contract_states[selected_id] = {"installed": True, "valid": False,
+                                                           "reasons": [str(error)]}
+                self.log(f"Could not determine website asset compatibility for {profile.name}: {error}")
+            else:
+                self.asset_contract_states[selected_id] = result
+            self.render_server_summary(profile)
+        self.run_background(f"asset-contract-state-{selected_id}",
+                            lambda: self.provider(profile, background=True).asset_contract_status(
+                                profile.server_id, profile.server_root, contract), done)
 
     def add_server(self):
         dialog = AddServerDialog(self.vault, self)
@@ -897,6 +957,7 @@ class MainWindow(QMainWindow):
         remaining_ids = {profile.id for profile in self.profiles}
         self.installation_states = {key: value for key, value in self.installation_states.items() if key in remaining_ids}
         self.website_states = {key: value for key, value in self.website_states.items() if key in remaining_ids}
+        self.asset_contract_states = {key: value for key, value in self.asset_contract_states.items() if key in remaining_ids}
         selected = active_id if active_id in remaining_ids else (self.profiles[0].id if self.profiles else "")
         self.preference_store.save_last_profile(selected); self.preferences["lastProfileId"] = selected
         self.reload_profiles()
@@ -1573,6 +1634,8 @@ class MainWindow(QMainWindow):
 
     def asset_activation_complete(self, profile: ServerProfile, result: dict):
         self.log(f"Activated {result['fileCount']} asset files on {profile.name}")
+        if self.active() and self.active().id == profile.id:
+            self.check_asset_contract_state(profile)
         launcher = result.get("launcherStatus", {})
         if launcher.get("applicable") and not launcher.get("healthy"):
             self.offer_launcher_repair(profile, launcher)

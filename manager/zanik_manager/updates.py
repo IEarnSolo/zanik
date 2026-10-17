@@ -35,6 +35,22 @@ def parse_version(value: str) -> tuple[int, int, int]:
     return tuple(int(part) for part in match.groups())
 
 
+def release_update_components(result: dict, current_server_contract: dict | None,
+                              current_asset_contract: dict | None) -> list[str]:
+    """Classify a validated Manager release without conflating independent contracts."""
+    components = []
+    latest_server = result.get("serverPayload") or {}
+    if (latest_server.get("contractSha256") and current_server_contract
+            and latest_server["contractSha256"] != current_server_contract.get("contractSha256")):
+        components.append("Zanik server")
+    latest_assets = result.get("assetContract") or {}
+    keys = ("extractionRecipeVersion", "compatibilityProfileVersion", "extractionRecipeSha256")
+    if (latest_assets.get("extractionRecipeSha256") and current_asset_contract
+            and any(latest_assets.get(key) != current_asset_contract.get(key) for key in keys)):
+        components.append("website assets")
+    return components or ["Manager only"]
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
@@ -124,6 +140,16 @@ class GitHubReleaseChecker:
                     server_payload.get("releaseVersion") != version or len(digest) != 64 or
                     any(character not in "0123456789abcdef" for character in digest)):
                 raise RuntimeError("GitHub release manifest has invalid server payload metadata")
+        asset_contract = manifest.get("assetContract")
+        if asset_contract is not None:
+            recipe_digest = str(asset_contract.get("extractionRecipeSha256", "")).lower()
+            if (not isinstance(asset_contract.get("extractionRecipeVersion"), int)
+                    or asset_contract["extractionRecipeVersion"] < 1
+                    or not isinstance(asset_contract.get("compatibilityProfileVersion"), str)
+                    or not asset_contract["compatibilityProfileVersion"]
+                    or len(recipe_digest) != 64
+                    or any(character not in "0123456789abcdef" for character in recipe_digest)):
+                raise RuntimeError("GitHub release manifest has invalid asset contract metadata")
         records = [entry for entry in manifest.get("files", []) if entry.get("name") == expected_zip]
         if len(records) != 1:
             raise RuntimeError("GitHub release manifest has no unique Manager archive record")
@@ -140,6 +166,7 @@ class GitHubReleaseChecker:
             "updateAvailable": latest > current, "releaseUrl": release.get("html_url", ""),
             "etag": headers.get("ETag") or headers.get("Etag") or "",
             "serverPayload": server_payload,
+            "assetContract": asset_contract,
             "manager": {"name": expected_zip, "url": zip_asset["browser_download_url"],
                         "size": int(record["size"]), "sha256": record["sha256"]},
         }

@@ -107,6 +107,54 @@ def expected_asset_contract(tool_root: Path) -> dict:
             "criticalFiles": sorted(CRITICAL_REMOTE_ASSETS - {"asset-manifest.json"})}
 
 
+def asset_contract_presentation(status: dict | None, manager_version: str,
+                                latest_release: dict | None = None,
+                                current_contract: dict | None = None) -> dict[str, str]:
+    """Explain active website-asset freshness independently from the server payload."""
+    status = status or {}
+    latest_release = latest_release or {}
+    latest = latest_release.get("assetContract") or {}
+    active = {
+        "extractionRecipeVersion": status.get("extractionRecipeVersion"),
+        "compatibilityProfileVersion": status.get("compatibilityProfileVersion"),
+        "extractionRecipeSha256": status.get("extractionRecipeSha256"),
+    }
+    latest_known = (isinstance(latest.get("extractionRecipeVersion"), int)
+                    and isinstance(latest.get("compatibilityProfileVersion"), str)
+                    and isinstance(latest.get("extractionRecipeSha256"), str))
+    keys = ("extractionRecipeVersion", "compatibilityProfileVersion", "extractionRecipeSha256")
+    active_matches_latest = latest_known and all(active.get(key) == latest.get(key) for key in keys)
+    latest_changes_assets = latest_known and (not current_contract or any(
+        latest.get(key) != current_contract.get(key) for key in keys))
+    if latest_release.get("updateAvailable") and latest_changes_assets and not active_matches_latest:
+        version = str(latest_release.get("latestVersion") or "the latest version")
+        return {
+            "text": f"Website assets · Update Manager to {version}, then refresh assets",
+            "state": "available",
+            "tooltip": (f"Zanik Manager {version} contains changed website extraction rules or a newer reviewed "
+                        "asset profile. Update Manager first, then use the incremental asset refresh; updating the "
+                        "Zanik server payload is not required unless its separate status also reports an update."),
+        }
+    if latest_release.get("updateAvailable") and latest_changes_assets and active_matches_latest:
+        version = str(latest_release.get("latestVersion") or "the latest version")
+        return {"text": f"Website assets · Current for Manager {version}", "state": "current",
+                "tooltip": ("The active bundle already matches the latest published asset contract. Update Manager "
+                            "for the current tools; no additional extraction is required.")}
+    if status.get("checking"):
+        return {"text": "Website assets · Checking…", "state": "neutral",
+                "tooltip": "Manager is checking the active bundle's extraction contract and critical files."}
+    if status.get("valid"):
+        return {"text": f"Website assets · Up to date with Manager {manager_version}", "state": "current",
+                "tooltip": ("The active website bundle matches this Manager's extraction recipe and reviewed "
+                            "compatibility profile. No asset extraction is required.")}
+    if status.get("installed") is False:
+        return {"text": "Website assets · Missing", "state": "available",
+                "tooltip": "No readable active asset manifest was found. Extract and deploy a validated bundle."}
+    return {"text": f"Website assets · Refresh available in Manager {manager_version}", "state": "available",
+            "tooltip": ("The active website bundle does not match this Manager's extraction contract or failed a "
+                        "critical validation check. Use Assets to perform an incremental refresh when possible.")}
+
+
 def asset_setup_mode(use_cached: bool, resume_status: dict | None) -> str:
     """Choose the cheapest safe source for a guided asset setup."""
     if use_cached:
