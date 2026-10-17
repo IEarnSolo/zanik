@@ -13,7 +13,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from manager.zanik_manager.updates import GitHubReleaseChecker, parse_version
+from manager.zanik_manager.updates import GitHubReleaseChecker, parse_version, prune_update_staging
 from manager.zanik_manager.game_updates import PublicSteamBuildChecker, installed_build
 
 
@@ -163,6 +163,33 @@ class UpdateAwarenessTests(unittest.TestCase):
         self.assertIn("SetCurrentDirectoryW(updater_path)", source)
         self.assertIn("move_with_retry(target, backup", source)
         self.assertIn('L"move-current-to-backup"', source)
+
+    def test_completed_update_staging_is_pruned_but_unrecognized_data_is_preserved(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            updates = Path(temporary)
+            (updates / "self-update-journal.json.status").write_text(
+                json.dumps({"schemaVersion": 1, "state": "complete"}), encoding="utf-8")
+            for version in ("0.2.16", "0.2.32"):
+                verified = updates / version / "verified"
+                (verified / "payload").mkdir(parents=True)
+                (verified / "ZanikManager.exe").write_bytes(b"manager")
+                (verified / "VERSION").write_text(version, encoding="utf-8")
+                (verified / "payload" / "payloads.json").write_text("{}", encoding="utf-8")
+            unknown = updates / "operator-files"; unknown.mkdir(); (unknown / "keep.txt").write_text("keep")
+            count, reclaimed = prune_update_staging(updates)
+            self.assertEqual(count, 2)
+            self.assertGreater(reclaimed, 0)
+            self.assertTrue((unknown / "keep.txt").is_file())
+
+    def test_update_staging_is_not_pruned_before_successful_updater_status(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            updates = Path(temporary); verified = updates / "0.2.32" / "verified"
+            (verified / "payload").mkdir(parents=True)
+            (verified / "ZanikManager.exe").write_bytes(b"manager")
+            (verified / "VERSION").write_text("0.2.32", encoding="utf-8")
+            (verified / "payload" / "payloads.json").write_text("{}", encoding="utf-8")
+            self.assertEqual(prune_update_staging(updates), (0, 0))
+            self.assertTrue(verified.is_dir())
 
 
 if __name__ == "__main__": unittest.main()

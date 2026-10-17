@@ -15,7 +15,8 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDia
 from PySide6.QtCore import QUrl
 
 from .activity import format_activity_entry
-from .assets import (AssetDeployer, AssetExtractor, asset_setup_mode, discover_steam_game_roots,
+from .assets import (AssetDeployer, AssetExtractor, asset_setup_mode, cleanup_extraction_output,
+                     compact_completed_asset_work, discover_steam_game_roots,
                      expected_asset_contract, game_root_id, request_dragonwilds_close,
                      resume_activity_message)
 from .cache import BundleCache, format_bundle_timestamp
@@ -31,7 +32,7 @@ from .profiles import ProfileStore, ServerProfile, move_profile, remove_profile,
 from .pterodactyl import PterodactylClient
 from .security import CredentialVault, credential_target, redact
 from .support import create_support_bundle
-from .updates import (GitHubReleaseChecker, current_manager_version, prune_updater_backups,
+from .updates import (GitHubReleaseChecker, current_manager_version, prune_update_staging, prune_updater_backups,
                       write_startup_handshake)
 
 
@@ -304,6 +305,7 @@ class MainWindow(QMainWindow):
         self.activity_signal.connect(self.log)
         self.operation_progress_signal.connect(self.update_operation_progress)
         self.reload_profiles()
+        QTimer.singleShot(500, self.cleanup_local_storage)
         QTimer.singleShot(1500, lambda: self.check_manager_update(False))
         self.update_timer = QTimer(self); self.update_timer.setInterval(10 * 60 * 1000)
         self.update_timer.timeout.connect(self.scheduled_update_checks); self.update_timer.start()
@@ -372,6 +374,24 @@ class MainWindow(QMainWindow):
         layout.addRow(self.upload_asset_button); layout.addRow(open_button)
         self.game_root.editingFinished.connect(self.refresh_bundles)
         self.tabs.addTab(page, "Assets")
+
+    def cleanup_local_storage(self):
+        def action():
+            update_count, update_bytes = prune_update_staging(self.paths["updates"])
+            asset_bytes = sum(compact_completed_asset_work(path)
+                              for path in self.paths["asset_work"].iterdir() if path.is_dir())
+            if any(self.paths["assets"].rglob("cache.json")):
+                asset_bytes += cleanup_extraction_output(self.paths["root"] / "extraction-output")
+            return update_count, update_bytes + asset_bytes
+        def done(result, error):
+            if error:
+                self.log(f"Local storage cleanup was deferred: {error}")
+                return
+            count, reclaimed = result
+            if count or reclaimed:
+                self.log(f"Local cleanup removed {count} completed Manager update staging director{'y' if count == 1 else 'ies'} "
+                         f"and reclaimed {reclaimed / (1024 ** 3):.2f} GiB; validated bundles and the incremental extraction cache were retained.")
+        self.run_background("local-storage-cleanup", action, done)
 
     def _config_tab(self):
         page = QWidget(); layout = QVBoxLayout(page)
@@ -1047,12 +1067,15 @@ class MainWindow(QMainWindow):
         self.discard_extract_button.setEnabled(bool(status))
         if complete:
             self.resume_extract_button.setText("Incremental cache ready")
+            self.discard_extract_button.setText("Clear incremental cache")
             self.discard_extract_button.setToolTip(
-                "Delete the private raw extraction cache. Validated bundles remain, but the next update will require a full extraction.")
+                "Reclaim disk space by deleting the private raw extraction cache. Validated bundles and server assets remain, but the next asset update will require a full extraction.")
         elif status:
             self.resume_extract_button.setText(f"Resume extraction ({status['stage']})")
+            self.discard_extract_button.setText("Discard generated work")
         else:
             self.resume_extract_button.setText("Resume extraction")
+            self.discard_extract_button.setText("Discard generated work")
             self.discard_extract_button.setToolTip("Delete a verified incomplete extraction workspace without removing validated bundles.")
 
     def asset_recovery_root(self, root: Path) -> Path:
@@ -1413,14 +1436,22 @@ class MainWindow(QMainWindow):
         work = self.asset_work_root(root); status = extractor.resumable(work)
         if not status:
             self.refresh_bundles(); return
-        if QMessageBox.question(self, "Discard generated work",
-                                f"Discard the verified Zanik extraction workspace at stage {status['stage']}?\n\n"
-                                "Validated bundles are not removed, but the next asset update will require a full extraction.",
+        complete = status.get("stage") == "complete"
+        title = "Clear incremental extraction cache" if complete else "Discard generated work"
+        prompt = ("Clear the private raw extraction cache for this Dragonwilds installation?\n\n"
+                  "Validated local bundles and assets already installed on every server will remain untouched. "
+                  "The next asset update will take longer because it must perform a complete extraction again."
+                  if complete else
+                  f"Discard the verified Zanik extraction workspace at stage {status['stage']}?\n\n"
+                  "Validated bundles are not removed, but the next asset update will require a full extraction.")
+        if QMessageBox.question(self, title, prompt,
                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
             return
         self.run_async(lambda: extractor.discard(work),
-                       lambda _: (self.refresh_bundles(), self.log("Discarded the private incremental extraction workspace.")),
-                       title="Discarding generated work…")
+                       lambda _: (self.refresh_bundles(), self.log(
+                           "Cleared the private incremental extraction cache; validated bundles and server assets were retained."
+                           if complete else "Discarded the private extraction workspace.")),
+                       title="Clearing incremental extraction cache…" if complete else "Discarding generated work…")
 
     def offer_stale_asset_cleanup(self, root: Path, extractor: AssetExtractor, status: dict, retry):
         labels = {

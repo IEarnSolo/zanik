@@ -33,6 +33,59 @@ CRITICAL_REMOTE_ASSETS = {
 GAME_EXECUTABLE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 
 
+def _tree_size(path: Path) -> int:
+    try:
+        return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
+    except OSError:
+        return 0
+
+
+def compact_completed_asset_work(work_root: Path) -> int:
+    """Drop reproducible output while preserving the expensive incremental exports."""
+    marker = work_root / ".zanik-asset-work.json"
+    journal = work_root / "extraction-journal.json"
+    try:
+        owner = json.loads(marker.read_text(encoding="utf-8-sig"))
+        state = json.loads(journal.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return 0
+    if owner.get("owner") != "Zanik asset extractor" or state.get("stage") != "complete":
+        return 0
+    pipeline = work_root / "pipeline"
+    targets = [work_root / "generated-web", work_root / "generated-web.previous",
+               pipeline / "web", pipeline / "internal"]
+    targets.extend(pipeline.glob("*.log") if pipeline.is_dir() else ())
+    reclaimed = 0
+    for target in targets:
+        try:
+            if target.is_dir():
+                reclaimed += _tree_size(target); shutil.rmtree(target)
+            elif target.is_file():
+                reclaimed += target.stat().st_size; target.unlink()
+        except OSError:
+            continue
+    return reclaimed
+
+
+def cleanup_extraction_output(output: Path) -> int:
+    """Remove Manager-owned bundle copies and upload parts after cache insertion."""
+    if not output.is_dir():
+        return 0
+    reclaimed = 0
+    for target in output.iterdir():
+        if target.is_file() and target.name.startswith("zanik-assets-") and target.suffix.lower() == ".zip":
+            try:
+                reclaimed += target.stat().st_size; target.unlink()
+            except OSError:
+                continue
+        elif target.is_dir() and target.name.startswith("zanik-assets-") and target.name.endswith("-parts"):
+            try:
+                reclaimed += _tree_size(target); shutil.rmtree(target)
+            except OSError:
+                continue
+    return reclaimed
+
+
 def background_creation_flags(platform: str = os.name) -> int:
     """Hide console-only helpers when launched by the Windows GUI."""
     return int(getattr(subprocess, "CREATE_NO_WINDOW", 0)) if platform == "nt" else 0
@@ -320,7 +373,14 @@ class AssetExtractor:
             raise RuntimeError("Asset extraction completed without producing a bundle")
         with zipfile.ZipFile(bundles[0]) as archive:
             manifest = json.loads(archive.read("asset-manifest.json"))
-        return self.cache.add(bundles[0], game_root_id(game_root), manifest)
+        item = self.cache.add(bundles[0], game_root_id(game_root), manifest)
+        reclaimed = cleanup_extraction_output(output)
+        if work_root:
+            reclaimed += compact_completed_asset_work(work_root)
+        if reclaimed:
+            event({"phase": "cleanup", "message":
+                   f"Cleaned {reclaimed / (1024 ** 3):.2f} GiB of reproducible extraction output; the incremental cache was retained"})
+        return item
 
     def resumable(self, work_root: Path) -> dict | None:
         journal = work_root / "extraction-journal.json"

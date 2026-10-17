@@ -261,3 +261,37 @@ def prune_updater_backups(install_root: Path) -> None:
     candidates.sort(key=lambda value: value.stat().st_mtime, reverse=True)
     for old in candidates[1:]:
         shutil.rmtree(old, ignore_errors=True)
+
+
+def prune_update_staging(update_root: Path) -> tuple[int, int]:
+    """Remove recognized version staging only after the native updater completed."""
+    status_path = update_root / "self-update-journal.json.status"
+    try:
+        status = json.loads(status_path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return 0, 0
+    if status.get("state") != "complete":
+        return 0, 0
+    removed = 0; reclaimed = 0
+    for path in update_root.iterdir() if update_root.is_dir() else ():
+        if not path.is_dir():
+            continue
+        try:
+            parse_version(path.name)
+        except ValueError:
+            continue
+        verified = path / "verified"
+        version_file = verified / "VERSION"
+        if not ((verified / "ZanikManager.exe").is_file()
+                and (verified / "payload" / "payloads.json").is_file()
+                and version_file.is_file()):
+            continue
+        try:
+            if version_file.read_text(encoding="utf-8-sig").strip() != path.name:
+                continue
+            reclaimed += sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
+            shutil.rmtree(path)
+            removed += 1
+        except (OSError, UnicodeError):
+            continue
+    return removed, reclaimed

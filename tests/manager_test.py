@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 
 from manager.zanik_manager.assets import (AssetDeployer, AssetExtractor, asset_setup_mode,
                                           background_creation_flags,
+                                          cleanup_extraction_output, compact_completed_asset_work,
                                           dragonwilds_is_running, expected_asset_contract,
                                           request_dragonwilds_close, resume_activity_message)
 from manager.zanik_manager.activity import format_activity_entry
@@ -73,6 +74,39 @@ def write_payload_archive(archive: Path, files: dict[str, bytes], version: str =
     return contract
 
 class ManagerTests(unittest.TestCase):
+    def test_completed_asset_work_compaction_preserves_incremental_inputs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary); pipeline = work / "pipeline"
+            for name in ("json", "textures", "font", "web", "internal"):
+                (pipeline / name).mkdir(parents=True)
+                (pipeline / name / "data.bin").write_bytes(b"data")
+            (work / "generated-web").mkdir(); (work / "generated-web" / "asset.bin").write_bytes(b"asset")
+            (pipeline / "export.log").write_text("log")
+            (pipeline / "export-checkpoint.json").write_text("{}")
+            (work / "Mappings.usmap").write_bytes(b"mapping")
+            (work / ".zanik-asset-work.json").write_text(json.dumps({"owner": "Zanik asset extractor"}))
+            (work / "extraction-journal.json").write_text(json.dumps({"schemaVersion": 1, "stage": "complete"}))
+            self.assertGreater(compact_completed_asset_work(work), 0)
+            for name in ("json", "textures", "font"):
+                self.assertTrue((pipeline / name / "data.bin").is_file())
+            self.assertTrue((pipeline / "export-checkpoint.json").is_file())
+            self.assertTrue((work / "Mappings.usmap").is_file())
+            self.assertFalse((pipeline / "web").exists())
+            self.assertFalse((pipeline / "internal").exists())
+            self.assertFalse((work / "generated-web").exists())
+            self.assertFalse((pipeline / "export.log").exists())
+
+    def test_extraction_output_cleanup_removes_only_manager_bundle_products(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            (output / "zanik-assets-123.zip").write_bytes(b"zip")
+            parts = output / "zanik-assets-123-parts"; parts.mkdir(); (parts / "part.zip").write_bytes(b"part")
+            (output / "operator-note.txt").write_text("keep")
+            self.assertEqual(cleanup_extraction_output(output), 7)
+            self.assertFalse((output / "zanik-assets-123.zip").exists())
+            self.assertFalse(parts.exists())
+            self.assertTrue((output / "operator-note.txt").is_file())
+
     def test_server_profile_rename_reorder_and_delete_are_local_and_deterministic(self):
         first = ServerProfile.create(name="First", panel_origin="https://panel.example", account_id="1",
                                      credential_target="one", server_id="aaa")
