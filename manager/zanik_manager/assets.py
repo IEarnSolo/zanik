@@ -33,6 +33,11 @@ CRITICAL_REMOTE_ASSETS = {
 GAME_EXECUTABLE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 
 
+def background_creation_flags(platform: str = os.name) -> int:
+    """Hide console-only helpers when launched by the Windows GUI."""
+    return int(getattr(subprocess, "CREATE_NO_WINDOW", 0)) if platform == "nt" else 0
+
+
 def expected_asset_contract(tool_root: Path) -> dict:
     candidates = (tool_root / "asset-tools" / "extraction-recipes.json",
                   tool_root / "extraction-recipes.json")
@@ -104,6 +109,7 @@ def dragonwilds_is_running(runner=subprocess.run, platform: str = os.name) -> bo
         ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
          "@(Get-Process -Name 'RSDragonwilds*' -ErrorAction SilentlyContinue).Count"],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
+        creationflags=background_creation_flags(platform),
     )
     try:
         return int((result.stdout or "0").strip().splitlines()[-1]) > 0
@@ -121,6 +127,7 @@ def request_dragonwilds_close(runner=subprocess.run, timeout: int = 120,
          "Get-Process -Name 'RSDragonwilds*' -ErrorAction SilentlyContinue | "
          "ForEach-Object { [void]$_.CloseMainWindow() }"],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
+        creationflags=background_creation_flags(platform),
     )
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -165,6 +172,7 @@ class AssetExtractor:
             completed = subprocess.run(
                 [self._python(), str(tool), "show-build", "--game-root", str(game_root)],
                 capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+                creationflags=background_creation_flags(),
             )
             if completed.returncode == 0 and completed.stdout.strip():
                 game_build = completed.stdout.strip()
@@ -179,6 +187,7 @@ class AssetExtractor:
             [self._python(), str(tool), "mapping-status", "--game-root", str(game_root),
              "--recovery-root", str(recovery_root)], capture_output=True, text=True,
             encoding="utf-8", errors="replace", timeout=60,
+            creationflags=background_creation_flags(),
         )
         if completed.returncode:
             raise RuntimeError("Asset preflight failed: " + (completed.stderr or completed.stdout).strip())
@@ -187,7 +196,8 @@ class AssetExtractor:
     def validate_bundle(self, bundle: Path, contract: dict | None = None) -> None:
         tool = self.tool_root / "tools" / "zanik_assets.py"
         completed = subprocess.run([self._python(), str(tool), "validate", "--bundle", str(bundle)],
-                                   capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+                                   capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
+                                   creationflags=background_creation_flags())
         if completed.returncode:
             raise RuntimeError("Cached asset bundle validation failed")
         if contract:
@@ -289,7 +299,8 @@ class AssetExtractor:
         event({"phase": "extract", "message": self.toolchain_summary(game_root)})
         event({"phase": "extract", "message": "Starting the Windows client asset extractor"})
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                                   encoding="utf-8", errors="replace")
+                                   encoding="utf-8", errors="replace",
+                                   creationflags=background_creation_flags())
         assert process.stdout
         for line in process.stdout:
             line = line.rstrip()

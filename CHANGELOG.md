@@ -2,6 +2,12 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.30] - 2026-10-17
+
+### Fixed
+
+- Run Zanik Manager-owned PowerShell and asset helper processes without a visible console window while preserving captured progress in Activity.
+
 ## [0.2.29] - 2026-10-16
 
 ### Added
