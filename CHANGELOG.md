@@ -2,6 +2,13 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.41] - 2026-10-17
+
+### Fixed
+
+- Force web-map clients to fetch the corrected lodestone marker instead of reusing the previously cached building-piece artwork under the same asset URL.
+- Zanik Manager will identify this release as a server-payload update; existing extracted assets remain valid and do not need to be regenerated.
+
 ## [0.2.40] - 2026-10-17
 
 ### Added
