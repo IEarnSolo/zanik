@@ -2,6 +2,18 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.33] - 2026-10-17
+
+### Added
+
+- Add an explicit **Clear incremental cache** action that preserves validated bundles and server assets while warning that the next extraction will take longer.
+
+### Fixed
+
+- Zanik Manager now removes recognized download and extraction staging after a successful self-update instead of retaining every previous version under LocalAppData.
+- Remove duplicate full ZIPs, temporary multipart uploads, generated web trees, private audit output, and extraction logs after a bundle is safely cached.
+- Preserve only the raw JSON, textures, font, mapping, checkpoints, current bundle, and previous bundle needed for fast incremental extraction and rollback.
+
 ## [0.2.32] - 2026-10-17
 
 ### Added

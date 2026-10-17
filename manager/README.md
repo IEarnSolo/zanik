@@ -4,6 +4,8 @@ Zanik Manager is the recommended Windows interface for installing and maintainin
 
 The **Changelog** tab provides the bundled release history through the installed Manager version, with the newest version expanded. The **Activity** tab timestamps progress and diagnostic output in local time.
 
+Successful updates and asset builds are cleaned automatically: obsolete Manager staging, duplicate bundle output, multipart uploads, generated trees, and logs are removed. Manager retains the current and previous validated bundles and the private raw extraction cache needed for faster incremental updates. **Clear incremental cache** safely removes that raw cache when disk space is preferred over faster future extraction; it never removes assets from a server.
+
 The bottom-right indicators separately track the Manager release and the active server's Linux Dragonwilds build every ten minutes. Manager checks use stable GitHub releases and offer a verified transactional **Update and relaunch** action. Game checks read the selected server's Steam manifest and public dedicated-server metadata, work without Zanik installed, and never install a game update. **Install Zanik** is available only on an unmodded server. The server summary compares an operational payload contract independently from the Manager version. **Update / repair Zanik** remains available for an intentional repair and reuses the existing installation mode, but a Manager-only release does not create a false server-update requirement.
 
 Manager remembers the last selected server in `%LOCALAPPDATA%\Zanik Manager\preferences.json`. The file contains only a profile identifier and no panel credentials.
