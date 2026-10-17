@@ -82,6 +82,10 @@ The manifest records the client build, container and executable fingerprints, ma
 
 ## Install on a self-hosted Linux server
 
+Zanik Manager compares the selected bundle manifest with the active server manifest. An exact match uploads nothing and does not restart the server. With a current running Zanik installation, it uploads only added or changed files plus a bounded removal list. The server clones the active tree locally, applies the delta, validates the complete candidate, and atomically activates it. A concurrent manifest change is rejected rather than overwritten.
+
+Older installations, offline servers, and missing or invalid active manifests use the complete-bundle fallback. The complete ZIP remains the authoritative recovery artifact. Normal activation never downloads every remote asset for comparison; deep per-file verification is diagnostic-only.
+
 The complete ZIP is recommended for an ordinary Linux server. On the Linux host, create a versioned incoming directory under the server root. This example assumes the generated filename contains client build `CLIENT_BUILD`:
 
 ```sh

@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import shutil
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -496,6 +497,39 @@ class AssetDeployer:
                 target = tree / safe_archive_name(name)
                 if not target.is_file() or sha256(target.read_bytes()) != digest:
                     raise RuntimeError(f"Bundle validation failed for {name}")
+            target_manifest_raw = (tree / "asset-manifest.json").read_bytes()
+            target_manifest_sha = sha256(target_manifest_raw)
+            remote_manifest_path = f"{root}/zanik/assets/current/asset-manifest.json"
+            try:
+                base_manifest_raw = self.provider.client.read_file(server_id, remote_manifest_path)
+                base_manifest = json.loads(base_manifest_raw)
+            except Exception:
+                base_manifest_raw = b""
+                base_manifest = None
+            if base_manifest_raw and sha256(base_manifest_raw) == target_manifest_sha:
+                status("Website assets already match this bundle; no upload or restart is needed")
+                return {"operationId": None, "manifest": manifest,
+                        "bundleSha256": sha256(bundle.read_bytes()), "fileCount": len(expected),
+                        "archiveUpload": False, "deltaUpload": False, "unchanged": True,
+                        "uploadedFileCount": 0, "restartRequested": False,
+                        "restartPreviousUptime": None}
+            semantic_plan = self._delta_plan(base_manifest, manifest) if self._manifest_delta_eligible(base_manifest) else None
+            if semantic_plan == ([], []) and self._manifest_contract(base_manifest) == self._manifest_contract(manifest):
+                status("Website asset contents and extraction contract are unchanged; no upload or restart is needed")
+                return {"operationId": None, "manifest": base_manifest,
+                        "bundleSha256": sha256(bundle.read_bytes()), "fileCount": len(expected),
+                        "archiveUpload": False, "deltaUpload": False, "unchanged": True,
+                        "uploadedFileCount": 0, "restartRequested": False,
+                        "restartPreviousUptime": None}
+            helper = f"{root}/zanik/scripts/apply-asset-delta.sh"
+            running = self.provider.client.resources(server_id).get("current_state", "") == "running"
+            if self._manifest_delta_eligible(base_manifest) and running and self.provider._exists(server_id, helper):
+                delta_result = self._activate_delta(
+                    profile_id, server_id, root, tree, manifest, base_manifest_raw, base_manifest,
+                    target_manifest_raw, bundle, Path(temporary), progress, status)
+                if delta_result is not None:
+                    return delta_result
+                status("The installed launcher does not support delta activation; using the full-bundle fallback")
             journal = self.provider.journals
             from .journal import OperationJournal
             operation = OperationJournal.create(profile_id, "activate-assets")
@@ -553,6 +587,159 @@ class AssetDeployer:
                     "bundleSha256": sha256(bundle.read_bytes()), "fileCount": len(files),
                     "archiveUpload": used_archives, "restartRequested": restarted,
                     "restartPreviousUptime": (restart_context or {}).get("previousUptime")}
+
+    @staticmethod
+    def _manifest_records(manifest: dict) -> dict[str, dict] | None:
+        records = manifest.get("files")
+        if not isinstance(records, list) or not records:
+            return None
+        result: dict[str, dict] = {}
+        for record in records:
+            if not isinstance(record, dict) or not isinstance(record.get("path"), str) \
+                    or not isinstance(record.get("sha256"), str) or len(record["sha256"]) != 64:
+                return None
+            try:
+                relative = safe_archive_name(record["path"])
+            except ValueError:
+                return None
+            if relative in result:
+                return None
+            result[relative] = record
+        return result
+
+    @staticmethod
+    def _manifest_contract(manifest: dict) -> dict:
+        profile = manifest.get("compatibilityProfile") if isinstance(manifest, dict) else {}
+        return {"schemaVersion": manifest.get("schemaVersion"),
+                "extractionRecipeVersion": manifest.get("extractionRecipeVersion"),
+                "extractionRecipeSha256": manifest.get("extractionRecipeSha256"),
+                "compatibility": manifest.get("compatibility"),
+                "compatibilityProfileVersion": profile.get("version") if isinstance(profile, dict) else None,
+                "missingRequired": manifest.get("missingRequired")}
+
+    @staticmethod
+    def _manifest_delta_eligible(manifest: dict | None) -> bool:
+        return bool(isinstance(manifest, dict)
+                    and manifest.get("schemaVersion") == 2
+                    and manifest.get("compatibility") == "compatible"
+                    and not manifest.get("missingRequired")
+                    and manifest.get("extractionStage") == "validated-and-packaged")
+
+    @classmethod
+    def _delta_plan(cls, base_manifest: dict, target_manifest: dict) -> tuple[list[dict], list[str]] | None:
+        base_records = cls._manifest_records(base_manifest)
+        target_records = cls._manifest_records(target_manifest)
+        if base_records is None or target_records is None:
+            return None
+        changed = [target_records[path] for path in sorted(target_records)
+                   if path not in base_records or base_records[path].get("sha256") != target_records[path].get("sha256")]
+        return changed, sorted(set(base_records) - set(target_records))
+
+    def _activate_delta(self, profile_id: str, server_id: str, root: str, tree: Path,
+                        manifest: dict, base_manifest_raw: bytes, base_manifest: dict,
+                        target_manifest_raw: bytes, bundle: Path, temporary: Path,
+                        progress, status) -> dict | None:
+        plan = self._delta_plan(base_manifest, manifest)
+        target_records = self._manifest_records(manifest)
+        if plan is None or target_records is None:
+            return None
+        changed, removed = plan
+        if not changed and not removed:
+            # A metadata-only manifest change still needs activation, but no game-derived file upload.
+            status("Only asset manifest metadata changed; uploading the small delta")
+        else:
+            status(f"Uploading {len(changed)} changed asset file(s); {len(removed)} retired file(s) will be removed")
+        request_id = secrets.token_hex(12)
+        delta_root = temporary / "delta"
+        files_root = delta_root / "files"
+        files_root.mkdir(parents=True)
+        spec = {"schemaVersion": 1, "requestId": request_id,
+                "baseManifestSha256": sha256(base_manifest_raw),
+                "targetManifestSha256": sha256(target_manifest_raw),
+                "changed": [{"path": record["path"], "sha256": record["sha256"],
+                             "size": record.get("size")} for record in changed],
+                "removed": removed}
+        (delta_root / "asset-delta.json").write_text(json.dumps(spec, sort_keys=True), encoding="utf-8")
+        (delta_root / "target-asset-manifest.json").write_bytes(target_manifest_raw)
+        for record in changed:
+            relative = safe_archive_name(record["path"])
+            source, target = tree / relative, files_root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+        delta_zip = temporary / "asset-delta.zip"
+        with zipfile.ZipFile(delta_zip, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+            for path in sorted(delta_root.rglob("*")):
+                if path.is_file():
+                    archive.write(path, path.relative_to(delta_root).as_posix())
+        stage = f"{root}/.zanik-manager/staging/asset-delta-{request_id}"
+        self.provider._mkdir(server_id, stage)
+        parts, _index = self._make_parts(delta_zip, temporary / "delta-parts")
+        for index, part in enumerate(parts, 1):
+            self.provider.client.upload(server_id, stage, part.name, part.read_bytes())
+            if sha256(self.provider.client.download_file(server_id, f"{stage}/{part.name}")) != sha256(part.read_bytes()):
+                raise RuntimeError(f"Remote delta part verification failed for {part.name}")
+            self.provider.client.decompress(server_id, stage, part.name)
+            self.provider.client.delete(server_id, stage, [part.name])
+            progress(index, len(parts), part.name)
+        report_path = f"{root}/zanik/state/asset-delta-status-{request_id}.json"
+        self.provider.client.command(server_id, f"zanik-apply-asset-delta {request_id}")
+        deadline = time.monotonic() + 90
+        report = None
+        while time.monotonic() < deadline:
+            try:
+                value = json.loads(self.provider.client.read_file(server_id, report_path))
+                if value.get("requestId") == request_id:
+                    report = value
+                    break
+            except Exception:
+                pass
+            time.sleep(2)
+        if report is None:
+            # Resolve the only ambiguous state with one manifest read, never a per-file scan.
+            try:
+                active = self.provider.client.read_file(server_id, f"{root}/zanik/assets/current/asset-manifest.json")
+            except Exception as error:
+                raise RuntimeError("Delta activation timed out and its final state could not be verified") from error
+            if sha256(active) != sha256(target_manifest_raw):
+                if sha256(active) == sha256(base_manifest_raw):
+                    try:
+                        self.provider.client.delete(server_id, f"{root}/.zanik-manager/staging",
+                                                    [PurePosixPath(stage).name])
+                    except Exception:
+                        pass
+                    return None
+                raise RuntimeError("Delta activation timed out after the active bundle changed unexpectedly")
+            report = {"status": "activated", "changed": len(changed), "removed": len(removed),
+                      "fileCount": len(target_records)}
+        if report.get("status") == "base-mismatch":
+            raise RuntimeError("The active asset bundle changed during upload; reload it and retry safely")
+        if report.get("status") != "activated":
+            if report.get("status") == "busy":
+                raise RuntimeError("Another server-side asset activation is already running; wait and retry")
+            try:
+                active = self.provider.client.read_file(server_id, f"{root}/zanik/assets/current/asset-manifest.json")
+            except Exception as error:
+                raise RuntimeError("Server-side delta validation failed and the active bundle could not be verified") from error
+            if sha256(active) == sha256(base_manifest_raw):
+                try:
+                    self.provider.client.delete(server_id, f"{root}/.zanik-manager/staging",
+                                                [PurePosixPath(stage).name])
+                except Exception:
+                    pass
+                return None
+            raise RuntimeError("Server-side delta validation failed after the active bundle changed unexpectedly")
+        try:
+            self.provider.client.delete(server_id, f"{root}/zanik/state", [PurePosixPath(report_path).name])
+            self.provider.client.delete(server_id, f"{root}/.zanik-manager/staging", [PurePosixPath(stage).name])
+        except Exception:
+            pass
+        restart_context = self._restart_runtime_if_running(server_id, status)
+        return {"operationId": request_id, "manifest": manifest,
+                "bundleSha256": sha256(bundle.read_bytes()), "fileCount": len(target_records),
+                "archiveUpload": True, "deltaUpload": True, "unchanged": False,
+                "uploadedFileCount": len(changed), "removedFileCount": len(removed),
+                "restartRequested": restart_context is not None,
+                "restartPreviousUptime": (restart_context or {}).get("previousUptime")}
 
     def _restart_runtime_if_running(self, server_id: str, status=lambda message: None) -> dict | None:
         resources = self.provider.client.resources(server_id)

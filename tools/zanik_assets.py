@@ -731,6 +731,135 @@ def install(args: argparse.Namespace) -> int:
     return 0
 
 
+class DeltaBaseMismatch(ValueError):
+    pass
+
+
+def _manifest_records(manifest: dict) -> dict[str, dict]:
+    records: dict[str, dict] = {}
+    for record in manifest.get("files", []):
+        if not isinstance(record, dict):
+            raise ValueError("asset manifest contains an invalid file record")
+        relative = record.get("path", "")
+        validate_member(relative)
+        if relative in records:
+            raise ValueError(f"duplicate asset manifest record: {relative}")
+        if not isinstance(record.get("sha256"), str) or len(record["sha256"]) != 64:
+            raise ValueError(f"asset manifest contains an invalid checksum: {relative}")
+        records[relative] = record
+    if not records:
+        raise ValueError("asset manifest has no file records")
+    return records
+
+
+def apply_delta_tree(delta_root: Path, destination: Path) -> dict:
+    """Validate and atomically apply a sparse upload to a complete active tree."""
+    spec_path = delta_root / "asset-delta.json"
+    target_manifest_path = delta_root / "target-asset-manifest.json"
+    current = destination / "current"
+    if not spec_path.is_file() or not target_manifest_path.is_file() or not current.is_dir():
+        raise ValueError("asset delta, target manifest, or active asset tree is missing")
+    spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    target_manifest_raw = target_manifest_path.read_bytes()
+    target_manifest = json.loads(target_manifest_raw)
+    if spec.get("schemaVersion") != 1:
+        raise ValueError("unsupported asset delta schema")
+    active_manifest_path = current / "asset-manifest.json"
+    if not active_manifest_path.is_file():
+        raise DeltaBaseMismatch("active asset manifest is missing")
+    active_manifest_raw = active_manifest_path.read_bytes()
+    if hashlib.sha256(active_manifest_raw).hexdigest() != spec.get("baseManifestSha256"):
+        raise DeltaBaseMismatch("active asset manifest changed before delta activation")
+    if hashlib.sha256(target_manifest_raw).hexdigest() != spec.get("targetManifestSha256"):
+        raise ValueError("target asset manifest checksum does not match the delta")
+    base_records = _manifest_records(json.loads(active_manifest_raw))
+    target_records = _manifest_records(target_manifest)
+    changed, removed = spec.get("changed"), spec.get("removed")
+    if not isinstance(changed, list) or not isinstance(removed, list):
+        raise ValueError("asset delta change lists are invalid")
+    changed_paths: set[str] = set()
+    for record in changed:
+        if not isinstance(record, dict):
+            raise ValueError("asset delta contains an invalid changed record")
+        relative = record.get("path", "")
+        validate_member(relative)
+        if relative in changed_paths or relative not in target_records:
+            raise ValueError(f"asset delta contains an unexpected changed path: {relative}")
+        if record.get("sha256") != target_records[relative].get("sha256"):
+            raise ValueError(f"asset delta checksum disagrees with target manifest: {relative}")
+        source = delta_root / "files" / relative
+        if not source.is_file() or source.is_symlink() or digest(source) != record.get("sha256"):
+            raise ValueError(f"asset delta payload checksum mismatch: {relative}")
+        changed_paths.add(relative)
+    removed_paths: set[str] = set()
+    for relative in removed:
+        if not isinstance(relative, str):
+            raise ValueError("asset delta contains an invalid removed path")
+        validate_member(relative)
+        if relative in removed_paths or relative not in base_records or relative in target_records:
+            raise ValueError(f"asset delta contains an unexpected removed path: {relative}")
+        removed_paths.add(relative)
+    expected_changed = {path for path, record in target_records.items()
+                        if path not in base_records or base_records[path].get("sha256") != record.get("sha256")}
+    expected_removed = set(base_records) - set(target_records)
+    if changed_paths != expected_changed or removed_paths != expected_removed:
+        raise ValueError("asset delta does not exactly transform the base manifest into the target manifest")
+    candidate = destination / f".delta-{spec.get('requestId', 'candidate')}.new"
+    previous = destination / "previous"
+    if candidate.exists():
+        shutil.rmtree(candidate)
+    shutil.copytree(current, candidate, symlinks=False)
+    try:
+        for relative in sorted(removed_paths | changed_paths):
+            target = candidate / relative
+            if target.exists():
+                target.unlink()
+        for relative in sorted(changed_paths):
+            source, target = delta_root / "files" / relative, candidate / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+        (candidate / "asset-manifest.json").write_bytes(target_manifest_raw)
+        validate_manifest_tree(candidate, require_compatible=True)
+        if previous.exists():
+            shutil.rmtree(previous)
+        current.replace(previous)
+        try:
+            candidate.replace(current)
+        except Exception:
+            if not current.exists() and previous.exists():
+                previous.replace(current)
+            raise
+    except Exception:
+        if candidate.exists():
+            shutil.rmtree(candidate, ignore_errors=True)
+        raise
+    return {"status": "activated", "changed": len(changed_paths), "removed": len(removed_paths),
+            "fileCount": len(target_records), "baseManifestSha256": spec["baseManifestSha256"],
+            "targetManifestSha256": spec["targetManifestSha256"]}
+
+
+def install_delta(args: argparse.Namespace) -> int:
+    delta_root, destination = Path(args.delta_root).resolve(), Path(args.destination).resolve()
+    report_path, request_id = Path(args.report).resolve(), args.request_id
+    report = {"schemaVersion": 1, "requestId": request_id}
+    try:
+        spec = json.loads((delta_root / "asset-delta.json").read_text(encoding="utf-8"))
+        if spec.get("requestId") != request_id:
+            raise ValueError("asset delta request ID does not match")
+        report.update(apply_delta_tree(delta_root, destination))
+    except DeltaBaseMismatch as error:
+        report.update({"status": "base-mismatch", "error": str(error)})
+    except Exception as error:
+        report.update({"status": "failed", "error": str(error)})
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = report_path.with_name(report_path.name + f".new.{os.getpid()}")
+    temporary.write_text(json.dumps(report, sort_keys=True) + "\n", encoding="utf-8")
+    os.chmod(temporary, 0o600)
+    temporary.replace(report_path)
+    print(json.dumps(report, sort_keys=True))
+    return 0 if report["status"] == "activated" else 4
+
+
 def write_part(output: Path, source: zipfile.ZipFile, members: list[zipfile.ZipInfo]) -> None:
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for member in members:
@@ -951,6 +1080,12 @@ def main() -> int:
     install_bundle_set.add_argument("--index", required=True)
     install_bundle_set.add_argument("--destination", required=True)
     install_bundle_set.set_defaults(run=install_set)
+    delta = commands.add_parser("install-delta")
+    delta.add_argument("--delta-root", required=True)
+    delta.add_argument("--destination", required=True)
+    delta.add_argument("--request-id", required=True)
+    delta.add_argument("--report", required=True)
+    delta.set_defaults(run=install_delta)
     cleanup = commands.add_parser("cleanup-work")
     cleanup.add_argument("--work-root", required=True)
     cleanup.add_argument("--pending-journal")

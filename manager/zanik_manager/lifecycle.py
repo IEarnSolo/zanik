@@ -76,6 +76,7 @@ class ReleasePayload:
                 self.entries[name] = PayloadEntry(name, len(data), sha256(data), mode)
         required = {"bin/libzanik.so", "bin/zanik-server", "scripts/compat-launcher.sh",
                     "scripts/verify-assets.sh", "scripts/check-game-update.sh",
+                    "scripts/apply-asset-delta.sh",
                     "config/zanik.conf.example", "compatibility/compatibility.tsv", "VERSION",
                     "payload-contract.json"}
         missing = required - set(self.entries)
