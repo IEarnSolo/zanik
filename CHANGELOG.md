@@ -2,6 +2,17 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.32] - 2026-10-17
+
+### Added
+
+- Add a Changelog tab to Zanik Manager with one collapsible section per included release and the newest release expanded by default.
+- Add local timestamps to every message and technical error recorded in the Activity tab.
+
+### Changed
+
+- Bundle `CHANGELOG.md` with the portable Manager and hide release notes newer than the running Manager version.
+
 ## [0.2.31] - 2026-10-17
 
 ### Added
