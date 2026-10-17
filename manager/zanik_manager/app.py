@@ -33,7 +33,7 @@ from .pterodactyl import PterodactylClient
 from .security import CredentialVault, credential_target, redact
 from .support import create_support_bundle
 from .updates import (GitHubReleaseChecker, current_manager_version, prune_update_staging, prune_updater_backups,
-                      write_startup_handshake)
+                      update_staging_cleanup_pending, write_startup_handshake)
 
 
 def distribution_root() -> Path:
@@ -375,19 +375,27 @@ class MainWindow(QMainWindow):
         self.game_root.editingFinished.connect(self.refresh_bundles)
         self.tabs.addTab(page, "Assets")
 
-    def cleanup_local_storage(self):
+    def cleanup_local_storage(self, attempt: int = 0):
         def action():
+            if update_staging_cleanup_pending(self.paths["updates"]):
+                return {"pending": True}
             update_count, update_bytes = prune_update_staging(self.paths["updates"])
             asset_bytes = sum(compact_completed_asset_work(path)
                               for path in self.paths["asset_work"].iterdir() if path.is_dir())
             if any(self.paths["assets"].rglob("cache.json")):
                 asset_bytes += cleanup_extraction_output(self.paths["root"] / "extraction-output")
-            return update_count, update_bytes + asset_bytes
+            return {"pending": False, "count": update_count, "reclaimed": update_bytes + asset_bytes}
         def done(result, error):
             if error:
                 self.log(f"Local storage cleanup was deferred: {error}")
                 return
-            count, reclaimed = result
+            if result.get("pending"):
+                if attempt < 30:
+                    QTimer.singleShot(1000, lambda: self.cleanup_local_storage(attempt + 1))
+                else:
+                    self.log("Local storage cleanup is waiting for the Manager updater to finish and will retry at the next launch.")
+                return
+            count, reclaimed = result["count"], result["reclaimed"]
             if count or reclaimed:
                 self.log(f"Local cleanup removed {count} completed Manager update staging director{'y' if count == 1 else 'ies'} "
                          f"and reclaimed {reclaimed / (1024 ** 3):.2f} GiB; validated bundles and the incremental extraction cache were retained.")

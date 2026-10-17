@@ -295,3 +295,27 @@ def prune_update_staging(update_root: Path) -> tuple[int, int]:
         except (OSError, UnicodeError):
             continue
     return removed, reclaimed
+
+
+def update_staging_cleanup_pending(update_root: Path) -> bool:
+    """Report a recognized staged update that is still awaiting updater completion."""
+    try:
+        candidates = []
+        for path in update_root.iterdir() if update_root.is_dir() else ():
+            if not path.is_dir():
+                continue
+            try:
+                parse_version(path.name)
+            except ValueError:
+                continue
+            verified = path / "verified"
+            if ((verified / "ZanikManager.exe").is_file()
+                    and (verified / "VERSION").is_file()
+                    and (verified / "payload" / "payloads.json").is_file()):
+                candidates.append(path)
+        if not candidates:
+            return False
+        status = json.loads((update_root / "self-update-journal.json.status").read_text(encoding="utf-8-sig"))
+        return status.get("state") != "complete"
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return bool(candidates) if 'candidates' in locals() else False
