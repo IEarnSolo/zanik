@@ -205,6 +205,7 @@ class ManagerTests(unittest.TestCase):
         self.assertIn('phase_percent = {"preserve": 10, "mappings": 15, "restore": 30,', source)
         self.assertIn("Close game and continue", source)
         self.assertIn("Set up website assets now", source)
+        self.assertIn("Asset extraction can take several minutes", source)
         self.assertIn("Configure the Zanik website", source)
         self.assertIn("Skip for now", source)
         self.assertIn("not the Dragonwilds game port", source)
@@ -719,13 +720,18 @@ class ManagerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary); bundle=root/"bundle.zip"
             with zipfile.ZipFile(bundle,"w",compression=zipfile.ZIP_STORED) as archive:
-                archive.writestr("asset-manifest.json", b"{}")
-                archive.writestr("items/a.png", __import__('os').urandom(300))
-                archive.writestr("items/b.png", __import__('os').urandom(300))
+                for name, data in (("asset-manifest.json", b"{}"),
+                                   ("items/a.png", __import__('os').urandom(300)),
+                                   ("items/b.png", __import__('os').urandom(300))):
+                    archive.writestr(zipfile.ZipInfo(name, date_time=(2026, 10, 17, 4, 20, 0)), data)
             parts,index=AssetDeployer._make_parts(bundle,root/"parts",limit=500)
             self.assertGreaterEqual(len(parts),2)
             self.assertEqual(index["bundleSha256"],content_hash(bundle.read_bytes()))
             self.assertTrue(all(part.stat().st_size < 500 for part in parts))
+            for part in parts:
+                with zipfile.ZipFile(part) as archive:
+                    self.assertEqual({item.date_time for item in archive.infolist()},
+                                     {(2026, 10, 17, 4, 20, 0)})
 
     def test_remote_asset_subset_verification_uses_large_file_download_route(self):
         class Client:

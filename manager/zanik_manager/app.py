@@ -1189,7 +1189,7 @@ class MainWindow(QMainWindow):
                 return
             box = QMessageBox(self); box.setWindowTitle("Set up website assets")
             box.setText(f"{profile.name} does not have a healthy active website asset bundle.")
-            box.setInformativeText("Zanik Manager can extract the required assets from your licensed Dragonwilds client, upload them to this server, and activate them now. Dragonwilds must initially be closed; it will briefly open and close automatically for mapping generation.")
+            box.setInformativeText("Zanik Manager can extract the required assets from your licensed Dragonwilds client, upload them to this server, and activate them now. Asset extraction can take several minutes. Dragonwilds must initially be closed; it will briefly open and close automatically for mapping generation.")
             setup = box.addButton("Set up website assets now", QMessageBox.AcceptRole)
             later = box.addButton("Later", QMessageBox.RejectRole)
             setup.setToolTip("Extract or reuse a validated local bundle, upload it to this server, and activate it.")
@@ -1284,9 +1284,9 @@ class MainWindow(QMainWindow):
             if activated.get("restartRequested"):
                 self.log(f"Restart requested for {profile.name} so native catalog tracking loads the activated assets")
             self.asset_activation_complete(profile, activated)
-        title = (f"Resuming and deploying website assets on {profile.name}…" if mode == "resume" else
-                 f"Updating and deploying website assets on {profile.name}…" if mode == "incremental" else
-                 f"Setting up website assets on {profile.name}…")
+        title = (f"Resuming and deploying website assets on {profile.name}… This can take several minutes." if mode == "resume" else
+                 f"Updating and deploying website assets on {profile.name}… This can take several minutes." if mode == "incremental" else
+                 f"Setting up website assets on {profile.name}… This can take several minutes.")
         self.run_async(action, done, title=title, determinate=True)
 
     def extract_assets(self):
@@ -1330,9 +1330,9 @@ class MainWindow(QMainWindow):
                                      incremental=incremental)
         self.run_async(action,
                        lambda item: self.asset_extraction_complete(item, resumed=False),
-                       title=("Updating Dragonwilds web assets incrementally…" if incremental else
-                              f"Resuming asset extraction from {resume_status['stage']}…" if resume_status
-                              else "Extracting Dragonwilds web assets…"), determinate=True)
+                       title=("Updating Dragonwilds web assets incrementally… This can take several minutes." if incremental else
+                              f"Resuming asset extraction from {resume_status['stage']}… This can take several minutes." if resume_status
+                              else "Extracting Dragonwilds web assets… This can take several minutes."), determinate=True)
 
     def resume_asset_extraction(self):
         root = self.choose_or_confirm_game_root()

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import calendar
 from collections import defaultdict
 import hashlib
 import json
@@ -398,6 +399,17 @@ def container_fingerprint(path: Path) -> dict:
     return record
 
 
+def zip_timestamp(epoch: int) -> tuple[int, int, int, int, int, int]:
+    """Return a ZIP-compatible UTC timestamp with DOS two-second precision."""
+    value = time.gmtime(epoch)
+    if value.tm_year < 1980:
+        return (1980, 1, 1, 0, 0, 0)
+    if value.tm_year > 2107:
+        return (2107, 12, 31, 23, 59, 58)
+    return (value.tm_year, value.tm_mon, value.tm_mday,
+            value.tm_hour, value.tm_min, value.tm_sec - (value.tm_sec % 2))
+
+
 def manifest_for(root: Path, source: Path, files: list[Path], validation: dict,
                  mapping_path: Path | None = None, tool_versions: dict | None = None,
                  recipe_version: int = EXTRACTION_RECIPE_VERSION, profile: dict | None = None,
@@ -474,15 +486,17 @@ def build(args: argparse.Namespace) -> int:
                             getattr(args, "recipe_version", 1), profile,
                             getattr(args, "extraction_mode", "full"),
                             digest(profile_path) if profile_path else None)
+    archive_time = zip_timestamp(calendar.timegm(time.strptime(
+        manifest["generatedAt"], "%Y-%m-%dT%H:%M:%SZ")))
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-        info = zipfile.ZipInfo("asset-manifest.json", date_time=(1980, 1, 1, 0, 0, 0))
+        info = zipfile.ZipInfo("asset-manifest.json", date_time=archive_time)
         info.external_attr = 0o644 << 16
         archive.writestr(info, json.dumps(manifest, indent=2, sort_keys=True) + "\n")
         for path in files:
             if path.name == "asset-manifest.json":
                 continue
-            info = zipfile.ZipInfo(path.relative_to(source).as_posix(), date_time=(1980, 1, 1, 0, 0, 0))
+            info = zipfile.ZipInfo(path.relative_to(source).as_posix(), date_time=archive_time)
             info.external_attr = 0o644 << 16
             archive.writestr(info, path.read_bytes())
     print(f"created {output} ({len(manifest['files'])} files)")
@@ -720,7 +734,7 @@ def install(args: argparse.Namespace) -> int:
 def write_part(output: Path, source: zipfile.ZipFile, members: list[zipfile.ZipInfo]) -> None:
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for member in members:
-            info = zipfile.ZipInfo(member.filename, date_time=(1980, 1, 1, 0, 0, 0))
+            info = zipfile.ZipInfo(member.filename, date_time=member.date_time)
             info.external_attr = 0o644 << 16
             archive.writestr(info, source.read(member))
 
