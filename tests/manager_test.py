@@ -17,7 +17,8 @@ from manager.zanik_manager.assets import (AssetDeployer, AssetExtractor, asset_s
                                           background_creation_flags,
                                           cleanup_extraction_output, compact_completed_asset_work,
                                           dragonwilds_is_running, expected_asset_contract,
-                                          request_dragonwilds_close, resume_activity_message)
+                                          game_root_id, request_dragonwilds_close,
+                                          resume_activity_message)
 from manager.zanik_manager.activity import format_activity_entry
 from manager.zanik_manager.cache import BundleCache, format_bundle_timestamp
 from manager.zanik_manager.changelog import parse_changelog
@@ -439,6 +440,41 @@ class ManagerTests(unittest.TestCase):
         self.assertIn("will continue with catalog and artwork export", resume_activity_message("mappings"))
         self.assertIn("completed UnrealAssetScout exports will not run again",
                       resume_activity_message("exports"))
+
+    def test_manual_extraction_reuses_an_exact_cached_bundle_before_incremental_work(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); tools = root / "tools"; game = root / "game"
+            executable = game / "RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe"
+            executable.parent.mkdir(parents=True); executable.write_bytes(b"same-game")
+            recipe_path = tools / "asset-tools/extraction-recipes.json"
+            recipe_path.parent.mkdir(parents=True)
+            recipe_path.write_text(json.dumps({"schemaVersion": 5,
+                                               "catalogProfile": {"version": "reviewed-5"}}))
+            (tools / "asset-tools/tools.lock.json").write_text("tools")
+            contract = expected_asset_contract(tools)
+            fingerprints = AssetExtractor(tools, BundleCache(root / "cache")).current_fingerprints(game)
+            manifest = {"gameBuild": "123", "generatedAt": "2026-10-17T00:00:00Z",
+                        "sourceExecutable": {"sha256": fingerprints["gameExecutableSha256"]},
+                        "extractionRecipeVersion": contract["extractionRecipeVersion"],
+                        "extractionRecipeSha256": contract["extractionRecipeSha256"],
+                        "compatibilityProfile": {"version": contract["compatibilityProfileVersion"]}}
+            bundle = root / "bundle.zip"
+            with zipfile.ZipFile(bundle, "w") as archive:
+                archive.writestr("asset-manifest.json", json.dumps(manifest))
+            cache = BundleCache(root / "cache"); expected = cache.add(bundle, game_root_id(game), manifest)
+            extractor = AssetExtractor(tools, cache)
+            self.assertEqual(extractor.compatible_cached_bundles(game, contract), [expected])
+            executable.write_bytes(b"changed-game")
+            self.assertEqual(extractor.compatible_cached_bundles(game, contract), [])
+
+        source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
+        cache_check = source.index("cached = extractor.compatible_cached_bundles(root, contract)",
+                                   source.index("def extract_assets"))
+        incremental_check = source.index("resume_status = extractor.resume_compatibility(work, root)",
+                                         source.index("def extract_assets"))
+        self.assertLess(cache_check, incremental_check)
+        self.assertIn("No extraction is required", source)
+        self.assertIn("Run extraction anyway", source)
 
     def test_profile_store_has_only_credential_reference(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -1291,9 +1291,7 @@ class MainWindow(QMainWindow):
         extractor = AssetExtractor(tool_root, cache)
         contract = expected_asset_contract(tool_root)
         all_cached = cache.list(game_root_id(root))
-        current_executable = extractor.current_fingerprints(root)["gameExecutableSha256"] if all_cached else None
-        cached = [item for item in all_cached
-                  if extractor.bundle_compatible_with_game(item.path, root, current_executable, contract)]
+        cached = extractor.compatible_cached_bundles(root, contract)
         if all_cached and not cached:
             self.log("Existing cached asset bundles target an older game build or extraction contract and will not be reused.")
         use_cached = False
@@ -1376,7 +1374,31 @@ class MainWindow(QMainWindow):
         if not root: return
         output = self.paths["root"] / "extraction-output"
         tool_root = resource_path("asset-tools")
-        extractor = AssetExtractor(tool_root, BundleCache(self.paths["assets"]))
+        cache = BundleCache(self.paths["assets"])
+        extractor = AssetExtractor(tool_root, cache)
+        contract = expected_asset_contract(tool_root)
+        cached = extractor.compatible_cached_bundles(root, contract)
+        if cached:
+            box = QMessageBox(self); box.setWindowTitle("Assets already current")
+            box.setText("A validated asset bundle already matches this Dragonwilds build and Zanik's current extraction contract.")
+            box.setInformativeText(
+                "No extraction is required. Use the existing bundle to upload it to a server, or explicitly rebuild it for troubleshooting.")
+            use_existing = box.addButton("Use current bundle", QMessageBox.AcceptRole)
+            rebuild = box.addButton("Run extraction anyway", QMessageBox.ActionRole)
+            cancel = box.addButton("Cancel", QMessageBox.RejectRole)
+            use_existing.setToolTip("Select the matching validated bundle without launching Dragonwilds or UnrealAssetScout.")
+            rebuild.setToolTip("Run the extraction pipeline despite the matching cached bundle; intended for troubleshooting only.")
+            cancel.setToolTip("Leave the existing cache unchanged and do nothing.")
+            box.setDefaultButton(use_existing); box.exec()
+            if box.clickedButton() is use_existing:
+                self.refresh_bundles()
+                cached_path = str(cached[0].path)
+                index = self.bundle_box.findData(cached_path)
+                if index >= 0: self.bundle_box.setCurrentIndex(index)
+                self.asset_extraction_complete(cached[0], reused=True)
+                return
+            if box.clickedButton() is not rebuild:
+                return
         work = self.asset_work_root(root); resume_status = extractor.resume_compatibility(work, root)
         if resume_status and not resume_status["compatible"]:
             self.offer_stale_asset_cleanup(root, extractor, resume_status, self.extract_assets)
@@ -1493,16 +1515,21 @@ class MainWindow(QMainWindow):
             title="Preparing a fresh asset extraction…",
         )
 
-    def asset_extraction_complete(self, item, resumed: bool = False):
+    def asset_extraction_complete(self, item, resumed: bool = False, reused: bool = False):
         self.refresh_bundles()
-        self.log(f"{'Resumed and validated' if resumed else 'Validated'} asset bundle: {item.path}")
+        cached_path = str(item.path)
+        index = self.bundle_box.findData(cached_path)
+        if index >= 0: self.bundle_box.setCurrentIndex(index)
+        result = "Reused current validated" if reused else "Resumed and validated" if resumed else "Validated"
+        self.log(f"{result} asset bundle: {item.path}")
         profile = self.asset_target_box.currentData()
         if not profile:
-            QMessageBox.information(self, "Asset extraction complete",
+            QMessageBox.information(self, "Assets already current" if reused else "Asset extraction complete",
                                     f"The validated asset bundle is ready at:\n{item.path}")
             return
-        box = QMessageBox(self); box.setWindowTitle("Asset extraction complete")
-        box.setText("The website asset bundle was generated and validated successfully.")
+        box = QMessageBox(self); box.setWindowTitle("Assets already current" if reused else "Asset extraction complete")
+        box.setText("The existing validated website asset bundle is current; extraction was skipped."
+                    if reused else "The website asset bundle was generated and validated successfully.")
         box.setInformativeText(
             f"Upload and activate it now on:\n\n{profile.name}\n{profile.panel_origin}\nServer {profile.server_id}\n\n"
             "The target remains explicit, and a running game server will restart after activation.")

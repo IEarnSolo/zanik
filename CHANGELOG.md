@@ -2,6 +2,12 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.36] - 2026-10-17
+
+### Fixed
+
+- Make Zanik Manager check the validated local bundle cache before starting a manual or incremental asset extraction. When the game and extraction contract are unchanged, Manager now selects the current bundle without launching Dragonwilds or UnrealAssetScout; an explicit troubleshooting rebuild remains available.
+
 ## [0.2.35] - 2026-10-17
 
 ### Changed
