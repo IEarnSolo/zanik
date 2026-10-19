@@ -850,6 +850,21 @@ class PterodactylProvider(ServerProvider):
         timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         backup = f"{root}/zanik-backups/game-update/{timestamp}-{journal.operation_id[:8]}"
         previous_auto = None
+        def record_installation(executable_sha256: str, build: str) -> None:
+            if not install.get("version"):
+                return
+            digest = str(executable_sha256).lower()
+            if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+                raise RuntimeError("The updated official executable fingerprint is invalid")
+            install["officialSha256"] = digest
+            install["gameBuild"] = str(build)
+            install["gameUpdatedAt"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            path = f"{root}/zanik/install-state.json"
+            data = (json.dumps(install, separators=(",", ":")) + "\n").encode()
+            self.client.write_file(server_id, path, data)
+            if sha256(self.client.read_file(server_id, path)) != sha256(data):
+                raise RuntimeError("The updated installation metadata did not verify")
+            self.client.chmod(server_id, f"{root}/zanik", [("install-state.json", 0o600)])
         try:
             progress("Checking AUTO_UPDATE and server state", 5)
             variable = self._auto_update(server_id)
@@ -884,6 +899,20 @@ class PterodactylProvider(ServerProvider):
                     time.sleep(2)
                 if installed != expected_build:
                     raise RuntimeError("Pterodactyl did not install the expected Dragonwilds build before the timeout")
+                if install.get("version"):
+                    runtime = None
+                    runtime_deadline = time.monotonic() + 120
+                    while time.monotonic() < runtime_deadline:
+                        try:
+                            candidate = json.loads(self.client.read_file(server_id, f"{root}/zanik/state/runtime-game.json"))
+                            if candidate.get("gameBuild") == expected_build:
+                                runtime = candidate; break
+                        except Exception:
+                            pass
+                        time.sleep(2)
+                    if not runtime:
+                        raise RuntimeError("Dragonwilds updated, but the Zanik wrapper did not report the new executable fingerprint")
+                    record_installation(runtime.get("officialSha256", ""), installed)
                 progress("Restoring the previous automatic-update preference", 90)
                 if previous_auto is not None:
                     self.client.set_startup_variable(server_id, "AUTO_UPDATE", previous_auto)
@@ -938,6 +967,7 @@ class PterodactylProvider(ServerProvider):
                 raise RuntimeError("The launcher-aware Dragonwilds update failed safely: " + str(report.get("status")))
             if report.get("saveFingerprintBefore") != report.get("saveFingerprintAfter"):
                 raise RuntimeError("The game save-tree fingerprint changed; the server remains stopped for review")
+            record_installation(report.get("officialSha256", ""), report["installedBuild"])
             progress("Starting Dragonwilds through the restored Zanik launcher", 92)
             self.client.power(server_id, "start")
             journal.state = "complete"; journal.completed_steps.append("game-updated")

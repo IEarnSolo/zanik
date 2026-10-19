@@ -65,6 +65,8 @@ printf 'zanik-admin public-character-id\nstatus\n' | PATH="$FAKEBIN:$PATH" "$SER
 grep -q 'expires in 5 minutes' "$TMP/proxy.out"
 grep -q '^status$' "$GAME.console"
 ! grep -q 'zanik-admin' "$GAME.console"
+grep -q '"schemaVersion":1' "$SERVER/zanik/state/runtime-game.json"
+grep -q '"gameBuild":"unknown"' "$SERVER/zanik/state/runtime-game.json"
 
 mkdir -p "$SERVER/zanik/assets/current"
 printf 'map-data' > "$SERVER/zanik/assets/current/world-map.jpg"
