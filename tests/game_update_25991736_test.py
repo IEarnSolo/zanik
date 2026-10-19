@@ -44,6 +44,15 @@ for offset in (
 ):
     assert offset in gravestones
 
+teleport = (root / "src" / "engine" / "admin_teleport.cpp").read_text()
+assert "{0xA7628F0,0xA5765A0,0xA576B80,17" in teleport
+assert "wrapper[0x26]!=0xE8" in teleport
+assert "wrapper+0x2b+relative" in teleport
+assert "if(storageTeleportTemplateValid.load())" in teleport
+assert "storageTeleportCircuitBroken=true" in teleport
+assert "ReadNearbyBuildingBounds(chestActor,origin)" not in teleport
+assert "ReadAdminStorageLocations(request.targetCharacterGuid" not in teleport
+
 analyzer = (root / "tools" / "compat_analyzer.cpp").read_text()
 assert "--native-offsets" in analyzer
 assert 'field("graveGetInventory",graveGetInventoryAt,first)' in analyzer

@@ -315,6 +315,7 @@ struct AdminTeleportDiagnostics {
     int storagePipelineCompatibility = 0;
     int nativeCaptureCompatibility = 0;
     int nativeTemplateAvailable = 0;
+    int storageTransportCompatibility = 0;
     std::uint64_t queuedRequests = 0;
     std::uint64_t acceptedTeleports = 0;
     std::uint64_t rejectedRequests = 0;
@@ -325,6 +326,8 @@ struct AdminTeleportDiagnostics {
     std::uint64_t tickCalls = 0;
     std::uint64_t maximumTickMicroseconds = 0;
     std::uint64_t slowTickCalls = 0;
+    std::uint64_t maximumStorageTransportMicroseconds = 0;
+    std::uint64_t slowStorageTransportCalls = 0;
 };
 
 struct NodestoneInfo {
