@@ -12,12 +12,14 @@ printf 'world-data' >"$server/RSDragonwilds/Saved/SaveGames/world.sav"
 printf '"buildid" "100"\n' >"$server/steamapps/appmanifest_4019830.acf"
 cat >"$server/steamcmd/steamcmd.sh" <<EOF
 #!/bin/sh
+printf '%s\n' "\$*" >'$server/steamcmd.args'
 printf '\177ELFnew' >'$game'
 chmod +x '$game'
 printf '"buildid" "200"\n' >'$server/steamapps/appmanifest_4019830.acf'
 EOF
 chmod +x "$server/steamcmd/steamcmd.sh"
 "$game"
+grep -q 'app_update 4019830 validate' "$server/steamcmd.args"
 grep -q 'ZANIK_COMPAT_LAUNCHER=1' "$game"
 [ "$(od -An -tx1 -N4 "$game.zanik-original" | tr -d ' \n')" = 7f454c46 ]
 grep -q '"status":"complete"' "$server/zanik/state/game-update-result.json"
