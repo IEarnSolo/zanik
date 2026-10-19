@@ -138,10 +138,12 @@ controls report unavailable independently of read-only contents and item editing
 ## Named storage grids and organization
 
 Storage responses preserve native inventory slot indices, including empty
-slots, and expose only opaque item revisions to the browser. Custom labels are
-read on the game thread through `IRenameable::Execute_GetCustomName`; the
-returned `FText` is converted with `FTextInspector::GetDisplayString` and
-released with the matching `FText` destructor.
+slots, and expose only opaque item revisions to the browser. The HTTP worker
+builds one immutable, generation-bound snapshot for both serialization and
+mutation planning. It reads the reflected `CustomName` `FText` property
+directly, rather than polling `IRenameable::Execute_GetCustomName` from the
+game thread, and records every actor, inventory, controller, item, and
+item-data index/serial identity used by a mutation plan.
 
 Website name changes are also executed on the game thread. Zanik builds a
 native `FText`, resolves the storage object's authoritative setter identity
@@ -155,15 +157,25 @@ with their matching destructors so the normal replication and save path remains
 owned by Dragonwilds.
 
 Slot reordering, swapping, merging, and cross-container movement use the
-game's inventory movement path. Copy operations use the validated batch
-capacity and batch addition functions, producing fresh default item instances.
+game's inventory movement path. Copy and recipe operations are capacity
+checked as complete plans, then decomposed into individual additions so no
+unbounded native batch is executed in one tick.
 Organize operations resolve the selected item types from opaque live slot
 revisions, enumerate every authoritative storage owned by the page character,
 and move every matching stack into the chosen storage. The complete aggregate
 is capacity checked before the first move. Cross-container moves are recorded
 and reversed in last-in-first-out order if any later native move fails.
-Every request re-resolves both containers and all source revisions on the game
-thread. The compatibility analyzer requires the internal move function,
+Discovery, catalog lookup, allocation, sorting, capacity planning, and result
+formatting occur on the HTTP worker. A fixed-capacity SPSC ring gives the game
+thread stable job pointers; the dispatcher revalidates all captured identities
+and executes at most one native action per eligible tick. Rollback is likewise
+one action per tick. A 1 ms action trips that operation family's runtime circuit
+breaker, and any stale identity or world change fails closed and invalidates
+the snapshot. `POST /api/admin/storage/mutate` therefore returns `202` with a
+session-bound opaque request ID, which the UI polls through the authenticated
+status endpoint for up to five minutes.
+
+The compatibility analyzer requires the internal move function,
 renameable name executor, and `FText` destructor in addition to the existing
 storage mutation symbols. If these dependencies move or change, organization
 controls remain disabled while the read-only storage view stays available.
