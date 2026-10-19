@@ -197,7 +197,12 @@ operations, organization, rename, removal tracking, gravestone inventory,
 registry, streaming, respawn capture, and persistence paths. The web API uses
 the relevant substatus when returning `503`, so a broken collision pipeline
 does not misreport an ordinary lodestone request as incompatible and a broken
-rename ABI does not need to disable read-only storage contents.
+rename ABI does not need to disable read-only storage contents. Compatibility
+metadata for the ABI is necessary but not sufficient: each reviewed game build
+also requires a live setter/readback check against the reflected `CustomName`
+property. Build 25991736 currently fails that functional check, so its rename
+control is hidden and rename requests fail closed while all independently
+validated storage operations remain available to the development candidate.
 
 The update validator also exercises the non-native authorization boundary. It
 creates a five-minute claim through the loopback console secret, redeems the
