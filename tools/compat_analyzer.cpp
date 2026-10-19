@@ -19,7 +19,8 @@ static std::string Sha256(const std::string& path) {
 }
 
 int main(int argc,char** argv){
-    if(argc!=3){std::cerr<<"usage: zanik-compat-analyzer BINARY SYM\n";return 2;}
+    const bool dumpNativeOffsets=argc==4&&std::string(argv[3])=="--native-offsets";
+    if(argc!=3&&!dumpNativeOffsets){std::cerr<<"usage: zanik-compat-analyzer BINARY SYM [--native-offsets]\n";return 2;}
     std::ifstream sf(argv[2],std::ios::binary); std::uint32_t count=0; sf.read((char*)&count,4);
     if(!sf||count<1||count>30000000){std::cerr<<"invalid symbol file\n";return 3;}
     std::vector<SymbolRecord> records(count); sf.read((char*)records.data(),records.size()*sizeof(SymbolRecord));
@@ -303,6 +304,10 @@ int main(int argc,char** argv){
     auto hasImmediatePair=[&](std::uint32_t a,std::uint32_t b){unsigned hitsA=0,hitsB=0;for(size_t i=textFile;i+4<=textFile+textSize;++i){std::uint32_t v=0;std::memcpy(&v,binary.data()+i,4);hitsA+=v==a;hitsB+=v==b;}return hitsA&&hitsB;};
     if(!hasImmediatePair(0x60,0x68)||!hasImmediatePair(0x90,0x98)||!hasImmediatePair(0x100,0x108)){std::cerr<<"recipe object layout evidence changed\n";return 12;}
     auto hash=Sha256(argv[1]);if(hash.empty())return 9;
+    if(dumpNativeOffsets){
+        auto field=[&](const char*name,std::uint64_t value,bool&first){if(!first)std::cout<<',';first=false;std::cout<<'\"'<<name<<"\":\"0x"<<std::hex<<value<<"\"";};
+        bool first=true;std::cout<<'{';field("storageAddItemByData",storageAddItemByDataAt,first);field("storageCanAddItemByData",storageCanAddItemByDataAt,first);field("storageMoveItem",storageMoveItemAt,first);field("storageRemoveFromSlot",storageRemoveFromSlotAt,first);field("storageCanAddItems",storageCanAddItemsAt,first);field("storageAddItems",storageAddItemsAt,first);field("buildingRequirements",buildingRequirementsAt,first);field("memoryFree",memoryFreeAt,first);field("worldTick",worldTickAt,first);field("buildingEndPlay",buildingEndPlayAt,first);field("renameableGetCustomName",renameableGetCustomNameAt,first);field("renameableGetSetterId",renameableGetSetterIdAt,first);field("renameableSetCustomName",renameableSetCustomNameAt,first);field("fTextFromString",fTextFromStringAt,first);field("uniqueNetIdDestructor",uniqueNetIdDestructorAt,first);field("fTextDestructor",fTextDestructorAt,first);field("graveGetInventory",graveGetInventoryAt,first);field("graveGetOwner",graveGetOwnerAt,first);field("graveCanAccess",graveCanAccessAt,first);field("graveRemove",graveRemoveAt,first);field("graveMoveAll",graveMoveAllAt,first);field("graveRegistry",graveRegistryAt,first);field("graveRespawnActor",graveRespawnActorAt,first);field("graveRestoreFromLevel",graveRestoreFromLevelAt,first);field("graveRegisterStreaming",graveRegisterStreamingAt,first);field("graveUnregisterStreaming",graveUnregisterStreamingAt,first);field("graveStreamingComplete",graveStreamingCompleteAt,first);field("graveProviderSources",graveProviderSourcesAt,first);field("gravePlayerSources",gravePlayerSourcesAt,first);field("graveStreamingSourceCopy",graveStreamingSourceCopyAt,first);field("graveStreamingSourceDestroy",graveStreamingSourceDestroyAt,first);std::cout<<"}\n";return 0;
+    }
     const bool knownMap=hash=="d26de80fd01f4b73b726aed855a20377996b7c140ff33f1ec40150c0dd73b259"||
                         hash=="d12145525d88f3828ebeac0aec3865f5b16ba4771861efe65108754a89bbb090"||
                         hash=="445f8b65047d208adb04a3cb03bc7706f069306d814172ae29caec16c15bec7e"||
