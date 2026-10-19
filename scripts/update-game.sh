@@ -47,7 +47,7 @@ cp -p "$server_root/steamapps/appmanifest_4019830.acf" "$backup_root/appmanifest
 
 # SteamCMD replaces this running script's pathname with the new official ELF.
 # The shell already has the script open, so it can safely finish the transaction.
-if ! timeout 900 "$steamcmd" +force_install_dir "$server_root" +login anonymous +app_update 4019830 +quit >"$backup_root/steamcmd.log" 2>&1; then
+if ! timeout 900 "$steamcmd" +force_install_dir "$server_root" +login anonymous +app_update 4019830 validate +quit >"$backup_root/steamcmd.log" 2>&1; then
   restore_launcher || true
   write_report steamcmd-failed "$before_build" "$(build)" '' "$before_save" "$(save_fingerprint)"
   exit 1
