@@ -2,6 +2,23 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.43] - 2026-10-19
+
+### Added
+
+- Add a confirmed, installation-mode-aware **Update Dragonwilds server** workflow to Zanik Manager.
+- Serve a safe maintenance website for unsupported Dragonwilds executables while leaving gameplay online and loading no Zanik hooks, scanners, dispatchers, or persistence workers.
+- Publish reviewed Linux executable hashes in release metadata so Manager and the maintenance service can identify a compatible stable release.
+
+### Changed
+
+- Require replacement-mode installations to set and verify the Pterodactyl `AUTO_UPDATE` variable as `0`; wrapper installations retain their normal automatic-update preference.
+- Explain the installation-mode tradeoffs and exact Pterodactyl Client API permissions in Manager and the public documentation.
+
+### Fixed
+
+- Prevent Pterodactyl Steam updates from silently overwriting a replacement-mode launcher by using a journaled one-shot updater that restores the launcher and verifies the game save tree was unchanged.
+
 ## [0.2.42] - 2026-10-17
 
 ### Fixed

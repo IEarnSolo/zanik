@@ -1,6 +1,8 @@
 # Upgrades
 
-Do not confuse the three update types. Zanik Manager updates itself from a verified stable GitHub release through **Update and relaunch**. Manager compares the installed operational server-payload contract with the embedded and latest published contracts; Manager-only releases do not require a server reinstall. The Servers-tab **Update / repair Zanik** action remains available for an intentional repair or a real payload update and always reuses the existing installation mode. Dragonwilds dedicated-server updates remain an operator/hosting responsibility; Manager only reports their availability and never runs Steam `app_update`.
+Do not confuse the three update types. **Update and relaunch** updates Manager. **Update / repair Zanik** installs or repairs the native server payload. **Update Dragonwilds server** performs one confirmed dedicated-server update using the current installation mode. Wrapper mode uses the normal Pterodactyl Steam flow and restores the prior `AUTO_UPDATE` preference. Replacement mode requires `AUTO_UPDATE=0` and uses a journaled one-shot updater so Steam never permanently displaces Zanik's launcher.
+
+After a game update, an executable absent from this release's reviewed compatibility manifest starts the official game normally but puts Zanik into maintenance mode. The website explains that Zanik is out of date, checks whether a compatible stable GitHub release exists, and initializes no native hooks, scanners, dispatchers, persistence workers, or ordinary APIs. This is the expected fast recovery state—not a failed game server. See [game-update safety](game-update-safety.md).
 
 Stop the server, download the new server archive and `SHA256SUMS`, and follow the versioned staging and checksum steps in [installation.md](installation.md). Extract each version into its own `SERVER_ROOT/zanik-release/VERSION/payload/` directory, then run:
 

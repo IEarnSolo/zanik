@@ -13,7 +13,7 @@ cp "$ROOT/config/zanik-config.schema.json" "$RELEASE/config/zanik-config.schema.
 cp "$ROOT/deploy/compatibility.tsv" "$RELEASE/compatibility/compatibility.tsv"
 cp "$ROOT/tools/zanik_assets.py" "$RELEASE/tools/zanik_assets.py"
 cp "$ROOT/VERSION" "$RELEASE/VERSION"
-for f in install update uninstall doctor init-assets compat-launcher verify-assets; do cp "$ROOT/scripts/$f.sh" "$RELEASE/scripts/$f.sh"; done
+for f in install update uninstall doctor init-assets compat-launcher verify-assets check-game-update check-compatible-release update-game apply-asset-delta; do cp "$ROOT/scripts/$f.sh" "$RELEASE/scripts/$f.sh"; done
 python3 "$ROOT/manager/zanik_manager/payload_contract.py" --root "$RELEASE" --release-version "$(cat "$ROOT/VERSION")" --output "$RELEASE/payload-contract.json" >/dev/null
 GAME=$SERVER/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping
 printf '#!/bin/sh\nprintf "%%s|%%s\\n" "${LD_PRELOAD-}" "$*" > "$0.ran"\n' > "$GAME"; chmod +x "$GAME"

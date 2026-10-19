@@ -828,7 +828,8 @@ class ManagerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             archive = Path(temporary) / "server.zip"
             required = ["bin/libzanik.so", "bin/zanik-server", "bin/zanik-compat-analyzer", "scripts/compat-launcher.sh",
-                        "scripts/verify-assets.sh", "scripts/check-game-update.sh", "scripts/apply-asset-delta.sh",
+                        "scripts/verify-assets.sh", "scripts/check-game-update.sh", "scripts/check-compatible-release.sh",
+                        "scripts/update-game.sh", "scripts/apply-asset-delta.sh",
                         "config/zanik.conf.example", "compatibility/compatibility.tsv", "VERSION"]
             files = {name: b"0.2.0" if name == "VERSION" else b"payload" for name in required}
             write_payload_archive(archive, files)
@@ -1032,6 +1033,7 @@ class ManagerTests(unittest.TestCase):
                 self.files = {"/home/container/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping": b"\x7fELFofficial"}
                 self.directories = {"/", "/home", "/home/container", "/home/container/RSDragonwilds", "/home/container/RSDragonwilds/Binaries", "/home/container/RSDragonwilds/Binaries/Linux"}
                 self.state = "offline"
+                self.auto_update = "1"
             def server(self, _): return {"server_owner": True}
             def resources(self, _): return {"current_state": self.state}
             def power(self, _, signal): self.state = "running" if signal in {"start", "restart"} else "offline"
@@ -1056,7 +1058,8 @@ class ManagerTests(unittest.TestCase):
                         result.append({"name":name[len(prefix):],"is_file":False})
                 return result
             def chmod(self, *args): pass
-            def set_startup_variable(self, *args): pass
+            def startup_variable(self, _server, key): return {"key": key, "value": self.auto_update, "editable": True}
+            def set_startup_variable(self, _server, key, value): self.auto_update = value
             def rename(self, _, root, pairs):
                 for source, target in pairs:
                     source = f"{root.rstrip('/')}/{source}"; target = f"{root.rstrip('/')}/{target}"
@@ -1075,6 +1078,7 @@ class ManagerTests(unittest.TestCase):
             files = {"bin/libzanik.so": b"library", "bin/zanik-server": b"launcher", "bin/zanik-compat-analyzer": b"analyzer",
                      "scripts/compat-launcher.sh": b"#!/bin/sh\n# ZANIK_COMPAT_LAUNCHER=1\n",
                      "scripts/verify-assets.sh": b"#!/bin/sh\nexit 0\n", "scripts/check-game-update.sh": b"#!/bin/sh\nexit 0\n",
+                     "scripts/check-compatible-release.sh": b"#!/bin/sh\nexit 0\n", "scripts/update-game.sh": b"#!/bin/sh\n# ZANIK_GAME_UPDATER=1\n",
                      "scripts/apply-asset-delta.sh": b"#!/bin/sh\nexit 0\n",
                      "config/zanik.conf.example": b"FEATURE_MAP=true\n",
                      "config/zanik-config.schema.json": b"{}", "compatibility/compatibility.tsv": b"sha\toffsets\n", "VERSION": b"0.2.0\n"}

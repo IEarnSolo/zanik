@@ -76,6 +76,7 @@ class ReleasePayload:
                 self.entries[name] = PayloadEntry(name, len(data), sha256(data), mode)
         required = {"bin/libzanik.so", "bin/zanik-server", "scripts/compat-launcher.sh",
                     "scripts/verify-assets.sh", "scripts/check-game-update.sh",
+                    "scripts/check-compatible-release.sh", "scripts/update-game.sh",
                     "scripts/apply-asset-delta.sh",
                     "config/zanik.conf.example", "compatibility/compatibility.tsv", "VERSION",
                     "payload-contract.json"}
@@ -115,8 +116,10 @@ class PterodactylProvider(ServerProvider):
 
     def preflight(self, server_id: str, operation: str, server: dict | None = None) -> None:
         required={
-            "doctor": {"file.read", "file.read-content"},
+            "doctor": {"file.read", "file.read-content", "startup.read"},
             "install": {"control.start", "control.stop", "file.read", "file.read-content", "file.create", "file.update", "file.delete"},
+            "replacement-install": {"control.start", "control.stop", "file.read", "file.read-content", "file.create", "file.update", "file.delete", "startup.read", "startup.update"},
+            "game-update": {"control.start", "control.stop", "file.read", "file.read-content", "file.create", "file.update", "file.delete", "startup.read", "startup.update"},
             "assets": {"control.start", "control.stop", "file.read", "file.read-content", "file.create", "file.update", "file.delete"},
             "config": {"file.read", "file.read-content", "file.create", "file.update", "file.delete"},
         }.get(operation, set())
@@ -127,6 +130,41 @@ class PterodactylProvider(ServerProvider):
         missing=required-permissions
         if missing:
             raise RuntimeError("The panel account is missing required permissions: " + ", ".join(sorted(missing)))
+
+    def _auto_update(self, server_id: str) -> dict:
+        variable = self.client.startup_variable(server_id, "AUTO_UPDATE")
+        if not variable:
+            raise RuntimeError("This egg does not expose the required AUTO_UPDATE startup variable")
+        if variable["value"] not in {"0", "1"}:
+            raise RuntimeError("AUTO_UPDATE must contain the numeric value 0 or 1")
+        return variable
+
+    def _enforce_replacement_auto_update(self, server_id: str) -> dict:
+        variable = self._auto_update(server_id)
+        if not variable["editable"]:
+            raise RuntimeError(
+                "Replacement mode requires an editable AUTO_UPDATE variable. Ask the panel administrator to make it editable."
+            )
+        previous = variable["value"]
+        if previous != "0":
+            self.client.set_startup_variable(server_id, "AUTO_UPDATE", "0")
+        verified = self._auto_update(server_id)
+        if not verified["editable"] or verified["value"] != "0":
+            raise RuntimeError("Manager could not set and verify AUTO_UPDATE=0; replacement installation was blocked")
+        return {"variable": "AUTO_UPDATE", "previousValue": previous, "managedValue": "0",
+                "verified": True, "managedByZanik": True}
+
+    def _restore_managed_auto_update(self, server_id: str, metadata: dict | None) -> bool:
+        if not metadata or not metadata.get("managedByZanik"):
+            return False
+        current = self._auto_update(server_id)
+        if current["value"] != str(metadata.get("managedValue", "0")):
+            return False
+        previous = str(metadata.get("previousValue", "0"))
+        if previous not in {"0", "1"}:
+            return False
+        self.client.set_startup_variable(server_id, "AUTO_UPDATE", previous)
+        return self._auto_update(server_id)["value"] == previous
 
     def _path(self, root: str, relative: str) -> str:
         return root.rstrip("/") + "/" + relative.lstrip("/")
@@ -303,9 +341,33 @@ class PterodactylProvider(ServerProvider):
         stage = f"{root}/.zanik-manager/staging/{journal.operation_id}/release"
         timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         backup = f"{root}/zanik-backups/manager/{timestamp}-{journal.operation_id[:8]}"
+        previous_install = None
         try:
             progress("Checking panel permissions", 5)
-            self.preflight(server_id, "install")
+            self.preflight(server_id, "replacement-install" if mode == "replace-executable" else "install")
+            try:
+                previous_install = json.loads(self.client.read_file(server_id, f"{root}/zanik/install-state.json"))
+            except Exception:
+                previous_install = None
+            auto_update = None
+            if mode == "replace-executable":
+                progress("Disabling and verifying Pterodactyl automatic updates", 7)
+                enforced = self._enforce_replacement_auto_update(server_id)
+                prior_metadata = (previous_install or {}).get("autoUpdate") or {}
+                if prior_metadata.get("managedByZanik"):
+                    enforced["previousValue"] = str(prior_metadata.get("previousValue", enforced["previousValue"]))
+                auto_update = enforced
+                if enforced["previousValue"] != "0" and not prior_metadata.get("managedByZanik"):
+                    journal.rollback.append({"kind": "restore-startup-variable", "key": "AUTO_UPDATE",
+                                             "managedValue": "0", "value": enforced["previousValue"]})
+                    self.journals.save(journal)
+            else:
+                try:
+                    variable = self._auto_update(server_id)
+                    auto_update = {"variable": "AUTO_UPDATE", "currentValue": variable["value"],
+                                   "managedByZanik": False, "verified": True}
+                except Exception:
+                    auto_update = {"variable": "AUTO_UPDATE", "managedByZanik": False, "verified": False}
             if stop_server:
                 progress("Stopping the game server", 10)
                 state = self.client.resources(server_id).get("current_state")
@@ -411,6 +473,7 @@ class PterodactylProvider(ServerProvider):
                      "launcherSha256": payload.entries["bin/zanik-server"].sha256,
                      "payloadContractSchemaVersion": payload.contract["schemaVersion"],
                      "payloadContractSha256": payload.contract["contractSha256"],
+                     "autoUpdate": auto_update,
                      "installedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
             self.client.write_file(server_id, f"{root}/zanik/install-state.json", (json.dumps(state, separators=(",", ":")) + "\n").encode())
             self.client.chmod(server_id, f"{root}/zanik", [("install-state.json", 0o600)])
@@ -437,6 +500,27 @@ class PterodactylProvider(ServerProvider):
         if self.client.resources(server_id).get("current_state") != "offline":
             self.client.power(server_id,"stop"); self._wait_offline(server_id)
         for action in reversed(journal.rollback):
+            if action.get("kind") == "restore-startup-variable":
+                current = self._auto_update(server_id)
+                if current["value"] == action.get("managedValue"):
+                    self.client.set_startup_variable(server_id, action["key"], action["value"])
+                continue
+            if action.get("kind") == "restore-game-launcher":
+                source=action["from"]; destination=action["to"]
+                current=self.client.read_file(server_id,destination) if self._exists(server_id,destination) else b""
+                if current.startswith(b"\x7fELF"):
+                    interrupted=f"{action['backup']}/official-interrupted"
+                    self.client.rename(server_id,root,[(str(PurePosixPath(destination).relative_to(root)),
+                                                       str(PurePosixPath(interrupted).relative_to(root)))])
+                elif current and LAUNCHER_MARKER not in current and sha256(current)!=action.get("updaterSha256"):
+                    raise RuntimeError("Rollback found an unknown executable at the game path")
+                data=self.client.read_file(server_id,source)
+                if sha256(data)!=action["sha256"] or LAUNCHER_MARKER not in data:
+                    raise RuntimeError("Rollback launcher backup did not verify")
+                self.client.write_file(server_id,destination,data)
+                self.client.chmod(server_id,str(PurePosixPath(destination).parent),
+                                  [(PurePosixPath(destination).name,0o755)])
+                continue
             source=action["from"]; destination=action["to"]
             if action.get("kind") == "restore-file":
                 data=self.client.read_file(server_id,source)
@@ -483,6 +567,19 @@ class PterodactylProvider(ServerProvider):
         if replacement.get("applicable"):
             result["checks"]["replacementLauncher"] = bool(replacement.get("healthy"))
             result["healthy"] &= bool(replacement.get("healthy"))
+        try:
+            variable = self._auto_update(server_id)
+            expected = "0" if state.get("mode") == "replace-executable" else None
+            result["autoUpdate"] = {"available": True, "value": variable["value"],
+                                    "editable": variable["editable"], "expected": expected,
+                                    "healthy": expected is None or (variable["editable"] and variable["value"] == expected)}
+            if expected is not None:
+                result["healthy"] &= result["autoUpdate"]["healthy"]
+        except Exception as error:
+            result["autoUpdate"] = {"available": False, "healthy": state.get("mode") != "replace-executable",
+                                    "error": str(error)}
+            if state.get("mode") == "replace-executable":
+                result["healthy"] = False
         targets = {"library": ("librarySha256", "bin/libzanik.so"), "analyzer": ("analyzerSha256", "bin/zanik-compat-analyzer"),
                    "launcher": ("launcherSha256", "bin/zanik-server"), "official": ("officialSha256", None)}
         for name, (field, relative) in targets.items():
@@ -553,6 +650,15 @@ class PterodactylProvider(ServerProvider):
             if not version or mode not in {"wrapper", "replace-executable"}:
                 raise ValueError("installation metadata is incomplete")
             result.update({"version": version, "mode": mode, "installation": install})
+            try:
+                variable = self._auto_update(server_id)
+                expected_auto = "0" if mode == "replace-executable" else None
+                result["autoUpdate"] = {"available": True, "value": variable["value"],
+                                        "editable": variable["editable"], "expected": expected_auto,
+                                        "healthy": expected_auto is None or (variable["editable"] and variable["value"] == expected_auto)}
+            except Exception as auto_error:
+                result["autoUpdate"] = {"available": False, "healthy": mode != "replace-executable",
+                                        "error": str(auto_error)}
             installed_contract = str(install.get("payloadContractSha256", "")).lower()
             installed_schema = install.get("payloadContractSchemaVersion")
             if (installed_schema != CONTRACT_SCHEMA_VERSION or len(installed_contract) != 64 or
@@ -725,6 +831,129 @@ class PterodactylProvider(ServerProvider):
                 "serverRunning": True,
                 "message": "The current Zanik launcher did not return a fresh game-update report."}
 
+    def update_game(self, profile_id: str, server_id: str, server_root: str,
+                    expected_build: str, progress: Callable[[str, int], None] = lambda _m, _p: None) -> dict:
+        """Perform a confirmed game update without running compatibility analysis."""
+        if not str(expected_build).isdigit():
+            raise ValueError("The expected Dragonwilds build is invalid")
+        root = validate_server_root(server_root)
+        self.preflight(server_id, "game-update")
+        try:
+            install = json.loads(self.client.read_file(server_id, f"{root}/zanik/install-state.json"))
+        except Exception:
+            install = {"mode": "wrapper", "version": None}
+        mode = install.get("mode", "wrapper")
+        if mode not in {"wrapper", "replace-executable"}:
+            raise RuntimeError("The installation mode is unknown; repair Zanik before updating Dragonwilds")
+        journal = OperationJournal.create(profile_id, "game-update")
+        self.journals.save(journal)
+        timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backup = f"{root}/zanik-backups/game-update/{timestamp}-{journal.operation_id[:8]}"
+        previous_auto = None
+        try:
+            progress("Checking AUTO_UPDATE and server state", 5)
+            variable = self._auto_update(server_id)
+            if mode == "replace-executable":
+                if not variable["editable"] or variable["value"] != "0":
+                    raise RuntimeError("Replacement mode requires editable, verified AUTO_UPDATE=0 before a game update")
+            elif variable["value"] == "0":
+                if not variable["editable"]:
+                    raise RuntimeError("AUTO_UPDATE is disabled and this API key cannot enable it for the requested update")
+                previous_auto = "0"
+                self.client.set_startup_variable(server_id, "AUTO_UPDATE", "1")
+                if self._auto_update(server_id)["value"] != "1":
+                    raise RuntimeError("Manager could not temporarily enable AUTO_UPDATE")
+                journal.rollback.append({"kind": "restore-startup-variable", "key": "AUTO_UPDATE",
+                                         "managedValue": "1", "value": "0"})
+                self.journals.save(journal)
+
+            if mode == "wrapper":
+                progress("Starting the normal Pterodactyl Steam update", 25)
+                current = self.client.resources(server_id).get("current_state")
+                self.client.power(server_id, "restart" if current == "running" else "start")
+                deadline = time.monotonic() + 900
+                installed = ""
+                while time.monotonic() < deadline:
+                    try:
+                        installed = installed_build(self.client.read_file(
+                            server_id, f"{root}/steamapps/appmanifest_4019830.acf"))
+                        if installed == expected_build:
+                            break
+                    except Exception:
+                        pass
+                    time.sleep(2)
+                if installed != expected_build:
+                    raise RuntimeError("Pterodactyl did not install the expected Dragonwilds build before the timeout")
+                progress("Restoring the previous automatic-update preference", 90)
+                if previous_auto is not None:
+                    self.client.set_startup_variable(server_id, "AUTO_UPDATE", previous_auto)
+                    if self._auto_update(server_id)["value"] != previous_auto:
+                        raise RuntimeError("Dragonwilds updated, but Manager could not restore the prior AUTO_UPDATE preference")
+                journal.state = "complete"; journal.completed_steps.append("game-updated")
+                self.journals.save(journal); progress("Dragonwilds update complete", 100)
+                return {"mode": mode, "installedBuild": installed, "maintenanceExpected": True,
+                        "operationId": journal.operation_id}
+
+            progress("Stopping the server and preparing a launcher-aware update", 15)
+            if self.client.resources(server_id).get("current_state") != "offline":
+                self.client.power(server_id, "stop"); self._wait_offline(server_id)
+            game = f"{root}/{GAME_RELATIVE}"
+            launcher = self.client.read_file(server_id, game)
+            original = self.client.download_file(server_id, game + ".zanik-original")
+            if LAUNCHER_MARKER not in launcher or not original.startswith(b"\x7fELF"):
+                raise RuntimeError("Replacement launcher or preserved official executable did not verify")
+            self._mkdir(server_id, backup)
+            self.client.upload(server_id, backup, "compat-launcher", launcher)
+            self.client.upload(server_id, backup, "official-before-update", original)
+            self.client.write_file(server_id, f"{root}/zanik/state/game-update-launcher", launcher)
+            self.client.chmod(server_id, f"{root}/zanik/state", [("game-update-launcher", 0o755)])
+            updater = self.client.read_file(server_id, f"{root}/zanik/scripts/update-game.sh")
+            if b"ZANIK_GAME_UPDATER=1" not in updater:
+                raise RuntimeError("The packaged one-shot game updater did not verify")
+            try:
+                self.client.delete(server_id, f"{root}/zanik/state", ["game-update-result.json"])
+            except PterodactylError as error:
+                if error.status not in {404, 422}:
+                    raise
+            self.client.write_file(server_id, game, updater)
+            self.client.chmod(server_id, str(PurePosixPath(game).parent), [(PurePosixPath(game).name, 0o755)])
+            journal.rollback.append({"kind": "restore-game-launcher", "from": f"{backup}/compat-launcher",
+                                     "to": game, "sha256": sha256(launcher), "updaterSha256": sha256(updater),
+                                     "backup": backup})
+            journal.completed_steps.append("one-shot-updater-installed"); self.journals.save(journal)
+            progress("Running SteamCMD through the guarded one-shot updater", 35)
+            self.client.power(server_id, "start")
+            report = None; deadline = time.monotonic() + 960
+            while time.monotonic() < deadline:
+                try:
+                    report = json.loads(self.client.read_file(server_id, f"{root}/zanik/state/game-update-result.json"))
+                    if report.get("status"):
+                        break
+                except Exception:
+                    pass
+                time.sleep(2)
+            if not report:
+                raise RuntimeError("The launcher-aware Dragonwilds updater did not produce a result before the timeout")
+            if report.get("status") != "complete" or report.get("installedBuild") != expected_build:
+                raise RuntimeError("The launcher-aware Dragonwilds update failed safely: " + str(report.get("status")))
+            if report.get("saveFingerprintBefore") != report.get("saveFingerprintAfter"):
+                raise RuntimeError("The game save-tree fingerprint changed; the server remains stopped for review")
+            progress("Starting Dragonwilds through the restored Zanik launcher", 92)
+            self.client.power(server_id, "start")
+            journal.state = "complete"; journal.completed_steps.append("game-updated")
+            self.journals.save(journal); progress("Dragonwilds update complete", 100)
+            return {"mode": mode, "installedBuild": report["installedBuild"], "backup": backup,
+                    "maintenanceExpected": True, "operationId": journal.operation_id}
+        except Exception as error:
+            if previous_auto is not None:
+                try:
+                    if self._auto_update(server_id)["value"] == "1":
+                        self.client.set_startup_variable(server_id, "AUTO_UPDATE", previous_auto)
+                except Exception:
+                    pass
+            journal.state = "failed"; journal.error = str(error); self.journals.save(journal)
+            raise
+
     def _server_asset_audit(self, server_id: str, root: str, manifest: dict,
                             timeout: float = 300.0) -> dict:
         request_id = secrets.token_hex(12)
@@ -810,6 +1039,7 @@ class PterodactylProvider(ServerProvider):
                                                   f"zanik-backups/manager/{PurePosixPath(backup).name}/compat-launcher"),
                                                  (str(PurePosixPath(game + '.zanik-original').relative_to(root)),
                                                   str(PurePosixPath(game).relative_to(root)))])
+            self._restore_managed_auto_update(server_id, state.get("autoUpdate"))
         self.client.rename(server_id, root, [("zanik", f"zanik-backups/manager/{PurePosixPath(backup).name}/zanik")])
         if purge_data and self._directory_exists(server_id, f"{root}/zanik-data"):
             self.client.rename(server_id, root, [("zanik-data", f"zanik-backups/manager/{PurePosixPath(backup).name}/purged-zanik-data")])

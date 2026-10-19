@@ -65,14 +65,18 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(PYTHON) tests/windows_asset_pipeline_test.py
 	$(PYTHON) tests/windows_mapping_test.py
 	$(PYTHON) tests/manager_test.py
+	$(PYTHON) tests/game_update_safety_test.py
 	$(PYTHON) tests/update_awareness_test.py
 	sh tests/installer_test.sh
 	sh tests/server_asset_verifier_test.sh
 	sh tests/server_game_update_test.sh
 	$(NODE) tests/map_page_test.js
 	$(PYTHON) tests/http_core_test.py
+	$(PYTHON) tests/maintenance_http_test.py
 	$(PYTHON) tests/feature_gate_http_test.py
 	sh tests/updater_test.sh
+	sh tests/launcher_game_update_test.sh
+	sh tests/compatible_release_check_test.sh
 
 test-assets:
 	$(PYTHON) tests/require_game_assets.py
