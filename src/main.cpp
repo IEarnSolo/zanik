@@ -921,6 +921,13 @@ void Handle(int fd) {
             ",\"adminStorageRollbackAttempts\":" + std::to_string(adminStorage.rollbackAttempts) +
             ",\"adminStorageRollbackFailures\":" + std::to_string(adminStorage.rollbackFailures) +
             ",\"adminStorageCircuitBreakers\":" + std::to_string(adminStorage.circuitBreakers) +
+            ",\"adminStorageSingleItemMaximumMicroseconds\":" + std::to_string(adminStorage.singleItemMaximumMicroseconds) +
+            ",\"adminStorageSlotMovementMaximumMicroseconds\":" + std::to_string(adminStorage.slotMovementMaximumMicroseconds) +
+            ",\"adminStorageBatchAdditionMaximumMicroseconds\":" + std::to_string(adminStorage.batchAdditionMaximumMicroseconds) +
+            ",\"adminStorageBatchMovementMaximumMicroseconds\":" + std::to_string(adminStorage.batchMovementMaximumMicroseconds) +
+            ",\"adminStorageDeletionMaximumMicroseconds\":" + std::to_string(adminStorage.deletionMaximumMicroseconds) +
+            ",\"adminStorageRenameMaximumMicroseconds\":" + std::to_string(adminStorage.renameMaximumMicroseconds) +
+            ",\"adminStorageRollbackMaximumMicroseconds\":" + std::to_string(adminStorage.rollbackMaximumMicroseconds) +
             ",\"adminGravestoneMaximumTickMicroseconds\":" + std::to_string(adminStorage.maximumGravestoneTickMicroseconds) +
             ",\"adminStorageBatchCompatibility\":" + std::to_string(adminStorage.batchCompatibility) +
             ",\"adminStorageRenameCompatibility\":" + std::to_string(adminStorage.renameCompatibility) +

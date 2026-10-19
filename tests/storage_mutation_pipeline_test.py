@@ -48,6 +48,8 @@ assert "FindCatalogData" in planner
 assert "ResolveRecipe" in planner
 assert "canAddItemByData" in planner
 assert "canAddItemsByData" in planner
+assert 'root&&*root?root:"/home/container/zanik/web"' in storage
+assert 'std::string icon=itemRoot+key+".png"' in storage
 
 # Every supported family is represented by a bounded action/state-machine path.
 for operation in (
@@ -101,6 +103,8 @@ for field in (
     "singleItemMaximumMicroseconds",
     "batchMovementMaximumMicroseconds",
     "circuitBreakers",
+    "singleItemMaximumMicroseconds",
+    "deletionMaximumMicroseconds",
 ):
     assert field in header
     assert field in main
