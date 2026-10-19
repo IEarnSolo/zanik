@@ -1,6 +1,21 @@
 # Pterodactyl installation
 
-The easiest path is the portable Windows [Zanik Manager](manager.md), which performs the file, power, configuration, diagnostic, and asset workflows through a normal Client API key. The commands below remain supported for manual and advanced use.
+The easiest path is the portable Windows [Zanik Manager](manager.md), which performs the file, power, configuration, game-update, diagnostic, and asset workflows through a normal Client API key. An Application API or panel-administrator key is not required or recommended.
+
+## Choose the installation mode
+
+**Wrapper mode is recommended.** It is best for panel administrators or eggs with an editable executable variable. The official executable stays untouched, `AUTO_UPDATE` may remain enabled, and normal Pterodactyl Steam updates run before Zanik's wrapper. If a new executable is not yet supported, gameplay starts and Zanik serves only its maintenance page.
+
+**Replace-executable mode is for fixed egg commands.** A Client API key cannot rewrite the raw egg startup command. Manager therefore preserves the official executable as `.zanik-original` and places its small launcher at the fixed path. This mode requires editable `AUTO_UPDATE`; Manager sets and verifies it as `0` and blocks installation if it cannot. Future game updates must use Manager's launcher-aware workflow.
+
+Required account permissions are:
+
+- Read-only discovery: access to the server, resources and files, plus `startup.read`.
+- Install, repair and assets: `file.read`, `file.read-content`, `file.create`, `file.update`, `file.delete`, `control.start`, `control.stop`, and `control.restart`.
+- Replacement installation and game updates: `startup.read` and `startup.update`.
+- Console diagnostics and commands: `control.console`.
+
+The Client API key cannot grant permissions the panel account does not already have. Wrapper mode needs an exposed editable variable or a panel administrator to change the egg command.
 
 Stop the server, upload the server ZIP, and extract it to `/home/container/zanik-release/VERSION/payload/`. Copy no individual library into the game directory.
 
@@ -16,8 +31,8 @@ Allocate a separate TCP port for Zanik in the panel. Do not use the Dragonwilds 
 
 If the egg command cannot be changed, use the explicitly acknowledged command in [installation.md](installation.md). That compatibility mode is non-recommended. Upload a client-built asset bundle to `/home/container/zanik-assets-incoming/CLIENT_BUILD/` without manually extracting it, then activate it only through `/home/container/zanik/scripts/init-assets.sh` as described in [assets.md](assets.md#install-on-pterodactyl).
 
-Steam may restore the official executable over the compatibility launcher during an update or restart. After Manager activates assets and restarts a replacement-mode server, it verifies that Zanik's small launcher is still present. If Steam displaced it, Manager keeps the successfully activated assets and offers a safe repair for that exact server. Repair preserves the updated official executable as `.zanik-original` before restoring the managed launcher.
+Do not enable panel automatic updates in replacement mode. Manager's confirmed **Update Dragonwilds server** action journals and backs up the launcher and official executable, runs SteamCMD through a bounded one-shot updater, restores the launcher, verifies the save tree did not change, and restarts. Wrapper mode retains the existing `AUTO_UPDATE` preference; if it is disabled for an explicit update, Manager enables it only for the update and restores it afterward.
 
-The Manager's game indicator checks only the active server. It reads `/home/container/steamapps/appmanifest_4019830.acf` and compares that installed build with public dedicated-server metadata, so it works before Zanik is installed and does not require the game server to be running. It never installs an update. Installed launchers retain `zanik-check-game-update REQUEST_ID` as a bounded SteamCMD fallback and cache its result at `/home/container/zanik/state/game-update-status.json`. Update Dragonwilds through the panel or host, then repair the compatibility launcher if Steam displaced it and re-run Doctor.
+The Manager's game indicator checks only the active server. It reads `/home/container/steamapps/appmanifest_4019830.acf` and compares it with public dedicated-server metadata, even before Zanik is installed. When an update is available, **Update Dragonwilds server** asks once before changing anything. See [game-update safety](game-update-safety.md).
 
 For an allowlisted administrator, enter `zanik-admin <public-character-id>` in the Pterodactyl console. The canonical launcher intercepts only that command and prints a five-minute, single-use login link; every other console command is forwarded unchanged to the game server.

@@ -279,6 +279,36 @@ bool JsonNonNegativeInteger(const std::string&body,const std::string&key,int&val
 std::vector<std::string> JsonStringArray(const std::string&body,const std::string&key){std::vector<std::string> out;std::string mark="\""+key+"\"";auto p=body.find(mark);if(p==std::string::npos||(p=body.find('[',p+mark.size()))==std::string::npos)return out;++p;while(p<body.size()){while(p<body.size()&&(std::isspace(static_cast<unsigned char>(body[p]))||body[p]==','))++p;if(p>=body.size()||body[p]==']')return out;if(body[p++]!='\"')return {};std::string value;while(p<body.size()&&body[p]!='\"'){if(body[p]=='\\'&&p+1<body.size()){char c=body[++p];if(c!='\"'&&c!='\\')return {};}value+=body[p++];if(value.size()>64)return {};}if(p>=body.size()||body[p++]!='\"')return {};out.push_back(std::move(value));if(out.size()>128)return {};};return {};}
 std::string JsonEscape(const std::string&s){std::string o;for(unsigned char c:s){if(c=='"'||c=='\\'){o+='\\';o+=char(c);}else if(c>=32)o+=char(c);}return o;}
 
+bool MaintenanceMode(){const char* raw=std::getenv("ZANIK_MAINTENANCE_MODE");return raw&&std::strcmp(raw,"1")==0;}
+std::string MaintenanceReleaseJson(){
+    const char* raw=std::getenv("DW_MAINTENANCE_RELEASE_STATE");
+    std::ifstream input(raw&&*raw?raw:"/home/container/zanik/state/maintenance-release.json");
+    if(!input)return "null";std::ostringstream value;value<<input.rdbuf();std::string json=value.str();
+    while(!json.empty()&&std::isspace(static_cast<unsigned char>(json.back())))json.pop_back();
+    if(json.size()>16384||json.empty()||json.front()!='{'||json.back()!='}')return "null";return json;
+}
+std::string MaintenancePage(){
+    const std::string release=MaintenanceReleaseJson();
+    const std::string releaseStatus=JsonValue(release,"status");
+    const bool available=releaseStatus=="compatible-release-available";
+    const bool unavailable=releaseStatus=="no-compatible-release";
+    std::string releaseText=available?
+        "A compatible stable Zanik release is available. Update Zanik Manager first, then use Update / repair Zanik for this server.":
+        unavailable?"No compatible stable Zanik release is available yet. Check back after a new Zanik release is published.":
+        "Zanik could not currently verify whether a compatible release is available. You can check GitHub Releases manually.";
+    std::string mode=std::getenv("ZANIK_INSTALL_MODE")?std::getenv("ZANIK_INSTALL_MODE"):"unknown";
+    std::string build=std::getenv("ZANIK_GAME_BUILD_ID")?std::getenv("ZANIK_GAME_BUILD_ID"):"unknown";
+    std::string modeText=mode=="replace-executable"?
+        "This server uses replacement mode. Pterodactyl AUTO_UPDATE must remain 0, and Manager needs startup.read and startup.update access to perform a safe game update.":
+        "This server uses wrapper mode. Pterodactyl may update the untouched official executable normally.";
+    return "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Zanik maintenance</title>"
+        "<style>body{margin:0;background:#101816;color:#eef7f1;font:17px system-ui;display:grid;place-items:center;min-height:100vh}main{max-width:46rem;margin:2rem;padding:2rem;background:#1b2925;border:1px solid #789487;border-radius:14px}h1{color:#9ee8c0}a{color:#9ee8c0}.notice{padding:1rem;background:#263a34;border-radius:8px}</style></head><body><main>"
+        "<h1>Zanik is waiting for a compatibility update</h1><p>Dragonwilds build "+JsonEscape(build)+" is not reviewed by this installed Zanik release. The game server remains online, but Zanik's native hooks, scanners, dispatchers, persistence workers, and normal website features are disabled for safety.</p>"
+        "<p class=\"notice\">"+releaseText+"</p><p>"+modeText+"</p>"
+        "<p><a href=\"https://github.com/IEarnSolo/zanik/releases/latest\">Open the latest Zanik release on GitHub</a></p>"
+        "<p>No game or world save files are changed by this maintenance page.</p></main></body></html>";
+}
+
 std::string UrlDecode(const std::string& value) {
     std::string decoded;
     decoded.reserve(value.size());
@@ -325,6 +355,20 @@ void Handle(int fd) {
         return;
     }
     const std::string& path=request.path;const std::string& query=request.query;
+    if(MaintenanceMode()){
+        if(request.method!="GET"){Respond(fd,405,"application/json; charset=utf-8","{\"error\":\"Method not allowed during maintenance\"}");return;}
+        if(path=="/api/update-status"){
+            const char* hash=std::getenv("ZANIK_GAME_EXECUTABLE_SHA256");
+            const char* mode=std::getenv("ZANIK_INSTALL_MODE");
+            const char* build=std::getenv("ZANIK_GAME_BUILD_ID");
+            const char* version=std::getenv("ZANIK_INSTALLED_VERSION");
+            const char* autoValue=std::getenv("ZANIK_AUTO_UPDATE_VALUE");
+            const char* autoHealth=std::getenv("ZANIK_AUTO_UPDATE_HEALTH");
+            Respond(fd,200,"application/json; charset=utf-8","{\"website\":true,\"maintenance\":true,\"reason\":\"unsupported-game-build\",\"nativeRuntimeLoaded\":false,\"gameBuild\":\""+JsonEscape(build?build:"unknown")+"\",\"gameExecutableSha256\":\""+JsonEscape(hash?hash:"")+"\",\"zanikVersion\":\""+JsonEscape(version?version:"unknown")+"\",\"installMode\":\""+JsonEscape(mode?mode:"unknown")+"\",\"autoUpdate\":{\"value\":\""+JsonEscape(autoValue?autoValue:"unknown")+"\",\"health\":\""+JsonEscape(autoHealth?autoHealth:"unknown")+"\",\"requirement\":\""+std::string(mode&&std::strcmp(mode,"replace-executable")==0?"must-be-zero":"preserved")+"\"},\"release\":"+MaintenanceReleaseJson()+"}");return;
+        }
+        if(path.rfind("/api/",0)==0){Respond(fd,503,"application/json; charset=utf-8","{\"error\":\"Zanik is in maintenance mode for an unsupported Dragonwilds build\"}");return;}
+        Respond(fd,200,"text/html; charset=utf-8",MaintenancePage());return;
+    }
     static const std::unordered_set<std::string> postRoutes={
         "/api/admin/claim","/api/admin/console-claim","/api/admin/recipe-unlock-settings",
         "/api/admin/logout","/api/admin/teleport","/api/admin/player-teleport",
@@ -878,6 +922,14 @@ void Handle(int fd) {
 
 void Run() {
     const char* testHost=std::getenv("DW_STATUS_TEST_HOST");
+    if(MaintenanceMode()){
+        int port=Port();if(!port){LogMessage("DW_STATUS_PORT is required (1-65535)");return;}
+        int listener=socket(AF_INET,SOCK_STREAM,0);if(listener<0){LogMessage("Could not create maintenance HTTP socket");return;}
+        int reuse=1;setsockopt(listener,SOL_SOCKET,SO_REUSEADDR,&reuse,sizeof(reuse));sockaddr_in address{};address.sin_family=AF_INET;address.sin_port=htons(static_cast<uint16_t>(port));address.sin_addr.s_addr=INADDR_ANY;
+        if(bind(listener,reinterpret_cast<sockaddr*>(&address),sizeof(address))!=0||listen(listener,16)!=0){LogMessage("Could not bind/listen on maintenance port "+std::to_string(port)+": "+std::strerror(errno));close(listener);return;}
+        LogMessage("Zanik maintenance-only website listening; no native game integration was initialized");
+        while(!stopping){fd_set set;FD_ZERO(&set);FD_SET(listener,&set);timeval wait{0,100000};if(select(listener+1,&set,nullptr,nullptr,&wait)<=0)continue;int client=accept(listener,nullptr,nullptr);if(client<0)continue;timeval io{5,0};setsockopt(client,SOL_SOCKET,SO_RCVTIMEO,&io,sizeof(io));setsockopt(client,SOL_SOCKET,SO_SNDTIMEO,&io,sizeof(io));Handle(client);close(client);}close(listener);return;
+    }
     const bool needsGameThreadDispatcher=ZanikConfig::PlayerRecipeTracking()||ZanikConfig::PlayerQuestTracking()||ZanikConfig::AdminTeleport()||ZanikConfig::AdminStorageMutation()||ZanikConfig::AdminGravestoneMutation();
     const bool storageTickReady=needsGameThreadDispatcher&&(!testHost||std::strcmp(testHost,"1")!=0)&&DomEngine::InitializeAdminStorageHookEarly();
     if((!testHost||std::strcmp(testHost,"1")!=0)&&needsGameThreadDispatcher)LogMessage(storageTickReady?"Zanik bounded game-thread dispatcher installed before world startup":"Zanik game-thread dispatcher compatibility unavailable");

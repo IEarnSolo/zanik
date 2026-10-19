@@ -22,7 +22,7 @@ The bottom-right status bar quietly tracks two independent update states. **Mana
 
 The updater runs from `%LOCALAPPDATA%\Zanik Manager\updates\`, outside the portable installation it replaces. Transient antivirus or filesystem locks are retried briefly. If an update still fails, the existing installation is preserved or restored and `self-update-journal.json.status` identifies the failed operation and Windows error code for support.
 
-**Game (server name)** checks only the active Pterodactyl profile, shortly after selection and every ten minutes. It reads Linux dedicated-server app `4019830`'s installed build from the server's Steam manifest and compares it with the public branch reported by the read-only SteamCMD metadata service. It works before Zanik is installed and while the game server is stopped, sends no panel credential to that service, and never runs `app_update`, changes game files, or stops the server. The tooltip and manual Activity result also say whether Zanik is installed or disabled. A current installed Zanik launcher can provide its cached SteamCMD result if public metadata is temporarily unavailable. If an update exists, install it through the host or Steam workflow, then run Doctor and revalidate compatibility and assets. Windows-client and Linux-server build IDs are intentionally not compared.
+**Game (server name)** checks only the active Pterodactyl profile, shortly after selection and every ten minutes. It reads Linux dedicated-server app `4019830`'s installed build from the server's Steam manifest and compares it with public metadata, even before Zanik is installed. When newer, **Update Dragonwilds server** asks once, then uses the recorded installation mode. It never updates every configured server implicitly.
 
 ## First run
 
@@ -57,7 +57,9 @@ Every primary action and guided-workflow button has hover help explaining what i
 
 Wrapper mode remains recommended and is selected automatically for a recognized egg with a safe editable startup variable. If an egg cannot be changed through the Client API, the manager shows the exact manual startup action and waits for verification.
 
-Executable replacement is available for fixed eggs. It preserves the verified official ELF as `.zanik-original`, displays the core-file warning, and requires explicit acknowledgement.
+Executable replacement is available for fixed eggs. It preserves the verified official ELF as `.zanik-original`, displays the core-file warning, requires explicit acknowledgement, and requires Manager to set and read back `AUTO_UPDATE=0`. Missing `startup.read`, `startup.update`, an absent variable, or a read-only variable blocks installation with remediation guidance.
+
+Wrapper updates preserve the existing automatic-update preference. Replacement updates run a guarded one-shot SteamCMD transaction, restore the launcher, and compare the save-tree fingerprint before restarting. If the new executable is unsupported, the game remains online while Zanik serves a maintenance page and loads no native integration. [Game-update safety](game-update-safety.md) documents the complete boundary.
 
 Some Steam updates restore the official executable at the fixed startup path. After Manager restarts a replacement-mode server for asset activation, it verifies that the small Zanik launcher is still present. If Steam displaced it, Manager leaves the successfully activated assets alone and offers **Repair launcher now** for that exact server. Repair preserves the newly updated official executable, configuration, persistent state, authorization data, and assets.
 

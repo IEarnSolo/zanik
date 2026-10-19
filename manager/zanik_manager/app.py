@@ -294,6 +294,7 @@ class MainWindow(QMainWindow):
         self.release_checker = GitHubReleaseChecker(self.paths["updates"])
         self.validated_manager_update = None
         self.manager_release_status = None
+        self.game_update_results = {}
         central = QWidget(); outer = QVBoxLayout(central)
         target = QHBoxLayout(); self.profile_box = QComboBox(); self.add_button = button_help(
             QPushButton("Add server"), "Add a Pterodactyl panel connection and select one server to manage.")
@@ -337,6 +338,10 @@ class MainWindow(QMainWindow):
         self.update_server_button = button_help(QPushButton("Update / repair Zanik"),
                                                 "Reinstall the embedded Zanik payload using the existing mode, preserve data and assets, then validate website setup and asset compatibility.")
         self.update_server_button.clicked.connect(self.update_or_repair); self.update_server_button.setEnabled(False); row.addWidget(self.update_server_button)
+        self.update_game_button = button_help(QPushButton("Update Dragonwilds server"),
+                                              "Install the latest dedicated-server build using the selected server's safe, installation-mode-aware workflow.")
+        self.update_game_button.clicked.connect(self.update_dragonwilds_server)
+        self.update_game_button.setEnabled(False); row.addWidget(self.update_game_button)
         open_panel_button = button_help(QPushButton("Open panel"),
                                         "Open this server's page in the configured Pterodactyl panel.")
         open_panel_button.clicked.connect(self.open_panel); row.addWidget(open_panel_button)
@@ -599,22 +604,28 @@ class MainWindow(QMainWindow):
                 QTimer.singleShot(0, lambda: self.check_game_update(False))
                 return
             if error:
+                self.game_update_results.pop(profile_id, None)
+                self.update_game_button.setEnabled(False)
                 self._set_update_label(self.game_update_label, f"Game ({profile.name}) · Unknown", "neutral",
                                        "The read-only dedicated-server update check failed. See Activity for details.")
                 self.log(f"Game update check failed for {profile.name}: {error}"); return
+            self.game_update_results[profile_id] = result
             status = result.get("status")
             mod_state = ("Zanik is not installed." if result.get("zanikInstalled") is False else
                          "Zanik is installed but disabled." if result.get("zanikEnabled") is False else
                          "Zanik is installed." if result.get("zanikInstalled") else
                          "Zanik installation state is unknown.")
             if status == "update-available" or result.get("updateAvailable") is True:
+                self.update_game_button.setEnabled(True)
                 self._set_update_label(self.game_update_label, f"Game ({profile.name}) · Update available", "available",
-                                       "Update Dragonwilds through the host or Steam workflow, then revalidate Zanik compatibility and regenerate assets if needed. " + mod_state)
+                                       "Use Update Dragonwilds server for a confirmed, installation-mode-aware update. Unsupported builds start gameplay with Zanik in maintenance mode. " + mod_state)
             elif status == "current" or result.get("updateAvailable") is False:
+                self.update_game_button.setEnabled(False)
                 suffix = "Current" if result.get("fresh", False) else "Current (cached)"
                 self._set_update_label(self.game_update_label, f"Game ({profile.name}) · {suffix}", "current",
                                        f"Installed build {result.get('installedBuild', 'unknown')}; latest build {result.get('latestBuild', 'unknown')}. {mod_state}")
             else:
+                self.update_game_button.setEnabled(False)
                 label = "Offline (cached unavailable)" if status == "offline-no-cache" else "Unknown"
                 explanation = (result.get("message") or result.get("reason", "The game build could not be checked.")) + " " + mod_state
                 if status in {"launcher-unavailable", "unsupported-or-timeout"}:
@@ -626,6 +637,40 @@ class MainWindow(QMainWindow):
                          f"Zanik {'installed' if result.get('zanikInstalled') else 'not installed'}.")
         self.run_background("game-update-check", lambda: self.provider(profile, background=True).check_game_update(
             profile.server_id, profile.server_root, force=manual), done)
+
+    def update_dragonwilds_server(self):
+        profile = self.active()
+        if not profile:
+            return
+        result = self.game_update_results.get(profile.id) or {}
+        if not result.get("updateAvailable") or not str(result.get("latestBuild", "")).isdigit():
+            QMessageBox.information(self, "No verified game update",
+                                    "Run Check game first. Manager enables this action only after verifying a newer dedicated-server build.")
+            return
+        installed = result.get("installedBuild", "unknown")
+        latest = result["latestBuild"]
+        installation = self.installation_states.get(profile.id) or {}
+        mode = installation.get("mode") or profile.install_mode or "wrapper"
+        explanation = (
+            "Wrapper mode leaves the official executable untouched. Pterodactyl performs its normal Steam update, and Manager restores your AUTO_UPDATE preference afterward."
+            if mode == "wrapper" else
+            "Replacement mode requires verified AUTO_UPDATE=0. Manager runs a guarded updater, preserves the official executable and Zanik launcher, verifies the save tree was unchanged, and restores the launcher."
+        )
+        message = (f"Update {profile.name} from Dragonwilds build {installed} to {latest}?\n\n"
+                   f"Installation mode: {mode}\n{explanation}\n\n"
+                   "The server will restart. If this Zanik release has not reviewed the new executable, gameplay will remain online while the website shows a safe maintenance page with no native hooks loaded.")
+        if QMessageBox.question(self, "Update Dragonwilds server", message,
+                                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
+        def progress(message, percent): self.operation_progress_signal.emit(message, percent)
+        def done(update):
+            self.log(f"Dragonwilds updated on {profile.name} to build {update['installedBuild']} using {update['mode']} mode.")
+            QMessageBox.information(self, "Dragonwilds update complete",
+                                    "The game update completed and the server was started. If the build is not yet supported, Zanik is serving its maintenance page without loading native features.")
+            self.check_game_update(True); self.check_installation_state(profile.id)
+        self.run_async(lambda: self.provider(profile).update_game(profile.id, profile.server_id,
+                       profile.server_root, str(latest), progress), done,
+                       title="Updating Dragonwilds safely…", determinate=True)
 
     def install_manager_update(self):
         result = self.validated_manager_update
@@ -753,7 +798,7 @@ class MainWindow(QMainWindow):
             self.reset_config_editor()
         if profile:
             self.preference_store.save_last_profile(profile.id); self.preferences["lastProfileId"] = profile.id
-            self.install_button.setEnabled(False); self.update_server_button.setEnabled(False)
+            self.install_button.setEnabled(False); self.update_server_button.setEnabled(False); self.update_game_button.setEnabled(False)
             self.installation_states[profile.id] = {"checking": True}
             if needs_config_load or profile.id not in self.website_states:
                 self.website_states[profile.id] = {"status": "checking"}
@@ -771,7 +816,7 @@ class MainWindow(QMainWindow):
             self.open_website_button.setEnabled(False)
             self._set_update_label(self.game_update_label, "Game · No server selected", "neutral")
             self.game_check_button.setEnabled(False)
-            self.install_button.setEnabled(False); self.update_server_button.setEnabled(False)
+            self.install_button.setEnabled(False); self.update_server_button.setEnabled(False); self.update_game_button.setEnabled(False)
 
     def refresh_asset_targets(self):
         selected = self.asset_target_box.currentData().id if self.asset_target_box.count() and self.asset_target_box.currentData() else ""
@@ -858,7 +903,11 @@ class MainWindow(QMainWindow):
         else:
             self._set_update_label(self.server_assets, "", "neutral")
         self.server_details.setText(
-            f"Panel: {profile.panel_origin} · {profile.server_id}\nInstall mode: {mode}\n{website_line}\n{port_line}")
+            f"Panel: {profile.panel_origin} · {profile.server_id}\nInstall mode: {mode}\n" +
+            ((f"Pterodactyl AUTO_UPDATE: {installation.get('autoUpdate', {}).get('value', 'unavailable')}" +
+              (" (required: 0)" if mode == "replace-executable" else " (preserved by wrapper mode)"))
+             if installation and installation.get("installed") else "Pterodactyl AUTO_UPDATE: Not managed") +
+            f"\n{website_line}\n{port_line}")
         openable = website_status == "ready" and website_configuration_ready(
             {"STATUS_PORT": website.get("port"), "PUBLIC_BASE_URL": url})
         self.open_website_button.setEnabled(openable)
@@ -1041,8 +1090,8 @@ class MainWindow(QMainWindow):
             dialog = QDialog(self); dialog.setWindowTitle("Choose installation mode"); form = QFormLayout(dialog)
             choices = QComboBox(); choices.addItem("Wrapper — recommended", "wrapper"); choices.addItem("Replace executable — compatibility", "replace-executable")
             if not adapter: choices.setCurrentIndex(1)
-            note = QLabel("This egg has a supported editable startup variable; wrapper mode can be configured automatically." if adapter else
-                          "This egg has no recognized wrapper variable. Wrapper mode will install files and show the exact manual startup command.")
+            note = QLabel(("Wrapper mode is recommended: it preserves the official executable and may retain normal Pterodactyl automatic updates. This egg exposes a supported variable, so Manager can configure it automatically." if adapter else
+                          "This egg has no recognized editable executable variable. Wrapper mode requires a panel administrator to change the raw startup command. Replace-executable mode works with a fixed egg command, but Manager must be able to set and verify AUTO_UPDATE=0 and will manage future game updates."))
             note.setWordWrap(True); buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
             buttons.button(QDialogButtonBox.Ok).setToolTip("Continue with the selected installation mode.")
             buttons.button(QDialogButtonBox.Cancel).setToolTip("Cancel without changing the server.")
@@ -1051,8 +1100,20 @@ class MainWindow(QMainWindow):
             if dialog.exec() != QDialog.Accepted: return
             selected = choices.currentData()
         if selected == "replace-executable" and not replacement_acknowledged and QMessageBox.warning(self, "Core-file replacement",
-            "This compatibility mode replaces the executable path while preserving the official binary. Continue?",
+            "This compatibility mode is intended for hosted-panel users who cannot change the egg's raw startup command. It replaces the executable path while preserving the official binary.\n\n"
+            "Manager will require startup.read and startup.update access, set AUTO_UPDATE=0, and manage future Dragonwilds updates safely. Continue?",
             QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes: return
+        if selected == "replace-executable":
+            try:
+                auto_update = self.provider(profile).client.startup_variable(profile.server_id, "AUTO_UPDATE")
+            except Exception as error:
+                QMessageBox.critical(self, "Replacement mode unavailable",
+                                     "Manager could not read the AUTO_UPDATE startup variable. Replacement installation requires startup.read and startup.update access.\n\n" + str(error))
+                return
+            if not auto_update or not auto_update.get("editable"):
+                QMessageBox.critical(self, "Replacement mode unavailable",
+                                     "This egg does not expose an editable AUTO_UPDATE variable. Ask the panel administrator to make AUTO_UPDATE editable, or have them configure wrapper mode through the raw startup command.")
+                return
         archive = resource_path("payload", "server.zip")
         if not archive.exists():
             matches = sorted((resource_path("dist", "release")).glob("zanik-server-*.zip"))

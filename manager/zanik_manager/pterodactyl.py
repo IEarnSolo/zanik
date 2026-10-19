@@ -138,6 +138,20 @@ class PterodactylClient:
     def startup(self, server_id: str) -> dict:
         return self.request("GET", f"/api/client/servers/{server_id}/startup").json()
 
+    def startup_variable(self, server_id: str, key: str) -> dict | None:
+        """Return one normalized startup variable without exposing unrelated values."""
+        for row in self.startup(server_id).get("data", []):
+            item = row.get("attributes", row)
+            if item.get("env_variable") == key:
+                return {
+                    "key": key,
+                    "value": str(item.get("server_value", "")),
+                    "default": str(item.get("default_value", "")),
+                    "editable": bool(item.get("is_editable", False)),
+                    "rules": str(item.get("rules", "")),
+                }
+        return None
+
     def wrapper_adapter(self, server_id: str) -> dict | None:
         startup = self.startup(server_id)
         command = str(startup.get("meta", {}).get("startup_command", ""))

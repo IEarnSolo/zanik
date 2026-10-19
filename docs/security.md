@@ -5,3 +5,5 @@ Administrators are stable public character IDs in `/home/container/zanik/admins.
 State-changing requests require a session, independent feature permission, CSRF value, and rate limit. Audit records omit raw claim, session, CSRF, and proxy-secret values. The console proxy secret is generated with mode `0600` and must never be printed or exposed by diagnostics.
 
 This release intentionally supports HTTP. Cookies and all traffic can be intercepted on an untrusted network. Restrict the port to a trusted network or put a TLS reverse proxy in front of Zanik. HTTPS and trusted-proxy policy are a later phase; cookie/proxy configuration remains extensible for it.
+
+Use a Pterodactyl Client API key from the server owner's normal account, not an Application API key. Replacement mode requires `startup.read` and `startup.update` only to enforce `AUTO_UPDATE=0`; file and power permissions remain limited to the selected server. Manager never records the key in profiles, installation state, update journals, maintenance reports, or server logs.

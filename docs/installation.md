@@ -72,6 +72,8 @@ Continue with the [Windows-to-Linux asset workflow](assets.md#install-on-a-self-
 
 This mode modifies a core game path and may conflict with Jagex's guidance. Use it only when a hosting panel cannot change the startup executable. Self-hosted operators who control their service command should use wrapper mode.
 
+On Pterodactyl, replacement mode additionally requires an editable `AUTO_UPDATE` startup variable and Client API permissions `startup.read` and `startup.update`. Zanik Manager sets and verifies `AUTO_UPDATE=0` before installation. If it cannot, installation is blocked rather than risking Steam overwriting the managed launcher. Manual shell users must disable panel automatic updates themselves before using this mode.
+
 ```sh
 ./scripts/install.sh --server-root "$SERVER_ROOT" --mode replace-executable \
   --acknowledge-core-file-replacement

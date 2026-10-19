@@ -140,6 +140,13 @@ class GitHubReleaseChecker:
                     server_payload.get("releaseVersion") != version or len(digest) != 64 or
                     any(character not in "0123456789abcdef" for character in digest)):
                 raise RuntimeError("GitHub release manifest has invalid server payload metadata")
+        game_compatibility = manifest.get("gameCompatibility")
+        if game_compatibility is not None:
+            hashes = game_compatibility.get("linuxExecutableSha256")
+            if (game_compatibility.get("schemaVersion") != 1 or not isinstance(hashes, list) or not hashes or
+                    any(not isinstance(value, str) or len(value) != 64 or
+                        any(character not in "0123456789abcdef" for character in value) for value in hashes)):
+                raise RuntimeError("GitHub release manifest has invalid game compatibility metadata")
         asset_contract = manifest.get("assetContract")
         if asset_contract is not None:
             recipe_digest = str(asset_contract.get("extractionRecipeSha256", "")).lower()
@@ -166,6 +173,7 @@ class GitHubReleaseChecker:
             "updateAvailable": latest > current, "releaseUrl": release.get("html_url", ""),
             "etag": headers.get("ETag") or headers.get("Etag") or "",
             "serverPayload": server_payload,
+            "gameCompatibility": game_compatibility,
             "assetContract": asset_contract,
             "manager": {"name": expected_zip, "url": zip_asset["browser_download_url"],
                         "size": int(record["size"]), "sha256": record["sha256"]},

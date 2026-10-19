@@ -18,11 +18,11 @@ Use a different archive only when you specifically need a manual or command-line
 
 Players joining a Zanik-enabled server download **nothing**. Zanik Manager runs on Windows, but the public server loader currently supports Linux x86-64 only.
 
-Zanik is a native `LD_PRELOAD` library. The recommended installation leaves the official game executable untouched and starts it through `zanik-server`. Executable replacement remains available only for hosting panels whose egg cannot change its startup command; it is explicitly non-recommended.
+Zanik is a native `LD_PRELOAD` library. The recommended wrapper installation leaves the official game executable untouched, supports normal Pterodactyl Steam updates, and starts it through `zanik-server`. Executable replacement is for hosted panels whose fixed egg command cannot be changed; it preserves the official binary but requires an editable `AUTO_UPDATE` variable set to `0`, because Manager must perform launcher-aware game updates.
 
 For detailed Manager instructions, see [docs/manager.md](docs/manager.md).
 
-Zanik has three distinct update paths. **Update and relaunch** updates the Windows Manager from a verified stable GitHub release. Manager compares a deterministic operational payload contract before recommending **Update / repair Zanik**, so a Manager-only release does not require reinstalling an unchanged server mod. The repair action remains available when the payload is current. A **Game update available** indicator is informational: update the Linux Dragonwilds dedicated server through Steam or your host, then revalidate Zanik and regenerate website assets when the game build changes. Manager never updates Dragonwilds automatically.
+Zanik has three distinct update paths. **Update and relaunch** updates the Windows Manager. **Update / repair Zanik** installs its verified server payload only when needed or requested. **Update Dragonwilds server** performs one confirmed, mode-aware dedicated-server update. An unreviewed game build stays playable while Zanik loads no native features and serves a maintenance page until a compatible release is available.
 
 ## Choose an installation
 
@@ -50,6 +50,7 @@ Before the first start, edit `SERVER_ROOT/zanik/config/zanik.conf`. Set `STATUS_
 No game-derived asset is included. The Linux dedicated server supports inventory only; create the complete server-installable bundle from a licensed Windows client with the self-contained Windows asset tool. Transfer the generated full ZIP to `SERVER_ROOT/zanik-assets-incoming/CLIENT_BUILD/` and let `init-assets.sh` validate, extract, and atomically activate it—do not unzip it manually. See the [self-hosted Linux guide](docs/linux.md) and [asset instructions](docs/assets.md#install-on-a-self-hosted-linux-server).
 
 Read [installation](docs/installation.md), [configuration](docs/configuration.md), [assets](docs/assets.md), [security](docs/security.md), and [hosting](docs/hosting.md) before public deployment.
+For game updates and maintenance behavior, see [game-update safety](docs/game-update-safety.md).
 
 ## Safe defaults
 

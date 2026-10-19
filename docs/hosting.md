@@ -6,6 +6,8 @@ Upload the server ZIP and extract it to `/home/container/zanik-release/VERSION/p
 
 If the egg fixes the original executable path, run the acknowledged replacement command in [installation.md](installation.md). This is supported for operator convenience but discouraged. Generated assets are activated under `/home/container/zanik/assets` via `init-assets.sh`; persistent state belongs in `/home/container/zanik-data`.
 
+The Client API can edit exposed startup variables but cannot rewrite a hard-coded raw egg command. Wrapper mode therefore needs an editable executable variable or panel-administrator assistance. Replacement mode needs editable `AUTO_UPDATE`, which Manager sets to `0`; if that cannot be verified, Manager blocks the installation.
+
 Every host must provide a dedicated TCP allocation for Zanik's website/API in addition to the Dragonwilds game port. Configure the internal listener with `STATUS_PORT` and the user-facing address with `PUBLIC_BASE_URL`.
 
 ## Docker and generic Linux hosts
