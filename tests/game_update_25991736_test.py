@@ -23,7 +23,30 @@ assert "GWorld_25991736   = 0x0DDB35F8" in header
 dispatcher = (root / "src" / "engine" / "admin_storage.cpp").read_text()
 assert server_sha in dispatcher
 assert f'ExpectedSha(hash){{return hash=="{server_sha}"' not in dispatcher
+assert "Keep mutation compatibility closed" in dispatcher
 assert "currentDispatcher?0x07ABFE00" in dispatcher
+for offset in (
+    "0x0A653420", "0x0A653CC0", "0x0A6554F0", "0x0A656FD0",
+    "0x0A654980", "0x0A65F7E0", "0x0A3DAA00", "0x04A89480",
+    "0x0A0EF130", "0x0A0EF3A0", "0x0A0EF780", "0x04ACFAE0",
+    "0x079D0710", "0x04A1F9F0", "0x0A3B5970",
+):
+    assert offset in dispatcher
+
+gravestones = (root / "src" / "engine" / "admin_gravestone.cpp").read_text()
+assert server_sha in gravestones
+for offset in (
+    "0x0A6554F0", "0x0A656FD0", "0x0A653CC0", "0x0A654980",
+    "0x0A655550", "0x0A64FDD0", "0x0A64E920", "0x0A64EF50",
+    "0x0A64D740", "0x08731130", "0x08731180", "0x07E66460",
+    "0x08731610", "0x09E17F00", "0x09E0EDB0", "0x09E17830",
+    "0x07E59100", "0x0837ECB0", "0x08737420", "0x07E6B520",
+):
+    assert offset in gravestones
+
+analyzer = (root / "tools" / "compat_analyzer.cpp").read_text()
+assert "--native-offsets" in analyzer
+assert 'field("graveGetInventory",graveGetInventoryAt,first)' in analyzer
 
 resources = (root / "src" / "engine" / "resources.cpp").read_text()
 assert f'hash=="{server_sha}"' in resources
@@ -36,5 +59,15 @@ assert "0x0A65D330" in storage
 assert "displaySignature" in storage
 assert "emptySignature" in storage
 assert "filledSignature" in storage
+
+main = (root / "src" / "main.cpp").read_text()
+page = (root / "src" / "web_page.h").read_text()
+assert '\\"capabilities\\":' in main
+assert '\\"storageRead\\"' in main
+assert '\\"gravestoneRead\\"' in main
+assert "Promise.all([fetch('/api/admin/session'" not in page
+assert "storageAdmin.style.display=capabilities.storageRead?'block':'none'" in page
+assert "gravestoneAdmin.style.display=capabilities.gravestoneRead?'block':'none'" in page
+assert "if(storageMutationAvailable){try{const response=await fetch('/api/admin/storage/catalog'" in page
 
 print("game update 25991736 compatibility checks passed")

@@ -410,7 +410,15 @@ void Handle(int fd) {
         std::string id=request.body;while(!id.empty()&&(id.back()=='\r'||id.back()=='\n'||id.back()==' '||id.back()=='\t'))id.pop_back();auto begin=id.find_first_not_of(" \t");if(begin!=std::string::npos&&begin)id.erase(0,begin);if(id.empty()){auto ids=adminStore->AllowedIds();if(ids.size()!=1){Respond(fd,409,"application/json; charset=utf-8",Status::ErrorJson("Specify a public character ID"));return;}id=ids.front();}
         StoredPlayer p;if(!playerStore->Find(id,p)||p.identity.rfind("character:",0)!=0||!adminStore->IsAllowed(id)){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Character is not authorized"));return;}std::string token=adminStore->CreateClaim(id,p.identity.substr(10),p.name);if(token.empty()){Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Could not create claim"));return;}std::string url=PublicBaseUrl()+"/admin/claim#token="+token;Respond(fd,200,"application/json; charset=utf-8","{\"url\":\""+JsonEscape(url)+"\",\"expiresIn\":300,\"characterName\":\""+JsonEscape(p.name)+"\"}");
     } else if(path=="/api/admin/session"){
-        AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(!ZanikConfig::AdminRead()){disabled();return;}StoredPlayer p;bool online=playerStore->Find(s.publicId,p)&&p.online;Respond(fd,200,"application/json; charset=utf-8","{\"authenticated\":true,\"characterId\":\""+JsonEscape(s.publicId)+"\",\"characterName\":\""+JsonEscape(s.characterName)+"\",\"online\":"+(online?"true":"false")+",\"csrf\":\""+s.csrf+"\",\"features\":"+ZanikConfig::Json()+"}",PersistentAdminCookie(raw));
+        AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(!ZanikConfig::AdminRead()){disabled();return;}StoredPlayer p;bool online=playerStore->Find(s.publicId,p)&&p.online;
+        const auto storage=DomEngine::GetAdminStorageDiagnostics();const auto graves=DomEngine::GetAdminGravestoneDiagnostics();const auto teleport=DomEngine::GetAdminTeleportDiagnostics();
+        const bool engineReadable=DomEngine::g_Engine&&DomEngine::g_Engine->IsInitialized();
+        const std::string capabilities="{\"storageRead\":"+std::string(engineReadable?"true":"false")+
+            ",\"gravestoneRead\":"+(graves.compatibility==1?"true":"false")+
+            ",\"storageMutation\":"+(ZanikConfig::AdminStorageMutation()&&storage.compatibility==1?"true":"false")+
+            ",\"gravestoneMutation\":"+(ZanikConfig::AdminGravestoneMutation()&&graves.compatibility==1?"true":"false")+
+            ",\"teleport\":"+(ZanikConfig::AdminTeleport()&&teleport.compatibility==1?"true":"false")+"}";
+        Respond(fd,200,"application/json; charset=utf-8","{\"authenticated\":true,\"characterId\":\""+JsonEscape(s.publicId)+"\",\"characterName\":\""+JsonEscape(s.characterName)+"\",\"online\":"+(online?"true":"false")+",\"csrf\":\""+s.csrf+"\",\"features\":"+ZanikConfig::Json()+",\"capabilities\":"+capabilities+"}",PersistentAdminCookie(raw));
     } else if(path=="/api/recipe-unlock-settings"){
         Respond(fd,200,"application/json; charset=utf-8",recipeSettingsStore->Json());
     } else if(path=="/api/admin/recipe-unlock-settings"){
