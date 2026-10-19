@@ -84,10 +84,17 @@ zanik_make_secret "$server_root/zanik-data/console-admin.key" || { zanik_log 'Co
 DW_CONSOLE_SECRET=$(tr -d '\r\n' < "$server_root/zanik-data/console-admin.key"); export DW_CONSOLE_SECRET
 zanik_export_runtime "$server_root" "$install_mode"
 game_sha=$(zanik_sha256 "$game")
+game_build=$(awk -F'"' '/"buildid"/{print $4;exit}' "$server_root/steamapps/appmanifest_4019830.acf" 2>/dev/null || true)
+case "$game_build" in ''|*[!0-9]*) game_build=unknown;; esac
+runtime_state="$ZANIK_DIR/state/runtime-game.json"
+runtime_temporary=$runtime_state.new.$$
+printf '{"schemaVersion":1,"gameBuild":"%s","officialSha256":"%s","installMode":"%s","observedAt":"%s"}\n' \
+  "$game_build" "$game_sha" "$install_mode" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$runtime_temporary"
+chmod 600 "$runtime_temporary"
+mv -f "$runtime_temporary" "$runtime_state"
 if ! awk -F '\t' -v expected="$game_sha" 'BEGIN{found=0} $1==expected{found=1} END{exit found?0:1}' "$ZANIK_DIR/compatibility.tsv"; then
   ZANIK_INSTALLED_VERSION=$(tr -d '\r\n' < "$ZANIK_DIR/VERSION"); export ZANIK_INSTALLED_VERSION
-  ZANIK_GAME_BUILD_ID=$(awk -F'"' '/"buildid"/{print $4;exit}' "$server_root/steamapps/appmanifest_4019830.acf" 2>/dev/null || true)
-  case "$ZANIK_GAME_BUILD_ID" in ''|*[!0-9]*) ZANIK_GAME_BUILD_ID=unknown;; esac
+  ZANIK_GAME_BUILD_ID=$game_build
   export ZANIK_GAME_BUILD_ID
   ZANIK_AUTO_UPDATE_VALUE=${AUTO_UPDATE-unknown}; export ZANIK_AUTO_UPDATE_VALUE
   if [ "$install_mode" = replace-executable ]; then
