@@ -21,7 +21,12 @@ namespace DomEngine {
 namespace {
 constexpr size_t HookBytes=16;
 constexpr size_t QueueCapacity=16;
-struct Request{std::string characterGuid,publicId,destinationId,sessionPrefix,targetCharacterGuid,targetPublicId,action;};
+struct Request{
+    std::string characterGuid,publicId,destinationId,sessionPrefix,targetCharacterGuid,targetPublicId,action;
+    uintptr_t preparedActor=0;
+    std::uint64_t preparedActorIdentity=0;
+    FVector3d preparedLocation{};
+};
 using TickFn=void(*)(void*,float,int,void*);
 struct FRotator3d{double Pitch=0,Yaw=0,Roll=0;};
 using TeleportFn=bool(*)(void*,const FVector3d*,const FRotator3d*,bool,bool);
@@ -51,6 +56,8 @@ std::atomic<int> groundTraceCompatibility{0},storagePipelineCompatibility{0},nat
 std::atomic<std::uint64_t> queued{0},accepted{0},rejected{0},maximumMicros{0};
 std::atomic<std::uint64_t> acceptedStorage{0},staleStorage{0},unsafeStorage{0};
 std::atomic<std::uint64_t> tickCalls{0},maximumTickMicros{0},slowTickCalls{0};
+std::atomic<std::uint64_t> maximumStorageTeleportMicros{0},slowStorageTeleportCalls{0};
+std::atomic<bool> storageTeleportCircuitBroken{false};
 // Keep storage teleports fail-closed until the native delayed-teleport ABI has
 // been captured from a genuine game teleport and validated.  The experimental
 // reflected TeleportWithParams call can crash the dedicated server.
@@ -319,23 +326,38 @@ bool InitializeStorageTeleportPipeline(){
 }
 
 bool InitializeNativeTeleportCapture(uintptr_t moduleBase,uintptr_t moduleEnd,uintptr_t tryTeleportOffset){
-    // Exact build 25630937 relationship. Keeping this derived from the already
-    // fingerprint-bound TryTeleport address avoids changing compatibility.tsv's
-    // positional schema for a temporary diagnostic hook.
-    if(tryTeleportOffset!=0xA714910)return false;
-    constexpr uintptr_t TriggerDelayedTeleportOffset=0xA539560;
-    constexpr size_t CaptureHookBytes=16;
-    const unsigned char expected[CaptureHookBytes]={
-        0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53,0x48,0x81,0xEC,0x10,0x01,0x00,0x00};
+    struct Profile{uintptr_t tryTeleport,trigger,wrapper;size_t hookBytes;unsigned char expected[17];};
+    static const Profile profiles[]={
+        {0xA714910,0xA539560,0xA539A60,16,{0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53,0x48,0x81,0xEC,0x10,0x01,0x00,0x00,0x00}},
+        // Build 25991736: BP_TriggerDelayedTeleport's wrapper has one first
+        // rel32 call to this exact TriggerDelayedTeleport implementation.
+        {0xA7628F0,0xA5765A0,0xA576B80,17,{0x55,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53,0x48,0x81,0xEC,0x18,0x01,0x00,0x00}}
+    };
+    const Profile* profile=nullptr;for(const auto& candidate:profiles)if(candidate.tryTeleport==tryTeleportOffset){profile=&candidate;break;}
+    if(!profile)return false;
+    const uintptr_t TriggerDelayedTeleportOffset=profile->trigger,WrapperOffset=profile->wrapper;
+    const size_t CaptureHookBytes=profile->hookBytes;
     if(moduleBase+TriggerDelayedTeleportOffset+CaptureHookBytes>moduleEnd)return false;
     auto* target=reinterpret_cast<unsigned char*>(moduleBase+TriggerDelayedTeleportOffset);
-    if(std::memcmp(target,expected,sizeof(expected))!=0)return false;
+    if(std::memcmp(target,profile->expected,CaptureHookBytes)!=0||moduleBase+WrapperOffset+0x2b>moduleEnd)return false;
+    auto* wrapper=reinterpret_cast<unsigned char*>(moduleBase+WrapperOffset);
+    static const unsigned char wrapperPrefix[]={0x53,0x48,0x83,0xEC,0x40,0x0F,0x57,0xC0,0x0F,0x29,0x44,0x24,0x30};
+    if(std::memcmp(wrapper,wrapperPrefix,sizeof(wrapperPrefix))!=0||wrapper[0x26]!=0xE8)return false;
+    std::int32_t relative=0;std::memcpy(&relative,wrapper+0x27,sizeof(relative));
+    if(reinterpret_cast<uintptr_t>(wrapper+0x2b+relative)!=reinterpret_cast<uintptr_t>(target))return false;
+    bpTriggerDelayedTeleport=reinterpret_cast<BPTriggerDelayedTeleportFn>(wrapper);
+    // A previously captured and structurally validated template is sufficient
+    // for replay. Do not install a diagnostic capture hook on every supported
+    // server; that keeps ordinary game teleports free of Zanik work.
+    if(storageTeleportTemplateValid.load()){
+        LogMessage("Validated native delayed teleport wrapper enabled from persisted template");
+        return true;
+    }
     auto* trampoline=static_cast<unsigned char*>(mmap(nullptr,64,PROT_READ|PROT_WRITE|PROT_EXEC,MAP_PRIVATE|MAP_ANONYMOUS,-1,0));
     if(trampoline==MAP_FAILED)return false;
     std::memcpy(trampoline,target,CaptureHookBytes);
     WriteJump(trampoline+CaptureHookBytes,reinterpret_cast<uintptr_t>(target+CaptureHookBytes));
     zanikTriggerDelayedTrampoline=trampoline;
-    bpTriggerDelayedTeleport=reinterpret_cast<BPTriggerDelayedTeleportFn>(moduleBase+0xA539A60);
     const long pageSize=sysconf(_SC_PAGESIZE);const uintptr_t page=reinterpret_cast<uintptr_t>(target)&~(uintptr_t(pageSize)-1);
     if(mprotect(reinterpret_cast<void*>(page),size_t(pageSize),PROT_READ|PROT_WRITE|PROT_EXEC)!=0){
         zanikTriggerDelayedTrampoline=nullptr;munmap(trampoline,64);return false;
@@ -345,7 +367,7 @@ bool InitializeNativeTeleportCapture(uintptr_t moduleBase,uintptr_t moduleEnd,ui
     std::memcpy(target,patch,sizeof(patch));
     __builtin___clear_cache(reinterpret_cast<char*>(target),reinterpret_cast<char*>(target+CaptureHookBytes));
     mprotect(reinterpret_cast<void*>(page),size_t(pageSize),PROT_READ|PROT_EXEC);
-    LogMessage("Native delayed teleport parameter capture and validated player wrapper enabled for build 25630937");
+    LogMessage("Native delayed teleport parameter capture and validated player wrapper enabled");
     return true;
 }
 
@@ -480,22 +502,21 @@ void RunOne(void* tickingPawn){
     if(player.isDead||!player.spawned){++rejected;LogMessage("Admin teleport rejected: player unavailable id="+request.publicId);return;}
     if(request.action=="storage"||request.action=="gravestone"){
         FVector3d chest{};uintptr_t chestActor=0;
-        const bool grave=request.action=="gravestone";
         if(!bpTriggerDelayedTeleport||!storageTeleportTemplateValid.load()||!getActorBoundsFunction||
-           !(grave?ResolveAdminGravestoneLocation(request.targetCharacterGuid,request.destinationId,chestActor,chest):ResolveAdminStorageActor(request.targetCharacterGuid,request.destinationId,chestActor,chest))){
+           !std::isfinite(request.preparedLocation.X)||!std::isfinite(request.preparedLocation.Y)||!std::isfinite(request.preparedLocation.Z)){
             ++rejected;++staleStorage;LogMessage("Admin storage teleport rejected: stale chest="+request.destinationId);return;
+        }
+        chest=request.preparedLocation;chestActor=request.preparedActor;
+        if(chestActor&&(!g_Engine->IsObjectLive(chestActor)||g_Engine->GetObjectIdentity(chestActor)!=request.preparedActorIdentity)){
+            ++rejected;++staleStorage;LogMessage("Admin storage teleport rejected: changed destination="+request.destinationId);return;
         }
         FVector3d origin=chest,extent{55.0,55.0,80.0};if(chestActor){alignas(16) unsigned char bounds[64]{};bounds[0]=1;processEvent(reinterpret_cast<void*>(chestActor),reinterpret_cast<void*>(getActorBoundsFunction),bounds);std::memcpy(&origin,bounds+0x8,sizeof(origin));std::memcpy(&extent,bounds+0x20,sizeof(extent));}
         if(!std::isfinite(origin.X)||!std::isfinite(origin.Y)||!std::isfinite(origin.Z)||!std::isfinite(extent.X)||!std::isfinite(extent.Y)||!std::isfinite(extent.Z)||
            extent.X<1.0||extent.Y<1.0||extent.Z<1.0||extent.X>3000.0||extent.Y>3000.0||extent.Z>3000.0){++rejected;++unsafeStorage;LogMessage("Admin storage teleport rejected: invalid authoritative bounds chest="+request.destinationId);return;}
-        std::vector<FVector3d> storageLocations;if(!grave)ReadAdminStorageLocations(request.targetCharacterGuid,storageLocations);
-        const auto obstacles=chestActor?ReadNearbyBuildingBounds(chestActor,origin):std::vector<NearbyObstacle>{};
-        double chosenRadius=0.0,nearestStorage=0.0;int rejectedGeometry=0;
-        FVector3d target=ChooseStorageArrival(origin,extent,player,storageLocations,obstacles,chosenRadius,nearestStorage,rejectedGeometry);
-        if(!std::isfinite(target.X)){
-            ++rejected;++unsafeStorage;LogMessage("Admin storage teleport rejected: no capsule-clear building candidate chest="+request.destinationId+
-                " obstacles="+std::to_string(obstacles.size())+" rejected="+std::to_string(rejectedGeometry));return;
-        }
+        constexpr double Pi=3.14159265358979323846;
+        double toward=std::atan2(player.y-origin.Y,player.x-origin.X);if(!std::isfinite(toward))toward=player.yaw*Pi/180.0+Pi;
+        const double chosenRadius=std::hypot(extent.X,extent.Y)+120.0;
+        FVector3d target{origin.X+std::cos(toward)*chosenRadius,origin.Y+std::sin(toward)*chosenRadius,origin.Z-extent.Z+100.0};
         double tracedFloor=0.0;const bool floorLoaded=TraceGround(target.X,target.Y,target.Z,tracedFloor)&&std::abs(tracedFloor-(origin.Z-extent.Z))<450.0;
         if(floorLoaded)target.Z=tracedFloor+100.0;
         const double playerDistance=std::hypot(target.X-player.x,target.Y-player.y);
@@ -511,7 +532,12 @@ void RunOne(void* tickingPawn){
         // Storage positions are dynamic rather than registry-authored safe
         // arrivals, so retain the game's destination validation.
         params[0x44]=0;
-        if(!bpTriggerDelayedTeleport(tickingPawn,params)){
+        const auto nativeStarted=std::chrono::steady_clock::now();
+        const bool scheduled=bpTriggerDelayedTeleport(tickingPawn,params);
+        const auto nativeMicros=std::uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-nativeStarted).count());
+        auto nativePrior=maximumStorageTeleportMicros.load();while(nativeMicros>nativePrior&&!maximumStorageTeleportMicros.compare_exchange_weak(nativePrior,nativeMicros)){}
+        if(nativeMicros>=1000){++slowStorageTeleportCalls;storageTeleportCircuitBroken=true;}
+        if(!scheduled){
             ++rejected;++unsafeStorage;
             LogMessage("Admin native storage teleport rejected by game location validation chest="+request.destinationId);
             return;
@@ -519,18 +545,8 @@ void RunOne(void* tickingPawn){
         ++accepted;++acceptedStorage;
         LogMessage("Admin native delayed storage teleport scheduled character="+request.publicId+" owner="+request.targetPublicId+" chest="+request.destinationId+
                    " loaded="+(alreadyLoaded?"true":"false")+" distance="+std::to_string(playerDistance)+" ring="+std::to_string(chosenRadius)+
-                   " nearestStorage="+std::to_string(nearestStorage)+" obstacles="+std::to_string(obstacles.size())+
-                   " geometryRejected="+std::to_string(rejectedGeometry)+" target="+std::to_string(target.X)+","+
+                   " nativeMicros="+std::to_string(nativeMicros)+" target="+std::to_string(target.X)+","+
                    std::to_string(target.Y)+","+std::to_string(target.Z)+" session="+request.sessionPrefix);
-        // Keep one focused, bounded geometry report for the concrete dense
-        // storage case. It contains class/name and bounds only, never pointers.
-        if(obstacles.size()>=4){
-            std::ofstream scan("/home/container/zanik-data/storage-geometry-scan.log",std::ios::trunc);
-            if(scan){scan<<"chest="<<request.destinationId<<" origin="<<origin.X<<","<<origin.Y<<","<<origin.Z
-                <<" player="<<player.x<<","<<player.y<<","<<player.z<<" target="<<target.X<<","<<target.Y<<","<<target.Z<<'\n';
-                for(const auto& obstacle:obstacles)scan<<obstacle.cls<<"\t"<<obstacle.name<<"\t"<<obstacle.origin.X<<","<<obstacle.origin.Y<<","<<obstacle.origin.Z
-                    <<"\t"<<obstacle.extent.X<<","<<obstacle.extent.Y<<","<<obstacle.extent.Z<<'\n';}
-        }
         return;
     }
     if(!request.action.empty()){
@@ -652,7 +668,8 @@ bool QueueAdminTeleport(const std::string& characterGuid,const std::string& publ
     QueueLock lock;
     if(requests.size()>=QueueCapacity||std::any_of(requests.begin(),requests.end(),[&](const Request&r){return r.characterGuid==characterGuid;})||
        std::any_of(pendingTeleports.begin(),pendingTeleports.end(),[&](const PendingTeleport&p){return p.characterGuid==characterGuid;}))return false;
-    requests.push_back({characterGuid,publicId,destinationId,sessionPrefix,{},{},{}});++queued;return true;
+    Request request;request.characterGuid=characterGuid;request.publicId=publicId;request.destinationId=destinationId;request.sessionPrefix=sessionPrefix;
+    requests.push_back(std::move(request));++queued;return true;
 }
 
 bool QueueAdminPlayerTeleport(const std::string& movingCharacterGuid,const std::string& movingPublicId,
@@ -663,35 +680,44 @@ bool QueueAdminPlayerTeleport(const std::string& movingCharacterGuid,const std::
     QueueLock lock;
     if(requests.size()>=QueueCapacity||std::any_of(requests.begin(),requests.end(),[&](const Request&r){return r.characterGuid==movingCharacterGuid;})||
        std::any_of(pendingTeleports.begin(),pendingTeleports.end(),[&](const PendingTeleport&p){return p.characterGuid==movingCharacterGuid;}))return false;
-    requests.push_back({movingCharacterGuid,movingPublicId,{},sessionPrefix,targetCharacterGuid,targetPublicId,action});++queued;return true;
+    Request request;request.characterGuid=movingCharacterGuid;request.publicId=movingPublicId;request.sessionPrefix=sessionPrefix;request.targetCharacterGuid=targetCharacterGuid;request.targetPublicId=targetPublicId;request.action=action;
+    requests.push_back(std::move(request));++queued;return true;
 }
 
 bool QueueAdminStorageTeleport(const std::string& characterGuid,const std::string& publicId,
                                const std::string& targetCharacterGuid,const std::string& targetPublicId,
                                const std::string& chestId,const std::string& sessionPrefix){
-    if(!bpTriggerDelayedTeleport||!storageTeleportTemplateValid.load()||compatibility.load()!=1||groundTraceCompatibility.load()!=1||storagePipelineCompatibility.load()!=1||nativeCaptureCompatibility.load()!=1||characterGuid.empty()||targetCharacterGuid.empty()||chestId.empty())return false;
+    if(!bpTriggerDelayedTeleport||!storageTeleportTemplateValid.load()||compatibility.load()!=1||groundTraceCompatibility.load()!=1||storagePipelineCompatibility.load()!=1||nativeCaptureCompatibility.load()!=1||storageTeleportCircuitBroken.load()||characterGuid.empty()||targetCharacterGuid.empty()||chestId.empty())return false;
+    uintptr_t actor=0;FVector3d location{};if(!ResolveAdminStorageActor(targetCharacterGuid,chestId,actor,location))return false;
+    const auto identity=actor&&g_Engine?g_Engine->GetObjectIdentity(actor):0;if(!actor||!identity)return false;
     QueueLock lock;
     if(requests.size()>=QueueCapacity||std::any_of(requests.begin(),requests.end(),[&](const Request&r){return r.characterGuid==characterGuid;})||
        std::any_of(pendingTeleports.begin(),pendingTeleports.end(),[&](const PendingTeleport&p){return p.characterGuid==characterGuid;}))return false;
-    requests.push_back({characterGuid,publicId,chestId,sessionPrefix,targetCharacterGuid,targetPublicId,"storage"});++queued;return true;
+    Request request;request.characterGuid=characterGuid;request.publicId=publicId;request.destinationId=chestId;request.sessionPrefix=sessionPrefix;request.targetCharacterGuid=targetCharacterGuid;request.targetPublicId=targetPublicId;request.action="storage";request.preparedActor=actor;request.preparedActorIdentity=identity;request.preparedLocation=location;
+    requests.push_back(std::move(request));++queued;return true;
 }
 
 bool QueueAdminGravestoneTeleport(const std::string& characterGuid,const std::string& publicId,
                                   const std::string& ownerCharacterGuid,const std::string& ownerPublicId,
                                   const std::string& graveId,const std::string& sessionPrefix){
-    if(!bpTriggerDelayedTeleport||!storageTeleportTemplateValid.load()||compatibility.load()!=1||groundTraceCompatibility.load()!=1||storagePipelineCompatibility.load()!=1||nativeCaptureCompatibility.load()!=1||characterGuid.empty()||ownerCharacterGuid.empty()||graveId.empty())return false;
+    if(!bpTriggerDelayedTeleport||!storageTeleportTemplateValid.load()||compatibility.load()!=1||groundTraceCompatibility.load()!=1||storagePipelineCompatibility.load()!=1||nativeCaptureCompatibility.load()!=1||storageTeleportCircuitBroken.load()||characterGuid.empty()||ownerCharacterGuid.empty()||graveId.empty())return false;
+    uintptr_t actor=0;FVector3d location{};if(!ResolveAdminGravestoneLocation(ownerCharacterGuid,graveId,actor,location))return false;
+    const auto identity=actor&&g_Engine?g_Engine->GetObjectIdentity(actor):0;
     QueueLock lock;
     if(requests.size()>=QueueCapacity||std::any_of(requests.begin(),requests.end(),[&](const Request&r){return r.characterGuid==characterGuid;})||
        std::any_of(pendingTeleports.begin(),pendingTeleports.end(),[&](const PendingTeleport&p){return p.characterGuid==characterGuid;}))return false;
-    requests.push_back({characterGuid,publicId,graveId,sessionPrefix,ownerCharacterGuid,ownerPublicId,"gravestone"});++queued;return true;
+    Request request;request.characterGuid=characterGuid;request.publicId=publicId;request.destinationId=graveId;request.sessionPrefix=sessionPrefix;request.targetCharacterGuid=ownerCharacterGuid;request.targetPublicId=ownerPublicId;request.action="gravestone";request.preparedActor=actor;request.preparedActorIdentity=identity;request.preparedLocation=location;
+    requests.push_back(std::move(request));++queued;return true;
 }
 
 AdminTeleportDiagnostics GetAdminTeleportDiagnostics(){
     AdminTeleportDiagnostics d;d.compatibility=compatibility.load();d.lodestoneCompatibility=d.compatibility;d.playerCompatibility=d.compatibility;
     d.groundTraceCompatibility=groundTraceCompatibility.load();d.storagePipelineCompatibility=storagePipelineCompatibility.load();
-    d.nativeCaptureCompatibility=nativeCaptureCompatibility.load();d.nativeTemplateAvailable=storageTeleportTemplateValid.load()?1:0;d.queuedRequests=queued.load();
+    d.nativeCaptureCompatibility=nativeCaptureCompatibility.load();d.nativeTemplateAvailable=storageTeleportTemplateValid.load()?1:0;
+    d.storageTransportCompatibility=storageTeleportCircuitBroken.load()?-1:(d.nativeCaptureCompatibility==1&&d.nativeTemplateAvailable==1?1:0);d.queuedRequests=queued.load();
     d.acceptedTeleports=accepted.load();d.rejectedRequests=rejected.load();d.maximumExecutionMicroseconds=maximumMicros.load();
     d.acceptedStorageTeleports=acceptedStorage.load();d.staleStorageDestinations=staleStorage.load();d.unsafeStorageDestinations=unsafeStorage.load();
-    d.tickCalls=tickCalls.load();d.maximumTickMicroseconds=maximumTickMicros.load();d.slowTickCalls=slowTickCalls.load();return d;
+    d.tickCalls=tickCalls.load();d.maximumTickMicroseconds=maximumTickMicros.load();d.slowTickCalls=slowTickCalls.load();
+    d.maximumStorageTransportMicroseconds=maximumStorageTeleportMicros.load();d.slowStorageTransportCalls=slowStorageTeleportCalls.load();return d;
 }
 }
