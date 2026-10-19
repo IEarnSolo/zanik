@@ -87,6 +87,7 @@ zanik_export_runtime(){
   export DW_COMPATIBILITY_FILE=${DW_COMPATIBILITY_FILE:-$server_root/zanik/compatibility.tsv}
   export DW_UPDATE_STATE=${DW_UPDATE_STATE:-$server_root/zanik/state/update-status.json}
   export DW_GAME_UPDATE_STATE=${DW_GAME_UPDATE_STATE:-$server_root/zanik/state/game-update-status.json}
+  export DW_BACKUP_RETENTION_STATE=${DW_BACKUP_RETENTION_STATE:-$server_root/zanik/state/backup-retention-status.json}
   export DW_ASSET_MANIFEST=${DW_ASSET_MANIFEST:-$server_root/zanik/assets/current/asset-manifest.json}
   export DW_RESOURCE_IDENTITIES=${DW_RESOURCE_IDENTITIES:-$server_root/zanik/assets/current/resource-identities.tsv}
   export DW_NPC_IDENTITIES=${DW_NPC_IDENTITIES:-$server_root/zanik/assets/current/npc-identities.tsv}
@@ -115,3 +116,43 @@ zanik_make_secret(){
 }
 
 zanik_game_path(){ printf '%s/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping' "$1"; }
+
+zanik_backup_manifest(){
+  directory=$1 family=$2 operation_id=$3 state=$4
+  case "$family" in payload|game-update|configuration|uninstall|cli-update|migration) ;; *) return 1;; esac
+  case "$state" in preparing|complete|failed|superseded) ;; *) return 1;; esac
+  [ -d "$directory" ] || return 1
+  created=$(sed -n 's/.*"createdAt":"\([^"]*\)".*/\1/p' "$directory/.zanik-backup.json" 2>/dev/null || true)
+  [ -n "$created" ] || created=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  temporary=$directory/.zanik-backup.json.tmp.$$
+  umask 077
+  printf '{"schemaVersion":1,"owner":"Zanik shell lifecycle","family":"%s","operationId":"%s","createdAt":"%s","updatedAt":"%s","state":"%s","managedPaths":[],"knownBytes":null}\n' \
+    "$family" "$(zanik_json_escape "$operation_id")" "$created" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$state" >"$temporary"
+  chmod 600 "$temporary"; mv -f "$temporary" "$directory/.zanik-backup.json"
+}
+
+zanik_prune_backup_family(){
+  parent=$1 family=$2 keep=${3:-1}
+  [ "$keep" -eq 1 ] || return 1
+  [ -d "$parent" ] || return 0
+  newest=
+  for directory in "$parent"/*; do
+    [ -d "$directory" ] || continue
+    manifest=$directory/.zanik-backup.json
+    grep -q '"owner":"Zanik shell lifecycle"' "$manifest" 2>/dev/null || continue
+    grep -q "\"family\":\"$family\"" "$manifest" 2>/dev/null || continue
+    grep -q '"state":"complete"' "$manifest" 2>/dev/null || continue
+    [ -n "$newest" ] || newest=$directory
+    [ "${directory##*/}" \> "${newest##*/}" ] && newest=$directory
+  done
+  [ -n "$newest" ] || return 0
+  for directory in "$parent"/*; do
+    [ -d "$directory" ] || continue
+    [ "$directory" != "$newest" ] || continue
+    manifest=$directory/.zanik-backup.json
+    grep -q '"owner":"Zanik shell lifecycle"' "$manifest" 2>/dev/null || continue
+    grep -q "\"family\":\"$family\"" "$manifest" 2>/dev/null || continue
+    grep -Eq '"state":"(complete|superseded)"' "$manifest" 2>/dev/null || continue
+    rm -rf -- "$directory"
+  done
+}

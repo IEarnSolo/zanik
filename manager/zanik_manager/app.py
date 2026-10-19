@@ -49,6 +49,13 @@ def resource_path(*parts: str) -> Path:
     return repo.joinpath(*parts)
 
 
+def directory_size(path: Path) -> int:
+    try:
+        return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
+    except OSError:
+        return 0
+
+
 def button_help(button: QPushButton, text: str) -> QPushButton:
     button.setToolTip(text)
     return button
@@ -397,7 +404,10 @@ class MainWindow(QMainWindow):
                               for path in self.paths["asset_work"].iterdir() if path.is_dir())
             if any(self.paths["assets"].rglob("cache.json")):
                 asset_bytes += cleanup_extraction_output(self.paths["root"] / "extraction-output")
-            return {"pending": False, "count": update_count, "reclaimed": update_bytes + asset_bytes}
+            journal_result = JournalStore(self.paths["journals"]).prune()
+            prune_updater_backups(distribution_root())
+            return {"pending": False, "count": update_count, "reclaimed": update_bytes + asset_bytes,
+                    "journals": journal_result["removed"]}
         def done(result, error):
             if error:
                 self.log(f"Local storage cleanup was deferred: {error}")
@@ -409,9 +419,10 @@ class MainWindow(QMainWindow):
                     self.log("Local storage cleanup is waiting for the Manager updater to finish and will retry at the next launch.")
                 return
             count, reclaimed = result["count"], result["reclaimed"]
-            if count or reclaimed:
+            if count or reclaimed or result.get("journals"):
                 self.log(f"Local cleanup removed {count} completed Manager update staging director{'y' if count == 1 else 'ies'} "
-                         f"and reclaimed {reclaimed / (1024 ** 3):.2f} GiB; validated bundles and the incremental extraction cache were retained.")
+                         f"and {result.get('journals', 0)} superseded journal(s), reclaiming "
+                         f"{reclaimed / (1024 ** 3):.2f} GiB; validated bundles and the incremental extraction cache were retained.")
         self.run_background("local-storage-cleanup", action, done)
 
     def _config_tab(self):
@@ -475,8 +486,11 @@ class MainWindow(QMainWindow):
                            "Run the full server-side asset verification in addition to the normal Doctor checks.")
         support = button_help(QPushButton("Create support ZIP"),
                               "Create a reviewable, redacted support archive without credentials, authorization data, or game assets.")
+        storage = button_help(QPushButton("Review storage cleanup"),
+                              "Review exact recognized local and selected-server Zanik recovery data before removing superseded copies.")
         quick.clicked.connect(self.run_doctor); deep.clicked.connect(lambda: self.run_doctor(True)); support.clicked.connect(self.export_support)
-        row.addWidget(quick); row.addWidget(deep); row.addWidget(support); row.addStretch()
+        storage.clicked.connect(self.review_storage_cleanup)
+        row.addWidget(quick); row.addWidget(deep); row.addWidget(storage); row.addWidget(support); row.addStretch()
         self.doctor_output = QPlainTextEdit(); self.doctor_output.setReadOnly(True)
         layout.addLayout(row); layout.addWidget(self.doctor_output, 1); self.tabs.addTab(page, "Doctor")
 
@@ -1127,13 +1141,14 @@ class MainWindow(QMainWindow):
         def done(result):
             profile.install_mode = selected; self.store.save(self.profiles)
             self.check_installation_state(profile.id)
+            backup_note = f" Backup: {result['backup']}" if result.get("backup") else " No prior installation required a backup."
             if selected == "wrapper" and not adapter:
-                self.log(f"Files installed; startup action remains. Backup: {result['backup']}")
+                self.log("Files installed; startup action remains." + backup_note)
                 QMessageBox.information(self, "Startup action required", f"The server remains stopped and installation is not yet active. Set the egg startup executable to:\n{profile.server_root}/zanik/bin/zanik-server --server-root {profile.server_root} --\n\nThen start the server and run Doctor to verify it.")
                 if maintenance:
                     self.post_update_checks(profile)
             else:
-                self.log(f"Installation complete; backup: {result['backup']}")
+                self.log("Installation complete." + backup_note)
                 if maintenance:
                     self.log(f"Update / repair complete; backup: {result['backup']}")
                     QMessageBox.information(self, "Update / repair complete",
@@ -1177,12 +1192,70 @@ class MainWindow(QMainWindow):
     def run_doctor(self, deep=False):
         profile = self.active()
         if not profile: return
-        self.run_async(lambda: self.provider().diagnose(profile.server_id, profile.server_root, deep),
+        def action():
+            result = self.provider(profile).diagnose(profile.server_id, profile.server_root, deep)
+            result.setdefault("storageAndBackups", {})["local"] = self.local_storage_status()
+            result["storageAndBackups"]["remote"] = result.get("backupRetention", {})
+            return result
+        self.run_async(action,
                        lambda result: (self.doctor_output.setPlainText(json.dumps(result, indent=2, sort_keys=True)),
                                        self.log("Doctor reports a healthy installation." if result.get("healthy") else
                                                 "Doctor found installation problems; review the Doctor tab."),
                                        self.check_installation_state(profile.id)),
                        title="Running deep Doctor…" if deep else "Running Doctor…")
+
+    def local_storage_status(self) -> dict:
+        assets = self.paths["assets"]
+        work = self.paths["asset_work"]
+        updates = self.paths["updates"]
+        portable = [path for path in distribution_root().parent.glob(distribution_root().name + ".backup-*")
+                    if path.is_dir()]
+        return {
+            "schemaVersion": 1,
+            "managerUpdateStaging": {"bytes": directory_size(updates),
+                                     "directories": sum(path.is_dir() for path in updates.iterdir())},
+            "portableBackups": {"count": len(portable), "bytes": sum(directory_size(path) for path in portable),
+                                "retention": 1},
+            "validatedBundles": {"count": sum(1 for _ in assets.rglob("cache.json")),
+                                 "bytes": directory_size(assets), "retention": "two unpinned per game root; pinned retained"},
+            "incrementalCaches": {"count": sum(path.is_dir() for path in work.iterdir()),
+                                  "bytes": directory_size(work), "retention": "one per game root"},
+            "journals": {"count": sum(1 for _ in self.paths["journals"].glob("*.json")),
+                         "bytes": directory_size(self.paths["journals"])},
+        }
+
+    def review_storage_cleanup(self):
+        profile = self.active()
+        if not profile: return
+        def action():
+            provider = self.provider(profile)
+            remote = provider.backup_storage_status(profile.server_id, profile.server_root)
+            candidates = provider._cleanup_candidates(remote, include_legacy=True)
+            return {"local": self.local_storage_status(), "remote": remote, "candidates": candidates}
+        def ready(result):
+            self.doctor_output.setPlainText(json.dumps({"storageAndBackups": result}, indent=2, sort_keys=True))
+            candidates = result["candidates"]
+            if not candidates:
+                QMessageBox.information(self, "Storage and backups",
+                                        "No superseded recognized server backups are eligible for cleanup. Protected recovery data and user-owned files were left alone.")
+                return
+            paths = "\n".join(item["path"] for item in candidates)
+            message = ("Remove these superseded recognized Zanik backups from the selected server?\n\n" + paths +
+                       "\n\nDragonwilds saves, Pterodactyl backups, zanik-data, active assets, release uploads, and unrecognized paths are excluded.")
+            if QMessageBox.warning(self, "Confirm storage cleanup", message,
+                                   QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                return
+            requested = {item["path"] for item in candidates}
+            self.run_async(lambda: self.provider(profile).cleanup_backup_retention(
+                               profile.server_id, profile.server_root, include_legacy=True, requested=requested),
+                           lambda cleaned: (self.log(f"Removed {len(cleaned['removed'])} superseded server backup(s)."),
+                                            self.doctor_output.setPlainText(json.dumps(
+                                                {"storageAndBackups": {"local": self.local_storage_status(),
+                                                                       "remote": cleaned["remaining"],
+                                                                       "warnings": cleaned["warnings"]}},
+                                                indent=2, sort_keys=True))),
+                           title="Cleaning selected-server backups…")
+        self.run_async(action, ready, title="Reviewing storage and backups…")
 
     def choose_game_root(self):
         selected = QFileDialog.getExistingDirectory(self, "Select the RSDragonwilds installation", self.game_root.text())

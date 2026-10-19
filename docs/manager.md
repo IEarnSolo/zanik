@@ -65,7 +65,11 @@ Some Steam updates restore the official executable at the fixed startup path. Af
 
 Every mutating operation stages and verifies files before activation and records a recovery journal. Backups are stored under `/home/container/zanik-backups/manager/`. An interrupted operation is offered for resume or rollback the next time the profile connects.
 
+Doctor's **Storage and backups** section reports local Manager storage and shallowly inventories only Zanik's recognized backup roots on the selected server. Zanik retains one verified recovery point for each payload, Dragonwilds-update, configuration, and uninstall family. A newer verified operation removes older successful copies in that family; failed or interrupted recovery data remains protected until it is recovered or safely superseded. **Review storage cleanup** lists every eligible path before deletion. It never scans or removes Dragonwilds saves, Pterodactyl backups, `zanik-data`, active assets, release uploads, incoming asset uploads, pinned bundles, or unrecognized paths.
+
 A failed local operation journal is automatically archived when a newer operation of the same type completes successfully for that server. This prevents obsolete failures from continuing to request recovery while retaining the journal for audit. Journals left in a critical in-progress state remain visible until explicitly recovered.
+
+Completed local journals are compacted to the newest record per server and operation type. Superseded failures and rolled-back records are removed after they no longer provide recovery value.
 
 Asset activation uses a fast remote verification path: multipart archives are hash-checked before extraction, Pterodactyl's ZIP CRC checks protect their entries, and Manager downloads only the manifest, runtime catalogs, world map, and representative files before the atomic swap. It does not download every extracted asset during a normal install or development iteration. Use **Run deep Doctor** only when corruption is suspected or a complete remote audit is specifically required.
 

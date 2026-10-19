@@ -7,7 +7,7 @@ import tempfile
 import unittest
 import zipfile
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -84,6 +84,58 @@ def write_payload_archive(archive: Path, files: dict[str, bytes], version: str =
     return contract
 
 class ManagerTests(unittest.TestCase):
+    def test_journal_retention_keeps_unresolved_and_newest_completed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = JournalStore(Path(temporary))
+            old = OperationJournal.create("profile", "install"); old.created_at = "2026-10-01T00:00:00+00:00"; old.state = "complete"; store.save(old)
+            newest = OperationJournal.create("profile", "install"); newest.created_at = "2026-10-02T00:00:00+00:00"; newest.state = "complete"; store.save(newest)
+            failed = OperationJournal.create("profile", "game-update"); failed.state = "failed"; store.save(failed)
+            rolled = OperationJournal.create("profile", "install"); rolled.state = "rolled-back"; store.save(rolled)
+            result = store.prune()
+            self.assertEqual(result["removed"], 2)
+            self.assertTrue((store.root / f"{newest.operation_id}.json").is_file())
+            self.assertTrue((store.root / f"{failed.operation_id}.json").is_file())
+
+    def test_remote_backup_retention_protects_failures_and_requires_explicit_legacy_cleanup(self):
+        parent = "/home/container/zanik-backups/manager"
+        names = ["20261001T000000Z-aaaaaaaa", "20261002T000000Z-bbbbbbbb",
+                 "20261003T000000Z-cccccccc", "20260901T000000Z-config",
+                 "20260902T000000Z-config"]
+        manifests = {
+            names[0]: {"schemaVersion": 1, "owner": "Zanik Manager", "family": "payload",
+                       "operationId": "old", "createdAt": "2026-10-01T00:00:00Z", "state": "complete"},
+            names[1]: {"schemaVersion": 1, "owner": "Zanik Manager", "family": "payload",
+                       "operationId": "new", "createdAt": "2026-10-02T00:00:00Z", "state": "complete"},
+            names[2]: {"schemaVersion": 1, "owner": "Zanik Manager", "family": "payload",
+                       "operationId": "failed", "createdAt": "2026-10-03T00:00:00Z", "state": "failed"},
+        }
+        class Client:
+            def __init__(self): self.deleted=[]
+            def list_files(self, _server, path):
+                if path == parent: return [{"name": name, "is_file": False} for name in names]
+                raise PterodactylError("missing", 404)
+            def read_file(self, _server, path):
+                name = PurePosixPath(path).parent.name
+                if name in manifests: return json.dumps(manifests[name]).encode()
+                raise PterodactylError("missing", 404)
+            def delete(self, _server, root, files): self.deleted.extend(f"{root}/{name}" for name in files)
+        client=Client()
+        with tempfile.TemporaryDirectory() as temporary:
+            provider=PterodactylProvider(client, JournalStore(Path(temporary)))
+            report=provider.backup_storage_status("dev", "/home/container")
+            automatic=provider._cleanup_candidates(report)
+            manual=provider._cleanup_candidates(report, include_legacy=True)
+        self.assertEqual([item["path"] for item in automatic], [f"{parent}/{names[0]}"])
+        self.assertIn(f"{parent}/{names[3]}", [item["path"] for item in manual])
+        self.assertNotIn(f"{parent}/{names[2]}", [item["path"] for item in manual])
+
+    def test_game_updater_uses_one_manager_backup_and_one_old_executable(self):
+        source = (ROOT / "scripts" / "update-game.sh").read_text(encoding="utf-8")
+        self.assertIn("game-update-request.json", source)
+        self.assertNotIn("official-before-update", source)
+        self.assertEqual(source.count('mv -f "$original" "$backup_root/official-previous"'), 1)
+        self.assertNotIn("zanik-backups/game-update/$(date", source)
+
     def test_completed_asset_work_compaction_preserves_incremental_inputs(self):
         with tempfile.TemporaryDirectory() as temporary:
             work = Path(temporary); pipeline = work / "pipeline"
@@ -1089,6 +1141,7 @@ class ManagerTests(unittest.TestCase):
             self.assertIn(b"ZANIK_COMPAT_LAUNCHER", client.files[game])
             self.assertEqual(client.files[game+".zanik-original"], b"\x7fELFofficial")
             self.assertEqual(result["installation"]["version"], "0.2.0")
+            self.assertIsNone(result["backup"])
             self.assertEqual(client.files["/home/container/zanik/compatibility.tsv"], b"sha\toffsets\n")
             original_launcher = client.files[game]
             config_path = "/home/container/zanik/config/zanik.conf"
@@ -1097,6 +1150,9 @@ class ManagerTests(unittest.TestCase):
             files["VERSION"] = b"0.2.1\n"
             write_payload_archive(archive, files, "0.2.1")
             update = provider.install("profile", "dev", "/home/container", ReleasePayload(archive), "replace-executable", True)
+            self.assertIsNotNone(update["backup"])
+            backup_manifest = json.loads(client.files[update["backup"] + "/.zanik-backup.json"])
+            self.assertEqual((backup_manifest["family"], backup_manifest["state"]), ("payload", "complete"))
             self.assertEqual(update["installation"]["version"], "0.2.1")
             self.assertNotEqual(client.files[game], original_launcher)
             journal = provider.journals.load(provider.journals.root / f"{update['operationId']}.json")

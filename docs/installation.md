@@ -58,7 +58,7 @@ Important installed paths are:
 | Staged releases | `/srv/dragonwilds/zanik-release/VERSION/` |
 | Incoming generated asset bundles | `/srv/dragonwilds/zanik-assets-incoming/CLIENT_BUILD/` |
 | Active generated assets | `/srv/dragonwilds/zanik/assets/current` |
-| Upgrade history and backups | `/srv/dragonwilds/zanik-data/update-history/` |
+| CLI upgrade history (newest verified recovery point) | `/srv/dragonwilds/zanik-data/update-history/` |
 
 After installation, run:
 
@@ -70,7 +70,7 @@ Continue with the [Windows-to-Linux asset workflow](assets.md#install-on-a-self-
 
 ## Fixed-path compatibility mode
 
-This mode modifies a core game path and may conflict with Jagex's guidance. Use it only when a hosting panel cannot change the startup executable. Self-hosted operators who control their service command should use wrapper mode.
+This mode modifies a core game path. Use it only when a hosting panel cannot change the startup executable. Self-hosted operators who control their service command should use wrapper mode.
 
 On Pterodactyl, replacement mode additionally requires an editable `AUTO_UPDATE` startup variable and Client API permissions `startup.read` and `startup.update`. Zanik Manager sets and verifies `AUTO_UPDATE=0` before installation. If it cannot, installation is blocked rather than risking Steam overwriting the managed launcher. Manual shell users must disable panel automatic updates themselves before using this mode.
 
@@ -95,4 +95,4 @@ Extract each new release into a new versioned payload directory. The installed c
 "$SERVER_ROOT/zanik/scripts/uninstall.sh" --server-root "$SERVER_ROOT"
 ```
 
-Updates back up configuration, compatibility metadata, assets, authorization, sessions, audit records, and persistence under `SERVER_ROOT/zanik-data/update-history`. Uninstall restores only a verified Zanik-managed launcher and preserves data. Add `--purge-data` only when permanent state removal is intended.
+Updates back up configuration, compatibility metadata, assets, authorization, sessions, audit records, and persistence under `SERVER_ROOT/zanik-data/update-history`. Successful CLI updates retain one verified recovery point; interrupted or failed work is protected. Uninstall restores only a verified Zanik-managed launcher and preserves data. Add `--purge-data` only when permanent state removal is intended. `zanik-data` is live persistent application state, not disposable backup storage.

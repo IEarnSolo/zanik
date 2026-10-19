@@ -579,6 +579,11 @@ class AssetDeployer:
                 operation.rollback.append({"from": previous, "to": current})
             self.provider.client.rename(server_id, root, [(str(PurePosixPath(stage).relative_to(root)), "zanik/assets/current")])
             operation.state = "complete"; operation.completed_steps.append("assets-activated"); journal.save(operation)
+            try:
+                self.provider.client.delete(server_id, f"{root}/.zanik-manager/staging", [operation.operation_id])
+            except Exception:
+                pass
+            journal.prune()
             restart_context = self._restart_runtime_if_running(server_id, status)
             restarted = restart_context is not None
             if restarted:

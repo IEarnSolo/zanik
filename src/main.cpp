@@ -220,6 +220,16 @@ std::string GameUpdateStateJson() {
     return json;
 }
 
+std::string BackupRetentionStateJson() {
+    const char* raw = std::getenv("DW_BACKUP_RETENTION_STATE");
+    std::ifstream input(raw && *raw ? raw : "/home/container/zanik/state/backup-retention-status.json");
+    if (!input) return "null";
+    std::ostringstream value; value << input.rdbuf(); std::string json=value.str();
+    while(!json.empty()&&std::isspace(static_cast<unsigned char>(json.back())))json.pop_back();
+    if(json.size()>65536||json.empty()||json.front()!='{'||json.back()!='}')return "null";
+    return json;
+}
+
 std::string AssetManifestJson() {
     const char* raw=std::getenv("DW_ASSET_MANIFEST");
     std::ifstream input(raw&&*raw?raw:(WebRoot()+"/asset-manifest.json"));
@@ -364,7 +374,7 @@ void Handle(int fd) {
             const char* version=std::getenv("ZANIK_INSTALLED_VERSION");
             const char* autoValue=std::getenv("ZANIK_AUTO_UPDATE_VALUE");
             const char* autoHealth=std::getenv("ZANIK_AUTO_UPDATE_HEALTH");
-            Respond(fd,200,"application/json; charset=utf-8","{\"website\":true,\"maintenance\":true,\"reason\":\"unsupported-game-build\",\"nativeRuntimeLoaded\":false,\"gameBuild\":\""+JsonEscape(build?build:"unknown")+"\",\"gameExecutableSha256\":\""+JsonEscape(hash?hash:"")+"\",\"zanikVersion\":\""+JsonEscape(version?version:"unknown")+"\",\"installMode\":\""+JsonEscape(mode?mode:"unknown")+"\",\"autoUpdate\":{\"value\":\""+JsonEscape(autoValue?autoValue:"unknown")+"\",\"health\":\""+JsonEscape(autoHealth?autoHealth:"unknown")+"\",\"requirement\":\""+std::string(mode&&std::strcmp(mode,"replace-executable")==0?"must-be-zero":"preserved")+"\"},\"release\":"+MaintenanceReleaseJson()+"}");return;
+            Respond(fd,200,"application/json; charset=utf-8","{\"website\":true,\"maintenance\":true,\"reason\":\"unsupported-game-build\",\"nativeRuntimeLoaded\":false,\"gameBuild\":\""+JsonEscape(build?build:"unknown")+"\",\"gameExecutableSha256\":\""+JsonEscape(hash?hash:"")+"\",\"zanikVersion\":\""+JsonEscape(version?version:"unknown")+"\",\"installMode\":\""+JsonEscape(mode?mode:"unknown")+"\",\"autoUpdate\":{\"value\":\""+JsonEscape(autoValue?autoValue:"unknown")+"\",\"health\":\""+JsonEscape(autoHealth?autoHealth:"unknown")+"\",\"requirement\":\""+std::string(mode&&std::strcmp(mode,"replace-executable")==0?"must-be-zero":"preserved")+"\"},\"release\":"+MaintenanceReleaseJson()+",\"backupRetention\":"+BackupRetentionStateJson()+"}");return;
         }
         if(path.rfind("/api/",0)==0){Respond(fd,503,"application/json; charset=utf-8","{\"error\":\"Zanik is in maintenance mode for an unsupported Dragonwilds build\"}");return;}
         Respond(fd,200,"text/html; charset=utf-8",MaintenancePage());return;
@@ -957,7 +967,8 @@ void Handle(int fd) {
             ",\"spawnedPawns\":" + std::to_string(players.spawnedPawns) +
             ",\"worldLocations\":" + std::to_string(players.worldLocations) +
             ",\"updater\":" + UpdateStateJson() +
-            ",\"gameUpdate\":" + GameUpdateStateJson() + "}");
+            ",\"gameUpdate\":" + GameUpdateStateJson() +
+            ",\"backupRetention\":" + BackupRetentionStateJson() + "}");
     } else {
         Respond(fd, 404, "application/json; charset=utf-8", "{\"error\":\"Not found\"}");
     }

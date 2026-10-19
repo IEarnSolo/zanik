@@ -9,8 +9,8 @@ game=$server_root/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shippin
 original=$game.zanik-original
 launcher_backup=$zanik/state/game-update-launcher
 report=$zanik/state/game-update-result.json
+request=$zanik/state/game-update-request.json
 steamcmd=$server_root/steamcmd/steamcmd.sh
-backup_root=$server_root/zanik-backups/game-update/$(date -u +%Y%m%dT%H%M%SZ)
 temporary=$report.new.$$
 
 is_elf(){ [ -f "$1" ] && [ "$(od -An -tx1 -N4 "$1" 2>/dev/null | tr -d ' \n')" = 7f454c46 ]; }
@@ -34,24 +34,31 @@ restore_launcher(){
   mv -f "$game.restore" "$game"
 }
 
-mkdir -p "$zanik/state" "$backup_root"
+backup_root=$(sed -n 's/.*"backup":"\([^"]*\)".*/\1/p' "$request" 2>/dev/null || true)
+backup_name=${backup_root##*/}
+case "$backup_root" in "$server_root"/zanik-backups/game-update/*) ;; *) exit 2;; esac
+case "$backup_name" in *[!0-9TZabcdef-]*|*/*|'') exit 2;; esac
+[ -d "$backup_root" ] && [ -f "$backup_root/.zanik-backup.json" ] || exit 2
+mkdir -p "$zanik/state"
 [ -x "$steamcmd" ] || { restore_launcher || true; write_report steamcmd-unavailable "$(build)" "$(build)" '' '' ''; exit 1; }
 is_elf "$original" || { restore_launcher || true; write_report original-invalid "$(build)" "$(build)" '' '' ''; exit 1; }
 grep -q 'ZANIK_COMPAT_LAUNCHER=1' "$launcher_backup" || { restore_launcher || true; write_report launcher-backup-invalid "$(build)" "$(build)" '' '' ''; exit 1; }
 
 before_build=$(build)
 before_save=$(save_fingerprint)
-cp -p "$original" "$backup_root/official-before-update"
-cp -p "$launcher_backup" "$backup_root/compat-launcher"
 cp -p "$server_root/steamapps/appmanifest_4019830.acf" "$backup_root/appmanifest-before.acf" 2>/dev/null || true
 
 # SteamCMD replaces this running script's pathname with the new official ELF.
 # The shell already has the script open, so it can safely finish the transaction.
-if ! timeout 900 "$steamcmd" +force_install_dir "$server_root" +login anonymous +app_update 4019830 validate +quit >"$backup_root/steamcmd.log" 2>&1; then
+if ! timeout 900 "$steamcmd" +force_install_dir "$server_root" +login anonymous +app_update 4019830 validate +quit >"$backup_root/steamcmd.log.full" 2>&1; then
+  tail -c 1048576 "$backup_root/steamcmd.log.full" >"$backup_root/steamcmd.log" 2>/dev/null || true
+  rm -f "$backup_root/steamcmd.log.full"
   restore_launcher || true
   write_report steamcmd-failed "$before_build" "$(build)" '' "$before_save" "$(save_fingerprint)"
   exit 1
 fi
+tail -c 1048576 "$backup_root/steamcmd.log.full" >"$backup_root/steamcmd.log" 2>/dev/null || true
+rm -f "$backup_root/steamcmd.log.full"
 if ! is_elf "$game"; then
   restore_launcher || true
   write_report updated-executable-invalid "$before_build" "$(build)" '' "$before_save" "$(save_fingerprint)"
