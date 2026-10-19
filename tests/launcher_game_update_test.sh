@@ -23,4 +23,12 @@ grep -q 'ZANIK_COMPAT_LAUNCHER=1' "$game"
 grep -q '"status":"complete"' "$server/zanik/state/game-update-result.json"
 grep -q '"installedBuild":"200"' "$server/zanik/state/game-update-result.json"
 [ "$(cat "$server/RSDragonwilds/Saved/SaveGames/world.sav")" = world-data ]
+
+# Every updater preflight failure must put the small launcher back at the fixed
+# executable path instead of stranding the server on the one-shot script.
+cp "$root/scripts/update-game.sh" "$game"; chmod +x "$game"
+printf 'not-an-elf' >"$game.zanik-original"; chmod +x "$game.zanik-original"
+if "$game"; then echo 'invalid original unexpectedly succeeded' >&2; exit 1; fi
+grep -q 'ZANIK_COMPAT_LAUNCHER=1' "$game"
+grep -q '"status":"original-invalid"' "$server/zanik/state/game-update-result.json"
 echo 'launcher-aware game update: ok'

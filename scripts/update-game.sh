@@ -35,9 +35,9 @@ restore_launcher(){
 }
 
 mkdir -p "$zanik/state" "$backup_root"
-[ -x "$steamcmd" ] || { write_report steamcmd-unavailable "$(build)" "$(build)" '' '' ''; exit 1; }
-is_elf "$original" || { write_report original-invalid "$(build)" "$(build)" '' '' ''; exit 1; }
-grep -q 'ZANIK_COMPAT_LAUNCHER=1' "$launcher_backup" || { write_report launcher-backup-invalid "$(build)" "$(build)" '' '' ''; exit 1; }
+[ -x "$steamcmd" ] || { restore_launcher || true; write_report steamcmd-unavailable "$(build)" "$(build)" '' '' ''; exit 1; }
+is_elf "$original" || { restore_launcher || true; write_report original-invalid "$(build)" "$(build)" '' '' ''; exit 1; }
+grep -q 'ZANIK_COMPAT_LAUNCHER=1' "$launcher_backup" || { restore_launcher || true; write_report launcher-backup-invalid "$(build)" "$(build)" '' '' ''; exit 1; }
 
 before_build=$(build)
 before_save=$(save_fingerprint)

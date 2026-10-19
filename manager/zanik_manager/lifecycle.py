@@ -899,12 +899,12 @@ class PterodactylProvider(ServerProvider):
                 self.client.power(server_id, "stop"); self._wait_offline(server_id)
             game = f"{root}/{GAME_RELATIVE}"
             launcher = self.client.read_file(server_id, game)
-            original = self.client.download_file(server_id, game + ".zanik-original")
-            if LAUNCHER_MARKER not in launcher or not original.startswith(b"\x7fELF"):
+            original_entry = self._entry(server_id, game + ".zanik-original")
+            if (LAUNCHER_MARKER not in launcher or not original_entry or
+                    not original_entry.get("is_file") or int(original_entry.get("size") or 0) < 1024 * 1024):
                 raise RuntimeError("Replacement launcher or preserved official executable did not verify")
             self._mkdir(server_id, backup)
             self.client.upload(server_id, backup, "compat-launcher", launcher)
-            self.client.upload(server_id, backup, "official-before-update", original)
             self.client.write_file(server_id, f"{root}/zanik/state/game-update-launcher", launcher)
             self.client.chmod(server_id, f"{root}/zanik/state", [("game-update-launcher", 0o755)])
             updater = self.client.read_file(server_id, f"{root}/zanik/scripts/update-game.sh")
