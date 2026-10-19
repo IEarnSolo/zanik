@@ -15,4 +15,6 @@ RELEASE_ROOT="$SERVER_ROOT/zanik-release/VERSION"
 
 On Pterodactyl, use `/home/container` as `SERVER_ROOT`.
 
-The updater preserves configuration and creates a dated backup of authorization, sessions, audit logs, persistence, compatibility data, generated assets, installed files, and managed game paths. A failed update restores the prior installation. Retain the backup until the updated server has passed runtime validation.
+The updater preserves configuration and creates a dated backup of authorization, sessions, audit logs, persistence, compatibility data, generated assets, installed files, and managed game paths. A failed update restores the prior installation. Zanik retains the newest verified recovery point for each backup family and protects failed or interrupted work; after a newer operation verifies, superseded successful copies are removed automatically. Doctor's **Review storage cleanup** action handles recognized older pre-retention backups only after showing their exact paths.
+
+Replacement-mode Dragonwilds updates retain one prior official executable, the compatibility launcher, Steam manifest, and a bounded SteamCMD log in one `SERVER_ROOT/zanik-backups/game-update/` directory. Wrapper-mode game updates do not make executable backups because Steam updates the untouched official executable.

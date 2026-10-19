@@ -8,6 +8,10 @@ mkdir -p "$(dirname "$game")" "$server/zanik/state" "$server/steamcmd" "$server/
 cp "$root/scripts/update-game.sh" "$game"; chmod +x "$game"
 printf '\177ELFold' >"$game.zanik-original"; chmod +x "$game.zanik-original"
 cp "$root/scripts/compat-launcher.sh" "$server/zanik/state/game-update-launcher"; chmod +x "$server/zanik/state/game-update-launcher"
+backup=$server/zanik-backups/game-update/20261019T000000Z-01234567
+mkdir -p "$backup"
+printf '%s\n' '{"schemaVersion":1,"owner":"Zanik Manager","family":"game-update","operationId":"0123456789abcdef","state":"preparing"}' >"$backup/.zanik-backup.json"
+printf '%s\n' "{\"schemaVersion\":1,\"operationId\":\"0123456789abcdef\",\"backup\":\"$backup\"}" >"$server/zanik/state/game-update-request.json"
 printf 'world-data' >"$server/RSDragonwilds/Saved/SaveGames/world.sav"
 printf '"buildid" "100"\n' >"$server/steamapps/appmanifest_4019830.acf"
 cat >"$server/steamcmd/steamcmd.sh" <<EOF
@@ -25,6 +29,9 @@ grep -q 'ZANIK_COMPAT_LAUNCHER=1' "$game"
 grep -q '"status":"complete"' "$server/zanik/state/game-update-result.json"
 grep -q '"installedBuild":"200"' "$server/zanik/state/game-update-result.json"
 [ "$(cat "$server/RSDragonwilds/Saved/SaveGames/world.sav")" = world-data ]
+[ -f "$backup/official-previous" ]
+[ ! -e "$backup/official-before-update" ]
+[ "$(find "$server/zanik-backups/game-update" -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 1 ]
 
 # Every updater preflight failure must put the small launcher back at the fixed
 # executable path instead of stranding the server on the one-shot script.

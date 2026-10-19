@@ -2,6 +2,24 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.44] - 2026-10-19
+
+### Added
+
+- Add a Doctor **Storage and backups** inventory with explicit review and cleanup of recognized superseded Zanik recovery data on the selected server.
+- Publish bounded backup-retention health through diagnostics and `/api/update-status` without exposing backup contents or secrets.
+
+### Changed
+
+- Keep one verified recovery point for each Zanik payload, Dragonwilds update, configuration, and uninstall backup family while protecting unresolved operations.
+- Keep local Zanik Manager updates, validated bundles, incremental extraction caches, staging, and operation journals under explicit bounded retention rules.
+- Consolidate replacement-mode Dragonwilds updates into one backup directory containing one prior official executable.
+
+### Fixed
+
+- Prevent repeated Manager repairs, configuration saves, game updates, CLI updates, and successful transaction journals from accumulating unbounded recovery copies.
+- Avoid creating an empty server backup for a first-time Zanik installation.
+
 ## [0.2.43] - 2026-10-19
 
 ### Added

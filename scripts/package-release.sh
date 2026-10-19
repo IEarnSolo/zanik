@@ -24,7 +24,7 @@ for file in install update uninstall doctor init-assets compat-launcher verify-a
 install -m 0644 "$ROOT/tools/zanik_assets.py" "$WORK/server/tools/zanik_assets.py"
 install -m 0644 "$ROOT/tools/asset_filesystem.py" "$WORK/server/tools/asset_filesystem.py"
 install -m 0644 "$ROOT/VERSION" "$ROOT/CHANGELOG.md" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/README.md" "$WORK/server/"
-for file in installation.md linux.md pterodactyl.md docker.md upgrades.md uninstall.md configuration.md assets.md security.md hosting.md curseforge.md releasing.md contributor-architecture.md manager.md game-update-safety.md; do install -m 0644 "$ROOT/docs/$file" "$WORK/server/docs/$file"; done
+for file in installation.md linux.md pterodactyl.md docker.md upgrades.md uninstall.md configuration.md assets.md security.md hosting.md curseforge.md releasing.md contributor-architecture.md manager.md game-update-safety.md backups.md; do install -m 0644 "$ROOT/docs/$file" "$WORK/server/docs/$file"; done
 python3 "$ROOT/manager/zanik_manager/payload_contract.py" --root "$WORK/server" --release-version "$VERSION" --output "$WORK/server/payload-contract.json"
 
 normalize(){ find "$1" -type f -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +; find "$1" -type d -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +; }

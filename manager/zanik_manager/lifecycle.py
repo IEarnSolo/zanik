@@ -22,6 +22,8 @@ from .provider import ServerProvider
 
 GAME_RELATIVE = "RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping"
 LAUNCHER_MARKER = b"ZANIK_COMPAT_LAUNCHER=1"
+BACKUP_MANIFEST = ".zanik-backup.json"
+BACKUP_FAMILIES = {"payload", "game-update", "configuration", "uninstall", "cli-update", "migration"}
 
 
 def safe_archive_name(name: str) -> str:
@@ -237,6 +239,168 @@ class PterodactylProvider(ServerProvider):
     def _exists(self, server_id: str, path: str) -> bool:
         return self._entry(server_id, path) is not None
 
+    @staticmethod
+    def _backup_parents(root: str) -> tuple[str, ...]:
+        return (f"{root}/zanik-backups/manager", f"{root}/zanik-backups/game-update",
+                f"{root}/zanik-data/update-history")
+
+    def _write_backup_manifest(self, server_id: str, path: str, family: str, operation_id: str,
+                               state: str, created_at: str | None = None,
+                               managed_paths: list[str] | None = None, known_bytes: int | None = None) -> dict:
+        if family not in BACKUP_FAMILIES or state not in {"preparing", "complete", "failed", "superseded"}:
+            raise ValueError("Invalid managed backup metadata")
+        existing = None
+        try:
+            existing = json.loads(self.client.read_file(server_id, f"{path}/{BACKUP_MANIFEST}"))
+        except Exception:
+            pass
+        manifest = {
+            "schemaVersion": 1,
+            "owner": "Zanik Manager",
+            "family": family,
+            "operationId": operation_id,
+            "createdAt": (existing or {}).get("createdAt") or created_at or dt.datetime.now(dt.timezone.utc).isoformat(),
+            "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "state": state,
+            "managedPaths": sorted(set(managed_paths or (existing or {}).get("managedPaths") or [])),
+            "knownBytes": known_bytes if known_bytes is not None else (existing or {}).get("knownBytes"),
+        }
+        data = (json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n").encode()
+        self.client.write_file(server_id, f"{path}/{BACKUP_MANIFEST}", data)
+        self.client.chmod(server_id, path, [(BACKUP_MANIFEST, 0o600)])
+        return manifest
+
+    @staticmethod
+    def _legacy_backup_family(parent: str, name: str) -> str | None:
+        timestamp = r"\d{8}T\d{6}Z"
+        if parent.endswith("/zanik-backups/manager"):
+            if re.fullmatch(timestamp + r"-config", name): return "configuration"
+            if re.fullmatch(timestamp + r"-[0-9a-f]{8}-uninstall", name): return "uninstall"
+            if re.fullmatch(timestamp + r"-[0-9a-f]{8}", name): return "payload"
+        if parent.endswith("/zanik-backups/game-update") and re.fullmatch(timestamp + r"(?:-[0-9a-f]{8})?", name):
+            return "game-update"
+        if parent.endswith("/zanik-data/update-history"):
+            if re.fullmatch(timestamp + r"-legacy-migration", name): return "migration"
+            if re.fullmatch(timestamp, name): return "cli-update"
+        return None
+
+    def backup_storage_status(self, server_id: str, server_root: str) -> dict:
+        """Inventory only shallow, recognized Zanik backup roots; never scan user data."""
+        root = validate_server_root(server_root)
+        records: list[dict] = []
+        for parent in self._backup_parents(root):
+            try:
+                rows = self.client.list_files(server_id, parent)
+            except PterodactylError as error:
+                if error.status in {404, 500, 502, 503, 504}: continue
+                raise
+            for row in rows:
+                if row.get("is_file", False): continue
+                name = str(row.get("name", ""))
+                path = f"{parent}/{name}"
+                manifest = None
+                try:
+                    candidate = json.loads(self.client.read_file(server_id, f"{path}/{BACKUP_MANIFEST}"))
+                    if (candidate.get("schemaVersion") == 1
+                            and candidate.get("owner") in {"Zanik Manager", "Zanik shell lifecycle"}
+                            and candidate.get("family") in BACKUP_FAMILIES):
+                        manifest = candidate
+                except Exception:
+                    pass
+                if manifest:
+                    records.append({"path": path, "managed": True, "legacy": False,
+                                    "family": manifest["family"], "state": manifest.get("state", "unknown"),
+                                    "operationId": manifest.get("operationId"),
+                                    "createdAt": manifest.get("createdAt", ""),
+                                    "knownBytes": manifest.get("knownBytes")})
+                else:
+                    family = self._legacy_backup_family(parent, name)
+                    if family:
+                        records.append({"path": path, "managed": False, "legacy": True,
+                                        "family": family, "state": "legacy-unverified",
+                                        "createdAt": name[:16], "knownBytes": None})
+        records.sort(key=lambda item: (item.get("family", ""), item.get("createdAt", "")), reverse=True)
+        protected = [item for item in records if item.get("state") in {"preparing", "failed"}]
+        return {"schemaVersion": 1, "retentionPerFamily": 1, "records": records,
+                "managedCount": sum(bool(item["managed"]) for item in records),
+                "legacyCount": sum(bool(item["legacy"]) for item in records),
+                "protectedCount": len(protected),
+                "excludedRoots": [f"{root}/RSDragonwilds/Saved", f"{root}/zanik-data",
+                                  f"{root}/zanik-release", f"{root}/zanik-assets-incoming"]}
+
+    @staticmethod
+    def _cleanup_candidates(report: dict, include_legacy: bool = False) -> list[dict]:
+        grouped: dict[str, list[dict]] = {}
+        for item in report.get("records", []):
+            if item.get("state") in {"preparing", "failed"}: continue
+            if item.get("legacy") and not include_legacy: continue
+            if item.get("managed") and item.get("state") not in {"complete", "superseded"}: continue
+            grouped.setdefault(item.get("family", ""), []).append(item)
+        result = []
+        for items in grouped.values():
+            items.sort(key=lambda item: item.get("createdAt", ""), reverse=True)
+            result.extend(item for index, item in enumerate(items)
+                          if item.get("state") == "superseded" or index > 0)
+        return sorted(result, key=lambda item: item["path"])
+
+    def cleanup_backup_retention(self, server_id: str, server_root: str,
+                                 include_legacy: bool = False, requested: set[str] | None = None) -> dict:
+        report = self.backup_storage_status(server_id, server_root)
+        candidates = self._cleanup_candidates(report, include_legacy)
+        if requested is not None:
+            candidates = [item for item in candidates if item["path"] in requested]
+        removed, warnings = [], []
+        for item in candidates:
+            path = PurePosixPath(item["path"])
+            if str(path.parent) not in self._backup_parents(validate_server_root(server_root)):
+                warnings.append(f"Refused unsafe cleanup target: {path}"); continue
+            try:
+                self.client.delete(server_id, str(path.parent), [path.name]); removed.append(str(path))
+            except Exception as error:
+                warnings.append(f"Could not remove {path}: {error}")
+        remaining = self.backup_storage_status(server_id, server_root)
+        self._publish_backup_status(server_id, server_root, remaining, warnings)
+        return {"removed": removed, "warnings": warnings, "remaining": remaining}
+
+    def _publish_backup_status(self, server_id: str, server_root: str, report: dict,
+                               warnings: list[str] | None = None) -> None:
+        root = validate_server_root(server_root)
+        if not self._directory_exists(server_id, f"{root}/zanik/state"): return
+        families: dict[str, int] = {}
+        for item in report.get("records", []):
+            if item.get("managed") and item.get("state") == "complete":
+                families[item["family"]] = families.get(item["family"], 0) + 1
+        value = {"schemaVersion": 1, "status": "healthy" if not warnings else "warning",
+                 "retentionPerFamily": 1, "successfulByFamily": families,
+                 "protectedOperations": report.get("protectedCount", 0),
+                 "legacyCandidates": report.get("legacyCount", 0),
+                 "cleanupWarnings": list(warnings or [])[:10],
+                 "checkedAt": dt.datetime.now(dt.timezone.utc).isoformat()}
+        self.client.write_file(server_id, f"{root}/zanik/state/backup-retention-status.json",
+                               (json.dumps(value, separators=(",", ":")) + "\n").encode())
+
+    def _finish_backup(self, profile_id: str, action: str, server_id: str, server_root: str,
+                       path: str, family: str, operation_id: str, state: str) -> None:
+        if not path: return
+        self._write_backup_manifest(server_id, path, family, operation_id, state)
+        if state != "complete": return
+        completed_at = dt.datetime.now(dt.timezone.utc).isoformat()
+        superseded = self.journals.supersede_failed(profile_id, action, completed_at)
+        self._supersede_failed_remote_backups(server_id, server_root, family, path, superseded)
+        self.cleanup_backup_retention(server_id, server_root)
+
+    def _supersede_failed_remote_backups(self, server_id: str, server_root: str, family: str,
+                                         current_path: str, operation_ids: set[str] | None = None) -> None:
+        report = self.backup_storage_status(server_id, server_root)
+        for item in report["records"]:
+            if (item.get("managed") and item["path"] != current_path and item.get("family") == family
+                    and item.get("state") == "failed"):
+                self._write_backup_manifest(server_id, item["path"], item["family"],
+                                            item.get("operationId") or "unknown", "superseded")
+            elif item.get("managed") and item.get("operationId") in (operation_ids or set()):
+                self._write_backup_manifest(server_id, item["path"], item["family"],
+                                            item["operationId"], "superseded")
+
     def _upload_payload(self, server_id: str, stage: str, payload: ReleasePayload, journal: OperationJournal,
                         progress: Callable[[str, int], None] = lambda _message, _percent: None) -> None:
         directories = sorted({str(PurePosixPath(stage) / PurePosixPath(name).parent) for name in payload.entries})
@@ -341,6 +505,13 @@ class PterodactylProvider(ServerProvider):
         stage = f"{root}/.zanik-manager/staging/{journal.operation_id}/release"
         timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         backup = f"{root}/zanik-backups/manager/{timestamp}-{journal.operation_id[:8]}"
+        backup_created = False
+        def ensure_backup() -> None:
+            nonlocal backup_created
+            if backup_created: return
+            self._mkdir(server_id, backup)
+            self._write_backup_manifest(server_id, backup, "payload", journal.operation_id, "preparing")
+            backup_created = True
         previous_install = None
         try:
             progress("Checking panel permissions", 5)
@@ -376,9 +547,8 @@ class PterodactylProvider(ServerProvider):
                     self._wait_offline(server_id)
                 journal.completed_steps.append("server-stopped")
                 self.journals.save(journal)
-            progress("Preparing staging and backup directories", 18)
+            progress("Preparing verified staging", 18)
             self._mkdir(server_id, stage)
-            self._mkdir(server_id, backup)
             self._upload_payload(server_id, stage, payload, journal, progress)
             remote_journal = f"{root}/.zanik-manager/transactions/{journal.operation_id}.json"
             self._mkdir(server_id, str(PurePosixPath(remote_journal).parent))
@@ -387,6 +557,7 @@ class PterodactylProvider(ServerProvider):
             progress("Activating the verified Zanik payload", 68)
             # Keep an existing installation recoverable before the critical activation.
             if self._exists(server_id, f"{root}/zanik/install-state.json"):
+                ensure_backup()
                 self.client.rename(server_id, root, [("zanik", f"zanik-backups/manager/{PurePosixPath(backup).name}/zanik")])
                 journal.rollback.append({"from": f"{backup}/zanik", "to": f"{root}/zanik"})
             self.client.rename(server_id, root, [(str(PurePosixPath(stage).relative_to(root)), "zanik")])
@@ -428,6 +599,7 @@ class PterodactylProvider(ServerProvider):
                 original = game + ".zanik-original"
                 current = self.client.download_file(server_id, game)
                 if LAUNCHER_MARKER in current:
+                    ensure_backup()
                     original_data = self.client.download_file(server_id, original)
                     if not original_data.startswith(b"\x7fELF"):
                         raise RuntimeError("The preserved official executable is not a verified ELF file")
@@ -438,6 +610,7 @@ class PterodactylProvider(ServerProvider):
                     self.journals.save(journal)
                 elif current.startswith(b"\x7fELF"):
                     if self._exists(server_id, original):
+                        ensure_backup()
                         prior = self.client.download_file(server_id, original)
                         if not prior.startswith(b"\x7fELF"):
                             raise RuntimeError("Existing .zanik-original is not a verified ELF file")
@@ -448,6 +621,7 @@ class PterodactylProvider(ServerProvider):
                     journal.rollback.append({"kind": "restore-official", "from": original, "to": game})
                     self.journals.save(journal)
                 elif is_exact_legacy_launcher(current, root):
+                    ensure_backup()
                     original_data = self.client.download_file(server_id, original)
                     if not original_data.startswith(b"\x7fELF"):
                         raise RuntimeError("The legacy launcher has no verified executable ELF at .zanik-original")
@@ -488,11 +662,26 @@ class PterodactylProvider(ServerProvider):
             if stop_server and not startup_action_required:
                 progress("Starting the game server", 97)
                 self.client.power(server_id, "start")
+            if backup_created:
+                self._finish_backup(profile_id, "install", server_id, root, backup, "payload",
+                                    journal.operation_id, "complete")
+            try:
+                self.client.delete(server_id, f"{root}/.zanik-manager/staging", [journal.operation_id])
+                self.client.delete(server_id, f"{root}/.zanik-manager/transactions", [f"{journal.operation_id}.json"])
+            except Exception:
+                pass
+            self.journals.prune()
             progress("Installation complete", 100)
-            return {"installation": state, "backup": backup, "operationId": journal.operation_id,
+            return {"installation": state, "backup": backup if backup_created else None, "operationId": journal.operation_id,
                     "startupActionRequired": startup_action_required}
         except Exception as error:
             journal.state = "failed"; journal.error = str(error); self.journals.save(journal)
+            if backup_created:
+                try:
+                    self._finish_backup(profile_id, "install", server_id, root, backup, "payload",
+                                        journal.operation_id, "failed")
+                except Exception:
+                    pass
             raise
 
     def rollback(self, journal: OperationJournal, server_id: str, server_root: str) -> None:
@@ -557,11 +746,16 @@ class PterodactylProvider(ServerProvider):
         root = server_root.rstrip("/")
         result = {"healthy": True, "checks": {}}
         try:
+            result["backupRetention"] = self.backup_storage_status(server_id, root)
+        except Exception as error:
+            result["backupRetention"] = {"schemaVersion": 1, "status": "unavailable", "error": str(error)}
+        try:
             state_raw = self.client.read_file(server_id, f"{root}/zanik/install-state.json")
             state = json.loads(state_raw)
             result["installation"] = state
         except Exception as error:
-            return {"healthy": False, "checks": {"installation": str(error)}}
+            result.update({"healthy": False, "checks": {"installation": str(error)}})
+            return result
         replacement = self.replacement_launcher_status(server_id, root)
         result["launcher"] = replacement
         if replacement.get("applicable"):
@@ -849,6 +1043,7 @@ class PterodactylProvider(ServerProvider):
         self.journals.save(journal)
         timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         backup = f"{root}/zanik-backups/game-update/{timestamp}-{journal.operation_id[:8]}"
+        backup_created = False
         previous_auto = None
         def record_installation(executable_sha256: str, build: str) -> None:
             if not install.get("version"):
@@ -919,7 +1114,7 @@ class PterodactylProvider(ServerProvider):
                     if self._auto_update(server_id)["value"] != previous_auto:
                         raise RuntimeError("Dragonwilds updated, but Manager could not restore the prior AUTO_UPDATE preference")
                 journal.state = "complete"; journal.completed_steps.append("game-updated")
-                self.journals.save(journal); progress("Dragonwilds update complete", 100)
+                self.journals.save(journal); self.journals.prune(); progress("Dragonwilds update complete", 100)
                 return {"mode": mode, "installedBuild": installed, "maintenanceExpected": True,
                         "operationId": journal.operation_id}
 
@@ -933,8 +1128,13 @@ class PterodactylProvider(ServerProvider):
                     not original_entry.get("is_file") or int(original_entry.get("size") or 0) < 1024 * 1024):
                 raise RuntimeError("Replacement launcher or preserved official executable did not verify")
             self._mkdir(server_id, backup)
+            self._write_backup_manifest(server_id, backup, "game-update", journal.operation_id, "preparing")
+            backup_created = True
             self.client.upload(server_id, backup, "compat-launcher", launcher)
             self.client.write_file(server_id, f"{root}/zanik/state/game-update-launcher", launcher)
+            request = (json.dumps({"schemaVersion": 1, "operationId": journal.operation_id,
+                                   "backup": backup}, separators=(",", ":")) + "\n").encode()
+            self.client.write_file(server_id, f"{root}/zanik/state/game-update-request.json", request)
             self.client.chmod(server_id, f"{root}/zanik/state", [("game-update-launcher", 0o755)])
             updater = self.client.read_file(server_id, f"{root}/zanik/scripts/update-game.sh")
             if b"ZANIK_GAME_UPDATER=1" not in updater:
@@ -971,7 +1171,15 @@ class PterodactylProvider(ServerProvider):
             progress("Starting Dragonwilds through the restored Zanik launcher", 92)
             self.client.power(server_id, "start")
             journal.state = "complete"; journal.completed_steps.append("game-updated")
-            self.journals.save(journal); progress("Dragonwilds update complete", 100)
+            self.journals.save(journal)
+            self._finish_backup(profile_id, "game-update", server_id, root, backup, "game-update",
+                                journal.operation_id, "complete")
+            try:
+                self.client.delete(server_id, f"{root}/zanik/state",
+                                   ["game-update-launcher", "game-update-request.json", "game-update-result.json"])
+            except Exception:
+                pass
+            self.journals.prune(); progress("Dragonwilds update complete", 100)
             return {"mode": mode, "installedBuild": report["installedBuild"], "backup": backup,
                     "maintenanceExpected": True, "operationId": journal.operation_id}
         except Exception as error:
@@ -982,6 +1190,12 @@ class PterodactylProvider(ServerProvider):
                 except Exception:
                     pass
             journal.state = "failed"; journal.error = str(error); self.journals.save(journal)
+            if backup_created:
+                try:
+                    self._finish_backup(profile_id, "game-update", server_id, root, backup, "game-update",
+                                        journal.operation_id, "failed")
+                except Exception:
+                    pass
             raise
 
     def _server_asset_audit(self, server_id: str, root: str, manifest: dict,
@@ -1029,24 +1243,35 @@ class PterodactylProvider(ServerProvider):
         if sha256(current) != expected_sha256:
             raise RuntimeError("Configuration changed on the server; reload it before saving")
         timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        backup_dir = f"{root}/zanik-backups/manager/{timestamp}-config"
+        operation_id = secrets.token_hex(8)
+        backup_dir = f"{root}/zanik-backups/manager/{timestamp}-{operation_id[:8]}-config"
         self._mkdir(server_id, backup_dir)
+        self._write_backup_manifest(server_id, backup_dir, "configuration", operation_id, "preparing",
+                                    managed_paths=[path], known_bytes=len(current))
         self.client.upload(server_id, backup_dir, "zanik.conf", current)
-        temporary = path + ".manager-new"
-        self.client.write_file(server_id, temporary, content)
-        if sha256(self.client.read_file(server_id, temporary)) != sha256(content):
-            raise RuntimeError("Uploaded configuration did not verify")
-        config_root = f"{root}/zanik/config"
-        old_name = f"zanik.conf.manager-old-{timestamp}"
-        self.client.rename(server_id, config_root, [("zanik.conf", old_name)])
         try:
-            self.client.rename(server_id, config_root, [("zanik.conf.manager-new", "zanik.conf")])
+            temporary = path + ".manager-new"
+            self.client.write_file(server_id, temporary, content)
+            if sha256(self.client.read_file(server_id, temporary)) != sha256(content):
+                raise RuntimeError("Uploaded configuration did not verify")
+            config_root = f"{root}/zanik/config"
+            old_name = f"zanik.conf.manager-old-{timestamp}"
+            self.client.rename(server_id, config_root, [("zanik.conf", old_name)])
+            try:
+                self.client.rename(server_id, config_root, [("zanik.conf.manager-new", "zanik.conf")])
+            except Exception:
+                if not self._exists(server_id, path) and self._exists(server_id, f"{config_root}/{old_name}"):
+                    self.client.rename(server_id, config_root, [(old_name, "zanik.conf")])
+                raise
+            self.client.delete(server_id, config_root, [old_name])
+            self.client.chmod(server_id, f"{root}/zanik/config", [("zanik.conf", 0o600)])
+            self._write_backup_manifest(server_id, backup_dir, "configuration", operation_id, "complete")
+            self._supersede_failed_remote_backups(server_id, root, "configuration", backup_dir)
+            self.cleanup_backup_retention(server_id, root)
         except Exception:
-            if not self._exists(server_id, path) and self._exists(server_id, f"{config_root}/{old_name}"):
-                self.client.rename(server_id, config_root, [(old_name, "zanik.conf")])
+            try: self._write_backup_manifest(server_id, backup_dir, "configuration", operation_id, "failed")
+            except Exception: pass
             raise
-        self.client.delete(server_id, config_root, [old_name])
-        self.client.chmod(server_id, f"{root}/zanik/config", [("zanik.conf", 0o600)])
         return {"sha256": sha256(content), "backup": f"{backup_dir}/zanik.conf"}
 
     def uninstall(self, profile_id: str, server_id: str, server_root: str, purge_data: bool = False) -> dict:
@@ -1059,20 +1284,32 @@ class PterodactylProvider(ServerProvider):
         timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         backup = f"{root}/zanik-backups/manager/{timestamp}-{operation.operation_id[:8]}-uninstall"
         self._mkdir(server_id, backup)
-        game = f"{root}/{GAME_RELATIVE}"
-        if state.get("mode") == "replace-executable":
-            launcher = self.client.download_file(server_id, game)
-            original = self.client.download_file(server_id, game + ".zanik-original")
-            if LAUNCHER_MARKER not in launcher or not original.startswith(b"\x7fELF"):
-                raise RuntimeError("Executable state is not a verified Zanik replacement; refusing uninstall")
-            self.client.rename(server_id, root, [(str(PurePosixPath(game).relative_to(root)),
-                                                  f"zanik-backups/manager/{PurePosixPath(backup).name}/compat-launcher"),
-                                                 (str(PurePosixPath(game + '.zanik-original').relative_to(root)),
-                                                  str(PurePosixPath(game).relative_to(root)))])
-            self._restore_managed_auto_update(server_id, state.get("autoUpdate"))
-        self.client.rename(server_id, root, [("zanik", f"zanik-backups/manager/{PurePosixPath(backup).name}/zanik")])
-        if purge_data and self._directory_exists(server_id, f"{root}/zanik-data"):
-            self.client.rename(server_id, root, [("zanik-data", f"zanik-backups/manager/{PurePosixPath(backup).name}/purged-zanik-data")])
-        operation.state = "complete"; operation.completed_steps.append("uninstalled"); self.journals.save(operation)
-        self.client.power(server_id, "start")
-        return {"backup": backup, "dataPurged": purge_data, "operationId": operation.operation_id}
+        self._write_backup_manifest(server_id, backup, "uninstall", operation.operation_id, "preparing")
+        try:
+            game = f"{root}/{GAME_RELATIVE}"
+            if state.get("mode") == "replace-executable":
+                launcher = self.client.download_file(server_id, game)
+                original = self.client.download_file(server_id, game + ".zanik-original")
+                if LAUNCHER_MARKER not in launcher or not original.startswith(b"\x7fELF"):
+                    raise RuntimeError("Executable state is not a verified Zanik replacement; refusing uninstall")
+                self.client.rename(server_id, root, [(str(PurePosixPath(game).relative_to(root)),
+                                                      f"zanik-backups/manager/{PurePosixPath(backup).name}/compat-launcher"),
+                                                     (str(PurePosixPath(game + '.zanik-original').relative_to(root)),
+                                                      str(PurePosixPath(game).relative_to(root)))])
+                self._restore_managed_auto_update(server_id, state.get("autoUpdate"))
+            self.client.rename(server_id, root, [("zanik", f"zanik-backups/manager/{PurePosixPath(backup).name}/zanik")])
+            if purge_data and self._directory_exists(server_id, f"{root}/zanik-data"):
+                self.client.rename(server_id, root, [("zanik-data", f"zanik-backups/manager/{PurePosixPath(backup).name}/purged-zanik-data")])
+            operation.state = "complete"; operation.completed_steps.append("uninstalled"); self.journals.save(operation)
+            self._finish_backup(profile_id, "uninstall", server_id, root, backup, "uninstall",
+                                operation.operation_id, "complete")
+            self.journals.prune()
+            self.client.power(server_id, "start")
+            return {"backup": backup, "dataPurged": purge_data, "operationId": operation.operation_id}
+        except Exception as error:
+            operation.state = "failed"; operation.error = str(error); self.journals.save(operation)
+            try:
+                self._write_backup_manifest(server_id, backup, "uninstall", operation.operation_id, "failed")
+            except Exception:
+                pass
+            raise

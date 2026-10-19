@@ -75,3 +75,61 @@ class JournalStore:
         result = [journal for path, journal in records
                   if path.exists() and journal.state not in {"complete", "rolled-back"}]
         return sorted(result, key=lambda item: item.created_at)
+
+    def supersede_failed(self, profile_id: str, action: str, completed_at: str) -> set[str]:
+        """Mark older failures safe for retention cleanup after a verified success."""
+        try:
+            boundary = dt.datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+            if boundary.tzinfo is None:
+                boundary = boundary.replace(tzinfo=dt.timezone.utc)
+        except (AttributeError, TypeError, ValueError):
+            return set()
+        result: set[str] = set()
+        for path in self.root.glob("*.json"):
+            journal = self.load(path)
+            created = self._created_at(journal)
+            if (journal.profile_id == profile_id and journal.action == action and journal.state == "failed"
+                    and created is not None and created < boundary):
+                journal.state = "superseded"
+                journal.completed_steps.append("superseded-by-verified-success")
+                self.save(journal)
+                result.add(journal.operation_id)
+        return result
+
+    def prune(self) -> dict[str, int]:
+        """Keep unresolved work and the newest completed record per profile/action."""
+        records: list[tuple[Path, OperationJournal]] = []
+        for path in self.root.glob("*.json"):
+            try:
+                records.append((path, self.load(path)))
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                continue
+        newest: dict[tuple[str, str], tuple[Path, OperationJournal]] = {}
+        for path, journal in records:
+            if journal.state != "complete":
+                continue
+            key = (journal.profile_id, journal.action)
+            if key not in newest or journal.created_at > newest[key][1].created_at:
+                newest[key] = (path, journal)
+        keep = {path for path, _journal in newest.values()}
+        removed = 0
+        for path, journal in records:
+            if path in keep or journal.state not in {"complete", "rolled-back", "superseded"}:
+                continue
+            try:
+                path.unlink()
+                removed += 1
+            except OSError:
+                continue
+        archive = self.root / "archive"
+        if archive.is_dir():
+            for path in archive.glob("*.json"):
+                try:
+                    path.unlink(); removed += 1
+                except OSError:
+                    continue
+            try:
+                archive.rmdir()
+            except OSError:
+                pass
+        return {"removed": removed, "retained": len(records) - removed}

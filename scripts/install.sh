@@ -57,9 +57,12 @@ if [ "$launcher_kind" = legacy ]; then
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
   migration_backup=$data_dir/update-history/$stamp-legacy-migration
   mkdir -p "$migration_backup"
+  zanik_backup_manifest "$migration_backup" migration "$stamp-legacy-migration" preparing
   cp -p "$game" "$migration_backup/legacy-launcher"
   cp -p "$original" "$migration_backup/official-original"
   [ ! -f "$server_root/zanik/zanik-bootstrap.sh" ] || cp -p "$server_root/zanik/zanik-bootstrap.sh" "$migration_backup/zanik-bootstrap.sh"
+  zanik_backup_manifest "$migration_backup" migration "$stamp-legacy-migration" complete
+  zanik_prune_backup_family "$data_dir/update-history" migration 1
   zanik_log "Verified legacy Zanik launcher; migration backup created at $migration_backup"
 fi
 
@@ -99,7 +102,10 @@ if [ "$mode" = replace-executable ]; then
     if [ -e "$original" ]; then
       stamp=$(date -u +%Y%m%dT%H%M%SZ)
       mkdir -p "$data_dir/update-history/$stamp"
+      zanik_backup_manifest "$data_dir/update-history/$stamp" cli-update "$stamp" preparing
       mv "$original" "$data_dir/update-history/$stamp/official-before-steam-update"
+      zanik_backup_manifest "$data_dir/update-history/$stamp" cli-update "$stamp" complete
+      zanik_prune_backup_family "$data_dir/update-history" cli-update 1
       zanik_log "Steam replaced the compatibility launcher; preserved the prior official binary in update-history/$stamp."
     fi
     mv "$game" "$original"

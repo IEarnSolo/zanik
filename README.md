@@ -20,7 +20,7 @@ Players joining a Zanik-enabled server download **nothing**. Zanik Manager runs 
 
 Zanik is a native `LD_PRELOAD` library. The recommended wrapper installation leaves the official game executable untouched, supports normal Pterodactyl Steam updates, and starts it through `zanik-server`. Executable replacement is for hosted panels whose fixed egg command cannot be changed; it preserves the official binary but requires an editable `AUTO_UPDATE` variable set to `0`, because Manager must perform launcher-aware game updates.
 
-For detailed Manager instructions, see [docs/manager.md](docs/manager.md).
+For detailed Manager instructions, see [docs/manager.md](docs/manager.md). Backup locations and bounded retention are documented in [docs/backups.md](docs/backups.md).
 
 Zanik has three distinct update paths. **Update and relaunch** updates the Windows Manager. **Update / repair Zanik** installs its verified server payload only when needed or requested. **Update Dragonwilds server** performs one confirmed, mode-aware dedicated-server update. An unreviewed game build stays playable while Zanik loads no native features and serves a maintenance page until a compatible release is available.
 
@@ -71,3 +71,7 @@ CI builds and validates server `.tar.gz`/`.zip` archives and separate Linux and 
 Stable releases are built from matching `vMAJOR.MINOR.PATCH` tags. GitLab is the authoritative development and package platform; new releases and source refs are also mirrored to the public GitHub repository. See [releasing](docs/releasing.md) and [CurseForge distribution](docs/curseforge.md).
 
 The engine discovery layer is adapted from RSDWServerAPI under MIT terms. See [UPSTREAM.md](UPSTREAM.md), [LICENSE](LICENSE), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Disclaimer
+
+Zanik is an independent community project and is not affiliated with, endorsed by, or sponsored by Jagex.
