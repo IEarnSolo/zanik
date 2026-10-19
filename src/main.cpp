@@ -416,6 +416,7 @@ void Handle(int fd) {
         const std::string capabilities="{\"storageRead\":"+std::string(engineReadable?"true":"false")+
             ",\"gravestoneRead\":"+(graves.compatibility==1?"true":"false")+
             ",\"storageMutation\":"+(ZanikConfig::AdminStorageMutation()&&storage.compatibility==1?"true":"false")+
+            ",\"storageRename\":"+(ZanikConfig::AdminStorageMutation()&&storage.renameCompatibility==1?"true":"false")+
             ",\"gravestoneMutation\":"+(ZanikConfig::AdminGravestoneMutation()&&graves.compatibility==1?"true":"false")+
             ",\"teleport\":"+(ZanikConfig::AdminTeleport()&&teleport.compatibility==1?"true":"false")+"}";
         Respond(fd,200,"application/json; charset=utf-8","{\"authenticated\":true,\"characterId\":\""+JsonEscape(s.publicId)+"\",\"characterName\":\""+JsonEscape(s.characterName)+"\",\"online\":"+(online?"true":"false")+",\"csrf\":\""+s.csrf+"\",\"features\":"+ZanikConfig::Json()+",\"capabilities\":"+capabilities+"}",PersistentAdminCookie(raw));
