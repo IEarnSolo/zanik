@@ -41,9 +41,11 @@ secret stored at `/home/container/zanik-data/console-admin.key`. Requests to
 that endpoint without the secret are rejected. Other console input is passed
 unchanged to the game server.
 
-Lodestone, player, and storage teleport requests use the fingerprint-bound
-game-thread dispatcher. Storage requests accept an opaque chest ID and resolve
-the live actor again on the game thread; the browser never supplies world
+Lodestone, player, and storage teleport requests use fingerprint-bound native
+dispatchers. Storage mutation requests accept only opaque revisions. The HTTP
+worker resolves them into an immutable identity-bound plan; the game thread
+revalidates those identities and performs at most one native action per
+eligible tick. The browser never supplies native addresses or world
 coordinates.
 
 ## Update compatibility

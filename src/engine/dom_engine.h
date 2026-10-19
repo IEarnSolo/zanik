@@ -490,6 +490,35 @@ struct AdminStorageDiagnostics {
     std::uint64_t maximumCustomNameTickMicroseconds = 0;
     std::uint64_t maximumStorageTickMicroseconds = 0;
     std::uint64_t maximumGravestoneTickMicroseconds = 0;
+    int snapshotCompatibility = 0;
+    int singleItemCompatibility = 0;
+    int slotMovementCompatibility = 0;
+    int batchAdditionCompatibility = 0;
+    int batchMovementCompatibility = 0;
+    int deletionCompatibility = 0;
+    int rollbackCompatibility = 0;
+    std::uint64_t snapshotGenerations = 0;
+    std::uint64_t snapshotCacheHits = 0;
+    std::uint64_t snapshotCacheMisses = 0;
+    std::uint64_t snapshotInvalidations = 0;
+    std::uint64_t maximumSnapshotPreparationMicroseconds = 0;
+    std::uint64_t queueDepth = 0;
+    std::uint64_t queueDrops = 0;
+    std::uint64_t runningJobs = 0;
+    std::uint64_t completedJobs = 0;
+    std::uint64_t failedJobs = 0;
+    std::uint64_t staleIdentities = 0;
+    std::uint64_t worldChanges = 0;
+    std::uint64_t rollbackAttempts = 0;
+    std::uint64_t rollbackFailures = 0;
+    std::uint64_t singleItemMaximumMicroseconds = 0;
+    std::uint64_t slotMovementMaximumMicroseconds = 0;
+    std::uint64_t batchAdditionMaximumMicroseconds = 0;
+    std::uint64_t batchMovementMaximumMicroseconds = 0;
+    std::uint64_t deletionMaximumMicroseconds = 0;
+    std::uint64_t renameMaximumMicroseconds = 0;
+    std::uint64_t rollbackMaximumMicroseconds = 0;
+    std::uint32_t circuitBreakers = 0;
 };
 bool InitializeAdminStorage(uintptr_t moduleBase, uintptr_t moduleEnd);
 bool InitializeAdminStorageHookEarly();
@@ -504,11 +533,17 @@ bool SubmitAdminStorageMutation(const std::string& operation,
                                 const std::string& catalogId,
                                 int quantity,
                                 const std::string& sessionPrefix,
+                                std::string& requestId,
                                 std::string& result,
                                 const std::string& destinationChestId = {},
                                 int destinationSlot = -1,
                                 const std::vector<std::string>& itemIds = {},
                                 const std::string& customName = {});
+std::string GetAdminStorageMutationStatus(const std::string& requestId,
+                                          const std::string& sessionPrefix);
+std::string GetAdminPlayerStorageJson(const std::string& characterGuid,
+                                      const std::string& administratorCharacterGuid = {});
+void InvalidateAdminStorageSnapshots();
 AdminStorageDiagnostics GetAdminStorageDiagnostics();
 struct AdminGravestoneDiagnostics {
     int compatibility = 0;
