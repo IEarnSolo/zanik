@@ -475,11 +475,13 @@ bool ReadLodestones(std::vector<LodestoneInfo>& out){
         uintptr_t candidate=g_Engine->GetObjectByIndex(i);if(!candidate)continue;
         const std::string className=g_Engine->GetObjectClassName(candidate);
         if(g_Engine->IsA(candidate,"GameplayObjectRegistry"))candidates.insert(candidate);
-        if(className!="OwnershipComponent"&&className!="LodestoneComponent")continue;
+        const bool ownershipComponent=className=="OwnershipComponent"||g_Engine->IsA(candidate,"OwnershipComponent");
+        const bool lodestoneComponent=className=="LodestoneComponent"||g_Engine->IsA(candidate,"LodestoneComponent");
+        if(!ownershipComponent&&!lodestoneComponent)continue;
         if(g_Engine->GetObjectName(candidate).find("GEN_VARIABLE")!=std::string::npos)continue;
         const uintptr_t actor=Mem::ReadPtr(candidate+Offsets::UObject_Outer);if(!actor)continue;
-        if(className=="OwnershipComponent")ownershipComponents[actor]=candidate;
-        else lodestoneActors.insert(actor);
+        if(ownershipComponent)ownershipComponents[actor]=candidate;
+        if(lodestoneComponent)lodestoneActors.insert(actor);
     }
     std::vector<PlacedLodestone> placedLodestones;
     for(uintptr_t actor:lodestoneActors){
