@@ -85,6 +85,9 @@ if ($Resume) {
     foreach ($Name in $Fingerprint.Keys) {
         if ($Journal.fingerprints.$Name -ne $Fingerprint[$Name]) { throw "The resumable extraction no longer matches the game or packaged tools ($Name changed). Discard it and start again." }
     }
+    if ($Journal.PSObject.Properties.Name -contains 'preserveExistingLoader' -and $Journal.preserveExistingLoader) {
+        $PreserveExistingLoader = $true
+    }
 } elseif ($Incremental) {
     if (-not (Test-Path -LiteralPath $JournalPath)) { throw "No incremental extraction cache exists at '$Work'." }
     $Journal = Get-Content -LiteralPath $JournalPath -Raw | ConvertFrom-Json
@@ -105,6 +108,10 @@ if ($Resume) {
     New-Item -ItemType Directory -Path $Work -Force | Out-Null
     Write-JsonAtomic $MarkerPath @{ schemaVersion = 1; owner = 'Zanik asset extractor' }
     $Journal = [pscustomobject]@{ schemaVersion = 1; stage = 'created'; createdAt = [DateTime]::UtcNow.ToString('o'); updatedAt = [DateTime]::UtcNow.ToString('o'); fingerprints = $Fingerprint }
+    Write-JsonAtomic $JournalPath $Journal
+}
+if ($PreserveExistingLoader -and $StateOrder[$Journal.stage] -lt $StateOrder['mappings']) {
+    $Journal | Add-Member -NotePropertyName preserveExistingLoader -NotePropertyValue $true -Force
     Write-JsonAtomic $JournalPath $Journal
 }
 $Generated = Join-Path $Work 'generated-web'

@@ -5,6 +5,7 @@ All notable changes to Zanik are documented here.
 ## [0.2.47] - 2026-10-19
 
 - Retry Windows mapping launch through the discovered Steam executable when a Steam client update or restart silently loses the initial `steam://` game-launch request, while retaining bounded failure and exact loader restoration.
+- Fix **Resume extraction** before mapping so it repeats loader-safety preflight and remembers that an existing UE4SS installation must be preserved and restored.
 
 ### Changed
 
