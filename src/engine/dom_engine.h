@@ -347,10 +347,10 @@ struct NodestoneInfo {
     std::string displayLocation;
     bool nexusEndpoint = false;
     // The fields below are server-only evidence from the validated target
-    // registry and its paired switchable teleporter. They are never serialized.
+    // registry and teleportation subsystem. They are never serialized.
     std::uint32_t nativeTargetName[2]{};
-    uintptr_t nativeTeleporter = 0;
-    std::uint64_t nativeTeleporterIdentity = 0;
+    uintptr_t nativeSubsystem = 0;
+    std::uint64_t nativeSubsystemIdentity = 0;
 };
 
 struct NodestoneDiagnostics {
@@ -468,6 +468,7 @@ bool ReadMapLabels(std::vector<MapLabelInfo>& out);
 MapLabelDiagnostics GetMapLabelDiagnostics();
 LodestoneDiagnostics GetLodestoneDiagnostics();
 bool InitializeAdminTeleport(uintptr_t moduleBase, uintptr_t moduleEnd);
+bool RefreshAdminNodestoneTeleportCompatibility();
 bool QueueAdminTeleport(const std::string& characterGuid, const std::string& publicId,
                         const std::string& destinationId, const std::string& sessionPrefix);
 bool QueueAdminNodestoneTeleport(const std::string& characterGuid, const std::string& publicId,
