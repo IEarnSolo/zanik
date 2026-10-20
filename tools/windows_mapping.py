@@ -256,6 +256,42 @@ def recover(journal_path: Path) -> bool:
         journal["restoredAt"] = int(time.time())
         write_journal(journal_path, journal)
         return True
+    # A late Steam launch can outlive the mapper process.  In that case the
+    # mapper's finally block may restore the user's loader and remove its
+    # backup, while the last durable journal state still says "running".  A
+    # subsequent game start is also allowed to rewrite UE4SS runtime files.
+    # Recognize that narrowly: every non-runtime file and the proxy must still
+    # match the preserved inventory, and Zanik's ownership marker must be gone.
+    if preserved and journal.get("preservedBackupVerified"):
+        backup_value = journal.get("backupDirectory")
+        backup_missing = not backup_value or not Path(backup_value).exists()
+        current_proxy = checked_snapshot(proxy) if proxy.exists() else {}
+        current_owned = checked_snapshot(owned) if owned.exists() else {}
+        prior_owned = preserved.get("ue4ss") or {}
+        runtime_generated = {
+            "imgui.ini",
+            "liveview/filters.meta.json",
+            "watches/watches.meta.json",
+        }
+        changed_non_runtime = [
+            path for path in set(prior_owned) | set(current_owned)
+            if not (path.casefold().endswith(".log") or path.casefold() in runtime_generated)
+            and prior_owned.get(path) != current_owned.get(path)
+        ]
+        restored_without_final_state = (
+            backup_missing
+            and current_proxy == (preserved.get("proxy") or {})
+            and not changed_non_runtime
+            and owned.is_dir()
+            and not owned.is_symlink()
+            and not (owned / ".zanik-mapping-owner.json").exists()
+        )
+        if restored_without_final_state:
+            journal["state"] = "restored"
+            journal["restoredAt"] = int(time.time())
+            journal["recoveredFromStaleState"] = True
+            write_journal(journal_path, journal)
+            return True
     proxy_staging = binary_dir / PROXY_STAGING_NAME
     directory_staging = binary_dir / DIRECTORY_STAGING_NAME
     installed_files = journal.get("ownedFilesInstalled")
