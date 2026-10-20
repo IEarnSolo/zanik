@@ -66,20 +66,22 @@ records. Nexus markers are labelled by both their physical location and route,
 for example `The Nexus · Garrison route`. Internal `FName` values and native
 object identities are never serialized.
 
-Authenticated map requests are prepared on the HTTP worker from a live paired
-target and switchable-teleporter snapshot. The game-thread dispatcher validates
-the actor index/serial identity and calls the reflected
-`ASwitchableTeleporter::PerformTeleport(PlayerCharacter, TargetDestination)`
-wrapper once. Static analysis requires both that wrapper and
-`UTeleportationSubsystem::TeleportToNamedLocation`, and proves that both
-converge on the reviewed `TeleportWithParams` implementation. Runtime
-reflection independently requires `PlayerCharacter` at parameter offset `0x0`
-and `TargetDestination` at `0x8`. This preserves the native wind-up, loading,
-VFX, delayed movement, and completion callback instead of substituting a raw
-coordinate teleport.
+Authenticated map requests are prepared on the HTTP worker from a live target
+registry snapshot. The game-thread dispatcher revalidates the subsystem
+index/serial identity and calls the reflected
+`UTeleportationSubsystem::TeleportToNamedLocation` entry once with the exact
+reviewed parameter layout: player `0x0`, location name `0x8`, empty completion
+delegate `0x10`, loading transition `true` at `0x20`,
+optional `ETeleportationType::Teleport` (`0`) at `0x21`, no graveyard override at `0x28`,
+and return value at `0x30`. Static analysis additionally requires
+`ASwitchableTeleporter::PerformTeleport` and proves that both official entries
+converge on the reviewed `TeleportWithParams` implementation. Arrival is
+observed asynchronously without blocking or retrying the native call. This
+preserves the named-location wind-up, loading transition, and delayed movement
+instead of substituting a raw coordinate teleport.
 
 The capability has its own compatibility gate, counters, timeout handling, and
-1 ms circuit breaker. A stale target, unloaded or changed teleporter, changed
+1 ms circuit breaker. A stale target, changed subsystem, changed
 reflection layout, duplicate request, timeout, or slow native initiation fails
 closed. Read-only nodestone markers and their public location/coordinate
 tooltips remain available when teleporting is unavailable. No placement-owner

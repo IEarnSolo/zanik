@@ -199,11 +199,6 @@ int main(int argc,char** argv){
     std::uint32_t dungeonNameOffset=reflectedOffset("UserVisibleName",0x30,0xC0);
     std::uint32_t dungeonEntranceOffset=reflectedOffset("EntranceLocation",0x30,0xC0);
     if(dungeonNameOffset!=0x88||dungeonEntranceOffset!=0x38){std::cerr<<"dungeon field layout changed\n";return 9;}
-    const std::uint32_t nodestoneDestinationOffset=reflectedOffset("TeleportDestinationName",0x400,0x480);
-    const std::uint32_t nodestoneOriginOffset=reflectedOffset("TeleportOriginName",0x400,0x480);
-    if(nodestoneDestinationOffset!=0x440||nodestoneOriginOffset!=0x450){
-        std::cerr<<"switchable nodestone target layout changed\n";return 9;
-    }
     for(auto address:{registryInstanceAt,registryLodestonesAt,lodestoneLocationAt}){
         auto at=fileAt(address);if(at==~0ULL||at+8>binary.size()){
             std::cerr<<"lodestone function outside ELF\n";return 9;

@@ -39,7 +39,7 @@ TickFn originalTick=nullptr;TeleportFn actorTeleport=nullptr;ProcessEventFn proc
 TryTeleportFn nativeTryTeleport=nullptr;CanTeleportFn originalCanTeleport=nullptr;
 uintptr_t lineTraceObject=0,lineTraceFunction=0;
 uintptr_t teleportSubsystem=0,teleportWithParamsFunction=0,getActorBoundsFunction=0;
-uintptr_t nodestonePerformFunction=0;
+uintptr_t nodestoneNamedFunction=0;
 BPTriggerDelayedTeleportFn bpTriggerDelayedTeleport=nullptr;
 struct LineTraceLayout{int world=-1,start=-1,end=-1,channel=-1,complex=-1,ignore=-1,debug=-1,outHit=-1,ignoreSelf=-1,result=-1;};
 LineTraceLayout lineTraceLayout;
@@ -62,6 +62,8 @@ std::atomic<std::uint64_t> tickCalls{0},maximumTickMicros{0},slowTickCalls{0};
 std::atomic<std::uint64_t> maximumStorageTeleportMicros{0},slowStorageTeleportCalls{0};
 std::atomic<bool> storageTeleportCircuitBroken{false};
 std::atomic<bool> nodestoneTeleportCircuitBroken{false};
+std::atomic<unsigned> nodestoneInitializationAttempts{0};
+pthread_mutex_t nodestoneInitializationMutex=PTHREAD_MUTEX_INITIALIZER;
 std::atomic<std::uint64_t> nodestoneQueued{0},nodestoneAccepted{0},nodestoneRejected{0},nodestoneTimedOut{0};
 std::atomic<std::uint64_t> nodestoneStale{0},nodestoneConcurrent{0},maximumNodestoneMicros{0},slowNodestoneCalls{0};
 // Keep storage teleports fail-closed until the native delayed-teleport ABI has
@@ -175,6 +177,8 @@ void LogTeleportReflection(){
         if(cls=="TeleportationSubsystem"&&name.rfind("Default__",0)!=0)record("Teleport reflection subsystem object="+name);
     }
     for(const auto& entry:{std::make_pair("TeleportationSubsystem","TeleportWithParams"),
+                           std::make_pair("TeleportationSubsystem","TeleportToNamedLocation"),
+                           std::make_pair("SwitchableTeleporter","PerformTeleport"),
                            std::make_pair("DominionPlayerCharacter","BP_TriggerDelayedTeleport"),
                            std::make_pair("Actor","GetActorBounds")}){
         const uintptr_t function=g_Engine->FindFunction(entry.first,entry.second);std::string message="Teleport reflection function="+std::string(entry.first)+"."+entry.second;
@@ -332,12 +336,20 @@ bool InitializeStorageTeleportPipeline(){
 }
 
 bool InitializeNodestoneTeleportPipeline(){
-    nodestonePerformFunction=g_Engine->FindFunction("SwitchableTeleporter","PerformTeleport");
-    if(!nodestonePerformFunction)return false;
-    const auto fields=g_Engine->GetStructPropertyOffsets(nodestonePerformFunction);
+    nodestoneNamedFunction=g_Engine->FindFunction("TeleportationSubsystem","TeleportToNamedLocation");
+    if(!nodestoneNamedFunction)return false;
+    // UFunction parameter FFields in this build use the fingerprinted function-field
+    // layout consumed by ReflectedFields.  The generic UObject property walker uses
+    // the current class-property layout and must not be applied to this function.
+    const auto fields=ReflectedFields(nodestoneNamedFunction);
     const auto has=[&](const char* name,int offset){return std::any_of(fields.begin(),fields.end(),[&](const auto& field){return field.first==name&&field.second==offset;});};
-    if(!has("PlayerCharacter",0x0)||!has("TargetDestination",0x8)){
-        LogMessage("Admin nodestone teleport disabled: PerformTeleport reflected parameter layout changed");
+    const bool valid=has("PlayerCharacter",0x0)&&has("LocationName",0x8)&&
+        has("TeleportSuccessCallbackDelegate",0x10)&&has("bShowLoadingScreen",0x20)&&
+        has("OptionalTeleportType",0x21)&&has("OptionalGraveyard",0x28)&&has("ReturnValue",0x30);
+    if(!valid){
+        std::string message="Admin nodestone teleport disabled: TeleportToNamedLocation reflected layout";
+        for(const auto& field:fields)message+=" "+field.first+"=0x"+[] (int value){char text[24]{};std::snprintf(text,sizeof(text),"%x",value);return std::string(text);}(field.second);
+        LogMessage(message);
         return false;
     }
     return true;
@@ -525,22 +537,32 @@ void RunOne(void* tickingPawn){
     if(player.isDead||!player.spawned){++rejected;LogMessage("Admin teleport rejected: player unavailable id="+request.publicId);return;}
     if(request.action=="nodestone"){
         const bool validName=request.preparedName[0]&&g_Engine->NameToString(request.preparedName[0],request.preparedName[1]).rfind("DR_",0)==0;
-        if(nodestoneTeleportCompatibility.load()!=1||nodestoneTeleportCircuitBroken.load()||!nodestonePerformFunction||
+        if(nodestoneTeleportCompatibility.load()!=1||nodestoneTeleportCircuitBroken.load()||!nodestoneNamedFunction||
            !request.preparedActor||!g_Engine->IsObjectLive(request.preparedActor)||
            g_Engine->GetObjectIdentity(request.preparedActor)!=request.preparedActorIdentity||!validName){
             ++rejected;++nodestoneRejected;++nodestoneStale;
             LogMessage("Admin nodestone teleport rejected: native destination evidence changed id="+request.destinationId);
             return;
         }
-        alignas(16) unsigned char params[16]{};
+        alignas(16) unsigned char params[0x38]{};
         const uintptr_t pawn=reinterpret_cast<uintptr_t>(tickingPawn);
         std::memcpy(params,&pawn,sizeof(pawn));std::memcpy(params+8,request.preparedName,sizeof(request.preparedName));
+        // Reviewed current-build named-location behavior: an empty completion
+        // delegate, loading transition enabled, ETeleportationType::Teleport
+        // (zero), and no graveyard override. The subsystem owns the delayed
+        // transition and eventual movement; Zanik only initiates it once.
+        params[0x20]=1;params[0x21]=0;
         const auto nativeStarted=std::chrono::steady_clock::now();
-        processEvent(reinterpret_cast<void*>(request.preparedActor),reinterpret_cast<void*>(nodestonePerformFunction),params);
+        processEvent(reinterpret_cast<void*>(request.preparedActor),reinterpret_cast<void*>(nodestoneNamedFunction),params);
         const auto nativeMicros=std::uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now()-nativeStarted).count());
         auto prior=maximumNodestoneMicros.load();while(nativeMicros>prior&&!maximumNodestoneMicros.compare_exchange_weak(prior,nativeMicros)){}
         if(nativeMicros>=1000){++slowNodestoneCalls;nodestoneTeleportCircuitBroken=true;nodestoneTeleportCompatibility=-8;}
+        if(!params[0x30]){
+            ++rejected;++nodestoneRejected;
+            LogMessage("Admin native nodestone teleport rejected by named-location subsystem destination="+request.destinationId);
+            return;
+        }
         PendingTeleport pending;pending.characterGuid=request.characterGuid;pending.publicId=request.publicId;
         pending.destinationId=request.destinationId;pending.sessionPrefix=request.sessionPrefix;
         pending.pawn=pawn;pending.target=request.preparedLocation;pending.started=std::chrono::steady_clock::now();
@@ -713,6 +735,21 @@ bool InitializeAdminTeleport(uintptr_t moduleBase,uintptr_t moduleEnd){
     compatibility=1;return true;
 }
 
+bool RefreshAdminNodestoneTeleportCompatibility(){
+    if(compatibility.load()!=1||nodestoneTeleportCompatibility.load()==1||
+       nodestoneTeleportCircuitBroken.load()||nodestoneInitializationAttempts.load()>=8)return nodestoneTeleportCompatibility.load()==1;
+    pthread_mutex_lock(&nodestoneInitializationMutex);
+    bool ready=nodestoneTeleportCompatibility.load()==1;
+    if(!ready&&nodestoneInitializationAttempts.load()<8){
+        ++nodestoneInitializationAttempts;
+        ready=InitializeNodestoneTeleportPipeline();
+        nodestoneTeleportCompatibility=ready?1:-1;
+        if(ready)LogMessage("Admin nodestone named-location compatibility verified after engine registration completed");
+    }
+    pthread_mutex_unlock(&nodestoneInitializationMutex);
+    return ready;
+}
+
 bool QueueAdminTeleport(const std::string& characterGuid,const std::string& publicId,
                         const std::string& destinationId,const std::string& sessionPrefix){
     if(compatibility.load()!=1||characterGuid.empty()||destinationId.empty())return false;
@@ -726,16 +763,16 @@ bool QueueAdminTeleport(const std::string& characterGuid,const std::string& publ
 bool QueueAdminNodestoneTeleport(const std::string& characterGuid,const std::string& publicId,
                                  const NodestoneInfo& destination,const std::string& sessionPrefix){
     if(compatibility.load()!=1||nodestoneTeleportCompatibility.load()!=1||nodestoneTeleportCircuitBroken.load()||
-       characterGuid.empty()||destination.id.empty()||!destination.nativeTeleporter||
-       !destination.nativeTeleporterIdentity||!destination.nativeTargetName[0])return false;
+       characterGuid.empty()||destination.id.empty()||!destination.nativeSubsystem||
+       !destination.nativeSubsystemIdentity||!destination.nativeTargetName[0])return false;
     QueueLock lock;
     const bool conflict=requests.size()>=QueueCapacity||
         std::any_of(requests.begin(),requests.end(),[&](const Request&r){return r.characterGuid==characterGuid;})||
         std::any_of(pendingTeleports.begin(),pendingTeleports.end(),[&](const PendingTeleport&p){return p.characterGuid==characterGuid;});
     if(conflict){++nodestoneConcurrent;return false;}
     Request request;request.characterGuid=characterGuid;request.publicId=publicId;request.destinationId=destination.id;
-    request.sessionPrefix=sessionPrefix;request.action="nodestone";request.preparedActor=destination.nativeTeleporter;
-    request.preparedActorIdentity=destination.nativeTeleporterIdentity;request.preparedLocation=destination.worldLocation;
+    request.sessionPrefix=sessionPrefix;request.action="nodestone";request.preparedActor=destination.nativeSubsystem;
+    request.preparedActorIdentity=destination.nativeSubsystemIdentity;request.preparedLocation=destination.worldLocation;
     std::memcpy(request.preparedName,destination.nativeTargetName,sizeof(request.preparedName));
     requests.push_back(std::move(request));++queued;++nodestoneQueued;return true;
 }

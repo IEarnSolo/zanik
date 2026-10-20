@@ -421,6 +421,9 @@ void Handle(int fd) {
         StoredPlayer p;if(!playerStore->Find(id,p)||p.identity.rfind("character:",0)!=0||!adminStore->IsAllowed(id)){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Character is not authorized"));return;}std::string token=adminStore->CreateClaim(id,p.identity.substr(10),p.name);if(token.empty()){Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Could not create claim"));return;}std::string url=PublicBaseUrl()+"/admin/claim#token="+token;Respond(fd,200,"application/json; charset=utf-8","{\"url\":\""+JsonEscape(url)+"\",\"expiresIn\":300,\"characterName\":\""+JsonEscape(p.name)+"\"}");
     } else if(path=="/api/admin/session"){
         AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(!ZanikConfig::AdminRead()){disabled();return;}StoredPlayer p;bool online=playerStore->Find(s.publicId,p)&&p.online;
+        // Reflection registration can finish after the native hook is installed.  Retry the
+        // bounded nodestone layout check here on the HTTP worker before advertising capability.
+        DomEngine::RefreshAdminNodestoneTeleportCompatibility();
         const auto storage=DomEngine::GetAdminStorageDiagnostics();const auto graves=DomEngine::GetAdminGravestoneDiagnostics();const auto teleport=DomEngine::GetAdminTeleportDiagnostics();
         const bool engineReadable=DomEngine::g_Engine&&DomEngine::g_Engine->IsInitialized();
         const std::string capabilities="{\"storageRead\":"+std::string(engineReadable?"true":"false")+
@@ -805,6 +808,7 @@ void Handle(int fd) {
         auto storage=DomEngine::GetAdminStorageDiagnostics();
         Respond(fd,200,"application/json; charset=utf-8","{\"compatibility\":"+std::to_string(storage.planCatalogCompatibility)+",\"items\":"+std::to_string(storage.planCatalogItems)+"}");
     } else if (path == "/api/update-status") {
+        DomEngine::RefreshAdminNodestoneTeleportCompatibility();
         auto d = DomEngine::GetKillDiagnostics();
         auto l = DomEngine::GetLodestoneDiagnostics();
         auto n = DomEngine::GetNodestoneDiagnostics();

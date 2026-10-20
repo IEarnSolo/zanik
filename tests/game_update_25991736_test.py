@@ -52,10 +52,25 @@ assert "if(storageTeleportTemplateValid.load())" in teleport
 assert "storageTeleportCircuitBroken=true" in teleport
 assert "ReadNearbyBuildingBounds(chestActor,origin)" not in teleport
 assert "ReadAdminStorageLocations(request.targetCharacterGuid" not in teleport
-assert 'FindFunction("SwitchableTeleporter","PerformTeleport")' in teleport
+assert 'FindFunction("TeleportationSubsystem","TeleportToNamedLocation")' in teleport
+assert "const auto fields=ReflectedFields(nodestoneNamedFunction);" in teleport
 assert 'has("PlayerCharacter",0x0)' in teleport
-assert 'has("TargetDestination",0x8)' in teleport
+assert 'has("LocationName",0x8)' in teleport
+assert 'has("TeleportSuccessCallbackDelegate",0x10)' in teleport
+assert 'has("bShowLoadingScreen",0x20)' in teleport
+assert 'has("OptionalTeleportType",0x21)' in teleport
+assert 'has("OptionalGraveyard",0x28)' in teleport
+assert 'has("ReturnValue",0x30)' in teleport
+assert "params[0x20]=1;params[0x21]=0" in teleport
 assert "nodestoneTeleportCircuitBroken=true" in teleport
+assert "nodestoneInitializationAttempts.load()>=8" in teleport
+assert "RefreshAdminNodestoneTeleportCompatibility" in teleport
+
+main_source = (root / "src" / "main.cpp").read_text()
+assert 'path=="/api/admin/session"' in main_source
+assert "DomEngine::RefreshAdminNodestoneTeleportCompatibility();" in main_source
+nodestone_reader = (root / "src" / "engine" / "kills.cpp").read_text()
+assert "RefreshAdminNodestoneTeleportCompatibility();" in nodestone_reader
 
 analyzer = (root / "tools" / "compat_analyzer.cpp").read_text()
 assert "--native-offsets" in analyzer
