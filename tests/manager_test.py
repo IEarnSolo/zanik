@@ -88,6 +88,15 @@ def write_payload_archive(archive: Path, files: dict[str, bytes], version: str =
     return contract
 
 class ManagerTests(unittest.TestCase):
+    def test_configuration_controls_are_locked_for_load_and_save(self):
+        source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("self.config_editors.setEnabled(bool(profile) and not pending)", source)
+        self.assertIn("self.config_load_button.setEnabled(bool(profile) and not pending)", source)
+        self.assertIn("self.config_pending_profile_id != profile_id", source)
+        self.assertIn('self.set_config_pending(profile.id, f"Loading settings from {profile.name}…")', source)
+        self.assertIn('self.set_config_pending(profile.id, f"Saving settings to {profile.name}…")', source)
+        self.assertGreaterEqual(source.count("settled=lambda: self.clear_config_pending(profile.id)"), 2)
+
     def test_doctor_human_view_uses_raw_result_without_hashes(self):
         raw = {"healthy": True,
                "installation": {"version": "0.2.45", "mode": "wrapper", "officialSha256": "a" * 64},

@@ -384,6 +384,8 @@ class MainWindow(QMainWindow):
         self.preferences = self.preference_store.load()
         self.vault = CredentialVault(); self.profiles = self.store.load(); self.current_config_hash = ""
         self.current_config_profile_id = ""
+        self.config_pending_profile_id = ""
+        self.config_pending_action = ""
         self.installation_states = {}
         self.website_states = {}
         self.asset_contract_states = {}
@@ -568,14 +570,20 @@ class MainWindow(QMainWindow):
         scroll.setWidget(form_page)
         self.config_text = QPlainTextEdit(); self.config_text.setPlaceholderText("Load the server configuration to edit it.")
         self.config_editors.addTab(scroll,"Guided settings"); self.config_editors.addTab(self.config_text,"Advanced raw editor")
-        row = QHBoxLayout(); load = button_help(QPushButton("Load from server"),
-                                               "Download and display the selected server's current Zanik configuration.")
-        save = button_help(QPushButton("Validate and save"),
-                           "Validate these settings, back up the remote configuration, and save only if it has not changed remotely.")
-        load.clicked.connect(lambda: self.load_config()); save.clicked.connect(self.save_config)
-        row.addWidget(load); row.addWidget(save); row.addStretch()
+        row = QHBoxLayout(); self.config_load_button = button_help(
+            QPushButton("Load from server"),
+            "Download and display the selected server's current Zanik configuration.")
+        self.config_save_button = button_help(
+            QPushButton("Validate and save"),
+            "Validate these settings, back up the remote configuration, and save only if it has not changed remotely.")
+        self.config_pending_label = QLabel(); self.config_pending_label.setStyleSheet("color:#6b7280")
+        self.config_load_button.clicked.connect(lambda: self.load_config())
+        self.config_save_button.clicked.connect(self.save_config)
+        row.addWidget(self.config_load_button); row.addWidget(self.config_save_button)
+        row.addWidget(self.config_pending_label); row.addStretch()
         layout.addWidget(QLabel("Mutation and QoL features are off by default.")); layout.addWidget(self.config_editors, 1); layout.addLayout(row)
         self.tabs.addTab(page, "Configuration")
+        self.refresh_config_controls()
 
     def _files_tab(self):
         page = QWidget(); layout = QVBoxLayout(page)
@@ -1138,7 +1146,8 @@ class MainWindow(QMainWindow):
             self.busy_dialog.finish(); self.busy_dialog.deleteLater(); self.busy_dialog = None
         self.progress.setRange(0, 100)
 
-    def run_async(self, function, completed=lambda result: None, *, title="Working…", determinate=False):
+    def run_async(self, function, completed=lambda result: None, *, title="Working…", determinate=False,
+                  settled=lambda: None):
         if self.threads:
             QMessageBox.information(self, "Operation in progress",
                                     "Wait for the current operation to finish before starting another one.")
@@ -1147,15 +1156,22 @@ class MainWindow(QMainWindow):
         thread = QThread(self); worker = Worker(function); worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.done.connect(thread.quit)
-        thread.finished.connect(lambda: self.operation_thread_finished(thread, worker, completed))
+        thread.finished.connect(lambda: self.operation_thread_finished(thread, worker, completed, settled))
         self.threads.append((thread, worker)); thread.start(); return True
 
-    def operation_thread_finished(self, thread, worker, completed) -> None:
+    def operation_thread_finished(self, thread, worker, completed, settled=lambda: None) -> None:
         self.threads.remove((thread, worker))
         if worker.error:
-            self.operation_failed(*worker.error)
+            try:
+                self.operation_failed(*worker.error)
+            finally:
+                settled()
             return
-        self.progress.setValue(100); self.finish_operation(); completed(worker.result)
+        self.progress.setValue(100); self.finish_operation()
+        try:
+            completed(worker.result)
+        finally:
+            settled()
 
     def operation_failed(self, message: str, details: str):
         self.finish_operation()
@@ -1220,6 +1236,13 @@ class MainWindow(QMainWindow):
         if not profile or self.current_config_profile_id != profile.id:
             self.current_config_hash = ""; self.current_config_profile_id = ""
             self.reset_config_editor()
+        if profile and needs_config_load:
+            self.set_config_pending(profile.id, f"Loading settings from {profile.name}…")
+        elif not profile:
+            self.config_pending_profile_id = ""; self.config_pending_action = ""
+            self.refresh_config_controls()
+        else:
+            self.refresh_config_controls()
         if profile:
             self.preference_store.save_last_profile(profile.id); self.preferences["lastProfileId"] = profile.id
             self.install_button.setEnabled(False); self.update_server_button.setEnabled(False); self.update_game_button.setEnabled(False)
@@ -2266,6 +2289,29 @@ class MainWindow(QMainWindow):
     def config_model(self):
         return ConfigModel(resource_path("config", "zanik-config.schema.json"))
 
+    def refresh_config_controls(self) -> None:
+        if not hasattr(self, "config_editors"):
+            return
+        profile = self.active()
+        pending = bool(self.config_pending_profile_id)
+        self.config_editors.setEnabled(bool(profile) and not pending)
+        self.config_load_button.setEnabled(bool(profile) and not pending)
+        self.config_save_button.setEnabled(
+            bool(profile) and not pending and bool(self.current_config_hash)
+            and self.current_config_profile_id == profile.id)
+        self.config_pending_label.setText(self.config_pending_action if pending else "")
+
+    def set_config_pending(self, profile_id: str, message: str) -> None:
+        self.config_pending_profile_id = profile_id
+        self.config_pending_action = message
+        self.refresh_config_controls()
+
+    def clear_config_pending(self, profile_id: str) -> None:
+        if self.config_pending_profile_id != profile_id:
+            return
+        self.config_pending_profile_id = ""; self.config_pending_action = ""
+        self.refresh_config_controls()
+
     def reset_config_editor(self):
         self.config_text.clear()
         for key, value in self.config_model().defaults().items():
@@ -2285,6 +2331,7 @@ class MainWindow(QMainWindow):
     def load_config(self, profile: ServerProfile | None = None, automatic: bool = False):
         profile = profile or self.active()
         if not profile: return
+        self.set_config_pending(profile.id, f"Loading settings from {profile.name}…")
         def action():
             return self.provider(profile, background=automatic).read_configuration(
                 profile.server_id, profile.server_root)
@@ -2334,16 +2381,24 @@ class MainWindow(QMainWindow):
             self.log(f"Loaded configuration from {profile.name}.")
         if automatic:
             def background_done(result, error):
-                if error:
-                    self.website_states[profile.id] = {"status": "unavailable"}
-                    if self.active() and self.active().id == profile.id:
-                        self.render_server_summary(profile)
-                    self.log(f"Configuration was not auto-loaded for {profile.name}: {error}")
-                else:
-                    done(result)
-            self.run_background(f"config-load-{profile.id}", action, background_done)
+                try:
+                    if error:
+                        self.website_states[profile.id] = {"status": "unavailable"}
+                        if self.active() and self.active().id == profile.id:
+                            self.render_server_summary(profile)
+                        self.log(f"Configuration was not auto-loaded for {profile.name}: {error}")
+                    else:
+                        done(result)
+                finally:
+                    self.clear_config_pending(profile.id)
+            started = self.run_background(f"config-load-{profile.id}", action, background_done)
+            if not started and not any(item[0] == f"config-load-{profile.id}" for item in self.background_threads):
+                self.clear_config_pending(profile.id)
         else:
-            self.run_async(action, done, title=f"Loading configuration from {profile.name}…")
+            started = self.run_async(action, done, title=f"Loading configuration from {profile.name}…",
+                                     settled=lambda: self.clear_config_pending(profile.id))
+            if not started:
+                self.clear_config_pending(profile.id)
 
     def save_config(self):
         profile = self.active()
@@ -2376,8 +2431,14 @@ class MainWindow(QMainWindow):
                                     QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
                 self.provider().client.power(profile.server_id, "restart")
             self.log(f"Configuration saved; backup: {result['backup']}")
-        self.run_async(lambda: self.provider().save_config(profile.server_id, profile.server_root, content, self.current_config_hash), done,
-                       title="Saving server configuration…")
+        self.set_config_pending(profile.id, f"Saving settings to {profile.name}…")
+        started = self.run_async(
+            lambda: self.provider(profile).save_config(
+                profile.server_id, profile.server_root, content, self.current_config_hash),
+            done, title="Saving server configuration…",
+            settled=lambda: self.clear_config_pending(profile.id))
+        if not started:
+            self.clear_config_pending(profile.id)
 
     def export_support(self):
         profile = self.active()
