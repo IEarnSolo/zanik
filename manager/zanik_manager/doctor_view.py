@@ -27,6 +27,14 @@ def doctor_presentation(result: dict | None) -> dict:
     checks = result.get("checks", {}) if isinstance(result.get("checks"), dict) else {}
     installation = result.get("installation") if isinstance(result.get("installation"), dict) else None
 
+    if result.get("doctorPending") is True:
+        return {
+            "overall": "Checking…", "overallState": "neutral", "mode": "Quick",
+            "runAt": "Background scan in progress",
+            "sections": [_section("Selected server", "neutral",
+                                  "Manager is quietly checking installation, assets, updates, backups, and local storage.")],
+        }
+
     meaningful = any(key != "managerDoctor" for key in result)
     if not meaningful or (not installation and checks.get("installation")):
         overall = "Unavailable"
@@ -75,8 +83,11 @@ def doctor_presentation(result: dict | None) -> dict:
                                  "A newer Dragonwilds dedicated-server build is available.",
                                  "Use Update Dragonwilds server from the Servers tab."))
     elif game.get("updateAvailable") is False or game_status == "current":
+        current_text = ("The last successful update check reports that the installed Dragonwilds dedicated-server build is current."
+                        if game.get("fresh") is False else
+                        "The installed Dragonwilds dedicated-server build is current and up to date.")
         sections.append(_section("Dragonwilds update state", "healthy",
-                                 "The installed Dragonwilds dedicated-server build is current."))
+                                 current_text))
     else:
         sections.append(_section("Dragonwilds update state", "neutral",
                                  "No current Dragonwilds update result is available.",

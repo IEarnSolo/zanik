@@ -23,6 +23,7 @@ def ensure_layout(root: Path | None = None) -> dict[str, Path]:
         "asset_work": root / "asset-work",
         "updates": root / "updates",
         "file_metadata": root / "file-metadata",
+        "doctor_cache": root / "doctor-cache",
     }
     for path in paths.values():
         path.mkdir(parents=True, exist_ok=True)
