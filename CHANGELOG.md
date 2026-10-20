@@ -2,6 +2,15 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.46] - 2026-10-19
+
+### Changed
+
+- Give Zanik Manager's read-only Files browser familiar Explorer-style navigation buttons and native file and folder icons.
+- Display recursively calculated sizes for indexed folders as well as individual files.
+- Add a **Show raw server paths** toggle for switching between friendly Zanik area names and exact remote directories.
+- Support mouse Back and Forward side buttons while navigating the Files tab.
+
 ## [0.2.45] - 2026-10-19
 
 ### Added

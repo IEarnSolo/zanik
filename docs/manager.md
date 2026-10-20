@@ -73,6 +73,8 @@ The **Files** tab is a read-only, metadata-only browser for Zanik-related server
 
 Folder metadata is indexed in the background and cached in memory for five minutes per server profile. Indexed navigation is immediate; opening a folder before the background index reaches it requests only that folder's metadata. **Refresh** invalidates only the selected server's cache. Manager also invalidates that profile after an install, update or repair, uninstall, configuration save, asset activation, Dragonwilds update, recovery, or backup cleanup. Per-root totals and the grand total include backup and user-owned Zanik upload areas, so they can be larger than the active installation. The index stops safely at 100,000 entries or 10,000 directories and labels incomplete totals as partial.
 
+Files and folders use familiar system icons. Folder sizes are calculated recursively from the same metadata index and appear once their subtree has been indexed. The toolbar supports Back, Forward, Up, Refresh, and mouse Back/Forward side buttons. Enable **Show raw server paths** to replace friendly area names and breadcrumbs with exact remote paths; this changes only presentation and does not broaden the allowed roots.
+
 A failed local operation journal is automatically archived when a newer operation of the same type completes successfully for that server. This prevents obsolete failures from continuing to request recovery while retaining the journal for audit. Journals left in a critical in-progress state remain visible until explicitly recovered.
 
 Completed local journals are compacted to the newest record per server and operation type. Superseded failures and rolled-back records are removed after they no longer provide recovery value.
