@@ -69,12 +69,6 @@ assert "displaySignature" in storage
 assert "emptySignature" in storage
 assert "filledSignature" in storage
 
-lodestones = (root / "src" / "engine" / "kills.cpp").read_text()
-assert 'g_Engine->IsA(candidate,"LodestoneComponent")' in lodestones
-assert 'g_Engine->IsA(candidate,"OwnershipComponent")' in lodestones
-assert "activeBuild.storageOwnerGuidOffset" in lodestones
-assert "lodestoneOwnershipCompatibility" in lodestones
-
 main = (root / "src" / "main.cpp").read_text()
 page = (root / "src" / "web_page.h").read_text()
 assert '\\"capabilities\\":' in main

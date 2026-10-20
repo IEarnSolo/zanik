@@ -41,7 +41,6 @@ struct BuildCompatibility {
     uintptr_t teleportTargetNames = 0, teleportTargetTransform = 0;
     uintptr_t adminPlayerTick = 0, actorTeleportTo = 0, processEvent = 0;
     uintptr_t lodestoneTryTeleport = 0, lodestoneCanTeleport = 0;
-    uintptr_t storageOwnerGuidOffset = 0;
     size_t textSize = 0;
 };
 BuildCompatibility activeBuild;
@@ -58,8 +57,7 @@ bool LoadCompatibility(const std::string& sha, BuildCompatibility& out) {
         std::string mapMinX, mapMinY, mapWorldSize, registryGetInstance, registryGetLodestones,
                     lodestoneGetLocation, labelText, labelRotation, labelFont,
                     teleportTargetNames, teleportTargetTransform, adminPlayerTick, actorTeleportTo, processEvent,
-                    lodestoneTryTeleport, lodestoneCanTeleport,storageOwnerGetter,storagePrivateGetter,
-                    storageLinkableGetter,storageGetAllItems,storageItemDataGetter,storageSetStackSize,storageOwnerGuidOffset;
+                    lodestoneTryTeleport, lodestoneCanTeleport;
         if (!std::getline(fields, candidate.sha256, '\t') ||
             !std::getline(fields, onAI, '\t') || !std::getline(fields, text, '\t') ||
             !std::getline(fields, size, '\t') || !std::getline(fields, display, '\t') ||
@@ -100,11 +98,6 @@ bool LoadCompatibility(const std::string& sha, BuildCompatibility& out) {
                             if(std::getline(fields,lodestoneTryTeleport,'\t') && std::getline(fields,lodestoneCanTeleport,'\t')){
                                 candidate.lodestoneTryTeleport=std::stoull(lodestoneTryTeleport,nullptr,0);
                                 candidate.lodestoneCanTeleport=std::stoull(lodestoneCanTeleport,nullptr,0);
-                                if(std::getline(fields,storageOwnerGetter,'\t') && std::getline(fields,storagePrivateGetter,'\t') &&
-                                   std::getline(fields,storageLinkableGetter,'\t') && std::getline(fields,storageGetAllItems,'\t') &&
-                                   std::getline(fields,storageItemDataGetter,'\t') && std::getline(fields,storageSetStackSize,'\t') &&
-                                   std::getline(fields,storageOwnerGuidOffset,'\t'))
-                                    candidate.storageOwnerGuidOffset=std::stoull(storageOwnerGuidOffset,nullptr,0);
                             }
                         }
                     }
@@ -135,8 +128,7 @@ std::atomic<std::uint64_t> unresolvedAttackers{0}, rejectedNonPlayerDeaths{0};
 std::atomic<std::uint64_t> droppedQueueEvents{0};
 std::atomic<std::uint64_t> maximumHookMicroseconds{0},slowHookEvents{0};
 std::atomic<int> regionLookupState{0};
-std::atomic<int> lodestoneCompatibility{0},lodestoneOwnershipCompatibility{0},lodestoneRegistryFound{0},lodestoneRegistryCount{0},lodestoneValidMarkers{0};
-std::atomic<int> lodestonePlacedActors{0},lodestoneOwnedMarkers{0},lodestoneUnresolvedOwners{0};
+std::atomic<int> lodestoneCompatibility{0},lodestoneRegistryFound{0},lodestoneRegistryCount{0},lodestoneValidMarkers{0};
 std::atomic<std::uint64_t> lodestoneRejectedRecords{0};
 std::atomic<std::int64_t> lodestoneLastSuccessfulCollection{0};
 std::atomic<int> nodestoneCompatibility{0},nodestoneActorsFound{0},nodestoneValidMarkers{0};
@@ -347,9 +339,8 @@ KillDiagnostics GetKillDiagnostics(){return {hookState.load(),regionLookupState.
     maximumHookMicroseconds.load(),slowHookEvents.load()};}
 
 LodestoneDiagnostics GetLodestoneDiagnostics(){
-    return {lodestoneCompatibility.load(),lodestoneOwnershipCompatibility.load(),
-            lodestoneRegistryFound.load(),lodestoneRegistryCount.load(),lodestoneValidMarkers.load(),
-            lodestonePlacedActors.load(),lodestoneOwnedMarkers.load(),lodestoneUnresolvedOwners.load(),lodestoneRejectedRecords.load(),
+    return {lodestoneCompatibility.load(),lodestoneRegistryFound.load(),lodestoneRegistryCount.load(),
+            lodestoneValidMarkers.load(),lodestoneRejectedRecords.load(),
             lodestoneLastSuccessfulCollection.load()};
 }
 
@@ -424,7 +415,6 @@ bool ReadNodestones(std::vector<NodestoneInfo>& out){
 bool ReadLodestones(std::vector<LodestoneInfo>& out){
     out.clear();
     lodestoneRegistryFound=0;lodestoneRegistryCount=0;lodestoneValidMarkers=0;
-    lodestoneOwnershipCompatibility=0;lodestonePlacedActors=0;lodestoneOwnedMarkers=0;lodestoneUnresolvedOwners=0;
     if(!g_Engine||!g_Engine->IsInitialized()||!g_Engine->IsMapProjectionAvailable()||
        !activeBuild.registryGetLodestones||!activeBuild.lodestoneGetLocation){
         lodestoneCompatibility=-1;return false;
@@ -467,34 +457,12 @@ bool ReadLodestones(std::vector<LodestoneInfo>& out){
     // number of records whose game-resolved locations project successfully.
     // This selects the authoritative registry instead of trusting its count.
     uintptr_t best=0;FUEArray selected{};int32_t bestValid=-1;
-    struct PlacedLodestone { FVector3d location{}; std::string ownerGuid; };
-    std::unordered_set<uintptr_t> candidates,lodestoneActors;
-    std::unordered_map<uintptr_t,uintptr_t> ownershipComponents;
+    std::unordered_set<uintptr_t> candidates;
     if(registry)candidates.insert(registry);
     for(int32_t i=0;i<count;++i){
-        uintptr_t candidate=g_Engine->GetObjectByIndex(i);if(!candidate)continue;
-        const std::string className=g_Engine->GetObjectClassName(candidate);
-        if(g_Engine->IsA(candidate,"GameplayObjectRegistry"))candidates.insert(candidate);
-        const bool ownershipComponent=className=="OwnershipComponent"||g_Engine->IsA(candidate,"OwnershipComponent");
-        const bool lodestoneComponent=className=="LodestoneComponent"||g_Engine->IsA(candidate,"LodestoneComponent");
-        if(!ownershipComponent&&!lodestoneComponent)continue;
-        if(g_Engine->GetObjectName(candidate).find("GEN_VARIABLE")!=std::string::npos)continue;
-        const uintptr_t actor=Mem::ReadPtr(candidate+Offsets::UObject_Outer);if(!actor)continue;
-        if(ownershipComponent)ownershipComponents[actor]=candidate;
-        if(lodestoneComponent)lodestoneActors.insert(actor);
+        uintptr_t candidate=g_Engine->GetObjectByIndex(i);
+        if(candidate&&g_Engine->IsA(candidate,"GameplayObjectRegistry"))candidates.insert(candidate);
     }
-    std::vector<PlacedLodestone> placedLodestones;
-    for(uintptr_t actor:lodestoneActors){
-        auto owner=ownershipComponents.find(actor);
-        if(owner==ownershipComponents.end()||!g_Engine->IsObjectLive(actor))continue;
-        const uintptr_t root=Mem::ReadPtr(actor+Offsets::Actor_RootComponent);
-        if(!root||!Mem::Readable(reinterpret_cast<void*>(root+Offsets::SceneComp_RelativeLocation),sizeof(FVector3d)))continue;
-        PlacedLodestone placed;std::memcpy(&placed.location,reinterpret_cast<void*>(root+Offsets::SceneComp_RelativeLocation),sizeof(placed.location));
-        if(!activeBuild.storageOwnerGuidOffset)continue;
-        placed.ownerGuid=g_Engine->ReadGuid(owner->second+activeBuild.storageOwnerGuidOffset);
-        if(!placed.ownerGuid.empty()&&std::isfinite(placed.location.X)&&std::isfinite(placed.location.Y)&&std::isfinite(placed.location.Z))placedLodestones.push_back(std::move(placed));
-    }
-    lodestonePlacedActors=static_cast<int>(placedLodestones.size());
     for(uintptr_t candidate:candidates){
         FUEArray a{};if(!validRegistry(candidate,&a))continue;int32_t valid=0;
         for(int32_t i=0;i<a.Num;++i){
@@ -540,17 +508,6 @@ bool ReadLodestones(std::vector<LodestoneInfo>& out){
         char id[17]{};std::snprintf(id,sizeof(id),"%016llx",static_cast<unsigned long long>(hash));
         if(!seen.insert(id).second){++lodestoneRejectedRecords;continue;}
         LodestoneInfo info;info.id=id;info.mapX=x;info.mapY=y;info.worldLocation=location;info.nativeEntry=entry;
-        // FLodestoneData does not retain its builder. Correlate its authoritative
-        // location with the live player-built actor and read that actor's existing
-        // OwnershipComponent. A bounded distance accommodates the component's
-        // placement offset while rejecting unrelated structures.
-        const PlacedLodestone* ownerMatch=nullptr;double ownerDistance=300.0*300.0;
-        for(const auto& placed:placedLodestones){
-            const double dx=placed.location.X-location.X,dy=placed.location.Y-location.Y,dz=placed.location.Z-location.Z;
-            const double distance=dx*dx+dy*dy+dz*dz;
-            if(distance<ownerDistance){ownerDistance=distance;ownerMatch=&placed;}
-        }
-        if(ownerMatch)info.ownerCharacterGuid=ownerMatch->ownerGuid;
         // FLodestoneData is fingerprint-bound to 0x40 bytes. GetLodestone()
         // compares its FGuid at +0x30, while
         // ULodestoneTeleportationComponent::GetTeleportationRespawnLocation
@@ -563,11 +520,9 @@ bool ReadLodestones(std::vector<LodestoneInfo>& out){
            !(info.nativeGuid[0]|info.nativeGuid[1]|info.nativeGuid[2]|info.nativeGuid[3])){
             ++lodestoneRejectedRecords;continue;
         }
-        if(info.ownerCharacterGuid.empty())++lodestoneUnresolvedOwners;else ++lodestoneOwnedMarkers;
         out.push_back(std::move(info));
     }
     lodestoneValidMarkers=static_cast<int>(out.size());
-    lodestoneOwnershipCompatibility=out.empty()||lodestoneOwnedMarkers.load()==static_cast<int>(out.size())?1:-1;
     lodestoneLastSuccessfulCollection=std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     lodestoneCompatibility=1;return true;

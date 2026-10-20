@@ -41,12 +41,10 @@ secret stored at `/home/container/zanik-data/console-admin.key`. Requests to
 that endpoint without the secret are rejected. Other console input is passed
 unchanged to the game server.
 
-Public lodestone map tooltips correlate the validated lodestone registry with
-live placed-building ownership and resolve only the owner's existing public
-display name. Raw character GUIDs, ownership components, and native pointers
-remain server-side. Ownership correlation has its own compatibility status and
-does not disable ordinary markers or teleport destinations if a name cannot be
-resolved.
+Public lodestone map tooltips expose authoritative X/Y/Z coordinates from the
+validated lodestone registry. Dragonwilds does not persist the character that
+placed a lodestone, so Zanik does not guess or maintain a separate forward-only
+ownership history. Native pointers and registry identities remain server-side.
 
 Lodestone, player, and storage teleport requests use fingerprint-bound native
 dispatchers. Storage mutation requests accept only opaque revisions. The HTTP

@@ -297,11 +297,8 @@ struct NativeKillEvent {
 struct LodestoneInfo {
     std::string id;
     double mapX = 0, mapY = 0;
-    // Public map metadata. ownerName is resolved from PlayerStore before
-    // serialization; the private character identity is never published.
-    std::string ownerName;
-    // Server-only authoritative placement identity used to resolve ownerName.
-    std::string ownerCharacterGuid;
+    // Public tooltip coordinates and the server-only teleport destination are
+    // both derived from the fingerprint-validated registry record.
     FVector3d worldLocation{};
     FVector3d arrivalLocation{};
     std::uint32_t nativeGuid[4]{};
@@ -368,13 +365,9 @@ struct MapLabelDiagnostics {
 
 struct LodestoneDiagnostics {
     int compatibility = 0;
-    int ownershipCompatibility = 0;
     int registryFound = 0;
     int registryCount = 0;
     int validMarkers = 0;
-    int placedActors = 0;
-    int ownedMarkers = 0;
-    int unresolvedOwners = 0;
     std::uint64_t rejectedRecords = 0;
     std::int64_t lastSuccessfulCollection = 0;
 };

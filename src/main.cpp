@@ -630,13 +630,6 @@ void Handle(int fd) {
         if(!DomEngine::ReadLodestones(lodestones)) {
             Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Lodestone map unavailable"));
         } else {
-            std::unordered_map<std::string,std::string> playerNames;
-            for(const auto& player:playerStore->All())if(player.identity.rfind("character:",0)==0)
-                playerNames[player.identity.substr(10)]=player.name;
-            for(auto& lodestone:lodestones){
-                auto owner=playerNames.find(lodestone.ownerCharacterGuid);
-                lodestone.ownerName=owner==playerNames.end()?"Unknown player":owner->second;
-            }
             auto timestamp=std::chrono::duration_cast<std::chrono::seconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
             Respond(fd,200,"application/json; charset=utf-8",Status::MapLodestonesJson(
@@ -734,13 +727,9 @@ void Handle(int fd) {
         auto d=DomEngine::GetLodestoneDiagnostics();
         Respond(fd,200,"application/json; charset=utf-8",
             "{\"compatibility\":"+std::to_string(d.compatibility)+
-            ",\"ownershipCompatibility\":"+std::to_string(d.ownershipCompatibility)+
             ",\"registryFound\":"+std::to_string(d.registryFound)+
             ",\"registryCount\":"+std::to_string(d.registryCount)+
             ",\"validMarkers\":"+std::to_string(d.validMarkers)+
-            ",\"placedActors\":"+std::to_string(d.placedActors)+
-            ",\"ownedMarkers\":"+std::to_string(d.ownedMarkers)+
-            ",\"unresolvedOwners\":"+std::to_string(d.unresolvedOwners)+
             ",\"rejectedRecords\":"+std::to_string(d.rejectedRecords)+
             ",\"lastSuccessfulCollection\":"+std::to_string(d.lastSuccessfulCollection)+"}");
     } else if (path == "/api/nodestone-diagnostics") {
@@ -856,9 +845,6 @@ void Handle(int fd) {
             ",\"mapProjectionCompatibility\":" + std::string(mapCompatible ? "true" : "false") +
             ",\"mapLabelCount\":" + std::to_string(labels.validAnchors) +
             ",\"lodestoneCompatibility\":" + std::to_string(l.compatibility) +
-            ",\"lodestoneOwnershipCompatibility\":" + std::to_string(l.ownershipCompatibility) +
-            ",\"lodestoneOwnedMarkers\":" + std::to_string(l.ownedMarkers) +
-            ",\"lodestoneUnresolvedOwners\":" + std::to_string(l.unresolvedOwners) +
             ",\"nodestoneCompatibility\":" + std::to_string(n.compatibility) +
             ",\"nodestoneMarkers\":" + std::to_string(n.validMarkers) +
             ",\"resourceCompatibility\":" + std::to_string(resources.compatibility) +
