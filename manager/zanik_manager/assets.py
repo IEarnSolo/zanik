@@ -379,6 +379,27 @@ class AssetExtractor:
                 if self.bundle_compatible_with_game(item.path, game_root,
                                                     executable_sha256, contract)]
 
+    def incremental_baseline_bundle(self, game_root: Path, work_root: Path) -> Path | None:
+        """Find the validated bundle produced from the retained workspace's current inputs."""
+        try:
+            state = json.loads((work_root / "pipeline" / "incremental-state.json").read_text(
+                encoding="utf-8-sig"))
+            fingerprints = state.get("fingerprints", {})
+            recipe_sha = state.get("recipeSha256") or fingerprints.get("recipeSha256")
+            executable_sha = fingerprints.get("gameExecutableSha256")
+            for item in self.cache.list(game_root_id(game_root)):
+                with zipfile.ZipFile(item.path) as archive:
+                    manifest = json.loads(archive.read("asset-manifest.json"))
+                source = manifest.get("sourceExecutable") or {}
+                if (manifest.get("schemaVersion") == 2 and manifest.get("compatibility") == "compatible"
+                        and manifest.get("extractionStage") == "validated-and-packaged"
+                        and manifest.get("extractionRecipeSha256") == recipe_sha
+                        and source.get("sha256") == executable_sha):
+                    return item.path
+        except (OSError, KeyError, ValueError, zipfile.BadZipFile, json.JSONDecodeError):
+            return None
+        return None
+
     def extract(self, game_root: Path, output: Path, event=lambda event: None,
                 usmap: Path | None = None, keep_work: bool = False,
                 preserve_existing_loader: bool = False,
@@ -408,6 +429,10 @@ class AssetExtractor:
             command.append("-Resume")
         if incremental:
             command.append("-Incremental")
+            if work_root:
+                baseline = self.incremental_baseline_bundle(game_root, work_root)
+                if baseline:
+                    command += ["-BaselineBundle", str(baseline)]
         event({"phase": "extract", "message": self.toolchain_summary(game_root)})
         event({"phase": "extract", "message": "Starting the Windows client asset extractor"})
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,

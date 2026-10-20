@@ -71,4 +71,20 @@ with tempfile.TemporaryDirectory(prefix="zanik-web-assets-") as temporary:
     assert (web / "lodestone-icon.png").read_bytes() == b"correct-map-icon"
     assert (web / "nodestone-icon.png").read_bytes() == b"correct-nodestone-icon"
 
+    # A fixed-map-artwork refresh must not rewrite unrelated generated groups.
+    sentinel = web / "npc-catalog.json"; sentinel.write_bytes(b"unchanged-catalog")
+    prior_skill = (web / "skills/attack.png").read_bytes()
+    sys.argv = [
+        "generate_web_assets.py",
+        "--json-root", str(json_root),
+        "--texture-root", str(textures),
+        "--font-root", str(fonts),
+        "--web-root", str(web),
+        "--group", "map-icons",
+    ]
+    assert generator.main() == 0
+    assert sentinel.read_bytes() == b"unchanged-catalog"
+    assert (web / "skills/attack.png").read_bytes() == prior_skill
+    assert (web / "nodestone-icon.png").read_bytes() == b"correct-nodestone-icon"
+
 print("web asset selection tests passed")

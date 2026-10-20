@@ -2,6 +2,12 @@
 
 All notable changes to Zanik are documented here.
 
+## Unreleased
+
+- Replace the single-line Manager progress popup with a stable two-level modal showing overall stage, active subtask, elapsed time, and available item counts without flooding Activity.
+- Reuse validated generated output groups during incremental extraction, so a texture-only change such as the nodestone marker rebuilds only fixed map artwork while retaining byte-identical catalogs and unrelated images.
+- Record per-group generator/input contracts and output digests in extraction state and asset manifests while continuing to validate the complete assembled bundle.
+
 ## [0.2.47] - 2026-10-19
 
 - Extract the fixed Dowdun Reach nodestone marker from its authoritative fragment-crystal navigation texture instead of emitting a blank fallback square, and revise the map URL so browsers refresh the corrected image.

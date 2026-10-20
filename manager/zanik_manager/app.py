@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,7 +12,7 @@ from PySide6.QtCore import QEvent, QObject, QSize, QThread, QTimer, Qt, Signal, 
 from PySide6.QtGui import QCursor, QDesktopServices
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                QFormLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
-                               QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar, QProgressDialog, QPushButton, QScrollArea,
+                               QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QScrollArea,
                                QSizePolicy, QSpinBox, QStyle, QTabWidget, QTextBrowser, QToolButton, QTreeWidget, QTreeWidgetItem,
                                QVBoxLayout, QWidget)
 from PySide6.QtCore import QUrl
@@ -86,6 +87,76 @@ class WrappingLabel(QLabel):
         height = self.heightForWidth(event.size().width())
         if self.minimumHeight() != height or self.maximumHeight() != height:
             self.setFixedHeight(height)
+
+
+class OperationProgressDialog(QDialog):
+    """Stable two-level progress display for long, non-cancellable operations."""
+
+    def __init__(self, title: str, determinate: bool, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setWindowModality(Qt.ApplicationModal)
+        self.setModal(True)
+        self.setWindowFlag(Qt.WindowCloseButtonHint, False)
+        self.setFixedSize(660, 260)
+        self.allow_close = False
+        self.started = time.monotonic()
+        self.last_activity = self.started
+        layout = QVBoxLayout(self); layout.setContentsMargins(22, 18, 22, 18); layout.setSpacing(10)
+        self.headline = QLabel(title); self.headline.setWordWrap(True)
+        self.headline.setStyleSheet("font-weight:600;font-size:14px")
+        self.headline.setFixedHeight(42)
+        self.overall = QProgressBar(); self.overall.setRange(0, 100 if determinate else 0)
+        if determinate: self.overall.setValue(0)
+        self.detail = QLabel("Preparing…"); self.detail.setWordWrap(True)
+        self.detail.setTextFormat(Qt.PlainText); self.detail.setFixedHeight(44)
+        self.task = QProgressBar(); self.task.setRange(0, 0)
+        self.timing = QLabel("Elapsed 0:00 · Starting")
+        self.timing.setStyleSheet("color:#9ca3af")
+        layout.addWidget(self.headline); layout.addWidget(self.overall)
+        layout.addWidget(self.detail); layout.addWidget(self.task); layout.addWidget(self.timing)
+        layout.addStretch(1)
+        self.clock = QTimer(self); self.clock.setInterval(1000); self.clock.timeout.connect(self.refresh_timing)
+        self.clock.start()
+
+    @staticmethod
+    def _clock_text(seconds: float) -> str:
+        value = max(0, int(seconds))
+        return f"{value // 60}:{value % 60:02d}"
+
+    def refresh_timing(self):
+        now = time.monotonic()
+        quiet = now - self.last_activity
+        suffix = "Working" if quiet < 3 else f"Current step active for {self._clock_text(quiet)}"
+        self.timing.setText(f"Elapsed {self._clock_text(now - self.started)} · {suffix}")
+
+    def update_progress(self, value: dict):
+        headline = str(value.get("headline") or value.get("message") or "Working…")
+        detail = str(value.get("detail") or "")
+        self.headline.setText(headline); self.headline.setToolTip(headline)
+        if detail:
+            self.detail.setText(detail); self.detail.setToolTip(detail)
+        overall = value.get("overallPercent", value.get("percent", -1))
+        if isinstance(overall, (int, float)) and overall >= 0:
+            self.overall.setRange(0, 100); self.overall.setValue(max(0, min(100, int(overall))))
+        current, total = value.get("taskCurrent"), value.get("taskTotal")
+        if isinstance(current, int) and isinstance(total, int) and total > 0:
+            self.task.setRange(0, total); self.task.setValue(max(0, min(total, current)))
+            if not detail:
+                self.detail.setText(f"Item {current} of {total}")
+        else:
+            self.task.setRange(0, 0)
+        self.last_activity = time.monotonic(); self.refresh_timing()
+
+    def closeEvent(self, event):
+        if self.allow_close:
+            event.accept()
+        else:
+            event.ignore()
+
+    def finish(self):
+        self.allow_close = True
+        self.close()
 
 
 class ChangelogSection(QWidget):
@@ -303,6 +374,7 @@ class EditServersDialog(QDialog):
 class MainWindow(QMainWindow):
     activity_signal = Signal(str)
     operation_progress_signal = Signal(str, int)
+    operation_detail_signal = Signal(object)
     files_progress_signal = Signal(object)
 
     def __init__(self, prompt_first_run: bool = True):
@@ -343,6 +415,7 @@ class MainWindow(QMainWindow):
         self._update_status_bar()
         self.activity_signal.connect(self.log)
         self.operation_progress_signal.connect(self.update_operation_progress)
+        self.operation_detail_signal.connect(self.update_operation_detail)
         self.files_progress_signal.connect(self.merge_files_progress)
         self.reload_profiles()
         QTimer.singleShot(500, self.cleanup_local_storage)
@@ -1000,7 +1073,10 @@ class MainWindow(QMainWindow):
         if QMessageBox.question(self, "Update Dragonwilds server", message,
                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
             return
-        def progress(message, percent): self.operation_progress_signal.emit(message, percent)
+        def progress(message, percent, detail=None):
+            payload = {"message": message, "headline": message, "overallPercent": percent}
+            if isinstance(detail, dict): payload.update(detail)
+            self.operation_detail_signal.emit(payload)
         def done(update):
             self.log(f"Dragonwilds updated on {profile.name} to build {update['installedBuild']} using {update['mode']} mode.")
             self.invalidate_files_cache(profile.id)
@@ -1032,30 +1108,34 @@ class MainWindow(QMainWindow):
     def begin_operation(self, title: str, determinate: bool) -> None:
         self.last_progress_message = ""
         self.progress.setRange(0, 100); self.progress.setValue(0)
-        dialog = QProgressDialog(title, "", 0, 100 if determinate else 0, self)
-        dialog.setWindowTitle(title); dialog.setCancelButton(None)
-        dialog.setWindowModality(Qt.ApplicationModal); dialog.setMinimumDuration(0)
-        dialog.setAutoClose(False); dialog.setAutoReset(False); dialog.setValue(0)
-        dialog.show()
+        dialog = OperationProgressDialog(title, determinate, self); dialog.show()
         self.busy_dialog = dialog
         self.log(title)
 
     def update_operation_progress(self, message: str, percent: int = -1) -> None:
         safe_message = redact(message)
         if self.busy_dialog:
-            self.busy_dialog.setLabelText(safe_message)
-            if percent >= 0:
-                if self.busy_dialog.maximum() == 0:
-                    self.busy_dialog.setRange(0, 100)
-                value = max(0, min(100, percent))
-                self.busy_dialog.setValue(value); self.progress.setValue(value)
+            self.busy_dialog.update_progress({"headline": safe_message, "overallPercent": percent})
+            if percent >= 0: self.progress.setValue(max(0, min(100, percent)))
         if safe_message and safe_message != self.last_progress_message:
             self.last_progress_message = safe_message
             self.log(safe_message)
 
+    def update_operation_detail(self, value: object) -> None:
+        payload = dict(value) if isinstance(value, dict) else {"message": str(value)}
+        payload = {key: redact(item) if isinstance(item, str) else item for key, item in payload.items()}
+        if self.busy_dialog:
+            self.busy_dialog.update_progress(payload)
+        percent = payload.get("overallPercent", payload.get("percent", -1))
+        if isinstance(percent, (int, float)) and percent >= 0:
+            self.progress.setValue(max(0, min(100, int(percent))))
+        message = str(payload.get("message") or payload.get("headline") or "")
+        if payload.get("log", True) and message and message != self.last_progress_message:
+            self.last_progress_message = message; self.log(message)
+
     def finish_operation(self) -> None:
         if self.busy_dialog:
-            self.busy_dialog.close(); self.busy_dialog.deleteLater(); self.busy_dialog = None
+            self.busy_dialog.finish(); self.busy_dialog.deleteLater(); self.busy_dialog = None
         self.progress.setRange(0, 100)
 
     def run_async(self, function, completed=lambda result: None, *, title="Working…", determinate=False):
@@ -1472,7 +1552,10 @@ class MainWindow(QMainWindow):
             matches = sorted((resource_path("dist", "release")).glob("zanik-server-*.zip"))
             if not matches: QMessageBox.critical(self, "Missing payload", "The matching server payload is missing."); return
             archive = matches[-1]
-        def progress(message, percent): self.operation_progress_signal.emit(message, percent)
+        def progress(message, percent, detail=None):
+            payload = {"message": message, "headline": message, "overallPercent": percent}
+            if isinstance(detail, dict): payload.update(detail)
+            self.operation_detail_signal.emit(payload)
         def action(): return self.provider(profile).install(profile.id, profile.server_id, profile.server_root,
                                                      ReleasePayload(archive), selected, selected == "replace-executable",
                                                      wrapper_adapter=adapter if selected == "wrapper" else None,
@@ -1868,7 +1951,8 @@ class MainWindow(QMainWindow):
             stage = value.get("phase", "extract")
             percent = {"preserve": 10, "mappings": 15, "restore": 25,
                        "extract": 35, "bundle": 55, "complete": 65}.get(stage, -1)
-            self.operation_progress_signal.emit(value.get("message", str(value)), percent)
+            payload = dict(value); payload.setdefault("overallPercent", percent)
+            self.operation_detail_signal.emit(payload)
         def action():
             if close_game:
                 self.operation_progress_signal.emit("Requesting Dragonwilds to close", 5)
@@ -1889,7 +1973,11 @@ class MainWindow(QMainWindow):
                                          incremental=(mode == "incremental"))
             self.operation_progress_signal.emit(f"Uploading assets to {profile.name}", 70)
             def progress(current, total, path):
-                self.operation_progress_signal.emit(f"Uploading and verifying {path}", 70 + int(current * 20 / max(total, 1)))
+                self.operation_detail_signal.emit({
+                    "message": f"Uploading and verifying {path}", "headline": "Uploading website assets",
+                    "detail": f"{path} · file or part {current} of {total}",
+                    "overallPercent": 70 + int(current * 20 / max(total, 1)),
+                    "taskCurrent": current, "taskTotal": total})
             provider = self.provider(profile)
             activated = AssetDeployer(provider).activate(profile.id, profile.server_id, profile.server_root,
                                                          item.path, progress,
@@ -1969,7 +2057,9 @@ class MainWindow(QMainWindow):
                          "extract": 40, "bundle": 80, "complete": 100}
         def event(value):
             message = value.get("message", str(value)); phase = value.get("phase", "extract")
-            self.operation_progress_signal.emit(message, phase_percent.get(phase, -1))
+            payload = dict(value); payload.setdefault("message", message)
+            payload.setdefault("overallPercent", phase_percent.get(phase, -1))
+            self.operation_detail_signal.emit(payload)
         def action():
             if close_game:
                 self.operation_progress_signal.emit("Requesting Dragonwilds to close", 5)
@@ -2008,7 +2098,8 @@ class MainWindow(QMainWindow):
         def event(value):
             phase = value.get("phase", "extract")
             percent = {"extract": 35, "bundle": 75, "cleanup-warning": 98, "complete": 100}.get(phase, -1)
-            self.operation_progress_signal.emit(value.get("message", str(value)), percent)
+            payload = dict(value); payload.setdefault("overallPercent", percent)
+            self.operation_detail_signal.emit(payload)
         def action():
             if close_game:
                 self.operation_progress_signal.emit("Requesting Dragonwilds to close", 5)
@@ -2112,7 +2203,10 @@ class MainWindow(QMainWindow):
                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes: return
         def progress(current, total, path):
             percent = 15 + int(current * 75 / max(total, 1))
-            self.operation_progress_signal.emit(f"Uploading and verifying {path}", percent)
+            self.operation_detail_signal.emit({
+                "message": f"Uploading and verifying {path}", "headline": "Uploading website assets",
+                "detail": f"{path} · file or part {current} of {total}",
+                "overallPercent": percent, "taskCurrent": current, "taskTotal": total})
         def action():
             AssetExtractor(resource_path("asset-tools"), BundleCache(self.paths["assets"])).validate_bundle(
                 bundle, expected_asset_contract(resource_path("asset-tools")))

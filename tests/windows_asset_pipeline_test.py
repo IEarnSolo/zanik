@@ -4,6 +4,7 @@ import json
 import re
 import tempfile
 import sys
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -264,6 +265,55 @@ with tempfile.TemporaryDirectory() as name:
                                      ["basename:shared", "basename:added"])
     assert texture_delta_calls == [], "unchanged texture inventory must make zero exporter calls"
 
+    history = json.loads((ROOT / "asset-tools/extraction-recipe-history.json").read_text(encoding="utf-8"))
+    recipe6, recipe7 = [entry for entry in history["recipes"] if entry["sha256"] in
+                        pipeline.REVIEWED_LEGACY_GENERATION_RECIPES]
+    recipe6["recipe"]["jsonTargets"] = recipe6["jsonTargets"]
+    recipe7["recipe"]["jsonTargets"] = recipe7["jsonTargets"]
+    recipe7["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
+    contracts = {group: "a" * 64 for group in pipeline.GENERATION_GROUPS}
+    dirty = pipeline.selective_generation_groups(
+        recipe6["recipe"], recipe7["recipe"], None, contracts,
+        ["package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal"],
+        [], True)
+    assert dirty == {"map-icons"}, f"nodestone-only recipe migration rebuilt unrelated groups: {dirty}"
+    dirty = pipeline.selective_generation_groups(
+        recipe7["recipe"], recipe7["recipe"],
+        {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,
+         "contracts": {**contracts, "plan-items": "b" * 64}},
+        contracts, [], [], False)
+    assert {"plan-items", "item-artwork", "recipes"} <= dirty
+    assert not ({"npc", "resources", "quests"} & dirty)
+    assert pipeline.selective_generation_groups(
+        {}, recipe7["recipe"], None, contracts, [], [], False) == set(pipeline.GENERATION_GROUPS)
+
+    baseline_source = root / "baseline-source"; baseline_source.mkdir()
+    baseline_file = baseline_source / "lodestone-icon.png"; baseline_file.write_bytes(b"old")
+    baseline_manifest = {
+        "schemaVersion": 2, "compatibility": "compatible",
+        "extractionStage": "validated-and-packaged", "extractionRecipeSha256": "recipe6",
+        "sourceExecutable": {"sha256": "game"},
+        "files": [{"path": baseline_file.name, "size": baseline_file.stat().st_size,
+                   "sha256": pipeline.sha256(baseline_file)}],
+    }
+    baseline_zip = root / "baseline.zip"
+    with zipfile.ZipFile(baseline_zip, "w") as archive:
+        archive.writestr("asset-manifest.json", json.dumps(baseline_manifest))
+        archive.write(baseline_file, baseline_file.name)
+    seeded = root / "seeded"
+    pipeline.seed_validated_baseline(baseline_zip, seeded, "recipe6", "game")
+    assert (seeded / baseline_file.name).read_bytes() == b"old"
+    baseline_manifest["files"][0]["sha256"] = "0" * 64
+    bad_zip = root / "bad-baseline.zip"
+    with zipfile.ZipFile(bad_zip, "w") as archive:
+        archive.writestr("asset-manifest.json", json.dumps(baseline_manifest))
+        archive.write(baseline_file, baseline_file.name)
+    try:
+        pipeline.seed_validated_baseline(bad_zip, root / "bad-seed", "recipe6", "game")
+        raise AssertionError("altered cached output was accepted")
+    except RuntimeError as error:
+        assert "failed validation" in str(error)
+
     journal = root / "extraction-journal.json"
     original_journal = {
         "schemaVersion": 1, "stage": "mappings", "updatedAt": "old",
@@ -391,6 +441,8 @@ with tempfile.TemporaryDirectory() as name:
     assert "[Security.Cryptography.SHA256]::Create()" in powershell
     assert "Get-FileHash -LiteralPath" not in powershell
     assert "$Resume -and (Test-Path -LiteralPath $PipelineWorkspace" in powershell
+    assert "[string]$BaselineBundle" in powershell
+    assert "--generation-provenance-file" in powershell
     assert "game launch and UnrealAssetScout extraction are skipped" in powershell
     assert "$Journal.preserveExistingLoader" in powershell
     assert "-NotePropertyName preserveExistingLoader" in powershell

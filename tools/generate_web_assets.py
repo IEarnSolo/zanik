@@ -29,6 +29,15 @@ LODESTONE_MAP_ICON_PACKAGE = "RSDragonwilds/Content/Art/UI/Icons/T_LodestoneMapI
 NODESTONE_MAP_ICON_PACKAGE = "RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal"
 
 
+def progress(message: str, current: int | None = None, total: int | None = None) -> None:
+    payload: dict[str, object] = {"phase": "extract", "message": message,
+                                 "headline": "Generating website artwork",
+                                 "detail": message, "log": False}
+    if current is not None: payload["taskCurrent"] = current
+    if total is not None: payload["taskTotal"] = total
+    print("ZANIK_EVENT " + json.dumps(payload, separators=(",", ":")), flush=True)
+
+
 def png_chunk(kind: bytes, data: bytes) -> bytes:
     return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", binascii.crc32(kind + data) & 0xffffffff)
 
@@ -135,15 +144,26 @@ def main() -> int:
     parser.add_argument("--texture-root", type=Path, required=True)
     parser.add_argument("--font-root", type=Path, required=True)
     parser.add_argument("--web-root", type=Path, required=True)
+    parser.add_argument("--group", action="append", choices=(
+        "items", "npc", "resources", "skills", "map-icons", "world-map", "font", "quest-badges"),
+        help="Generate only this independently cacheable output group; repeat as needed")
     args = parser.parse_args(); web = args.web_root; images = index_pngs(args.texture_root)
+    groups = set(args.group or ("items", "npc", "resources", "skills", "map-icons",
+                                "world-map", "font", "quest-badges"))
+    ordered_groups = [group for group in ("items", "npc", "resources", "skills", "map-icons",
+                                           "world-map", "font", "quest-badges") if group in groups]
     missing: list[str] = []; copied = 0
-    item_dir = web / "items"
-    for record in records(args.json_root):
-        p = record.get("Properties") or {}; key = str(record.get("Name", "")); icon = asset_base(p.get("Icon") or p.get("DisplayIcon"))
-        if key and icon and (record.get("Type") in {"ItemData", "EquippableItemData", "ConsumableItemData"} or key.startswith(("ITEM_", "DA_Consumable_", "SM_"))):
-            copied += int(copy(images, icon, item_dir / f"{key}.png"))
+    progress("Indexing exported textures", 0, len(ordered_groups))
+    if "items" in groups:
+        progress("Resolving item artwork", ordered_groups.index("items") + 1, len(ordered_groups))
+        item_dir = web / "items"
+        for record in records(args.json_root):
+            p = record.get("Properties") or {}; key = str(record.get("Name", "")); icon = asset_base(p.get("Icon") or p.get("DisplayIcon"))
+            if key and icon and (record.get("Type") in {"ItemData", "EquippableItemData", "ConsumableItemData"} or key.startswith(("ITEM_", "DA_Consumable_", "SM_"))):
+                copied += int(copy(images, icon, item_dir / f"{key}.png"))
     npc_path = web / "npc-catalog.json"
-    if npc_path.is_file():
+    if "npc" in groups and npc_path.is_file():
+        progress("Resolving NPC artwork", ordered_groups.index("npc") + 1, len(ordered_groups))
         catalog = json.loads(npc_path.read_text(encoding="utf-8"))
         for item in catalog.get("types", []):
             icon = str(item.get("icon", "")).rsplit("/", 1)[-1].removesuffix(".png")
@@ -154,7 +174,8 @@ def main() -> int:
         for line in identities.read_text(encoding="utf-8").splitlines():
             fields = line.split("\t")
             if line and not line.startswith("#") and len(fields) >= 5 and fields[4]: resource_icons.setdefault(fields[2], fields[4])
-    if resource_path.is_file():
+    if "resources" in groups and resource_path.is_file():
+        progress("Resolving resource artwork", ordered_groups.index("resources") + 1, len(ordered_groups))
         catalog = json.loads(resource_path.read_text(encoding="utf-8"))
         for item in catalog.get("types", []):
             key = str(item.get("id", "")); icon = resource_icons.get(key, "")
@@ -163,27 +184,37 @@ def main() -> int:
         missing_resources = [entry for entry in missing if entry.startswith("resource:")]
         if missing_resources:
             raise RuntimeError("required resource artwork is unavailable: " + ", ".join(missing_resources))
-    for skill in SKILLS:
+    if "skills" in groups:
+        progress("Resolving skill artwork", ordered_groups.index("skills") + 1, len(ordered_groups))
+    for skill in SKILLS if "skills" in groups else ():
         # Player cards use the clean skill glyphs from the tag artwork.  The
         # SkillTree textures are glowing progression-node badges and are not
         # interchangeable even though their names look more specific.
         candidates = [f"T_Icon_Tag_Skill_{skill}", f"T_Icon_{skill}", f"T_Icon_SkillTree_{skill}"]
         if not next((copy(images, candidate, web / "skills" / f"{skill}.png") for candidate in candidates), False):
             placeholder(web / "skills" / f"{skill}.png", (193, 166, 77, 255)); missing.append(f"skill:{skill}")
-    if not copy_package(args.texture_root, LODESTONE_MAP_ICON_PACKAGE, web / "lodestone-icon.png"):
-        placeholder(web / "lodestone-icon.png", (67, 155, 219, 255)); missing.append("lodestone-icon.png")
-    if not copy_package(args.texture_root, NODESTONE_MAP_ICON_PACKAGE, web / "nodestone-icon.png"):
-        raise RuntimeError(f"required nodestone map artwork is unavailable: {NODESTONE_MAP_ICON_PACKAGE}")
-    for target, candidates, color in (
-        ("gravestone-icon.png", ("T_Icon_Gravestone",), (180, 180, 180, 255)),
-    ):
-        if not next((copy(images, candidate, web / target) for candidate in candidates), False):
-            placeholder(web / target, color); missing.append(target)
-    map_source = images.get("t_worldmap_landmass")
-    if not map_source: raise RuntimeError("the required T_WorldMap_Landmass texture was not exported")
-    convert_map(map_source, web / "world-map.jpg")
-    extract_font(args.font_root, web / "Jancient-Regular.ttf")
-    svg(web / "quests" / "main-quest.svg", True); svg(web / "quests" / "side-quest.svg", False)
+    if "map-icons" in groups:
+        progress("Resolving fixed map artwork", ordered_groups.index("map-icons") + 1, len(ordered_groups))
+        if not copy_package(args.texture_root, LODESTONE_MAP_ICON_PACKAGE, web / "lodestone-icon.png"):
+            placeholder(web / "lodestone-icon.png", (67, 155, 219, 255)); missing.append("lodestone-icon.png")
+        if not copy_package(args.texture_root, NODESTONE_MAP_ICON_PACKAGE, web / "nodestone-icon.png"):
+            raise RuntimeError(f"required nodestone map artwork is unavailable: {NODESTONE_MAP_ICON_PACKAGE}")
+        for target, candidates, color in (
+            ("gravestone-icon.png", ("T_Icon_Gravestone",), (180, 180, 180, 255)),
+        ):
+            if not next((copy(images, candidate, web / target) for candidate in candidates), False):
+                placeholder(web / target, color); missing.append(target)
+    if "world-map" in groups:
+        progress("Converting the world map", ordered_groups.index("world-map") + 1, len(ordered_groups))
+        map_source = images.get("t_worldmap_landmass")
+        if not map_source: raise RuntimeError("the required T_WorldMap_Landmass texture was not exported")
+        convert_map(map_source, web / "world-map.jpg")
+    if "font" in groups:
+        progress("Extracting the website font", ordered_groups.index("font") + 1, len(ordered_groups))
+        extract_font(args.font_root, web / "Jancient-Regular.ttf")
+    if "quest-badges" in groups:
+        progress("Writing quest badges", ordered_groups.index("quest-badges") + 1, len(ordered_groups))
+        svg(web / "quests" / "main-quest.svg", True); svg(web / "quests" / "side-quest.svg", False)
     print(json.dumps({"itemIcons": copied, "fallbacks": sorted(missing), "textureFiles": len(images)}, sort_keys=True))
     return 0
 
