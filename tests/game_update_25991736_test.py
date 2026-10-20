@@ -52,10 +52,17 @@ assert "if(storageTeleportTemplateValid.load())" in teleport
 assert "storageTeleportCircuitBroken=true" in teleport
 assert "ReadNearbyBuildingBounds(chestActor,origin)" not in teleport
 assert "ReadAdminStorageLocations(request.targetCharacterGuid" not in teleport
+assert 'FindFunction("SwitchableTeleporter","PerformTeleport")' in teleport
+assert 'has("PlayerCharacter",0x0)' in teleport
+assert 'has("TargetDestination",0x8)' in teleport
+assert "nodestoneTeleportCircuitBroken=true" in teleport
 
 analyzer = (root / "tools" / "compat_analyzer.cpp").read_text()
 assert "--native-offsets" in analyzer
 assert 'field("graveGetInventory",graveGetInventoryAt,first)' in analyzer
+assert "ASwitchableTeleporter::PerformTeleport" in analyzer
+assert "UTeleportationSubsystem::TeleportToNamedLocation" in analyzer
+assert "native nodestone named-location call relationship changed" in analyzer
 
 resources = (root / "src" / "engine" / "resources.cpp").read_text()
 assert f'hash=="{server_sha}"' in resources

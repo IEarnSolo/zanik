@@ -12,6 +12,9 @@ for(const token of ['id="questPanel"','id="questSteps"','id="questTip"','/api/qu
 for(const token of ['id="lodestoneTip"','showLodestoneTip','Coordinates: X ','pointer-events:auto;cursor:pointer']){
   if(!page[1].includes(token))throw new Error('missing public lodestone-tooltip token: '+token);
 }
+for(const token of ['id="nodestoneTip"','showNodestoneTip','displayLocation','teleportToNodestone','nodestoneId:id','admin-nodestone-active']){
+  if(!page[1].includes(token))throw new Error('missing nodestone tooltip/teleport token: '+token);
+}
 if(page[1].includes('Placed by: '))throw new Error('lodestone tooltip must not claim unavailable historical ownership');
 if(!page[1].includes("/assets/lodestone-icon.png?v=lodestone-map-icon-2")){
   throw new Error('lodestone map icon must use a revisioned URL so corrected artwork replaces cached responses');
