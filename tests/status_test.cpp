@@ -55,9 +55,14 @@ int main() {
     stored.mapAtDungeonEntrance = true;
     assert(Status::MapPlayersJson({stored}, "world-map-1.0.0.2", 987654) ==
            R"({"updatedAt":987654,"assetVersion":"world-map-1.0.0.2","players":[{"id":"abc123","name":"Ada <Admin>","x":0.25000000,"y":0.75000000,"location":"Temple <Woods>","dungeonEntrance":true}]})");
-    std::vector<DomEngine::LodestoneInfo> lodestones={{"opaque-a",0.125,0.875}};
+    DomEngine::LodestoneInfo lodestone;
+    lodestone.id="opaque-a";lodestone.mapX=0.125;lodestone.mapY=0.875;
+    lodestone.ownerName="Ada <Builder>";lodestone.ownerCharacterGuid="private-character-guid";
+    lodestone.worldLocation={123.25,-456.75,78.0};
+    std::vector<DomEngine::LodestoneInfo> lodestones={lodestone};
     assert(Status::MapLodestonesJson(lodestones,"world-map-1.0.0.2",987654)==
-           R"({"updatedAt":987654,"assetVersion":"world-map-1.0.0.2","lodestones":[{"id":"opaque-a","x":0.12500000,"y":0.87500000}]})");
+           R"({"updatedAt":987654,"assetVersion":"world-map-1.0.0.2","lodestones":[{"id":"opaque-a","x":0.12500000,"y":0.87500000,"ownerName":"Ada <Builder>","worldX":123.2,"worldY":-456.8,"worldZ":78.0}]})");
+    assert(Status::MapLodestonesJson(lodestones,"world-map-1.0.0.2",987654).find("private-character-guid")==std::string::npos);
     std::vector<DomEngine::MapLabelInfo> labels={{"label-a","Temple <Woods>",0.1,0.2,-3.5,42}};
     assert(Status::MapLabelsJson(labels,"world-map-1.0.0.2",987654)==
            R"({"updatedAt":987654,"assetVersion":"world-map-1.0.0.2","labels":[{"id":"label-a","text":"Temple <Woods>","x":0.10000000,"y":0.20000000,"rotation":-3.500,"fontSize":42,"letterTint":[0.000,0.000,0.000,1.000],"letterTintOpacity":1.000,"letterOpacity":1.000,"letterContrast":1.000,"glowTint":[0.000,0.000,0.000,1.000],"glowTintOpacity":1.000,"glowOpacity":1.000,"glowRange":0.000,"glowBrightness":1.000,"volumeToFlatness":0.000,"regularToBold":0.000}]})");

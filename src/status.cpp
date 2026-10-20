@@ -180,7 +180,11 @@ std::string MapLodestonesJson(const std::vector<DomEngine::LodestoneInfo>& lodes
         if(i)json<<',';
         json << "{\"id\":\"" << Escape(lodestones[i].id) << "\",\"x\":"
              << std::fixed << std::setprecision(8) << lodestones[i].mapX
-             << ",\"y\":" << lodestones[i].mapY << '}';
+             << ",\"y\":" << lodestones[i].mapY
+             << ",\"ownerName\":\"" << Escape(lodestones[i].ownerName.empty()?"Unknown player":lodestones[i].ownerName) << "\""
+             << ",\"worldX\":" << std::setprecision(1) << lodestones[i].worldLocation.X
+             << ",\"worldY\":" << lodestones[i].worldLocation.Y
+             << ",\"worldZ\":" << lodestones[i].worldLocation.Z << '}';
     }
     json << "]}";
     return json.str();
