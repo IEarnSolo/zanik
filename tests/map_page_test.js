@@ -12,7 +12,11 @@ for(const token of ['id="questPanel"','id="questSteps"','id="questTip"','/api/qu
 for(const token of ['id="lodestoneTip"','showLodestoneTip','Coordinates: X ','pointer-events:auto;cursor:pointer']){
   if(!page[1].includes(token))throw new Error('missing public lodestone-tooltip token: '+token);
 }
-for(const token of ['id="nodestoneTip"','showNodestoneTip','displayLocation','teleportToNodestone','nodestoneId:id','admin-nodestone-active']){
+if(!page[1].includes("if(adminSession?.capabilities?.teleport){const action=document.createElement('div')") ||
+   !page[1].includes("action.textContent='Click to teleport'")){
+  throw new Error('lodestone tooltip must advertise teleporting only to an authorized admin session');
+}
+for(const token of ['id="nodestoneTip"','showNodestoneTip','displayLocation','teleportToNodestone','nodestoneId:id','admin-nodestone-active',"nodestoneId:e.target.closest('.nodestone')?.dataset.id||null",'completed.nodestoneId&&adminSession?.capabilities?.nodestoneTeleport']){
   if(!page[1].includes(token))throw new Error('missing nodestone tooltip/teleport token: '+token);
 }
 if(page[1].includes('Placed by: '))throw new Error('lodestone tooltip must not claim unavailable historical ownership');
