@@ -91,6 +91,51 @@
           }
         }
       }
+    },
+    {
+      "sha256": "6956f42170b02bf55190521492f867e2800dfcc5666806dda8023022ca0f2459",
+      "jsonTargets": [
+        "/Maps/World/L_World(?:/|\\.(?:uasset|umap)$)",
+        "/Gameplay/(?:AI|BaseBuilding|BaseBuilding_New|Character/Player|Items|NPCs|Progress|Quests|Recipes|World)",
+        "/UI/JournalData/",
+        "/GameFeatures/[^/]+/Content/(?:Gameplay|World)/",
+        "DA_BuildPieceCatalogue_Default",
+        "DT_CraftingStationsDataTable",
+        "DT_ProcessingStationDataTable"
+      ],
+      "recipe": {
+        "schemaVersion": 8,
+        "engine": "GAME_UE5_6",
+        "jsonFilter": "(?:/Maps/World/L_World(?:/|\\.(?:uasset|umap)$)|/Gameplay/(?:AI|BaseBuilding|BaseBuilding_New|Character/Player|Items|NPCs|Progress|Quests|Recipes|World)|/UI/JournalData/|/GameFeatures/[^/]+/Content/(?:Gameplay|World)/|DA_BuildPieceCatalogue_Default|DT_CraftingStationsDataTable|DT_ProcessingStationDataTable)",
+        "fontFilter": "/UI/Fonts/Jancient\\.ufont$",
+        "requiredTextureAssets": [
+          "T_WorldMap_Landmass",
+          "package:RSDragonwilds/Content/Art/UI/Icons/T_LodestoneMapIcon",
+          "T_Icon_Gravestone",
+          "T_Icon_Plans"
+        ],
+        "catalogProfile": {
+          "version": "client-25812671-reviewed-7",
+          "clientBuild": "25812671",
+          "exportCounts": {
+            "jsonFiles": 17249,
+            "worldPartitionCells": 1104
+          },
+          "catalogCounts": {
+            "buildings/catalog.json:pieces": 827,
+            "npc-catalog.json:nodes": 2964,
+            "npc-catalog.json:types": 171,
+            "quest-catalog.json:objectives": 219,
+            "quest-catalog.json:quests": 41,
+            "quest-step-locations.json:markers": 695,
+            "quest-step-locations.json:quests": 41,
+            "quest-step-locations.json:steps": 230,
+            "recipe-unlocks.json:entries": 1576,
+            "resource-catalog.json:nodes": 31910,
+            "resource-catalog.json:types": 26
+          }
+        }
+      }
     }
   ]
 }

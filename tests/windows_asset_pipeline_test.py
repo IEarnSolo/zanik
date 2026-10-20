@@ -266,8 +266,8 @@ with tempfile.TemporaryDirectory() as name:
     assert texture_delta_calls == [], "unchanged texture inventory must make zero exporter calls"
 
     history = json.loads((ROOT / "asset-tools/extraction-recipe-history.json").read_text(encoding="utf-8"))
-    recipe6, recipe7 = [entry for entry in history["recipes"] if entry["sha256"] in
-                        pipeline.REVIEWED_LEGACY_GENERATION_RECIPES]
+    recipe6, recipe7, recipe8 = [entry for entry in history["recipes"] if entry["sha256"] in
+                                 pipeline.REVIEWED_LEGACY_GENERATION_RECIPES]
     recipe6["recipe"]["jsonTargets"] = recipe6["jsonTargets"]
     recipe7["recipe"]["jsonTargets"] = recipe7["jsonTargets"]
     recipe7["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
@@ -277,6 +277,18 @@ with tempfile.TemporaryDirectory() as name:
         ["package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal"],
         [], True)
     assert dirty == {"map-icons"}, f"nodestone-only recipe migration rebuilt unrelated groups: {dirty}"
+    recipe8["recipe"]["jsonTargets"] = recipe8["jsonTargets"]
+    recipe8["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
+    dirty = pipeline.selective_generation_groups(
+        recipe7["recipe"], recipe8["recipe"], None, contracts,
+        [], ["package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal"], True)
+    assert dirty == {"map-icons"}, f"authored nodestone artwork migration rebuilt unrelated groups: {dirty}"
+    dirty = pipeline.selective_generation_groups(
+        recipe7["recipe"], recipe8["recipe"],
+        {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,
+         "contracts": {group: "b" * 64 for group in pipeline.GENERATION_GROUPS}},
+        contracts, [], [pipeline.RETIRED_FRAGMENT_CRYSTAL_TARGET], True)
+    assert dirty == {"map-icons"}, f"reviewed shared-generator migration rebuilt unrelated groups: {dirty}"
     dirty = pipeline.selective_generation_groups(
         recipe7["recipe"], recipe7["recipe"],
         {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,

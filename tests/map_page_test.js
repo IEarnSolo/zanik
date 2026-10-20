@@ -12,6 +12,6 @@ for(const token of ['id="questPanel"','id="questSteps"','id="questTip"','/api/qu
 if(!page[1].includes("/assets/lodestone-icon.png?v=lodestone-map-icon-2")){
   throw new Error('lodestone map icon must use a revisioned URL so corrected artwork replaces cached responses');
 }
-if(!page[1].includes("/assets/nodestone-icon.png?v=nodestone-fragment-crystal-1")){
+if(!page[1].includes("/assets/nodestone-icon.png?v=nodestone-topdown-1")){
   throw new Error('nodestone map icon must use a revisioned URL so corrected artwork replaces cached responses');
 }

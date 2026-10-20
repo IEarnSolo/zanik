@@ -23,7 +23,7 @@ except ModuleNotFoundError:  # Imported as tools.* by repository tests.
     from tools.asset_filesystem import extended_path, read_json as read_json_file
 
 
-RECIPE_VERSION = 7
+RECIPE_VERSION = 8
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 EXPORT_CHECKPOINT = "export-checkpoint.json"
 INCREMENTAL_STATE = "incremental-state.json"
@@ -31,6 +31,8 @@ GENERATION_STATE = "generation-state.json"
 GENERATION_GRAPH_VERSION = 1
 MAP_ICON_TARGETS = {
     "package:RSDragonwilds/Content/Art/UI/Icons/T_LodestoneMapIcon",
+    # Retained for the exact reviewed recipe-7 -> recipe-8 removal. The
+    # fragment-crystal texture is no longer used for nodestone map markers.
     "package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal",
     "basename:T_Icon_Gravestone",
 }
@@ -42,7 +44,10 @@ GENERATION_GROUPS = (
 REVIEWED_LEGACY_GENERATION_RECIPES = {
     "fee0d17d8c0d51276ec4d9f62939fd1dade779905f5e403f174d819325b5f412",  # recipe 6
     "bdf48eadbc433e4680f1cb2485b75accd2169498d5277616828992a94bf566a7",  # recipe 7
+    "6956f42170b02bf55190521492f867e2800dfcc5666806dda8023022ca0f2459",  # recipe 8
 }
+RETIRED_FRAGMENT_CRYSTAL_TARGET = \
+    "package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal"
 GROUP_OUTPUTS = {
     "buildings": ("buildings",), "plan-items": ("plan-items.tsv",),
     "npc": ("npc-catalog.json", "npc-identities.tsv"),
@@ -161,7 +166,9 @@ def generation_contracts(scripts: Path, repo: Path, recipe: dict) -> dict[str, s
         "resources": [scripts / "generate_world_catalogs.py"],
         "quests": [scripts / "generate_quest_catalog.py", repo / "deploy/quest-overrides.json"],
         "item-artwork": [shared], "npc-artwork": [shared], "resource-artwork": [shared],
-        "skills": [shared], "map-icons": [shared], "world-map": [shared], "font": [shared],
+        "skills": [shared],
+        "map-icons": [shared, repo / "asset-tools/artwork/nodestone-icon-map.png"],
+        "world-map": [shared], "font": [shared],
         "quest-badges": [shared],
         "recipes": [scripts / "generate_recipe_unlock_catalog.py", repo / "asset-tools/catalog-rules.json",
                     repo / "asset-tools/recipe-runtime-catalog-history.tsv"],
@@ -213,11 +220,23 @@ def selective_generation_groups(previous_recipe: dict, recipe: dict, prior_state
     new_required = set(new.pop("requiredTextureAssets", []) or [])
     old.pop("catalogProfile", None); new.pop("catalogProfile", None)
     current_sha = sha256(Path(recipe["_path"])) if recipe.get("_path") else ""
-    # Recipe 6 -> 7 was reviewed as a map-icon-only selector addition.  The
-    # schema bump must not manufacture catalog invalidations for that exact,
-    # fingerprinted migration.
+    # Reviewed recipe-only migrations must not manufacture catalog
+    # invalidations. Recipe 6 -> 7 added the old fragment-crystal target;
+    # recipe 7 -> 8 removes it in favor of bundled Zanik-authored artwork.
     if legacy_reviewed and current_sha in REVIEWED_LEGACY_GENERATION_RECIPES:
         old.pop("schemaVersion", None); new.pop("schemaVersion", None)
+    reviewed_authored_nodestone_migration = (
+        legacy_reviewed
+        and current_sha == "6956f42170b02bf55190521492f867e2800dfcc5666806dda8023022ca0f2459"
+        and old == new
+        and old_required ^ new_required == {RETIRED_FRAGMENT_CRYSTAL_TARGET}
+    )
+    if reviewed_authored_nodestone_migration:
+        # generate_web_assets.py owns several independent groups, so changing
+        # its map-icon branch changes their code contract mechanically. This
+        # exact reviewed migration affects only map-icons; accept the previous
+        # validated bytes for every unrelated group and record the new hashes.
+        dirty.intersection_update({"map-icons"})
     if old != new:
         dirty.update({"buildings", "plan-items", "npc", "resources", "quests", "recipes",
                       "quest-destinations", "item-artwork", "npc-artwork", "resource-artwork"})

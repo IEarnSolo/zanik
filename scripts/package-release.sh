@@ -57,7 +57,7 @@ for name, record in data.items():
     actual=hashlib.sha256(target.read_bytes()).hexdigest()
     if actual != record['sha256']: raise SystemExit(f'checksum mismatch for {name}: {actual}')
 PY
-mkdir -p "$WORK/asset-linux/tools" "$WORK/asset-windows/tools" "$WORK/asset-windows/runtime" "$WORK/asset-windows/third_party/uas" "$WORK/asset-windows/third_party/ue4ss" "$WORK/asset-windows/asset-tools" "$WORK/asset-windows/deploy"
+mkdir -p "$WORK/asset-linux/tools" "$WORK/asset-windows/tools" "$WORK/asset-windows/runtime" "$WORK/asset-windows/third_party/uas" "$WORK/asset-windows/third_party/ue4ss" "$WORK/asset-windows/asset-tools/artwork" "$WORK/asset-windows/deploy"
 unzip -q "$WORK/python-embed-windows-x86_64.zip" -d "$WORK/asset-windows/runtime"
 unzip -q "$WORK/unreal-asset-scout-windows-x86_64.zip" -d "$WORK/asset-windows/third_party/uas"
 unzip -q "$WORK/ue4ss-windows-x86_64.zip" -d "$WORK/asset-windows/third_party/ue4ss"
@@ -68,6 +68,7 @@ for file in zanik_assets windows_mapping windows_asset_pipeline generate_buildin
   install -m 0644 "$ROOT/tools/$file.py" "$WORK/asset-windows/tools/$file.py"
 done
 install -m 0644 "$ROOT/asset-tools/tools.lock.json" "$ROOT/asset-tools/extraction-recipes.json" "$ROOT/asset-tools/extraction-recipe-history.json" "$ROOT/asset-tools/catalog-rules.json" "$WORK/asset-windows/asset-tools/"
+install -m 0644 "$ROOT/asset-tools/artwork/nodestone-icon-map.png" "$WORK/asset-windows/asset-tools/artwork/"
 install -m 0644 "$ROOT/asset-tools/LICENSE-UnrealAssetScout.txt" "$WORK/asset-windows/third_party/uas/LICENSE.txt"
 install -m 0644 "$ROOT/deploy/quest-overrides.json" "$ROOT/deploy/quest-step-overrides.json" "$WORK/asset-windows/deploy/"
 for dir in asset-linux asset-windows; do
