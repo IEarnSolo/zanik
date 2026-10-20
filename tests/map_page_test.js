@@ -9,7 +9,7 @@ for(const script of scripts)new Function(script);
 for(const token of ['id="questPanel"','id="questSteps"','id="questTip"','/api/quests/steps','renderQuestMarkers','focusQuestMarker','dragonwilds.map.questSteps']){
   if(!page[1].includes(token))throw new Error('missing quest-map token: '+token);
 }
-for(const token of ['id="lodestoneTip"','showLodestoneTip','Coordinates: X ','pointer-events:auto;cursor:help']){
+for(const token of ['id="lodestoneTip"','showLodestoneTip','Coordinates: X ','pointer-events:auto;cursor:pointer']){
   if(!page[1].includes(token))throw new Error('missing public lodestone-tooltip token: '+token);
 }
 if(page[1].includes('Placed by: '))throw new Error('lodestone tooltip must not claim unavailable historical ownership');
