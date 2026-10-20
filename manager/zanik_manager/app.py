@@ -1999,14 +1999,26 @@ class MainWindow(QMainWindow):
         if not status["compatible"]:
             self.offer_stale_asset_cleanup(root, extractor, status, self.extract_assets)
             return
+        needs_mapping = status.get("stage") == "created"
+        preflight = self.confirm_asset_preflight(root, extractor) if needs_mapping else (False, False)
+        if preflight is None:
+            return
+        close_game, preserve = preflight
         output = self.paths["root"] / "extraction-output"
         def event(value):
             phase = value.get("phase", "extract")
             percent = {"extract": 35, "bundle": 75, "cleanup-warning": 98, "complete": 100}.get(phase, -1)
             self.operation_progress_signal.emit(value.get("message", str(value)), percent)
+        def action():
+            if close_game:
+                self.operation_progress_signal.emit("Requesting Dragonwilds to close", 5)
+                if not request_dragonwilds_close():
+                    raise RuntimeError("Dragonwilds did not close normally. Close it manually and retry; it was not force-terminated.")
+            return extractor.extract(root, output, event, preserve_existing_loader=preserve,
+                                     recovery_root=self.asset_recovery_root(root),
+                                     work_root=work, resume=True)
         self.run_async(
-            lambda: extractor.extract(root, output, event, recovery_root=self.asset_recovery_root(root),
-                                      work_root=work, resume=True),
+            action,
             lambda item: self.asset_extraction_complete(item, resumed=True),
             title=f"Resuming asset extraction from {status['stage']}…", determinate=True,
         )

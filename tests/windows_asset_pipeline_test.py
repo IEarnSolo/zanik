@@ -389,5 +389,7 @@ with tempfile.TemporaryDirectory() as name:
     assert "Set-Content" not in writer
     assert "$Resume -and (Test-Path -LiteralPath $PipelineWorkspace" in powershell
     assert "game launch and UnrealAssetScout extraction are skipped" in powershell
+    assert "$Journal.preserveExistingLoader" in powershell
+    assert "-NotePropertyName preserveExistingLoader" in powershell
 
 print("windows asset pipeline tests passed")
