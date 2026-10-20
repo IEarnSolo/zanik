@@ -119,6 +119,7 @@ class PterodactylProvider(ServerProvider):
     def preflight(self, server_id: str, operation: str, server: dict | None = None) -> None:
         required={
             "doctor": {"file.read", "file.read-content", "startup.read"},
+            "files": {"file.read"},
             "install": {"control.start", "control.stop", "file.read", "file.read-content", "file.create", "file.update", "file.delete"},
             "replacement-install": {"control.start", "control.stop", "file.read", "file.read-content", "file.create", "file.update", "file.delete", "startup.read", "startup.update"},
             "game-update": {"control.start", "control.stop", "file.read", "file.read-content", "file.create", "file.update", "file.delete", "startup.read", "startup.update"},
