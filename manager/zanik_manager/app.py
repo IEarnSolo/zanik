@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal, Slot
@@ -11,7 +12,8 @@ from PySide6.QtGui import QCursor, QDesktopServices
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                QFormLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
                                QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar, QProgressDialog, QPushButton, QScrollArea,
-                               QSizePolicy, QSpinBox, QTabWidget, QVBoxLayout, QWidget)
+                               QSizePolicy, QSpinBox, QTabWidget, QTextBrowser, QTreeWidget, QTreeWidgetItem,
+                               QVBoxLayout, QWidget)
 from PySide6.QtCore import QUrl
 
 from .activity import format_activity_entry
@@ -22,6 +24,9 @@ from .assets import (AssetDeployer, AssetExtractor, asset_contract_presentation,
 from .cache import BundleCache, format_bundle_timestamp
 from .changelog import ChangelogRelease, parse_changelog
 from .config import ConfigModel, content_hash, update_website_settings, website_configuration_ready
+from .doctor_view import render_doctor_html
+from .files import (FileEntry, FileIndex, RemoteFileIndexer, file_type, format_modified, format_size,
+                    list_directory, virtual_roots)
 from .journal import JournalStore
 from .lifecycle import PterodactylProvider, ReleasePayload
 from .onboarding import PanelDiscovery, discover_panel, is_remote_http
@@ -125,6 +130,18 @@ class Worker(QObject):
             self.error = (str(error), traceback.format_exc())
         finally:
             self.done.emit()
+
+
+class SortableFileItem(QTreeWidgetItem):
+    """Sort displayed metadata by its underlying typed value."""
+
+    def __lt__(self, other):
+        column = self.treeWidget().sortColumn() if self.treeWidget() else 0
+        left = self.data(column, Qt.UserRole + 1)
+        right = other.data(column, Qt.UserRole + 1)
+        if left is not None and right is not None:
+            return left < right
+        return super().__lt__(other)
 
 
 class AddServerDialog(QDialog):
@@ -285,6 +302,7 @@ class EditServersDialog(QDialog):
 class MainWindow(QMainWindow):
     activity_signal = Signal(str)
     operation_progress_signal = Signal(str, int)
+    files_progress_signal = Signal(object)
 
     def __init__(self, prompt_first_run: bool = True):
         super().__init__(); self.setWindowTitle("Zanik Manager"); self.resize(980, 680)
@@ -302,6 +320,12 @@ class MainWindow(QMainWindow):
         self.validated_manager_update = None
         self.manager_release_status = None
         self.game_update_results = {}
+        self.doctor_result = {}
+        self.files_caches: dict[str, FileIndex] = {}
+        self.files_generations: dict[str, int] = {}
+        self.files_location = None
+        self.files_back_history = []
+        self.files_forward_history = []
         central = QWidget(); outer = QVBoxLayout(central)
         target = QHBoxLayout(); self.profile_box = QComboBox(); self.add_button = button_help(
             QPushButton("Add server"), "Add a Pterodactyl panel connection and select one server to manage.")
@@ -314,10 +338,11 @@ class MainWindow(QMainWindow):
         self.warning = QLabel(); self.warning.setStyleSheet("color:#b45309;font-weight:600")
         outer.addLayout(target); outer.addWidget(self.warning)
         self.tabs = QTabWidget(); outer.addWidget(self.tabs, 1); self.setCentralWidget(central)
-        self._servers_tab(); self._assets_tab(); self._config_tab(); self._doctor_tab(); self._changelog_tab(); self._activity_tab()
+        self._servers_tab(); self._assets_tab(); self._config_tab(); self._files_tab(); self._doctor_tab(); self._changelog_tab(); self._activity_tab()
         self._update_status_bar()
         self.activity_signal.connect(self.log)
         self.operation_progress_signal.connect(self.update_operation_progress)
+        self.files_progress_signal.connect(self.merge_files_progress)
         self.reload_profiles()
         QTimer.singleShot(500, self.cleanup_local_storage)
         QTimer.singleShot(1500, lambda: self.check_manager_update(False))
@@ -478,6 +503,37 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("Mutation and QoL features are off by default.")); layout.addWidget(self.config_editors, 1); layout.addLayout(row)
         self.tabs.addTab(page, "Configuration")
 
+    def _files_tab(self):
+        page = QWidget(); layout = QVBoxLayout(page)
+        scope = QLabel("This read-only browser shows only files associated with Zanik. Dragonwilds saves and unrelated server files are not included.")
+        scope.setWordWrap(True); scope.setStyleSheet("font-weight:600")
+        controls = QHBoxLayout()
+        self.files_back_button = button_help(QPushButton("Back"), "Return to the previously viewed Zanik folder.")
+        self.files_forward_button = button_help(QPushButton("Forward"), "Move forward to the next viewed Zanik folder.")
+        self.files_up_button = button_help(QPushButton("Up"), "Move to this folder's parent within the Zanik-only browser.")
+        self.files_refresh_button = button_help(QPushButton("Refresh"), "Discard the selected server's five-minute metadata cache and rebuild it.")
+        self.files_back_button.clicked.connect(self.files_go_back)
+        self.files_forward_button.clicked.connect(self.files_go_forward)
+        self.files_up_button.clicked.connect(self.files_go_up)
+        self.files_refresh_button.clicked.connect(self.refresh_files_index)
+        for button in (self.files_back_button, self.files_forward_button, self.files_up_button, self.files_refresh_button):
+            controls.addWidget(button)
+        self.files_breadcrumb = QLabel("Zanik files")
+        self.files_breadcrumb.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        controls.addWidget(self.files_breadcrumb, 1)
+        self.files_tree = QTreeWidget(); self.files_tree.setColumnCount(4)
+        self.files_tree.setHeaderLabels(["Name", "Date modified", "Type", "Size"])
+        self.files_tree.setRootIsDecorated(False); self.files_tree.setSortingEnabled(True)
+        self.files_tree.sortItems(0, Qt.AscendingOrder)
+        self.files_tree.itemDoubleClicked.connect(self.open_files_item)
+        self.files_status = QLabel("Select a server to browse its Zanik files.")
+        self.files_status.setWordWrap(True)
+        self.files_totals = QLabel("Grand total: not indexed")
+        self.files_totals.setWordWrap(True)
+        layout.addWidget(scope); layout.addLayout(controls); layout.addWidget(self.files_tree, 1)
+        layout.addWidget(self.files_status); layout.addWidget(self.files_totals)
+        self.tabs.addTab(page, "Files")
+
     def _doctor_tab(self):
         page = QWidget(); layout = QVBoxLayout(page); row = QHBoxLayout()
         quick = button_help(QPushButton("Run quick Doctor"),
@@ -491,8 +547,13 @@ class MainWindow(QMainWindow):
         quick.clicked.connect(self.run_doctor); deep.clicked.connect(lambda: self.run_doctor(True)); support.clicked.connect(self.export_support)
         storage.clicked.connect(self.review_storage_cleanup)
         row.addWidget(quick); row.addWidget(deep); row.addWidget(storage); row.addWidget(support); row.addStretch()
-        self.doctor_output = QPlainTextEdit(); self.doctor_output.setReadOnly(True)
-        layout.addLayout(row); layout.addWidget(self.doctor_output, 1); self.tabs.addTab(page, "Doctor")
+        self.doctor_views = QTabWidget()
+        self.doctor_human = QTextBrowser(); self.doctor_human.setOpenExternalLinks(False)
+        self.doctor_raw = QPlainTextEdit(); self.doctor_raw.setReadOnly(True)
+        self.doctor_views.addTab(self.doctor_human, "Human-readable")
+        self.doctor_views.addTab(self.doctor_raw, "Raw diagnostics")
+        self.set_doctor_result({}, "quick")
+        layout.addLayout(row); layout.addWidget(self.doctor_views, 1); self.tabs.addTab(page, "Doctor")
 
     def _activity_tab(self):
         page = QWidget(); layout = QVBoxLayout(page); self.activity = QPlainTextEdit(); self.activity.setReadOnly(True)
@@ -516,6 +577,215 @@ class MainWindow(QMainWindow):
             releases_layout.addWidget(ChangelogSection(release, expanded=index == 0))
         releases_layout.addStretch(); scroll.setWidget(content); layout.addWidget(scroll)
         self.tabs.addTab(page, "Changelog")
+
+    def prepare_files_profile(self, profile: ServerProfile | None):
+        self.files_location = None; self.files_back_history.clear(); self.files_forward_history.clear()
+        self.files_tree.clear(); self.update_files_controls()
+        if not profile:
+            self.files_breadcrumb.setText("Zanik files")
+            self.files_status.setText("Select a server to browse its Zanik files.")
+            self.files_totals.setText("Grand total: not indexed")
+            return
+        cached = self.files_caches.get(profile.id)
+        if cached and cached.fresh():
+            self.render_files_location()
+            return
+        self.start_files_index(profile)
+
+    def start_files_index(self, profile: ServerProfile | None = None):
+        profile = profile or self.active()
+        if not profile:
+            return
+        generation = self.files_generations.get(profile.id, 0) + 1
+        self.files_generations[profile.id] = generation
+        roots = virtual_roots(profile.server_root, self.installation_states.get(profile.id))
+        self.files_caches[profile.id] = FileIndex(profile.id, generation, roots,
+                                                  root_totals={root.key: 0 for root in roots})
+        if self.active() and self.active().id == profile.id:
+            self.files_status.setText("Indexing Zanik file metadata…")
+            self.render_files_location()
+
+        def action():
+            provider = self.provider(profile, background=True)
+            provider.preflight(profile.server_id, "files")
+            return RemoteFileIndexer(provider.client, profile.server_id, profile.id, generation, roots).run(
+                lambda update: self.files_progress_signal.emit(update))
+
+        def done(result, error):
+            if error:
+                if self.active() and self.active().id == profile.id and self.files_generations.get(profile.id) == generation:
+                    self.files_status.setText(f"File index unavailable: {error}")
+                    self.log(f"Could not index Zanik files for {profile.name}: {error}")
+                return
+            if self.files_generations.get(profile.id) != generation:
+                return
+            self.files_caches[profile.id] = result
+            if self.active() and self.active().id == profile.id:
+                self.render_files_location()
+        self.run_background(f"files-index-{profile.id}-{generation}", action, done)
+
+    def merge_files_progress(self, update: dict):
+        profile_id = update.get("profileId")
+        generation = update.get("generation")
+        cache = self.files_caches.get(profile_id)
+        if not cache or cache.generation != generation or self.files_generations.get(profile_id) != generation:
+            return
+        directory = update.get("directory")
+        if directory:
+            cache.directories[directory] = list(update.get("entries", []))
+        cache.file_count = int(update.get("files", cache.file_count))
+        cache.directory_count = int(update.get("directories", cache.directory_count))
+        cache.total_size = int(update.get("bytes", cache.total_size))
+        cache.root_totals = dict(update.get("rootTotals", cache.root_totals))
+        cache.warnings = list(update.get("warnings", cache.warnings))
+        if update.get("state") == "partial":
+            cache.partial = True
+        if self.active() and self.active().id == profile_id:
+            self.render_files_location()
+
+    def invalidate_files_cache(self, profile_id: str, rebuild: bool = True):
+        self.files_generations[profile_id] = self.files_generations.get(profile_id, 0) + 1
+        self.files_caches.pop(profile_id, None)
+        profile = self.active()
+        if profile and profile.id == profile_id:
+            self.files_location = None; self.files_back_history.clear(); self.files_forward_history.clear()
+            if rebuild:
+                self.start_files_index(profile)
+            else:
+                self.render_files_location()
+
+    def refresh_files_index(self):
+        profile = self.active()
+        if profile:
+            self.invalidate_files_cache(profile.id, True)
+
+    def files_root(self, key: str):
+        profile = self.active()
+        cache = self.files_caches.get(profile.id) if profile else None
+        return next((root for root in cache.roots if root.key == key), None) if cache else None
+
+    def files_physical_path(self, location) -> str | None:
+        if not location:
+            return None
+        root = self.files_root(location[0])
+        if not root:
+            return None
+        relative = location[1].strip("/")
+        return root.path if not relative else root.path.rstrip("/") + "/" + relative
+
+    def render_files_location(self):
+        profile = self.active()
+        cache = self.files_caches.get(profile.id) if profile else None
+        self.files_tree.setSortingEnabled(False); self.files_tree.clear()
+        if not profile or not cache:
+            self.files_tree.setSortingEnabled(True); self.update_files_controls(); return
+        if self.files_location is None:
+            self.files_breadcrumb.setText(f"Zanik files · {profile.name}")
+            for root in cache.roots:
+                size = cache.root_totals.get(root.key, 0)
+                kind = "Zanik-managed file" if root.is_file else "Zanik folder"
+                exact = cache.directories.get(root.path, []) if root.is_file else []
+                modified = format_modified(exact[0].modified_at) if exact else ""
+                item = SortableFileItem([root.label, modified, kind, format_size(size)])
+                item.setData(0, Qt.UserRole, None if root.is_file else (root.key, ""))
+                item.setData(0, Qt.UserRole + 1, (0 if not root.is_file else 1, root.label.lower()))
+                item.setData(3, Qt.UserRole + 1, size)
+                self.files_tree.addTopLevelItem(item)
+        else:
+            root = self.files_root(self.files_location[0])
+            relative = self.files_location[1].strip("/")
+            crumbs = ["Zanik files", root.label] + ([part for part in relative.split("/") if part] if relative else [])
+            self.files_breadcrumb.setText("  ›  ".join(crumbs))
+            physical = self.files_physical_path(self.files_location)
+            entries = cache.directories.get(physical)
+            if entries is None:
+                self.files_status.setText("Loading this folder's metadata…")
+                self.fetch_files_folder(profile, cache, physical)
+                entries = []
+            for entry in entries:
+                modified = format_modified(entry.modified_at)
+                shown_size = format_size(entry.size) if entry.is_file else ""
+                item = SortableFileItem([entry.name, modified, file_type(entry), shown_size])
+                child_relative = entry.path[len(root.path):].strip("/")
+                item.setData(0, Qt.UserRole, (root.key, child_relative) if not entry.is_file else None)
+                item.setData(0, Qt.UserRole + 1, (1 if entry.is_file else 0, entry.name.lower()))
+                item.setData(1, Qt.UserRole + 1, entry.modified_at)
+                item.setData(2, Qt.UserRole + 1, file_type(entry).lower())
+                item.setData(3, Qt.UserRole + 1, entry.size if entry.is_file else -1)
+                self.files_tree.addTopLevelItem(item)
+        self.files_tree.setSortingEnabled(True); self.files_tree.sortItems(0, Qt.AscendingOrder)
+        if cache.partial:
+            state = "Index limit reached; totals are partial. "
+        elif cache.complete:
+            state = "Index complete. "
+        else:
+            state = "Indexing… "
+        warning = (" " + " ".join(cache.warnings[-2:])) if cache.warnings else ""
+        self.files_status.setText(
+            f"{state}{cache.file_count:,} files and {cache.directory_count:,} folders indexed.{warning}")
+        per_root = " · ".join(f"{root.label}: {format_size(cache.root_totals.get(root.key, 0))}" for root in cache.roots)
+        self.files_totals.setText(
+            f"Grand total: {format_size(cache.total_size)} (includes backups and user-owned Zanik upload areas)\n{per_root}")
+        self.update_files_controls()
+
+    def fetch_files_folder(self, profile: ServerProfile, cache: FileIndex, directory: str):
+        generation = cache.generation
+        def done(entries, error):
+            current = self.files_caches.get(profile.id)
+            if error or not current or current.generation != generation:
+                if error and self.active() and self.active().id == profile.id:
+                    self.files_status.setText(f"This folder is unavailable: {error}")
+                return
+            current.directories[directory] = entries
+            if self.active() and self.active().id == profile.id and self.files_physical_path(self.files_location) == directory:
+                self.render_files_location()
+        self.run_background(f"files-folder-{profile.id}-{generation}-{directory}",
+                            lambda: list_directory(self.provider(profile, background=True).client,
+                                                   profile.server_id, directory), done)
+
+    def navigate_files(self, location, record: bool = True):
+        if record and self.files_location != location:
+            self.files_back_history.append(self.files_location)
+            self.files_forward_history.clear()
+        self.files_location = location
+        self.render_files_location()
+
+    def open_files_item(self, item, _column):
+        location = item.data(0, Qt.UserRole)
+        if location is not None:
+            self.navigate_files(location)
+
+    def files_go_back(self):
+        if self.files_back_history:
+            self.files_forward_history.append(self.files_location)
+            self.files_location = self.files_back_history.pop(); self.render_files_location()
+
+    def files_go_forward(self):
+        if self.files_forward_history:
+            self.files_back_history.append(self.files_location)
+            self.files_location = self.files_forward_history.pop(); self.render_files_location()
+
+    def files_go_up(self):
+        if self.files_location is None:
+            return
+        root_key, relative = self.files_location
+        parts = [part for part in relative.split("/") if part]
+        self.navigate_files((root_key, "/".join(parts[:-1])) if parts else None)
+
+    def update_files_controls(self):
+        self.files_back_button.setEnabled(bool(self.files_back_history))
+        self.files_forward_button.setEnabled(bool(self.files_forward_history))
+        self.files_up_button.setEnabled(self.files_location is not None)
+        self.files_refresh_button.setEnabled(bool(self.active()))
+
+    def set_doctor_result(self, result: dict, mode: str = "quick"):
+        self.doctor_result = dict(result or {})
+        self.doctor_result["managerDoctor"] = {
+            "mode": mode,
+            "runAt": datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %I:%M:%S %p %Z"),
+        }
+        self.doctor_human.setHtml(render_doctor_html(self.doctor_result))
+        self.doctor_raw.setPlainText(json.dumps(self.doctor_result, indent=2, sort_keys=True))
 
     def append_activity(self, message: str):
         self.activity.appendPlainText(format_activity_entry(redact(message)))
@@ -679,6 +949,7 @@ class MainWindow(QMainWindow):
         def progress(message, percent): self.operation_progress_signal.emit(message, percent)
         def done(update):
             self.log(f"Dragonwilds updated on {profile.name} to build {update['installedBuild']} using {update['mode']} mode.")
+            self.invalidate_files_cache(profile.id)
             QMessageBox.information(self, "Dragonwilds update complete",
                                     "The game update completed and the server was started. If the build is not yet supported, Zanik is serving its maintenance page without loading native features.")
             self.check_game_update(True); self.check_installation_state(profile.id)
@@ -806,6 +1077,11 @@ class MainWindow(QMainWindow):
     def active_profile_changed(self):
         self.refresh_header()
         profile = self.active()
+        self.doctor_result = {}
+        if hasattr(self, "doctor_human"):
+            self.set_doctor_result({}, "quick")
+        if hasattr(self, "files_tree"):
+            self.prepare_files_profile(profile)
         needs_config_load = bool(profile and self.current_config_profile_id != profile.id)
         if not profile or self.current_config_profile_id != profile.id:
             self.current_config_hash = ""; self.current_config_profile_id = ""
@@ -969,6 +1245,10 @@ class MainWindow(QMainWindow):
                 self.check_asset_contract_state(profile)
             else:
                 self.asset_contract_states.pop(selected_id, None)
+            cache = self.files_caches.get(selected_id)
+            desired_keys = [root.key for root in virtual_roots(profile.server_root, result)]
+            if cache and [root.key for root in cache.roots] != desired_keys:
+                self.invalidate_files_cache(selected_id)
         self.run_background(f"installation-state-{selected_id}",
                             lambda: self.provider(profile, background=True).installation_status(
                                 profile.server_id, profile.server_root, expected_contract, legacy_contracts), done)
@@ -1043,7 +1323,8 @@ class MainWindow(QMainWindow):
         if choice in {QMessageBox.Retry,QMessageBox.Reset}:
             retry=choice==QMessageBox.Retry
             self.run_async(lambda:self.provider().rollback(journal,profile.server_id,profile.server_root),
-                           lambda _: (self.log("Rollback completed."),self.refresh_header(),self.install() if retry and journal.action=="install" else None),
+                           lambda _: (self.log("Rollback completed."), self.invalidate_files_cache(profile.id),
+                                      self.refresh_header(), self.install() if retry and journal.action=="install" else None),
                            title="Recovering the interrupted operation…")
 
     def open_panel(self):
@@ -1140,6 +1421,7 @@ class MainWindow(QMainWindow):
                                                      progress=progress)
         def done(result):
             profile.install_mode = selected; self.store.save(self.profiles)
+            self.invalidate_files_cache(profile.id)
             self.check_installation_state(profile.id)
             backup_note = f" Backup: {result['backup']}" if result.get("backup") else " No prior installation required a backup."
             if selected == "wrapper" and not adapter:
@@ -1186,23 +1468,27 @@ class MainWindow(QMainWindow):
                                                QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes: return
         self.run_async(lambda: self.provider().uninstall(profile.id, profile.server_id, profile.server_root),
                        lambda result: (self.log(f"Uninstalled; recovery backup: {result['backup']}"),
+                                       self.invalidate_files_cache(profile.id),
                                        self.check_installation_state(profile.id)),
                        title="Uninstalling Zanik…")
 
     def run_doctor(self, deep=False):
         profile = self.active()
         if not profile: return
+        selected_id = profile.id
         def action():
             result = self.provider(profile).diagnose(profile.server_id, profile.server_root, deep)
             result.setdefault("storageAndBackups", {})["local"] = self.local_storage_status()
             result["storageAndBackups"]["remote"] = result.get("backupRetention", {})
             return result
-        self.run_async(action,
-                       lambda result: (self.doctor_output.setPlainText(json.dumps(result, indent=2, sort_keys=True)),
-                                       self.log("Doctor reports a healthy installation." if result.get("healthy") else
-                                                "Doctor found installation problems; review the Doctor tab."),
-                                       self.check_installation_state(profile.id)),
-                       title="Running deep Doctor…" if deep else "Running Doctor…")
+        def done(result):
+            if not self.active() or self.active().id != selected_id:
+                return
+            self.set_doctor_result(result, "deep" if deep else "quick")
+            self.log("Doctor reports a healthy installation." if result.get("healthy") else
+                     "Doctor found installation problems; review the Doctor tab.")
+            self.check_installation_state(profile.id)
+        self.run_async(action, done, title="Running deep Doctor…" if deep else "Running Doctor…")
 
     def local_storage_status(self) -> dict:
         assets = self.paths["assets"]
@@ -1233,7 +1519,9 @@ class MainWindow(QMainWindow):
             candidates = provider._cleanup_candidates(remote, include_legacy=True)
             return {"local": self.local_storage_status(), "remote": remote, "candidates": candidates}
         def ready(result):
-            self.doctor_output.setPlainText(json.dumps({"storageAndBackups": result}, indent=2, sort_keys=True))
+            authoritative = dict(self.doctor_result)
+            authoritative["storageAndBackups"] = result
+            self.set_doctor_result(authoritative, authoritative.get("managerDoctor", {}).get("mode", "quick"))
             candidates = result["candidates"]
             if not candidates:
                 QMessageBox.information(self, "Storage and backups",
@@ -1249,11 +1537,13 @@ class MainWindow(QMainWindow):
             self.run_async(lambda: self.provider(profile).cleanup_backup_retention(
                                profile.server_id, profile.server_root, include_legacy=True, requested=requested),
                            lambda cleaned: (self.log(f"Removed {len(cleaned['removed'])} superseded server backup(s)."),
-                                            self.doctor_output.setPlainText(json.dumps(
-                                                {"storageAndBackups": {"local": self.local_storage_status(),
-                                                                       "remote": cleaned["remaining"],
-                                                                       "warnings": cleaned["warnings"]}},
-                                                indent=2, sort_keys=True))),
+                                            self.set_doctor_result(
+                                                {**self.doctor_result,
+                                                 "storageAndBackups": {"local": self.local_storage_status(),
+                                                                        "remote": cleaned["remaining"],
+                                                                        "warnings": cleaned["warnings"]}},
+                                                self.doctor_result.get("managerDoctor", {}).get("mode", "quick")),
+                                            self.invalidate_files_cache(profile.id)),
                            title="Cleaning selected-server backups…")
         self.run_async(action, ready, title="Reviewing storage and backups…")
 
@@ -1767,6 +2057,7 @@ class MainWindow(QMainWindow):
                        title="Uploading and activating web assets…", determinate=True)
 
     def asset_activation_complete(self, profile: ServerProfile, result: dict):
+        self.invalidate_files_cache(profile.id)
         if result.get("unchanged"):
             self.log(f"Assets on {profile.name} already match the selected bundle; no upload or restart was needed")
         elif result.get("deltaUpload"):
@@ -1912,6 +2203,7 @@ class MainWindow(QMainWindow):
             self.website_states[profile.id] = {"status": "ready", "port": int(values["STATUS_PORT"]),
                                                "url": profile.web_base_url}
             self.store.save(self.profiles); self.render_server_summary(profile)
+            self.invalidate_files_cache(profile.id)
             if QMessageBox.question(self, "Configuration saved", "Restart the server now to apply these settings?",
                                     QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
                 self.provider().client.power(profile.server_id, "restart")
@@ -1924,7 +2216,7 @@ class MainWindow(QMainWindow):
         if not profile: return
         output, _ = QFileDialog.getSaveFileName(self, "Save support bundle", "zanik-support.zip", "ZIP files (*.zip)")
         if not output: return
-        diagnostics = json.loads(self.doctor_output.toPlainText() or "{}")
+        diagnostics = self.doctor_result
         safe_profiles = [{k: v for k, v in vars(item).items() if k != "credential_target"} for item in self.profiles]
         create_support_bundle(Path(output), diagnostics, safe_profiles, list(self.paths["logs"].glob("*.log")))
         self.log(f"Created support bundle: {output}")

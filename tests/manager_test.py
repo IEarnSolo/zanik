@@ -24,6 +24,9 @@ from manager.zanik_manager.cache import BundleCache, format_bundle_timestamp
 from manager.zanik_manager.changelog import parse_changelog
 from manager.zanik_manager.config import (ConfigError, ConfigModel, content_hash, update_website_settings,
                                           website_configuration_ready)
+from manager.zanik_manager.doctor_view import doctor_presentation, render_doctor_html
+from manager.zanik_manager.files import (CACHE_SECONDS, FileEntry, FileIndex, RemoteFileIndexer, file_type,
+                                         format_modified, format_size, normalize_entry, virtual_roots)
 from manager.zanik_manager.journal import JournalStore, OperationJournal
 from manager.zanik_manager.lifecycle import (PterodactylProvider, ReleasePayload, is_exact_legacy_launcher,
                                              safe_archive_name, validate_server_root)
@@ -84,6 +87,108 @@ def write_payload_archive(archive: Path, files: dict[str, bytes], version: str =
     return contract
 
 class ManagerTests(unittest.TestCase):
+    def test_doctor_human_view_uses_raw_result_without_hashes(self):
+        raw = {"healthy": True,
+               "installation": {"version": "0.2.45", "mode": "wrapper", "officialSha256": "a" * 64},
+               "launcher": {"applicable": False},
+               "autoUpdate": {"available": True, "healthy": True, "value": "1"},
+               "checks": {"library": True, "analyzer": True, "launcher": True, "official": True,
+                          "configSha256": "b" * 64},
+               "assets": {"installed": True, "compatible": True, "gameBuild": "123"},
+               "gameUpdate": {"status": "current", "updateAvailable": False},
+               "storageAndBackups": {"local": {"validatedBundles": {"bytes": 1024}},
+                                     "remote": {"status": "healthy", "families": {"payload": [{}]}}},
+               "managerDoctor": {"mode": "deep", "runAt": "now"}}
+        presentation = doctor_presentation(raw)
+        rendered = render_doctor_html(raw)
+        self.assertEqual(presentation["overall"], "Healthy")
+        self.assertEqual(presentation["mode"], "Deep")
+        self.assertIn("Installation and payload", rendered)
+        self.assertNotIn("a" * 64, rendered)
+        self.assertNotIn("b" * 64, rendered)
+
+    def test_doctor_human_view_handles_missing_and_degraded_results(self):
+        self.assertEqual(doctor_presentation({})["overall"], "Unavailable")
+        missing = doctor_presentation({"healthy": False, "checks": {"installation": "missing"},
+                                       "managerDoctor": {"mode": "quick"}})
+        self.assertEqual(missing["overall"], "Unavailable")
+        degraded = doctor_presentation({"healthy": False, "installation": {"version": "1", "mode": "wrapper"},
+                                        "checks": {}, "assets": {"installed": False}})
+        self.assertEqual(degraded["overall"], "Attention required")
+        self.assertTrue(any(section["title"] == "Website assets" for section in degraded["sections"]))
+
+    def test_file_roots_are_zanik_scoped_and_launcher_requires_verified_replacement(self):
+        roots = virtual_roots("/home/container")
+        self.assertEqual([root.path for root in roots], [
+            "/home/container/zanik", "/home/container/zanik-data", "/home/container/zanik-backups",
+            "/home/container/.zanik-manager", "/home/container/zanik-release",
+            "/home/container/zanik-assets-incoming"])
+        state = {"installed": True, "mode": "replace-executable", "repairRequired": False,
+                 "installation": {"officialExecutable":
+                                  "/home/container/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping.zanik-original"}}
+        replacement = virtual_roots("/home/container", state)
+        self.assertEqual(replacement[-1].key, "launcher")
+        self.assertNotIn(".zanik-original", replacement[-1].path)
+        unsafe = {**state, "repairRequired": True}
+        self.assertNotIn("launcher", [root.key for root in virtual_roots("/home/container", unsafe)])
+
+    def test_file_metadata_normalization_excludes_links_original_and_traversal(self):
+        self.assertIsNone(normalize_entry("/home/container/zanik", {"name": "../save", "is_file": True}))
+        self.assertIsNone(normalize_entry("/home/container/zanik", {"name": "secret.zanik-original", "is_file": True}))
+        self.assertIsNone(normalize_entry("/home/container/zanik", {"name": "linked", "is_file": False,
+                                                                     "is_symlink": True}))
+        entry = normalize_entry("/home/container/zanik", {"name": "VERSION", "is_file": True,
+                                                           "size": 7, "modified_at": "2026-10-19T12:00:00Z"})
+        self.assertEqual(entry.path, "/home/container/zanik/VERSION")
+        self.assertEqual(format_size(entry.size), "7 B")
+        self.assertIn("2026-10-19", format_modified(entry.modified_at))
+        self.assertEqual(file_type(FileEntry("libzanik.so", "/x/libzanik.so", True, 1, "")),
+                         "Linux shared library")
+
+    def test_file_index_is_metadata_only_and_totals_all_roots(self):
+        calls = []
+        listings = {
+            "/home/container/zanik": [
+                {"name": "bin", "is_file": False, "size": 0},
+                {"name": "VERSION", "is_file": True, "size": 7}],
+            "/home/container/zanik/bin": [{"name": "zanik-server", "is_file": True, "size": 100}],
+        }
+        class Client:
+            def list_files(self, _server, path):
+                calls.append(path)
+                if path in listings: return listings[path]
+                raise RuntimeError("missing")
+            def read_file(self, *_args): raise AssertionError("file contents must not be read")
+            def download_file(self, *_args): raise AssertionError("files must not be downloaded")
+        roots = virtual_roots("/home/container")
+        index = RemoteFileIndexer(Client(), "dev", "profile", 1, roots).run()
+        self.assertTrue(index.complete)
+        self.assertEqual(index.file_count, 2)
+        self.assertEqual(index.total_size, 107)
+        self.assertEqual(index.root_totals["installation"], 107)
+        self.assertIn("/home/container/zanik/bin", calls)
+        self.assertFalse(any("save" in path.lower() for path in calls))
+
+    def test_file_index_limits_are_partial_and_cache_expires(self):
+        class Client:
+            def list_files(self, _server, path):
+                return [{"name": f"file-{index}.txt", "is_file": True, "size": 1} for index in range(5)]
+        root = virtual_roots("/home/container")[:1]
+        index = RemoteFileIndexer(Client(), "dev", "profile", 2, root, max_entries=3).run()
+        self.assertTrue(index.partial); self.assertFalse(index.complete)
+        self.assertEqual(index.file_count, 3)
+        fresh = FileIndex("profile", 1, root, complete=True, completed_at=100.0)
+        self.assertTrue(fresh.fresh(100.0 + CACHE_SECONDS - 1))
+        self.assertFalse(fresh.fresh(100.0 + CACHE_SECONDS + 1))
+
+    def test_manager_doctor_and_files_ui_contract(self):
+        source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('self.doctor_views.addTab(self.doctor_human, "Human-readable")', source)
+        self.assertIn('self.doctor_views.addTab(self.doctor_raw, "Raw diagnostics")', source)
+        self.assertIn('self.tabs.addTab(page, "Files")', source)
+        self.assertIn("diagnostics = self.doctor_result", source)
+        self.assertNotIn("self.doctor_output", source)
+
     def test_journal_retention_keeps_unresolved_and_newest_completed(self):
         with tempfile.TemporaryDirectory() as temporary:
             store = JournalStore(Path(temporary))

@@ -2,6 +2,19 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.45] - 2026-10-19
+
+### Added
+
+- Add Human-readable and Raw diagnostics views to Zanik Manager's Doctor, backed by one authoritative diagnostic result.
+- Add a metadata-only Files tab with Explorer-style navigation across the selected server's Zanik installation, persistent data, backups, recovery data, release uploads, incoming assets, and verified managed launcher.
+- Show per-area storage totals and a grand total while a bounded background index is built and cached for five minutes.
+
+### Changed
+
+- Present Doctor findings as clear installation, launcher, game-update, configuration, asset, backup, and local-storage sections with written status and suggested actions.
+- Keep Files navigation read-only and exclude Dragonwilds saves, panel backups, unrelated files, symlinks, and the preserved official executable.
+
 ## [0.2.44] - 2026-10-19
 
 ### Added
