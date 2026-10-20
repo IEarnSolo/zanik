@@ -12,6 +12,7 @@ for(const token of ['id="questPanel"','id="questSteps"','id="questTip"','/api/qu
 if(!page[1].includes("/assets/lodestone-icon.png?v=lodestone-map-icon-2")){
   throw new Error('lodestone map icon must use a revisioned URL so corrected artwork replaces cached responses');
 }
-if(!page[1].includes("/assets/nodestone-icon.png?v=nodestone-topdown-1")){
+if(!page[1].includes(".nodestone{position:absolute;transform:translate(-50%,-50%);width:12px;height:12px") ||
+   !page[1].includes("/assets/nodestone-icon.png?v=nodestone-topdown-2")){
   throw new Error('nodestone map icon must use a revisioned URL so corrected artwork replaces cached responses');
 }
