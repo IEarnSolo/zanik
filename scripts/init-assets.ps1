@@ -62,6 +62,21 @@ function Write-JsonAtomic([string]$Path, [object]$Value) {
     [IO.File]::WriteAllText($Temporary, $Json, $Utf8NoBom)
     Move-Item -LiteralPath $Temporary -Destination $Path -Force
 }
+function Get-ZanikSha256([string]$Path) {
+    # Get-FileHash is supplied by Microsoft.PowerShell.Utility, which is not
+    # guaranteed to be discoverable in a packaged application's environment.
+    # Use the .NET implementation available in both Windows PowerShell 5.1 and
+    # PowerShell 7 so fingerprinting does not depend on module auto-loading.
+    $Resolved = [IO.Path]::GetFullPath($Path)
+    $Stream = [IO.File]::Open($Resolved, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    $Hasher = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($Hasher.ComputeHash($Stream))).Replace('-', '').ToLowerInvariant()
+    } finally {
+        $Hasher.Dispose()
+        $Stream.Dispose()
+    }
+}
 function Set-ExtractionStage([string]$Stage) {
     $script:Journal.stage = $Stage
     $script:Journal.updatedAt = [DateTime]::UtcNow.ToString('o')
@@ -69,9 +84,9 @@ function Set-ExtractionStage([string]$Stage) {
 }
 $Executable = Join-Path $GameRoot 'RSDragonwilds\Binaries\Win64\RSDragonwilds-Win64-Shipping.exe'
 $Fingerprint = @{
-    gameExecutableSha256 = (Get-FileHash -LiteralPath $Executable -Algorithm SHA256).Hash.ToLowerInvariant()
-    recipeSha256 = (Get-FileHash -LiteralPath $Recipe -Algorithm SHA256).Hash.ToLowerInvariant()
-    toolLockSha256 = (Get-FileHash -LiteralPath $ToolLock -Algorithm SHA256).Hash.ToLowerInvariant()
+    gameExecutableSha256 = Get-ZanikSha256 $Executable
+    recipeSha256 = Get-ZanikSha256 $Recipe
+    toolLockSha256 = Get-ZanikSha256 $ToolLock
 }
 $GameChanged = $false
 if (-not $Resume -and -not $Incremental -and (Test-Path -LiteralPath $JournalPath)) {

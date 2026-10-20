@@ -387,6 +387,9 @@ with tempfile.TemporaryDirectory() as name:
     writer = powershell[powershell.index("function Write-JsonAtomic"):powershell.index("function Set-ExtractionStage")]
     assert "UTF8Encoding($false)" in writer and "WriteAllText" in writer
     assert "Set-Content" not in writer
+    assert "function Get-ZanikSha256" in powershell
+    assert "[Security.Cryptography.SHA256]::Create()" in powershell
+    assert "Get-FileHash -LiteralPath" not in powershell
     assert "$Resume -and (Test-Path -LiteralPath $PipelineWorkspace" in powershell
     assert "game launch and UnrealAssetScout extraction are skipped" in powershell
     assert "$Journal.preserveExistingLoader" in powershell
