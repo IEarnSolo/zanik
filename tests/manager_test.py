@@ -25,8 +25,9 @@ from manager.zanik_manager.changelog import parse_changelog
 from manager.zanik_manager.config import (ConfigError, ConfigModel, content_hash, update_website_settings,
                                           website_configuration_ready)
 from manager.zanik_manager.doctor_view import doctor_presentation, render_doctor_html
-from manager.zanik_manager.files import (CACHE_SECONDS, FileEntry, FileIndex, RemoteFileIndexer, calculate_directory_totals, file_type,
-                                         format_modified, format_size, normalize_entry, virtual_roots)
+from manager.zanik_manager.files import (FileEntry, FileIndex, RemoteFileIndexer, calculate_directory_totals,
+                                         delete_file_index, file_type, format_modified, format_size,
+                                         load_file_index, normalize_entry, save_file_index, virtual_roots)
 from manager.zanik_manager.journal import JournalStore, OperationJournal
 from manager.zanik_manager.lifecycle import (PterodactylProvider, ReleasePayload, is_exact_legacy_launcher,
                                              safe_archive_name, validate_server_root)
@@ -169,7 +170,7 @@ class ManagerTests(unittest.TestCase):
         self.assertIn("/home/container/zanik/bin", calls)
         self.assertFalse(any("save" in path.lower() for path in calls))
 
-    def test_file_index_limits_are_partial_and_cache_expires(self):
+    def test_file_index_limits_are_partial_and_completed_cache_does_not_expire(self):
         class Client:
             def list_files(self, _server, path):
                 return [{"name": f"file-{index}.txt", "is_file": True, "size": 1} for index in range(5)]
@@ -178,8 +179,30 @@ class ManagerTests(unittest.TestCase):
         self.assertTrue(index.partial); self.assertFalse(index.complete)
         self.assertEqual(index.file_count, 3)
         fresh = FileIndex("profile", 1, root, complete=True, completed_at=100.0)
-        self.assertTrue(fresh.fresh(100.0 + CACHE_SECONDS - 1))
-        self.assertFalse(fresh.fresh(100.0 + CACHE_SECONDS + 1))
+        self.assertTrue(fresh.fresh(100.0 + 365 * 24 * 60 * 60))
+
+    def test_file_index_persists_per_profile_until_explicit_invalidation(self):
+        roots = virtual_roots("/home/container")
+        entry = FileEntry("VERSION", "/home/container/zanik/VERSION", True, 7,
+                          "2026-10-19T12:00:00Z")
+        index = FileIndex("stable-profile", 2, roots,
+                          directories={"/home/container/zanik": [entry]},
+                          directory_totals={"/home/container/zanik": 7},
+                          root_totals={root.key: (7 if root.key == "installation" else 0) for root in roots},
+                          file_count=1, directory_count=1, total_size=7, complete=True,
+                          completed_at=1_799_000_000.0)
+        with tempfile.TemporaryDirectory() as temporary:
+            cache_root = Path(temporary)
+            save_file_index(cache_root, index)
+            loaded = load_file_index(cache_root, "stable-profile", "/home/container", 9)
+            self.assertIsNotNone(loaded)
+            self.assertEqual(loaded.generation, 9)
+            self.assertEqual(loaded.directories["/home/container/zanik"][0], entry)
+            self.assertEqual(loaded.total_size, 7)
+            self.assertTrue(loaded.fresh(99_999_999_999.0))
+            self.assertIsNone(load_file_index(cache_root, "other-profile", "/home/container", 1))
+            delete_file_index(cache_root, "stable-profile")
+            self.assertIsNone(load_file_index(cache_root, "stable-profile", "/home/container", 10))
 
     def test_folder_sizes_are_recursive_without_content_reads(self):
         directories = {
@@ -206,6 +229,8 @@ class ManagerTests(unittest.TestCase):
         self.assertIn("QStyle.SP_FileIcon", source)
         self.assertIn("Qt.BackButton", source)
         self.assertIn("Qt.ForwardButton", source)
+        self.assertIn('self.files_last_updated = QLabel("Last updated: Not yet indexed")', source)
+        self.assertIn("button.setFixedSize(40, 40)", source)
 
     def test_journal_retention_keeps_unresolved_and_newest_completed(self):
         with tempfile.TemporaryDirectory() as temporary:

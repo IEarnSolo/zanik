@@ -7,7 +7,7 @@ import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, QThread, QTimer, Qt, Signal, Slot
+from PySide6.QtCore import QEvent, QObject, QSize, QThread, QTimer, Qt, Signal, Slot
 from PySide6.QtGui import QCursor, QDesktopServices
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                QFormLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
@@ -25,8 +25,9 @@ from .cache import BundleCache, format_bundle_timestamp
 from .changelog import ChangelogRelease, parse_changelog
 from .config import ConfigModel, content_hash, update_website_settings, website_configuration_ready
 from .doctor_view import render_doctor_html
-from .files import (FileEntry, FileIndex, RemoteFileIndexer, file_type, format_modified, format_size,
-                    list_directory, virtual_roots)
+from .files import (FileEntry, FileIndex, RemoteFileIndexer, delete_file_index, file_type,
+                    format_modified, format_size, list_directory, load_file_index, save_file_index,
+                    virtual_roots)
 from .journal import JournalStore
 from .lifecycle import PterodactylProvider, ReleasePayload
 from .onboarding import PanelDiscovery, discover_panel, is_remote_http
@@ -510,12 +511,15 @@ class MainWindow(QMainWindow):
         controls = QHBoxLayout()
         def navigation_button(icon, name, help_text):
             button = QToolButton(); button.setIcon(self.style().standardIcon(icon)); button.setAutoRaise(True)
-            button.setToolTip(help_text); button.setAccessibleName(name); button.setFixedSize(30, 30)
+            button.setIconSize(QSize(22, 22)); button.setToolTip(help_text); button.setAccessibleName(name)
+            button.setFixedSize(40, 40)
             return button
         self.files_back_button = navigation_button(QStyle.SP_ArrowBack, "Back", "Return to the previously viewed Zanik folder.")
         self.files_forward_button = navigation_button(QStyle.SP_ArrowForward, "Forward", "Move forward to the next viewed Zanik folder.")
         self.files_up_button = navigation_button(QStyle.SP_ArrowUp, "Up", "Move to this folder's parent within the Zanik-only browser.")
-        self.files_refresh_button = navigation_button(QStyle.SP_BrowserReload, "Refresh", "Discard the selected server's five-minute metadata cache and rebuild it.")
+        self.files_refresh_button = navigation_button(
+            QStyle.SP_BrowserReload, "Refresh",
+            "Check the selected server again now and replace its saved Zanik file metadata index.")
         self.files_back_button.clicked.connect(self.files_go_back)
         self.files_forward_button.clicked.connect(self.files_go_forward)
         self.files_up_button.clicked.connect(self.files_go_up)
@@ -529,6 +533,8 @@ class MainWindow(QMainWindow):
         self.files_raw_paths.setToolTip("Show exact server paths instead of friendly Zanik area names.")
         self.files_raw_paths.toggled.connect(self.render_files_location)
         controls.addWidget(self.files_raw_paths)
+        self.files_last_updated = QLabel("Last updated: Not yet indexed")
+        self.files_last_updated.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.files_tree = QTreeWidget(); self.files_tree.setColumnCount(4)
         self.files_tree.setHeaderLabels(["Name", "Date modified", "Type", "Size"])
         self.files_tree.setRootIsDecorated(False); self.files_tree.setSortingEnabled(True)
@@ -538,7 +544,8 @@ class MainWindow(QMainWindow):
         self.files_status.setWordWrap(True)
         self.files_totals = QLabel("Grand total: not indexed")
         self.files_totals.setWordWrap(True)
-        layout.addWidget(scope); layout.addLayout(controls); layout.addWidget(self.files_tree, 1)
+        layout.addWidget(scope); layout.addLayout(controls); layout.addWidget(self.files_last_updated)
+        layout.addWidget(self.files_tree, 1)
         layout.addWidget(self.files_status); layout.addWidget(self.files_totals)
         self.files_page = page
         self.tabs.addTab(page, "Files")
@@ -593,11 +600,19 @@ class MainWindow(QMainWindow):
         self.files_tree.clear(); self.update_files_controls()
         if not profile:
             self.files_breadcrumb.setText("Zanik files")
+            self.files_last_updated.setText("Last updated: Not yet indexed")
             self.files_status.setText("Select a server to browse its Zanik files.")
             self.files_totals.setText("Grand total: not indexed")
             return
         cached = self.files_caches.get(profile.id)
         if cached and cached.fresh():
+            self.render_files_location()
+            return
+        generation = self.files_generations.get(profile.id, 0) + 1
+        cached = load_file_index(self.paths["file_metadata"], profile.id, profile.server_root, generation)
+        if cached:
+            self.files_generations[profile.id] = generation
+            self.files_caches[profile.id] = cached
             self.render_files_location()
             return
         self.start_files_index(profile)
@@ -613,6 +628,7 @@ class MainWindow(QMainWindow):
                                                   root_totals={root.key: 0 for root in roots})
         if self.active() and self.active().id == profile.id:
             self.files_status.setText("Indexing Zanik file metadata…")
+            self.files_last_updated.setText("Last updated: Updating now…")
             self.render_files_location()
 
         def action():
@@ -629,6 +645,7 @@ class MainWindow(QMainWindow):
                 return
             if self.files_generations.get(profile.id) != generation:
                 return
+            save_file_index(self.paths["file_metadata"], result)
             self.files_caches[profile.id] = result
             if self.active() and self.active().id == profile.id:
                 self.render_files_location()
@@ -658,6 +675,7 @@ class MainWindow(QMainWindow):
     def invalidate_files_cache(self, profile_id: str, rebuild: bool = True):
         self.files_generations[profile_id] = self.files_generations.get(profile_id, 0) + 1
         self.files_caches.pop(profile_id, None)
+        delete_file_index(self.paths["file_metadata"], profile_id)
         profile = self.active()
         if profile and profile.id == profile_id:
             self.files_location = None; self.files_back_history.clear(); self.files_forward_history.clear()
@@ -690,6 +708,7 @@ class MainWindow(QMainWindow):
         cache = self.files_caches.get(profile.id) if profile else None
         self.files_tree.setSortingEnabled(False); self.files_tree.clear()
         if not profile or not cache:
+            self.files_last_updated.setText("Last updated: Not yet indexed")
             self.files_tree.setSortingEnabled(True); self.update_files_controls(); return
         if self.files_location is None:
             self.files_breadcrumb.setText(profile.server_root if self.files_raw_paths.isChecked()
@@ -744,6 +763,9 @@ class MainWindow(QMainWindow):
         self.files_status.setText(
             f"{state}{cache.file_count:,} files and {cache.directory_count:,} folders indexed.{warning}")
         per_root = " · ".join(f"{root.label}: {format_size(cache.root_totals.get(root.key, 0))}" for root in cache.roots)
+        updated = (datetime.fromtimestamp(cache.completed_at).astimezone().strftime("%Y-%m-%d %I:%M:%S %p %Z")
+                   if cache.completed_at else "Updating now…")
+        self.files_last_updated.setText(f"Last updated: {updated}")
         self.files_totals.setText(
             f"Grand total: {format_size(cache.total_size)} (includes backups and user-owned Zanik upload areas)\n{per_root}")
         self.update_files_controls()
@@ -796,7 +818,9 @@ class MainWindow(QMainWindow):
         self.files_back_button.setEnabled(bool(self.files_back_history))
         self.files_forward_button.setEnabled(bool(self.files_forward_history))
         self.files_up_button.setEnabled(self.files_location is not None)
-        self.files_refresh_button.setEnabled(bool(self.active()))
+        profile = self.active()
+        cache = self.files_caches.get(profile.id) if profile else None
+        self.files_refresh_button.setEnabled(bool(profile and (not cache or cache.complete)))
 
     def eventFilter(self, watched, event):
         if (hasattr(self, "files_page") and self.tabs.currentWidget() is self.files_page and
@@ -1322,12 +1346,16 @@ class MainWindow(QMainWindow):
         if not self.profiles:
             return
         active_id = self.active().id if self.active() else ""
+        prior_ids = {profile.id for profile in self.profiles}
         dialog = EditServersDialog(self.profiles, self)
         if dialog.exec() != QDialog.Accepted:
             return
         self.profiles = dialog.profiles
         self.store.save(self.profiles)
         remaining_ids = {profile.id for profile in self.profiles}
+        for removed_id in prior_ids - remaining_ids:
+            delete_file_index(self.paths["file_metadata"], removed_id)
+            self.files_caches.pop(removed_id, None); self.files_generations.pop(removed_id, None)
         self.installation_states = {key: value for key, value in self.installation_states.items() if key in remaining_ids}
         self.website_states = {key: value for key, value in self.website_states.items() if key in remaining_ids}
         self.asset_contract_states = {key: value for key, value in self.asset_contract_states.items() if key in remaining_ids}
@@ -1538,6 +1566,10 @@ class MainWindow(QMainWindow):
                                   "bytes": directory_size(work), "retention": "one per game root"},
             "journals": {"count": sum(1 for _ in self.paths["journals"].glob("*.json")),
                          "bytes": directory_size(self.paths["journals"])},
+            "fileMetadataIndexes": {
+                "count": sum(1 for _ in self.paths["file_metadata"].glob("*.json")),
+                "bytes": directory_size(self.paths["file_metadata"]),
+                "retention": "one current metadata-only index per saved server profile"},
         }
 
     def review_storage_cleanup(self):

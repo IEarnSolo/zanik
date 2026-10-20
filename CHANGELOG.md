@@ -2,6 +2,14 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.47] - 2026-10-19
+
+### Changed
+
+- Persist each server profile's read-only Files metadata index across profile switches and Zanik Manager restarts instead of expiring it after five minutes.
+- Reindex Files only after a Zanik-changing server operation or an explicit **Refresh**; Manager-only updates do not invalidate remote metadata.
+- Show when the Files index was last updated and enlarge its Explorer navigation controls.
+
 ## [0.2.46] - 2026-10-19
 
 ### Changed

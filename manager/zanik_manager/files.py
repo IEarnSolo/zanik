@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import json
 import posixpath
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from pathlib import PurePosixPath
 
 
 MAX_ENTRIES = 100_000
 MAX_DIRECTORIES = 10_000
-CACHE_SECONDS = 5 * 60
+FILE_CACHE_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -47,7 +50,117 @@ class FileIndex:
     completed_at: float = 0.0
 
     def fresh(self, now: float | None = None) -> bool:
-        return self.complete and (now or time.monotonic()) - self.completed_at < CACHE_SECONDS
+        """A completed index remains valid until an explicit server mutation invalidates it."""
+        return self.complete
+
+
+def _cache_path(cache_root: Path, profile_id: str) -> Path:
+    key = hashlib.sha256(profile_id.encode("utf-8")).hexdigest()
+    return cache_root / f"{key}.json"
+
+
+def _root_payload(root: VirtualRoot) -> dict:
+    return {"key": root.key, "label": root.label, "path": root.path, "isFile": root.is_file}
+
+
+def _entry_payload(entry: FileEntry) -> dict:
+    return {"name": entry.name, "path": entry.path, "isFile": entry.is_file, "size": entry.size,
+            "modifiedAt": entry.modified_at, "mime": entry.mime}
+
+
+def save_file_index(cache_root: Path, index: FileIndex) -> None:
+    """Persist a completed metadata-only index atomically; no file contents are stored."""
+    if not index.complete:
+        return
+    cache_root.mkdir(parents=True, exist_ok=True)
+    target = _cache_path(cache_root, index.profile_id)
+    temporary = target.with_suffix(".tmp")
+    payload = {
+        "schemaVersion": FILE_CACHE_SCHEMA_VERSION,
+        "profileId": index.profile_id,
+        "updatedAt": index.completed_at,
+        "roots": [_root_payload(root) for root in index.roots],
+        "directories": {path: [_entry_payload(entry) for entry in entries]
+                        for path, entries in index.directories.items()},
+        "directoryTotals": index.directory_totals,
+        "rootTotals": index.root_totals,
+        "fileCount": index.file_count,
+        "directoryCount": index.directory_count,
+        "totalSize": index.total_size,
+        "partial": index.partial,
+        "warnings": index.warnings,
+    }
+    temporary.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    temporary.replace(target)
+
+
+def delete_file_index(cache_root: Path, profile_id: str) -> None:
+    _cache_path(cache_root, profile_id).unlink(missing_ok=True)
+
+
+def _allowed_roots(server_root: str) -> dict[str, tuple[str, bool]]:
+    roots = virtual_roots(server_root)
+    launcher = f"{safe_server_root(server_root)}/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping"
+    return {root.key: (root.path, root.is_file) for root in roots} | {"launcher": (launcher, True)}
+
+
+def load_file_index(cache_root: Path, profile_id: str, server_root: str,
+                    generation: int) -> FileIndex | None:
+    """Load a bounded, path-validated persistent index for one stable server profile."""
+    try:
+        payload = json.loads(_cache_path(cache_root, profile_id).read_text(encoding="utf-8-sig"))
+        if payload.get("schemaVersion") != FILE_CACHE_SCHEMA_VERSION or payload.get("profileId") != profile_id:
+            return None
+        allowed = _allowed_roots(server_root)
+        roots = [VirtualRoot(str(item["key"]), str(item["label"]), str(item["path"]),
+                             bool(item.get("isFile", False))) for item in payload["roots"]]
+        if not roots or any(allowed.get(root.key) != (root.path, root.is_file) for root in roots):
+            return None
+        allowed_paths = tuple(root.path for root in roots)
+        directories: dict[str, list[FileEntry]] = {}
+        stored_directories = payload.get("directories", {})
+        if not isinstance(stored_directories, dict) or len(stored_directories) > MAX_DIRECTORIES:
+            return None
+        entry_count = 0
+        for directory, stored_entries in stored_directories.items():
+            if not isinstance(directory, str) or not any(
+                    directory == root or directory.startswith(root.rstrip("/") + "/") for root in allowed_paths):
+                return None
+            if not isinstance(stored_entries, list):
+                return None
+            entries = []
+            for item in stored_entries:
+                entry = FileEntry(str(item["name"]), str(item["path"]), bool(item["isFile"]),
+                                  max(0, int(item.get("size", 0))), str(item.get("modifiedAt", "")),
+                                  str(item.get("mime", "")))
+                expected = posixpath.join(directory.rstrip("/"), entry.name)
+                if entry.path != expected or normalize_entry(directory, {
+                        "name": entry.name, "is_file": entry.is_file, "size": entry.size,
+                        "modified_at": entry.modified_at, "mimetype": entry.mime}) is None:
+                    return None
+                entries.append(entry)
+            entry_count += len(entries)
+            if entry_count > MAX_ENTRIES:
+                return None
+            directories[directory] = entries
+        stored_directory_totals = payload.get("directoryTotals", {})
+        stored_root_totals = payload.get("rootTotals", {})
+        stored_warnings = payload.get("warnings", [])
+        if (not isinstance(stored_directory_totals, dict) or not isinstance(stored_root_totals, dict) or
+                not isinstance(stored_warnings, list)):
+            return None
+        index = FileIndex(profile_id, generation, roots, directories=directories,
+                          directory_totals={str(k): max(0, int(v)) for k, v in stored_directory_totals.items()},
+                          root_totals={str(k): max(0, int(v)) for k, v in stored_root_totals.items()},
+                          file_count=max(0, int(payload.get("fileCount", 0))),
+                          directory_count=max(0, int(payload.get("directoryCount", 0))),
+                          total_size=max(0, int(payload.get("totalSize", 0))), complete=True,
+                          partial=bool(payload.get("partial", False)),
+                          warnings=[str(value) for value in stored_warnings],
+                          completed_at=float(payload.get("updatedAt", 0)))
+        return index if index.completed_at > 0 else None
+    except (OSError, UnicodeError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return None
 
 
 def safe_server_root(value: str) -> str:
@@ -178,7 +291,7 @@ class RemoteFileIndexer:
                 self._index_directory_root(root, progress)
         self.index.directory_totals = calculate_directory_totals(self.index.directories)
         self.index.complete = not self.index.partial
-        self.index.completed_at = time.monotonic()
+        self.index.completed_at = time.time()
         progress(self._update("complete" if self.index.complete else "partial"))
         return self.index
 
