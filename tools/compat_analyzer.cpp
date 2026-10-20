@@ -38,6 +38,8 @@ int main(int argc,char** argv){
     const std::string nodestoneSubsystem="ASwitchableTeleporter::GetTeleportationSubsystem() const";
     const std::string teleportTargetNames="UTeleportationSubsystem::GetTargetLocationNames() const";
     const std::string teleportTargetTransform="UTeleportationSubsystem::GetTargetLocationTransform(FName const&, UE::Math::TTransform<double>&)";
+    const std::string nodestonePerformTeleport="ASwitchableTeleporter::PerformTeleport(ADominionPlayerCharacter*, FName const&)";
+    const std::string teleportToNamedLocation="UTeleportationSubsystem::TeleportToNamedLocation(ADominionPlayerCharacter*, FName const&, FTeleportToNamedLocationResult, bool, ETeleportationType, AGraveyard*)";
     const std::string labelTextGetter="UMapRegionIconComponent::execGetLabelText(UObject*, FFrame&, void*)";
     const std::string labelRotationGetter="UMapRegionIconComponent::execGetLabelRotation(UObject*, FFrame&, void*)";
     const std::string labelFontGetter="UMapRegionIconComponent::execGetFontSizeOverride(UObject*, FFrame&, void*)";
@@ -107,6 +109,7 @@ int main(int argc,char** argv){
     std::uint64_t registryInstanceAt=0,registryLodestonesAt=0,lodestoneLocationAt=0; int killedNames=0;
     std::uint64_t nodestoneBeginPlayAt=0,nodestoneSubsystemAt=0;
     std::uint64_t teleportTargetNamesAt=0,teleportTargetTransformAt=0;
+    std::uint64_t nodestonePerformTeleportAt=0,teleportToNamedLocationAt=0;
     std::uint64_t labelTextGetterAt=0,labelRotationGetterAt=0,labelFontGetterAt=0;
     std::uint64_t resourceUnavailableAt=0,resourceSetAmountAt=0,resourceRespawnAt=0,resourceIntervalAt=0,gameTimeAt=0,foliageDepictableAt=0;
     std::uint64_t playerTickAt=0,actorTeleportAt=0,processEventAt=0,lodestoneTryTeleportAt=0,lodestoneCanTeleportAt=0;
@@ -122,7 +125,7 @@ int main(int argc,char** argv){
     std::uint64_t graveGetInventoryAt=0,graveGetOwnerAt=0,graveCanAccessAt=0,graveRemoveAt=0,graveMoveAllAt=0,graveRegistryAt=0;
     std::uint64_t graveRespawnActorAt=0,graveRestoreFromLevelAt=0,graveRegisterStreamingAt=0,graveUnregisterStreamingAt=0,graveStreamingCompleteAt=0,graveProviderSourcesAt=0,gravePlayerSourcesAt=0,graveStreamingSourceCopyAt=0,graveStreamingSourceDestroyAt=0;
     auto nameOf=[&](const SymbolRecord&r){if(r.nameOffset>=names.size())return std::string();auto e=names.find('\n',r.nameOffset);return names.substr(r.nameOffset,e-r.nameOffset);};
-    for(const auto&r:records){auto n=nameOf(r);if(n==killed){killedAt=killedAt?std::min(killedAt,r.address):r.address;++killedNames;}if(n==death){deathAt=deathAt?std::min(deathAt,r.address):r.address;deathEnd=std::max(deathEnd,r.address+16);}if(n==display)displayAt=displayAt?std::min(displayAt,r.address):r.address;if(n==mapRegion)mapRegionAt=mapRegionAt?std::min(mapRegionAt,r.address):r.address;if(n==regionNameGetter)regionNameGetterAt=regionNameGetterAt?std::min(regionNameGetterAt,r.address):r.address;if(n==dungeon)dungeonAt=dungeonAt?std::min(dungeonAt,r.address):r.address;if(n==registryInstance)registryInstanceAt=registryInstanceAt?std::min(registryInstanceAt,r.address):r.address;if(n==registryLodestones)registryLodestonesAt=registryLodestonesAt?std::min(registryLodestonesAt,r.address):r.address;if(n==lodestoneLocation)lodestoneLocationAt=lodestoneLocationAt?std::min(lodestoneLocationAt,r.address):r.address;if(n==nodestoneBeginPlay)nodestoneBeginPlayAt=nodestoneBeginPlayAt?std::min(nodestoneBeginPlayAt,r.address):r.address;if(n==nodestoneSubsystem)nodestoneSubsystemAt=nodestoneSubsystemAt?std::min(nodestoneSubsystemAt,r.address):r.address;if(n==teleportTargetNames)teleportTargetNamesAt=teleportTargetNamesAt?std::min(teleportTargetNamesAt,r.address):r.address;if(n==teleportTargetTransform)teleportTargetTransformAt=teleportTargetTransformAt?std::min(teleportTargetTransformAt,r.address):r.address;if(n==labelTextGetter)labelTextGetterAt=labelTextGetterAt?std::min(labelTextGetterAt,r.address):r.address;if(n==labelRotationGetter)labelRotationGetterAt=labelRotationGetterAt?std::min(labelRotationGetterAt,r.address):r.address;if(n==labelFontGetter)labelFontGetterAt=labelFontGetterAt?std::min(labelFontGetterAt,r.address):r.address;if(n==resourceUnavailable)resourceUnavailableAt=resourceUnavailableAt?std::min(resourceUnavailableAt,r.address):r.address;if(n==resourceSetAmount)resourceSetAmountAt=resourceSetAmountAt?std::min(resourceSetAmountAt,r.address):r.address;if(n==resourceRespawn)resourceRespawnAt=resourceRespawnAt?std::min(resourceRespawnAt,r.address):r.address;if(n==resourceInterval)resourceIntervalAt=resourceIntervalAt?std::min(resourceIntervalAt,r.address):r.address;if(n==gameTime)gameTimeAt=gameTimeAt?std::min(gameTimeAt,r.address):r.address;if(n.find("AWorldActor::GetFoliageDepictableComponent_Implementation()")!=std::string::npos)foliageDepictableAt=foliageDepictableAt?std::min(foliageDepictableAt,r.address):r.address;}
+    for(const auto&r:records){auto n=nameOf(r);if(n==killed){killedAt=killedAt?std::min(killedAt,r.address):r.address;++killedNames;}if(n==death){deathAt=deathAt?std::min(deathAt,r.address):r.address;deathEnd=std::max(deathEnd,r.address+16);}if(n==display)displayAt=displayAt?std::min(displayAt,r.address):r.address;if(n==mapRegion)mapRegionAt=mapRegionAt?std::min(mapRegionAt,r.address):r.address;if(n==regionNameGetter)regionNameGetterAt=regionNameGetterAt?std::min(regionNameGetterAt,r.address):r.address;if(n==dungeon)dungeonAt=dungeonAt?std::min(dungeonAt,r.address):r.address;if(n==registryInstance)registryInstanceAt=registryInstanceAt?std::min(registryInstanceAt,r.address):r.address;if(n==registryLodestones)registryLodestonesAt=registryLodestonesAt?std::min(registryLodestonesAt,r.address):r.address;if(n==lodestoneLocation)lodestoneLocationAt=lodestoneLocationAt?std::min(lodestoneLocationAt,r.address):r.address;if(n==nodestoneBeginPlay)nodestoneBeginPlayAt=nodestoneBeginPlayAt?std::min(nodestoneBeginPlayAt,r.address):r.address;if(n==nodestoneSubsystem)nodestoneSubsystemAt=nodestoneSubsystemAt?std::min(nodestoneSubsystemAt,r.address):r.address;if(n==teleportTargetNames)teleportTargetNamesAt=teleportTargetNamesAt?std::min(teleportTargetNamesAt,r.address):r.address;if(n==teleportTargetTransform)teleportTargetTransformAt=teleportTargetTransformAt?std::min(teleportTargetTransformAt,r.address):r.address;if(n==nodestonePerformTeleport)nodestonePerformTeleportAt=nodestonePerformTeleportAt?std::min(nodestonePerformTeleportAt,r.address):r.address;if(n==teleportToNamedLocation)teleportToNamedLocationAt=teleportToNamedLocationAt?std::min(teleportToNamedLocationAt,r.address):r.address;if(n==labelTextGetter)labelTextGetterAt=labelTextGetterAt?std::min(labelTextGetterAt,r.address):r.address;if(n==labelRotationGetter)labelRotationGetterAt=labelRotationGetterAt?std::min(labelRotationGetterAt,r.address):r.address;if(n==labelFontGetter)labelFontGetterAt=labelFontGetterAt?std::min(labelFontGetterAt,r.address):r.address;if(n==resourceUnavailable)resourceUnavailableAt=resourceUnavailableAt?std::min(resourceUnavailableAt,r.address):r.address;if(n==resourceSetAmount)resourceSetAmountAt=resourceSetAmountAt?std::min(resourceSetAmountAt,r.address):r.address;if(n==resourceRespawn)resourceRespawnAt=resourceRespawnAt?std::min(resourceRespawnAt,r.address):r.address;if(n==resourceInterval)resourceIntervalAt=resourceIntervalAt?std::min(resourceIntervalAt,r.address):r.address;if(n==gameTime)gameTimeAt=gameTimeAt?std::min(gameTimeAt,r.address):r.address;if(n.find("AWorldActor::GetFoliageDepictableComponent_Implementation()")!=std::string::npos)foliageDepictableAt=foliageDepictableAt?std::min(foliageDepictableAt,r.address):r.address;}
     for(const auto&r:records){auto n=nameOf(r);if(n==playerTick)playerTickAt=playerTickAt?std::min(playerTickAt,r.address):r.address;if(n==actorTeleport)actorTeleportAt=actorTeleportAt?std::min(actorTeleportAt,r.address):r.address;if(n==processEvent)processEventAt=processEventAt?std::min(processEventAt,r.address):r.address;if(n==lodestoneTryTeleport)lodestoneTryTeleportAt=lodestoneTryTeleportAt?std::min(lodestoneTryTeleportAt,r.address):r.address;if(n==lodestoneCanTeleport)lodestoneCanTeleportAt=lodestoneCanTeleportAt?std::min(lodestoneCanTeleportAt,r.address):r.address;if(n==storageOwner)storageOwnerAt=storageOwnerAt?std::min(storageOwnerAt,r.address):r.address;if(n==storagePrivate)storagePrivateAt=storagePrivateAt?std::min(storagePrivateAt,r.address):r.address;if(n==storageLinkable)storageLinkableAt=storageLinkableAt?std::min(storageLinkableAt,r.address):r.address;if(n==storageItems)storageItemsAt=storageItemsAt?std::min(storageItemsAt,r.address):r.address;if(n==storageItemData)storageItemDataAt=storageItemDataAt?std::min(storageItemDataAt,r.address):r.address;if(n==storageSetStackSize)storageSetStackSizeAt=storageSetStackSizeAt?std::min(storageSetStackSizeAt,r.address):r.address;if(n==storageAddItemByData)storageAddItemByDataAt=storageAddItemByDataAt?std::min(storageAddItemByDataAt,r.address):r.address;if(n==storageCanAddItemByData)storageCanAddItemByDataAt=storageCanAddItemByDataAt?std::min(storageCanAddItemByDataAt,r.address):r.address;if(n==storageMoveItem)storageMoveItemAt=storageMoveItemAt?std::min(storageMoveItemAt,r.address):r.address;if(n==storageRemoveFromSlot)storageRemoveFromSlotAt=storageRemoveFromSlotAt?std::min(storageRemoveFromSlotAt,r.address):r.address;if(n==storageStackCount)storageStackCountAt=storageStackCountAt?std::min(storageStackCountAt,r.address):r.address;if(n==storageCategory)storageCategoryAt=storageCategoryAt?std::min(storageCategoryAt,r.address):r.address;if(n==storageBasePower)storageBasePowerAt=storageBasePowerAt?std::min(storageBasePowerAt,r.address):r.address;if(n==storageCategoryIcon)storageCategoryIconAt=storageCategoryIconAt?std::min(storageCategoryIconAt,r.address):r.address;if(n==worldTick)worldTickAt=worldTickAt?std::min(worldTickAt,r.address):r.address;}
     for(const auto&r:records){auto n=nameOf(r);if(n==delayedTeleport)delayedTeleportAt=delayedTeleportAt?std::min(delayedTeleportAt,r.address):r.address;if(n==delayedTeleportWrapper)delayedTeleportWrapperAt=delayedTeleportWrapperAt?std::min(delayedTeleportWrapperAt,r.address):r.address;if(n==teleportWithParams)teleportWithParamsAt=teleportWithParamsAt?std::min(teleportWithParamsAt,r.address):r.address;if(n==teleportSuccess)teleportSuccessAt=teleportSuccessAt?std::min(teleportSuccessAt,r.address):r.address;if(n==buildingEndPlay)buildingEndPlayAt=buildingEndPlayAt?std::min(buildingEndPlayAt,r.address):r.address;}
     for(const auto&r:records){
@@ -136,6 +139,7 @@ int main(int argc,char** argv){
     if(!registryInstanceAt||!registryLodestonesAt||!lodestoneLocationAt){std::cerr<<"lodestone registry symbols missing\n";return 4;}
     if(!nodestoneBeginPlayAt||!nodestoneSubsystemAt){std::cerr<<"nodestone teleporter symbols missing\n";return 4;}
     if(!teleportTargetNamesAt||!teleportTargetTransformAt){std::cerr<<"teleport destination registry symbols missing\n";return 4;}
+    if(!nodestonePerformTeleportAt||!teleportToNamedLocationAt){std::cerr<<"native nodestone teleport symbols missing\n";return 4;}
     if(!labelTextGetterAt||!labelRotationGetterAt||!labelFontGetterAt){std::cerr<<"map label getter symbols missing\n";return 4;}
     if(!resourceUnavailableAt||!resourceSetAmountAt||!resourceRespawnAt||!resourceIntervalAt||!gameTimeAt||!foliageDepictableAt){std::cerr<<"resource tracking symbols missing\n";return 4;}
     if(!playerTickAt||!actorTeleportAt||!processEventAt||!lodestoneTryTeleportAt||!lodestoneCanTeleportAt){std::cerr<<"admin teleport symbols missing\n";return 4;}
@@ -195,6 +199,11 @@ int main(int argc,char** argv){
     std::uint32_t dungeonNameOffset=reflectedOffset("UserVisibleName",0x30,0xC0);
     std::uint32_t dungeonEntranceOffset=reflectedOffset("EntranceLocation",0x30,0xC0);
     if(dungeonNameOffset!=0x88||dungeonEntranceOffset!=0x38){std::cerr<<"dungeon field layout changed\n";return 9;}
+    const std::uint32_t nodestoneDestinationOffset=reflectedOffset("TeleportDestinationName",0x400,0x480);
+    const std::uint32_t nodestoneOriginOffset=reflectedOffset("TeleportOriginName",0x400,0x480);
+    if(nodestoneDestinationOffset!=0x440||nodestoneOriginOffset!=0x450){
+        std::cerr<<"switchable nodestone target layout changed\n";return 9;
+    }
     for(auto address:{registryInstanceAt,registryLodestonesAt,lodestoneLocationAt}){
         auto at=fileAt(address);if(at==~0ULL||at+8>binary.size()){
             std::cerr<<"lodestone function outside ELF\n";return 9;
@@ -214,6 +223,28 @@ int main(int argc,char** argv){
         }
         bool any=false;for(size_t i=0;i<8;++i)any|=binary[at+i]!=0;
         if(!any){std::cerr<<"invalid nodestone function prologue\n";return 9;}
+    }
+    auto directlyCalls=[&](std::uint64_t caller,std::uint64_t target,size_t span){
+        const auto callerFile=fileAt(caller),targetFile=fileAt(target);
+        if(callerFile==UINT64_MAX||targetFile==UINT64_MAX||callerFile+span>binary.size())return false;
+        for(size_t i=callerFile;i+5<=callerFile+span;++i)if(binary[i]==0xE8){
+            std::int32_t relative=0;std::memcpy(&relative,binary.data()+i+1,4);
+            if(std::int64_t(i)+5+relative==std::int64_t(targetFile))return true;
+        }
+        return false;
+    };
+    for(auto address:{nodestonePerformTeleportAt,teleportToNamedLocationAt}){
+        const auto at=fileAt(address);if(at==UINT64_MAX||at+16>binary.size()){
+            std::cerr<<"native nodestone teleport function outside ELF\n";return 9;
+        }
+        bool any=false;for(size_t i=0;i<16;++i)any|=binary[at+i]!=0;
+        if(!any){std::cerr<<"invalid native nodestone teleport function\n";return 9;}
+    }
+    // Both the switchable-teleporter interaction and the named-location entry
+    // must converge on the exact reviewed TeleportWithParams implementation.
+    if(!directlyCalls(nodestonePerformTeleportAt,teleportWithParamsAt,0x500)||
+       !directlyCalls(teleportToNamedLocationAt,teleportWithParamsAt,0x300)){
+        std::cerr<<"native nodestone named-location call relationship changed\n";return 9;
     }
     const unsigned char labelRotationLayout[]={0x48,0x8b,0x46,0x20,0x48,0x83,0xf8,0x01,0x48,0x83,0xd8,0xff,0x48,0x89,0x46,0x20,0xf3,0x0f,0x10,0x87,0xd0,0x07,0x00,0x00};
     const unsigned char labelFontLayout[]={0x48,0x8b,0x46,0x20,0x48,0x83,0xf8,0x01,0x48,0x83,0xd8,0xff,0x48,0x89,0x46,0x20,0xf3,0x0f,0x10,0x87,0xd4,0x07,0x00,0x00};

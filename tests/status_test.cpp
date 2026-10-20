@@ -61,6 +61,11 @@ int main() {
     std::vector<DomEngine::LodestoneInfo> lodestones={lodestone};
     assert(Status::MapLodestonesJson(lodestones,"world-map-1.0.0.2",987654)==
            R"({"updatedAt":987654,"assetVersion":"world-map-1.0.0.2","lodestones":[{"id":"opaque-a","x":0.12500000,"y":0.87500000,"worldX":123.2,"worldY":-456.8,"worldZ":78.0}]})");
+    DomEngine::NodestoneInfo nodestone;nodestone.id="opaque-b";nodestone.mapX=0.25;nodestone.mapY=0.75;
+    nodestone.worldLocation={227321.125,54473.875,-123.0};nodestone.displayLocation="The Nexus · Garrison route";
+    nodestone.nexusEndpoint=true;nodestone.nativeTeleporter=0x1000;nodestone.nativeTeleporterIdentity=42;
+    assert(Status::MapNodestonesJson({nodestone},"world-map-1.0.0.2",987654)==
+           R"({"updatedAt":987654,"assetVersion":"world-map-1.0.0.2","nodestones":[{"id":"opaque-b","x":0.25000000,"y":0.75000000,"displayLocation":"The Nexus · Garrison route","nexusEndpoint":true,"teleportable":true,"worldX":227321.1,"worldY":54473.9,"worldZ":-123.0}]})");
     std::vector<DomEngine::MapLabelInfo> labels={{"label-a","Temple <Woods>",0.1,0.2,-3.5,42}};
     assert(Status::MapLabelsJson(labels,"world-map-1.0.0.2",987654)==
            R"({"updatedAt":987654,"assetVersion":"world-map-1.0.0.2","labels":[{"id":"label-a","text":"Temple <Woods>","x":0.10000000,"y":0.20000000,"rotation":-3.500,"fontSize":42,"letterTint":[0.000,0.000,0.000,1.000],"letterTintOpacity":1.000,"letterOpacity":1.000,"letterContrast":1.000,"glowTint":[0.000,0.000,0.000,1.000],"glowTintOpacity":1.000,"glowOpacity":1.000,"glowRange":0.000,"glowBrightness":1.000,"volumeToFlatness":0.000,"regularToBold":0.000}]})");

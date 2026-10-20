@@ -198,7 +198,13 @@ std::string MapNodestonesJson(const std::vector<DomEngine::NodestoneInfo>& nodes
         if(i)json<<',';
         json << "{\"id\":\"" << Escape(nodestones[i].id) << "\",\"x\":"
              << std::fixed << std::setprecision(8) << nodestones[i].mapX
-             << ",\"y\":" << nodestones[i].mapY << '}';
+             << ",\"y\":" << nodestones[i].mapY
+             << ",\"displayLocation\":\"" << Escape(nodestones[i].displayLocation) << "\""
+             << ",\"nexusEndpoint\":" << (nodestones[i].nexusEndpoint?"true":"false")
+             << ",\"teleportable\":" << (nodestones[i].nativeTeleporter&&nodestones[i].nativeTeleporterIdentity?"true":"false")
+             << ",\"worldX\":" << std::setprecision(1) << nodestones[i].worldLocation.X
+             << ",\"worldY\":" << nodestones[i].worldLocation.Y
+             << ",\"worldZ\":" << nodestones[i].worldLocation.Z << '}';
     }
     json << "]}";
     return json.str();

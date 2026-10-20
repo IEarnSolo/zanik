@@ -310,6 +310,7 @@ struct LodestoneInfo {
 struct AdminTeleportDiagnostics {
     int compatibility = 0;
     int lodestoneCompatibility = 0;
+    int nodestoneCompatibility = 0;
     int playerCompatibility = 0;
     int groundTraceCompatibility = 0;
     int storagePipelineCompatibility = 0;
@@ -328,11 +329,28 @@ struct AdminTeleportDiagnostics {
     std::uint64_t slowTickCalls = 0;
     std::uint64_t maximumStorageTransportMicroseconds = 0;
     std::uint64_t slowStorageTransportCalls = 0;
+    std::uint64_t queuedNodestoneTeleports = 0;
+    std::uint64_t acceptedNodestoneTeleports = 0;
+    std::uint64_t rejectedNodestoneTeleports = 0;
+    std::uint64_t timedOutNodestoneTeleports = 0;
+    std::uint64_t staleNodestoneDestinations = 0;
+    std::uint64_t concurrentNodestoneRequests = 0;
+    std::uint64_t maximumNodestoneExecutionMicroseconds = 0;
+    std::uint64_t slowNodestoneCalls = 0;
+    int nodestoneCircuitBroken = 0;
 };
 
 struct NodestoneInfo {
     std::string id;
     double mapX = 0, mapY = 0;
+    FVector3d worldLocation{};
+    std::string displayLocation;
+    bool nexusEndpoint = false;
+    // The fields below are server-only evidence from the validated target
+    // registry and its paired switchable teleporter. They are never serialized.
+    std::uint32_t nativeTargetName[2]{};
+    uintptr_t nativeTeleporter = 0;
+    std::uint64_t nativeTeleporterIdentity = 0;
 };
 
 struct NodestoneDiagnostics {
@@ -452,6 +470,8 @@ LodestoneDiagnostics GetLodestoneDiagnostics();
 bool InitializeAdminTeleport(uintptr_t moduleBase, uintptr_t moduleEnd);
 bool QueueAdminTeleport(const std::string& characterGuid, const std::string& publicId,
                         const std::string& destinationId, const std::string& sessionPrefix);
+bool QueueAdminNodestoneTeleport(const std::string& characterGuid, const std::string& publicId,
+                                 const NodestoneInfo& destination, const std::string& sessionPrefix);
 bool QueueAdminPlayerTeleport(const std::string& movingCharacterGuid, const std::string& movingPublicId,
                               const std::string& targetCharacterGuid, const std::string& targetPublicId,
                               const std::string& action, const std::string& sessionPrefix);

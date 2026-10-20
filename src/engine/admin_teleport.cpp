@@ -26,6 +26,7 @@ struct Request{
     uintptr_t preparedActor=0;
     std::uint64_t preparedActorIdentity=0;
     FVector3d preparedLocation{};
+    std::uint32_t preparedName[2]{};
 };
 using TickFn=void(*)(void*,float,int,void*);
 struct FRotator3d{double Pitch=0,Yaw=0,Roll=0;};
@@ -38,6 +39,7 @@ TickFn originalTick=nullptr;TeleportFn actorTeleport=nullptr;ProcessEventFn proc
 TryTeleportFn nativeTryTeleport=nullptr;CanTeleportFn originalCanTeleport=nullptr;
 uintptr_t lineTraceObject=0,lineTraceFunction=0;
 uintptr_t teleportSubsystem=0,teleportWithParamsFunction=0,getActorBoundsFunction=0;
+uintptr_t nodestonePerformFunction=0;
 BPTriggerDelayedTeleportFn bpTriggerDelayedTeleport=nullptr;
 struct LineTraceLayout{int world=-1,start=-1,end=-1,channel=-1,complex=-1,ignore=-1,debug=-1,outHit=-1,ignoreSelf=-1,result=-1;};
 LineTraceLayout lineTraceLayout;
@@ -52,12 +54,16 @@ struct PendingTeleport{
 std::vector<PendingTeleport> pendingTeleports;
 struct QueueLock{QueueLock(){pthread_mutex_lock(&requestMutex);}~QueueLock(){pthread_mutex_unlock(&requestMutex);}};
 std::atomic<int> compatibility{0};
+std::atomic<int> nodestoneTeleportCompatibility{0};
 std::atomic<int> groundTraceCompatibility{0},storagePipelineCompatibility{0},nativeCaptureCompatibility{0};
 std::atomic<std::uint64_t> queued{0},accepted{0},rejected{0},maximumMicros{0};
 std::atomic<std::uint64_t> acceptedStorage{0},staleStorage{0},unsafeStorage{0};
 std::atomic<std::uint64_t> tickCalls{0},maximumTickMicros{0},slowTickCalls{0};
 std::atomic<std::uint64_t> maximumStorageTeleportMicros{0},slowStorageTeleportCalls{0};
 std::atomic<bool> storageTeleportCircuitBroken{false};
+std::atomic<bool> nodestoneTeleportCircuitBroken{false};
+std::atomic<std::uint64_t> nodestoneQueued{0},nodestoneAccepted{0},nodestoneRejected{0},nodestoneTimedOut{0};
+std::atomic<std::uint64_t> nodestoneStale{0},nodestoneConcurrent{0},maximumNodestoneMicros{0},slowNodestoneCalls{0};
 // Keep storage teleports fail-closed until the native delayed-teleport ABI has
 // been captured from a genuine game teleport and validated.  The experimental
 // reflected TeleportWithParams call can crash the dedicated server.
@@ -325,6 +331,18 @@ bool InitializeStorageTeleportPipeline(){
     return true;
 }
 
+bool InitializeNodestoneTeleportPipeline(){
+    nodestonePerformFunction=g_Engine->FindFunction("SwitchableTeleporter","PerformTeleport");
+    if(!nodestonePerformFunction)return false;
+    const auto fields=g_Engine->GetStructPropertyOffsets(nodestonePerformFunction);
+    const auto has=[&](const char* name,int offset){return std::any_of(fields.begin(),fields.end(),[&](const auto& field){return field.first==name&&field.second==offset;});};
+    if(!has("PlayerCharacter",0x0)||!has("TargetDestination",0x8)){
+        LogMessage("Admin nodestone teleport disabled: PerformTeleport reflected parameter layout changed");
+        return false;
+    }
+    return true;
+}
+
 bool InitializeNativeTeleportCapture(uintptr_t moduleBase,uintptr_t moduleEnd,uintptr_t tryTeleportOffset){
     struct Profile{uintptr_t tryTeleport,trigger,wrapper;size_t hookBytes;unsigned char expected[17];};
     static const Profile profiles[]={
@@ -394,13 +412,18 @@ void ReconcilePending(void* tickingPawn){
         const bool timedOut=now-it->started>std::chrono::seconds(20);
         if(!arrived&&!timedOut){++it;continue;}
         RestoreCost(*it);
-        if(arrived&&!it->storage){++accepted;LogMessage("Admin native lodestone teleport completed character="+it->publicId+" session="+it->sessionPrefix+" destination="+it->destinationId);}
+        const bool nodestone=!it->storage&&!it->component;
+        if(arrived&&!it->storage){++accepted;LogMessage(std::string("Admin native ")+(nodestone?"nodestone":"lodestone")+" teleport completed character="+it->publicId+" session="+it->sessionPrefix+" destination="+it->destinationId);}
         else if(it->storage){
             ++rejected;++unsafeStorage;
             const FRotator3d rotation{};actorTeleport(reinterpret_cast<void*>(it->pawn),&it->origin,&rotation,false,false);
             LogMessage("Admin streamed storage teleport rejected after preload: no collision-safe arrival chest="+it->destinationId);
         }
-        else{++rejected;LogMessage("Admin native lodestone teleport timed out character="+it->publicId+" destination="+it->destinationId);}
+        else{++rejected;LogMessage(std::string("Admin native ")+(nodestone?"nodestone":"lodestone")+" teleport timed out character="+it->publicId+" destination="+it->destinationId);}
+        if(nodestone){
+            if(arrived)++nodestoneAccepted;
+            else{++nodestoneRejected;++nodestoneTimedOut;}
+        }
         it=pendingTeleports.erase(it);
     }
 }
@@ -500,6 +523,32 @@ void RunOne(void* tickingPawn){
         requests.pop_front();
     }
     if(player.isDead||!player.spawned){++rejected;LogMessage("Admin teleport rejected: player unavailable id="+request.publicId);return;}
+    if(request.action=="nodestone"){
+        const bool validName=request.preparedName[0]&&g_Engine->NameToString(request.preparedName[0],request.preparedName[1]).rfind("DR_",0)==0;
+        if(nodestoneTeleportCompatibility.load()!=1||nodestoneTeleportCircuitBroken.load()||!nodestonePerformFunction||
+           !request.preparedActor||!g_Engine->IsObjectLive(request.preparedActor)||
+           g_Engine->GetObjectIdentity(request.preparedActor)!=request.preparedActorIdentity||!validName){
+            ++rejected;++nodestoneRejected;++nodestoneStale;
+            LogMessage("Admin nodestone teleport rejected: native destination evidence changed id="+request.destinationId);
+            return;
+        }
+        alignas(16) unsigned char params[16]{};
+        const uintptr_t pawn=reinterpret_cast<uintptr_t>(tickingPawn);
+        std::memcpy(params,&pawn,sizeof(pawn));std::memcpy(params+8,request.preparedName,sizeof(request.preparedName));
+        const auto nativeStarted=std::chrono::steady_clock::now();
+        processEvent(reinterpret_cast<void*>(request.preparedActor),reinterpret_cast<void*>(nodestonePerformFunction),params);
+        const auto nativeMicros=std::uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now()-nativeStarted).count());
+        auto prior=maximumNodestoneMicros.load();while(nativeMicros>prior&&!maximumNodestoneMicros.compare_exchange_weak(prior,nativeMicros)){}
+        if(nativeMicros>=1000){++slowNodestoneCalls;nodestoneTeleportCircuitBroken=true;nodestoneTeleportCompatibility=-8;}
+        PendingTeleport pending;pending.characterGuid=request.characterGuid;pending.publicId=request.publicId;
+        pending.destinationId=request.destinationId;pending.sessionPrefix=request.sessionPrefix;
+        pending.pawn=pawn;pending.target=request.preparedLocation;pending.started=std::chrono::steady_clock::now();
+        {QueueLock lock;pendingTeleports.push_back(std::move(pending));}
+        LogMessage("Admin native nodestone teleport started character="+request.publicId+" session="+request.sessionPrefix+
+                   " destination="+request.destinationId+" nativeMicros="+std::to_string(nativeMicros));
+        return;
+    }
     if(request.action=="storage"||request.action=="gravestone"){
         FVector3d chest{};uintptr_t chestActor=0;
         if(!bpTriggerDelayedTeleport||!storageTeleportTemplateValid.load()||!getActorBoundsFunction||
@@ -632,6 +681,8 @@ bool InitializeAdminTeleport(uintptr_t moduleBase,uintptr_t moduleEnd){
     std::memcpy(trampoline,target,HookBytes);WriteJump(trampoline+HookBytes,reinterpret_cast<uintptr_t>(target+HookBytes));
     originalTick=reinterpret_cast<TickFn>(trampoline);actorTeleport=reinterpret_cast<TeleportFn>(moduleBase+teleportOffset);
     processEvent=reinterpret_cast<ProcessEventFn>(moduleBase+processOffset);
+    nodestoneTeleportCompatibility=InitializeNodestoneTeleportPipeline()?1:-1;
+    if(nodestoneTeleportCompatibility.load()!=1)LogMessage("Admin nodestone teleport compatibility unavailable; public nodestone markers remain enabled");
     groundTraceCompatibility=InitializeGroundTrace()?1:-1;
     if(groundTraceCompatibility.load()!=1)LogMessage("Admin storage teleport ground-trace compatibility unavailable; storage teleports will fail closed");
     storagePipelineCompatibility=InitializeStorageTeleportPipeline()?1:-1;
@@ -670,6 +721,23 @@ bool QueueAdminTeleport(const std::string& characterGuid,const std::string& publ
        std::any_of(pendingTeleports.begin(),pendingTeleports.end(),[&](const PendingTeleport&p){return p.characterGuid==characterGuid;}))return false;
     Request request;request.characterGuid=characterGuid;request.publicId=publicId;request.destinationId=destinationId;request.sessionPrefix=sessionPrefix;
     requests.push_back(std::move(request));++queued;return true;
+}
+
+bool QueueAdminNodestoneTeleport(const std::string& characterGuid,const std::string& publicId,
+                                 const NodestoneInfo& destination,const std::string& sessionPrefix){
+    if(compatibility.load()!=1||nodestoneTeleportCompatibility.load()!=1||nodestoneTeleportCircuitBroken.load()||
+       characterGuid.empty()||destination.id.empty()||!destination.nativeTeleporter||
+       !destination.nativeTeleporterIdentity||!destination.nativeTargetName[0])return false;
+    QueueLock lock;
+    const bool conflict=requests.size()>=QueueCapacity||
+        std::any_of(requests.begin(),requests.end(),[&](const Request&r){return r.characterGuid==characterGuid;})||
+        std::any_of(pendingTeleports.begin(),pendingTeleports.end(),[&](const PendingTeleport&p){return p.characterGuid==characterGuid;});
+    if(conflict){++nodestoneConcurrent;return false;}
+    Request request;request.characterGuid=characterGuid;request.publicId=publicId;request.destinationId=destination.id;
+    request.sessionPrefix=sessionPrefix;request.action="nodestone";request.preparedActor=destination.nativeTeleporter;
+    request.preparedActorIdentity=destination.nativeTeleporterIdentity;request.preparedLocation=destination.worldLocation;
+    std::memcpy(request.preparedName,destination.nativeTargetName,sizeof(request.preparedName));
+    requests.push_back(std::move(request));++queued;++nodestoneQueued;return true;
 }
 
 bool QueueAdminPlayerTeleport(const std::string& movingCharacterGuid,const std::string& movingPublicId,
@@ -711,13 +779,19 @@ bool QueueAdminGravestoneTeleport(const std::string& characterGuid,const std::st
 }
 
 AdminTeleportDiagnostics GetAdminTeleportDiagnostics(){
-    AdminTeleportDiagnostics d;d.compatibility=compatibility.load();d.lodestoneCompatibility=d.compatibility;d.playerCompatibility=d.compatibility;
+    AdminTeleportDiagnostics d;d.compatibility=compatibility.load();d.lodestoneCompatibility=d.compatibility;
+    d.nodestoneCompatibility=nodestoneTeleportCompatibility.load();d.playerCompatibility=d.compatibility;
     d.groundTraceCompatibility=groundTraceCompatibility.load();d.storagePipelineCompatibility=storagePipelineCompatibility.load();
     d.nativeCaptureCompatibility=nativeCaptureCompatibility.load();d.nativeTemplateAvailable=storageTeleportTemplateValid.load()?1:0;
     d.storageTransportCompatibility=storageTeleportCircuitBroken.load()?-1:(d.nativeCaptureCompatibility==1&&d.nativeTemplateAvailable==1?1:0);d.queuedRequests=queued.load();
     d.acceptedTeleports=accepted.load();d.rejectedRequests=rejected.load();d.maximumExecutionMicroseconds=maximumMicros.load();
     d.acceptedStorageTeleports=acceptedStorage.load();d.staleStorageDestinations=staleStorage.load();d.unsafeStorageDestinations=unsafeStorage.load();
     d.tickCalls=tickCalls.load();d.maximumTickMicroseconds=maximumTickMicros.load();d.slowTickCalls=slowTickCalls.load();
-    d.maximumStorageTransportMicroseconds=maximumStorageTeleportMicros.load();d.slowStorageTransportCalls=slowStorageTeleportCalls.load();return d;
+    d.maximumStorageTransportMicroseconds=maximumStorageTeleportMicros.load();d.slowStorageTransportCalls=slowStorageTeleportCalls.load();
+    d.queuedNodestoneTeleports=nodestoneQueued.load();d.acceptedNodestoneTeleports=nodestoneAccepted.load();
+    d.rejectedNodestoneTeleports=nodestoneRejected.load();d.timedOutNodestoneTeleports=nodestoneTimedOut.load();
+    d.staleNodestoneDestinations=nodestoneStale.load();d.concurrentNodestoneRequests=nodestoneConcurrent.load();
+    d.maximumNodestoneExecutionMicroseconds=maximumNodestoneMicros.load();d.slowNodestoneCalls=slowNodestoneCalls.load();
+    d.nodestoneCircuitBroken=nodestoneTeleportCircuitBroken.load()?1:0;return d;
 }
 }

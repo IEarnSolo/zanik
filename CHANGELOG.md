@@ -4,6 +4,7 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+- Add route-aware public nodestone tooltips with authoritative coordinates and authenticated admin map teleporting through Dragonwilds' native switchable-teleporter named-location pathway, guarded by independent compatibility and game-thread performance gates.
 - Add public lodestone hover tooltips to the world map showing authoritative X/Y/Z coordinates. Dragonwilds does not persist historical placement ownership, so Zanik deliberately does not guess or introduce incomplete forward-only attribution.
 - Replace the Dowdun Reach nodestone's generic fragment-crystal marker with detailed Zanik-authored top-down structure artwork, retain its full-resolution transparent master, and ship a crisp 256×256 map derivative with a revised browser cache key.
 - Render the new nodestone marker at 12×12 pixels on the world map so its detailed artwork does not obscure nearby map information.

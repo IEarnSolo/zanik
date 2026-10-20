@@ -56,6 +56,34 @@ The later full lodestone sequence additionally requires the exact player
 teleport component lookup, presentation path, and request-scoped cost bypass.
 
 Directly writing actor or component coordinates is not permitted.
+
+## Fixed nodestone map teleporting (build 25991736)
+
+Fixed Dowdun Reach nodestones use the game's named-location system rather than
+the player-built lodestone GUID network. The public map derives reviewed names,
+world coordinates, and opaque IDs from paired `DR_*` and `DR_Nexus_*` target
+records. Nexus markers are labelled by both their physical location and route,
+for example `The Nexus · Garrison route`. Internal `FName` values and native
+object identities are never serialized.
+
+Authenticated map requests are prepared on the HTTP worker from a live paired
+target and switchable-teleporter snapshot. The game-thread dispatcher validates
+the actor index/serial identity and calls the reflected
+`ASwitchableTeleporter::PerformTeleport(PlayerCharacter, TargetDestination)`
+wrapper once. Static analysis requires both that wrapper and
+`UTeleportationSubsystem::TeleportToNamedLocation`, and proves that both
+converge on the reviewed `TeleportWithParams` implementation. Runtime
+reflection independently requires `PlayerCharacter` at parameter offset `0x0`
+and `TargetDestination` at `0x8`. This preserves the native wind-up, loading,
+VFX, delayed movement, and completion callback instead of substituting a raw
+coordinate teleport.
+
+The capability has its own compatibility gate, counters, timeout handling, and
+1 ms circuit breaker. A stale target, unloaded or changed teleporter, changed
+reflection layout, duplicate request, timeout, or slow native initiation fails
+closed. Read-only nodestone markers and their public location/coordinate
+tooltips remain available when teleporting is unavailable. No placement-owner
+history is inferred or tracked.
 # Development lodestone teleport implementation (build 25630937)
 
 The server now queues authenticated map requests and drains them from the exact

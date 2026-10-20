@@ -349,6 +349,16 @@ NodestoneDiagnostics GetNodestoneDiagnostics(){
             nodestoneRejectedRecords.load(),nodestoneLastSuccessfulCollection.load()};
 }
 
+bool ReviewedNodestoneLocation(const std::string& suffix,std::string& display){
+    static const std::unordered_map<std::string,std::string> locations={
+        {"Aquifer","Aquifer"},{"Bastion","Bastion"},{"Courtyard","Courtyard"},
+        {"Garrison","Garrison"},{"Library","Library"},{"Menagerie","Menagerie"},
+        {"Mines","Mines"},{"Pastures","Pastures"},{"Temple","Temple"}
+    };
+    const auto found=locations.find(suffix);if(found==locations.end())return false;
+    display=found->second;return true;
+}
+
 bool ReadNodestones(std::vector<NodestoneInfo>& out){
     out.clear();nodestoneActorsFound=0;nodestoneValidMarkers=0;
     if(!g_Engine||!g_Engine->IsInitialized()||!g_Engine->IsMapProjectionAvailable()){
@@ -357,11 +367,13 @@ bool ReadNodestones(std::vector<NodestoneInfo>& out){
     if(!activeBuild.teleportTargetNames||!activeBuild.teleportTargetTransform){nodestoneCompatibility=-2;return false;}
     std::unordered_set<std::string> seen;
     const int32_t count=g_Engine->GetObjectCount();
-    uintptr_t subsystem=0;
+    uintptr_t subsystem=0;std::vector<uintptr_t> teleporters;
     for(int32_t i=0;i<count;++i){
         const uintptr_t object=g_Engine->GetObjectByIndex(i);
         if(object&&g_Engine->IsA(object,"TeleportationSubsystem")&&
-           g_Engine->GetObjectName(object).rfind("Default__",0)!=0){subsystem=object;break;}
+           g_Engine->GetObjectName(object).rfind("Default__",0)!=0)subsystem=object;
+        if(object&&g_Engine->IsObjectLive(object)&&g_Engine->IsA(object,"SwitchableTeleporter")&&
+           g_Engine->GetObjectName(object).rfind("Default__",0)!=0)teleporters.push_back(object);
     }
     if(!subsystem||!Mem::Readable(reinterpret_cast<void*>(subsystem+0x30),0x50)){
         nodestoneCompatibility=-3;return false;
@@ -373,7 +385,32 @@ bool ReadNodestones(std::vector<NodestoneInfo>& out){
     }
     using GetTransformFn=bool (*)(uintptr_t,const void*,void*);
     auto getTransform=reinterpret_cast<GetTransformFn>(g_Engine->GetModuleBase()+activeBuild.teleportTargetTransform);
-    struct Target { std::string name; FVector3d location; };
+    struct TeleporterEvidence{uintptr_t actor=0;std::uint64_t identity=0;};
+    std::unordered_map<std::string,TeleporterEvidence> actorsByDestination;
+    for(const uintptr_t actor:teleporters){
+        const int32_t destinationOffset=g_Engine->FindPropertyOffset(actor,"TeleportDestinationName");
+        const int32_t originOffset=g_Engine->FindPropertyOffset(actor,"TeleportOriginName");
+        // These exact inherited offsets are part of the reviewed current-build
+        // switchable-teleporter layout. A changed layout leaves public markers
+        // available but prevents native admin teleport preparation.
+        if(destinationOffset!=0x440||originOffset!=0x450||
+           !Mem::Readable(reinterpret_cast<void*>(actor+destinationOffset),8)||
+           !Mem::Readable(reinterpret_cast<void*>(actor+originOffset),8))continue;
+        std::uint32_t destinationName[2]{},originName[2]{};
+        std::memcpy(destinationName,reinterpret_cast<void*>(actor+destinationOffset),8);
+        std::memcpy(originName,reinterpret_cast<void*>(actor+originOffset),8);
+        const std::string destination=g_Engine->NameToString(destinationName[0],destinationName[1]);
+        const std::string origin=g_Engine->NameToString(originName[0],originName[1]);
+        const std::string nexusPrefix="DR_Nexus_";std::string expectedOrigin;
+        if(destination.rfind(nexusPrefix,0)==0)expectedOrigin="DR_"+destination.substr(nexusPrefix.size());
+        else if(destination.rfind("DR_",0)==0)expectedOrigin=nexusPrefix+destination.substr(3);
+        else continue;
+        if(origin!=expectedOrigin)continue;
+        const std::uint64_t identity=g_Engine->GetObjectIdentity(actor);if(!identity)continue;
+        auto [slot,inserted]=actorsByDestination.emplace(destination,TeleporterEvidence{actor,identity});
+        if(!inserted)slot->second={}; // ambiguous sources fail closed
+    }
+    struct Target { std::string name; FVector3d location; std::uint32_t nativeName[2]{}; };
     std::vector<Target> targets;
     std::unordered_set<std::string> targetNames;
     for(int32_t i=0;i<slots;++i){
@@ -385,18 +422,22 @@ bool ReadNodestones(std::vector<NodestoneInfo>& out){
         alignas(16) unsigned char transform[0x60]{};
         if(!getTransform(subsystem,reinterpret_cast<const void*>(entry),transform))continue;
         FVector3d location{};std::memcpy(&location,transform+0x20,sizeof(location));
-        targets.push_back({targetName,location});targetNames.insert(targetName);
+        Target target;target.name=targetName;target.location=location;
+        target.nativeName[0]=comparisonIndex;target.nativeName[1]=number;
+        targets.push_back(target);targetNames.insert(targetName);
     }
     for(const auto& target:targets){
         const std::string nexusPrefix="DR_Nexus_";
         std::string suffix;
-        if(target.name.rfind(nexusPrefix,0)==0){
+        const bool nexus=target.name.rfind(nexusPrefix,0)==0;
+        if(nexus){
             suffix=target.name.substr(nexusPrefix.size());
             if(!targetNames.count("DR_"+suffix))continue;
         }else if(target.name.rfind("DR_",0)==0){
             suffix=target.name.substr(3);
             if(!targetNames.count(nexusPrefix+suffix))continue;
         }else continue;
+        std::string location;if(!ReviewedNodestoneLocation(suffix,location)){++nodestoneRejectedRecords;continue;}
         ++nodestoneActorsFound;
         double x=0,y=0;
         if(!std::isfinite(target.location.X)||!std::isfinite(target.location.Y)||!std::isfinite(target.location.Z)||
@@ -404,7 +445,14 @@ bool ReadNodestones(std::vector<NodestoneInfo>& out){
         std::uint64_t hash=1469598103934665603ULL;
         for(unsigned char c:target.name){hash^=c;hash*=1099511628211ULL;}
         char id[17]{};std::snprintf(id,sizeof(id),"%016llx",static_cast<unsigned long long>(hash));
-        if(seen.insert(id).second)out.push_back({id,x,y});
+        if(seen.insert(id).second){
+            NodestoneInfo info;info.id=id;info.mapX=x;info.mapY=y;info.worldLocation=target.location;
+            info.nexusEndpoint=nexus;info.displayLocation=nexus?"The Nexus \xC2\xB7 "+location+" route":location;
+            info.nativeTargetName[0]=target.nativeName[0];info.nativeTargetName[1]=target.nativeName[1];
+            const auto actor=actorsByDestination.find(target.name);
+            if(actor!=actorsByDestination.end()){info.nativeTeleporter=actor->second.actor;info.nativeTeleporterIdentity=actor->second.identity;}
+            out.push_back(std::move(info));
+        }
     }
     nodestoneValidMarkers=static_cast<int>(out.size());
     nodestoneLastSuccessfulCollection=std::chrono::duration_cast<std::chrono::seconds>(
