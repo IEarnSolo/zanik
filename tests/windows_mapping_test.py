@@ -6,6 +6,37 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("windows_mapping", ROOT / "tools/windows_mapping.py")
 mapping = importlib.util.module_from_spec(spec); spec.loader.exec_module(mapping)
 
+
+def simulated_launch(url_starts=False, direct_starts=False, timeout=120):
+    now = [0.0]; launched = [False]; events = []; recorded = []
+    def lookup(_executable): return [4242] if launched[0] else []
+    def sleep(seconds): now[0] += seconds
+    def url(_steam, _app_id):
+        events.append("url")
+        if url_starts: launched[0] = True
+    def direct(_steam, _app_id):
+        events.append("direct")
+        if direct_starts: launched[0] = True
+    result, attempts = mapping.wait_for_game_launch(
+        Path("game.exe"), Path("steam.exe"), "1374490", timeout,
+        process_lookup=lookup, clock=lambda: now[0], sleeper=sleep,
+        url_launcher=url, direct_launcher=direct, on_attempt=recorded.append)
+    return result, attempts, events, recorded
+
+
+result, attempts, events, recorded = simulated_launch(url_starts=True)
+assert result == [4242] and events == ["url"]
+assert attempts == recorded and attempts[0]["accepted"]
+
+result, attempts, events, recorded = simulated_launch(direct_starts=True)
+assert result == [4242] and events == ["url", "direct"]
+assert [item["method"] for item in attempts] == ["steam-url", "steam-executable"]
+assert attempts == recorded
+
+result, attempts, events, _recorded = simulated_launch(timeout=95)
+assert result == [] and events == ["url", "direct", "url"]
+assert [item["method"] for item in attempts] == ["steam-url", "steam-executable", "steam-url-retry"]
+
 with tempfile.TemporaryDirectory() as name:
     root = Path(name); stage = root / "stage"; mods = stage / "ue4ss/Mods"
     (mods / "OldMod/Scripts").mkdir(parents=True)

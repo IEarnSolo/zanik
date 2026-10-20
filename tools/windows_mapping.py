@@ -458,6 +458,62 @@ def launch_steam_app(steam: Path, app_id: str) -> None:
     os.startfile(f"steam://rungameid/{app_id}")
 
 
+def launch_steam_app_direct(steam: Path, app_id: str) -> None:
+    """Send an explicit app launch to Steam after a URL handoff was lost.
+
+    Steam can restart itself for a client update after accepting a protocol URL,
+    dropping the original ``rungameid`` request.  This bounded fallback is sent
+    only while the exact Dragonwilds process is still absent.
+    """
+    if os.name != "nt":
+        raise RuntimeError("Steam client launch is supported only on Windows")
+    subprocess.Popen(
+        [str(steam), "-applaunch", app_id],
+        close_fds=True,
+        creationflags=int(getattr(subprocess, "CREATE_NO_WINDOW", 0)),
+    )
+
+
+def wait_for_game_launch(executable: Path, steam: Path, app_id: str,
+                         timeout_seconds: int = 240,
+                         process_lookup=game_processes,
+                         clock=time.monotonic, sleeper=time.sleep,
+                         url_launcher=launch_steam_app,
+                         direct_launcher=launch_steam_app_direct,
+                         on_attempt=lambda _attempt: None) -> tuple[list[int], list[dict[str, Any]]]:
+    """Launch Dragonwilds through Steam with bounded, observable fallbacks."""
+    started = clock()
+    attempts: list[dict[str, Any]] = []
+    schedule = [
+        (0, "steam-url", url_launcher),
+        (30, "steam-executable", direct_launcher),
+        (90, "steam-url-retry", url_launcher),
+    ]
+    next_attempt = 0
+    while clock() - started < timeout_seconds:
+        process_ids = process_lookup(executable)
+        if process_ids:
+            return process_ids, attempts
+        elapsed = clock() - started
+        while next_attempt < len(schedule) and elapsed >= schedule[next_attempt][0]:
+            _offset, method, launcher = schedule[next_attempt]
+            attempt: dict[str, Any] = {"method": method, "elapsedSeconds": int(elapsed), "accepted": False}
+            try:
+                launcher(steam, app_id)
+                attempt["accepted"] = True
+            except OSError as error:
+                attempt["error"] = str(error)
+            attempts.append(attempt)
+            on_attempt(dict(attempt))
+            next_attempt += 1
+            process_ids = process_lookup(executable)
+            if process_ids:
+                return process_ids, attempts
+            elapsed = clock() - started
+        sleeper(min(1.0, max(0.0, timeout_seconds - (clock() - started))))
+    return [], attempts
+
+
 def stable_mapping(binary_dir: Path, executable: Path, timeout_seconds: int) -> Path:
     deadline = time.monotonic() + timeout_seconds
     sizes: dict[Path, tuple[int, float]] = {}
@@ -566,14 +622,21 @@ def prepare(game_root: Path, ue4ss_root: Path, output: Path, work_root: Path,
         directory_staging.replace(owned)
         journal["state"] = "installed"
         write_journal(journal_path, journal)
-        launch_steam_app(steam, app_id)
-        deadline = time.monotonic() + 120
-        process_ids: list[int] = []
-        while time.monotonic() < deadline and not process_ids:
-            time.sleep(1)
-            process_ids = game_processes(executable)
+        journal["launchAttempts"] = []
+
+        def record_launch_attempt(attempt: dict[str, Any]) -> None:
+            journal["launchAttempts"].append(attempt)
+            write_journal(journal_path, journal)
+
+        process_ids, launch_attempts = wait_for_game_launch(
+            executable, steam, app_id, on_attempt=record_launch_attempt)
         if not process_ids:
-            raise RuntimeError("Steam did not start Dragonwilds within two minutes")
+            methods = ", ".join(str(item.get("method")) for item in launch_attempts) or "none"
+            raise RuntimeError(
+                "Steam did not start Dragonwilds after four minutes "
+                f"(attempts: {methods}). Open Steam, confirm that it is signed in and has no pending "
+                "client prompt, then use Resume extraction; Zanik restored the existing loader."
+            )
         launched = True
         journal["state"] = "running"
         journal["processId"] = process_ids[0]
