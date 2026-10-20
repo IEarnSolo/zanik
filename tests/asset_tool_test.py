@@ -52,10 +52,16 @@ with tempfile.TemporaryDirectory() as name:
         "python-embed-windows-x86_64": {"version": "3.12.10"},
         "unreal-asset-scout-windows-x86_64": {"version": "0.5.0"},
     }}))
+    generation = root / "generation-state.json"
+    generation.write_text(json.dumps({"schemaVersion": 1, "graphVersion": 1,
+                                      "contracts": {"map-icons": "a" * 64},
+                                      "outputDigests": {"map-icons": "b" * 64}}))
     subprocess.run([sys.executable, str(TOOL), "build", "--game-root", str(game), "--generated-root", str(generated),
-                    "--output", str(first), "--tool-versions-file", str(tool_lock)], check=True, env=env)
+                    "--output", str(first), "--tool-versions-file", str(tool_lock),
+                    "--generation-provenance-file", str(generation)], check=True, env=env)
     subprocess.run([sys.executable, str(TOOL), "build", "--game-root", str(game), "--generated-root", str(generated),
-                    "--output", str(second), "--tool-versions-file", str(tool_lock)], check=True, env=env)
+                    "--output", str(second), "--tool-versions-file", str(tool_lock),
+                    "--generation-provenance-file", str(generation)], check=True, env=env)
     assert hashlib.sha256(first.read_bytes()).digest() == hashlib.sha256(second.read_bytes()).digest()
     subprocess.run([sys.executable, str(TOOL), "validate", "--generated-root", str(generated)], check=True)
     empty_quests = root / "empty-quests"; shutil.copytree(generated, empty_quests)
@@ -78,6 +84,9 @@ with tempfile.TemporaryDirectory() as name:
     }
     assert bundled_manifest["extractionMode"] == "full"
     assert bundled_manifest["extractionRecipeSha256"] is None
+    assert bundled_manifest["generationGraphVersion"] == 1
+    assert bundled_manifest["generationGroups"] == {
+        "map-icons": {"contractSha256": "a" * 64, "outputSha256": "b" * 64}}
     subprocess.run([sys.executable, str(TOOL), "install-bundle", "--bundle", str(first), "--destination", str(destination)], check=True)
     current = destination / "current"; manifest = json.loads((current / "asset-manifest.json").read_text())
     assert manifest["sourceKind"] == "linux-dedicated-server" and not manifest["missingRequired"]

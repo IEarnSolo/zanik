@@ -8,12 +8,14 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from pathlib import PurePosixPath
 import shutil
 import subprocess
 import sys
 import tempfile
 import re
 import time
+import zipfile
 
 try:
     from asset_filesystem import extended_path, read_json as read_json_file
@@ -25,6 +27,35 @@ RECIPE_VERSION = 7
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 EXPORT_CHECKPOINT = "export-checkpoint.json"
 INCREMENTAL_STATE = "incremental-state.json"
+GENERATION_STATE = "generation-state.json"
+GENERATION_GRAPH_VERSION = 1
+MAP_ICON_TARGETS = {
+    "package:RSDragonwilds/Content/Art/UI/Icons/T_LodestoneMapIcon",
+    "package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal",
+    "basename:T_Icon_Gravestone",
+}
+GENERATION_GROUPS = (
+    "buildings", "plan-items", "npc", "resources", "quests", "item-artwork",
+    "npc-artwork", "resource-artwork", "skills", "map-icons", "world-map", "font",
+    "quest-badges", "recipes", "quest-destinations",
+)
+REVIEWED_LEGACY_GENERATION_RECIPES = {
+    "fee0d17d8c0d51276ec4d9f62939fd1dade779905f5e403f174d819325b5f412",  # recipe 6
+    "bdf48eadbc433e4680f1cb2485b75accd2169498d5277616828992a94bf566a7",  # recipe 7
+}
+GROUP_OUTPUTS = {
+    "buildings": ("buildings",), "plan-items": ("plan-items.tsv",),
+    "npc": ("npc-catalog.json", "npc-identities.tsv"),
+    "resources": ("resource-catalog.json", "resource-identities.tsv"),
+    "quests": ("quest-catalog.json", "quest-runtime-catalog.tsv"),
+    "item-artwork": ("items",), "npc-artwork": ("npcs",),
+    "resource-artwork": ("resources",), "skills": ("skills",),
+    "map-icons": ("lodestone-icon.png", "nodestone-icon.png", "gravestone-icon.png"),
+    "world-map": ("world-map.jpg",), "font": ("Jancient-Regular.ttf",),
+    "quest-badges": ("quests/main-quest.svg", "quests/side-quest.svg"),
+    "recipes": ("recipe-unlocks.json", "recipe-runtime-catalog.tsv", "recipe-runtime-catalog-history.tsv"),
+    "quest-destinations": ("quest-step-locations.json",),
+}
 
 
 def sha256(path: Path) -> str:
@@ -48,6 +79,17 @@ def write_json_atomic(path: Path, value: dict) -> None:
     temporary.replace(path)
 
 
+def emit_progress(message: str, *, detail: str = "", phase: str = "extract",
+                  overall: int | None = None, current: int | None = None,
+                  total: int | None = None, log: bool = True) -> None:
+    payload: dict[str, object] = {"phase": phase, "message": message,
+                                 "headline": message, "detail": detail, "log": log}
+    if overall is not None: payload["overallPercent"] = overall
+    if current is not None: payload["taskCurrent"] = current
+    if total is not None: payload["taskTotal"] = total
+    print("ZANIK_EVENT " + json.dumps(payload, separators=(",", ":")), flush=True)
+
+
 def remove_tree(path: Path) -> None:
     def handle_error(function, target, error):
         if isinstance(error[1], FileNotFoundError):
@@ -63,6 +105,161 @@ def remove_tree(path: Path) -> None:
             if attempt == 19:
                 raise
             time.sleep(0.5)
+
+
+def _safe_zip_name(value: str) -> str:
+    normalized = value.replace("\\", "/")
+    path = PurePosixPath(normalized)
+    if path.is_absolute() or ".." in path.parts or not path.parts:
+        raise RuntimeError(f"unsafe cached bundle path: {value}")
+    return path.as_posix()
+
+
+def seed_validated_baseline(bundle: Path, destination: Path, expected_recipe_sha: str,
+                            expected_executable_sha: str) -> dict:
+    """Materialize a previously validated public tree without trusting ZIP metadata."""
+    if destination.exists(): remove_tree(destination)
+    destination.mkdir(parents=True)
+    with zipfile.ZipFile(bundle) as archive:
+        members = [item for item in archive.infolist() if not item.is_dir()]
+        names = {_safe_zip_name(item.filename): item for item in members}
+        if len(names) != len(members):
+            raise RuntimeError("cached baseline contains duplicate ZIP paths")
+        if any((item.external_attr >> 16) & 0o170000 == 0o120000 for item in members):
+            raise RuntimeError("cached baseline contains a symbolic link")
+        if "asset-manifest.json" not in names:
+            raise RuntimeError("cached baseline has no asset manifest")
+        manifest = json.loads(archive.read(names["asset-manifest.json"]))
+        executable = manifest.get("sourceExecutable") or {}
+        if (manifest.get("schemaVersion") != 2 or manifest.get("compatibility") != "compatible"
+                or manifest.get("extractionStage") != "validated-and-packaged"
+                or manifest.get("extractionRecipeSha256") != expected_recipe_sha
+                or executable.get("sha256") != expected_executable_sha):
+            raise RuntimeError("cached baseline does not match the retained extraction state")
+        expected = {record.get("path"): record for record in manifest.get("files", [])
+                    if isinstance(record, dict)}
+        if not expected or set(expected) != (set(names) - {"asset-manifest.json"}):
+            raise RuntimeError("cached baseline manifest does not describe the complete ZIP")
+        for relative, record in expected.items():
+            safe = _safe_zip_name(relative)
+            data = archive.read(names[safe])
+            if len(data) != record.get("size") or hashlib.sha256(data).hexdigest() != record.get("sha256"):
+                raise RuntimeError(f"cached baseline failed validation for {safe}")
+            target = destination / Path(*PurePosixPath(safe).parts)
+            target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(data)
+    emit_progress("Reusing validated generated assets", detail=f"Verified {len(expected):,} cached files")
+    return manifest
+
+
+def generation_contracts(scripts: Path, repo: Path, recipe: dict) -> dict[str, str]:
+    """Fingerprint generator code and authored inputs for independent output groups."""
+    shared = scripts / "generate_web_assets.py"
+    sources: dict[str, list[Path]] = {
+        "buildings": [scripts / "generate_building_catalog.py"],
+        "plan-items": [scripts / "generate_plan_item_catalog.py"],
+        "npc": [scripts / "generate_world_catalogs.py"],
+        "resources": [scripts / "generate_world_catalogs.py"],
+        "quests": [scripts / "generate_quest_catalog.py", repo / "deploy/quest-overrides.json"],
+        "item-artwork": [shared], "npc-artwork": [shared], "resource-artwork": [shared],
+        "skills": [shared], "map-icons": [shared], "world-map": [shared], "font": [shared],
+        "quest-badges": [shared],
+        "recipes": [scripts / "generate_recipe_unlock_catalog.py", repo / "asset-tools/catalog-rules.json",
+                    repo / "asset-tools/recipe-runtime-catalog-history.tsv"],
+        "quest-destinations": [scripts / "analyze_quest_steps.py", repo / "deploy/quest-step-overrides.json"],
+    }
+    snapshot = recipe_snapshot(recipe)
+    catalog_counts = (recipe.get("catalogProfile") or {}).get("catalogCounts", {})
+    count_prefixes = {
+        "buildings": ("buildings/",), "npc": ("npc-catalog.",),
+        "resources": ("resource-catalog.",), "quests": ("quest-catalog.",),
+        "recipes": ("recipe-unlocks.",), "quest-destinations": ("quest-step-locations.",),
+    }
+    result = {}
+    for group, paths in sources.items():
+        digest = hashlib.sha256(group.encode())
+        for path in paths:
+            digest.update(path.as_posix().encode())
+            digest.update(path.read_bytes() if path.is_file() else b"<missing>")
+        if group in count_prefixes:
+            reviewed = {key: value for key, value in catalog_counts.items()
+                        if key.startswith(count_prefixes[group])}
+            digest.update(json.dumps({"jsonTargets": snapshot.get("jsonTargets", []),
+                                      "reviewedCounts": reviewed}, sort_keys=True).encode())
+        elif group == "map-icons":
+            digest.update(json.dumps(sorted(set(snapshot.get("requiredTextureAssets", [])) & MAP_ICON_TARGETS)).encode())
+        elif group == "font":
+            digest.update(str(snapshot.get("fontFilter", "")).encode())
+        result[group] = digest.hexdigest()
+    return result
+
+
+def selective_generation_groups(previous_recipe: dict, recipe: dict, prior_state: dict | None,
+                                 contracts: dict[str, str], added_textures: list[str],
+                                 removed_textures: list[str], legacy_reviewed: bool) -> set[str]:
+    """Return dirty groups; uncertainty deliberately expands rather than narrows work."""
+    if prior_state and prior_state.get("schemaVersion") == 1 \
+            and prior_state.get("graphVersion") == GENERATION_GRAPH_VERSION:
+        recorded = prior_state.get("contracts", {})
+        dirty = {group for group in GENERATION_GROUPS if recorded.get(group) != contracts.get(group)}
+    elif legacy_reviewed:
+        dirty = set()
+    else:
+        return set(GENERATION_GROUPS)
+    comparison_fields = ("schemaVersion", "engine", "jsonFilter", "fontFilter",
+                         "requiredTextureAssets", "catalogProfile", "jsonTargets")
+    old = {key: previous_recipe.get(key) for key in comparison_fields}
+    new = recipe_snapshot(recipe)
+    old_required = set(old.pop("requiredTextureAssets", []) or [])
+    new_required = set(new.pop("requiredTextureAssets", []) or [])
+    old.pop("catalogProfile", None); new.pop("catalogProfile", None)
+    current_sha = sha256(Path(recipe["_path"])) if recipe.get("_path") else ""
+    # Recipe 6 -> 7 was reviewed as a map-icon-only selector addition.  The
+    # schema bump must not manufacture catalog invalidations for that exact,
+    # fingerprinted migration.
+    if legacy_reviewed and current_sha in REVIEWED_LEGACY_GENERATION_RECIPES:
+        old.pop("schemaVersion", None); new.pop("schemaVersion", None)
+    if old != new:
+        dirty.update({"buildings", "plan-items", "npc", "resources", "quests", "recipes",
+                      "quest-destinations", "item-artwork", "npc-artwork", "resource-artwork"})
+    texture_changes = set(added_textures) | set(removed_textures) | (old_required ^ new_required)
+    if texture_changes:
+        if texture_changes <= MAP_ICON_TARGETS:
+            dirty.add("map-icons")
+        else:
+            dirty.update({"buildings", "plan-items", "item-artwork", "npc-artwork",
+                          "resource-artwork", "skills", "map-icons", "world-map"})
+    dependencies = {"item-artwork": {"plan-items"}, "npc-artwork": {"npc"},
+                    "resource-artwork": {"resources"},
+                    "recipes": {"buildings", "plan-items", "item-artwork"},
+                    "quest-destinations": {"quests", "npc"}}
+    changed = True
+    while changed:
+        changed = False
+        for group, parents in dependencies.items():
+            if parents & dirty and group not in dirty: dirty.add(group); changed = True
+    return dirty
+
+
+def remove_group_outputs(web: Path, groups: set[str]) -> None:
+    for group in groups:
+        for relative in GROUP_OUTPUTS[group]:
+            target = web / relative
+            if target.is_dir(): remove_tree(target)
+            elif target.exists(): target.unlink()
+
+
+def output_digest(web: Path, group: str) -> str:
+    value = hashlib.sha256()
+    found = 0
+    for relative in GROUP_OUTPUTS[group]:
+        target = web / relative
+        paths = sorted((path for path in target.rglob("*") if path.is_file()), key=lambda path: path.as_posix()) \
+            if target.is_dir() else ([target] if target.is_file() else [])
+        for path in paths:
+            name = path.relative_to(web).as_posix()
+            value.update(name.encode()); value.update(sha256(path).encode()); found += 1
+    if not found: raise RuntimeError(f"generated output group is empty: {group}")
+    return value.hexdigest()
 
 
 def validate_reviewed_counts(actual: dict[str, int], expected: dict[str, int]) -> None:
@@ -98,8 +295,14 @@ def validate_catalog_export(json_root: Path, expected_counts: dict[str, int] | N
     found: set[str] = set()
     cells = 0
     json_files = 0
+    scan_started = time.monotonic()
     for path in json_root.rglob("*.json"):
         json_files += 1
+        if json_files == 1 or json_files % 1000 == 0:
+            emit_progress("Checking targeted catalog coverage",
+                          detail=(f"Scanned {json_files:,} exported JSON files · "
+                                  f"{int(time.monotonic() - scan_started)}s elapsed"),
+                          current=json_files, log=False)
         normalized = path.as_posix()
         if "L_World/_Generated_/" in normalized:
             cells += 1
@@ -124,14 +327,32 @@ def validate_catalog_export(json_root: Path, expected_counts: dict[str, int] | N
 
 def run(command: list[str], label: str, *, quiet: bool = False) -> None:
     print(f"[Zanik] {label}", flush=True)
-    completed = subprocess.run(
+    emit_progress(label, detail="Starting this step", log=False)
+    started = time.monotonic()
+    completed = subprocess.Popen(
         command,
-        check=False,
         stdout=subprocess.DEVNULL if quiet else None,
         stderr=subprocess.STDOUT if quiet else None,
     )
+    output = None
+    if "-o" in command:
+        try: output = Path(command[command.index("-o") + 1])
+        except (ValueError, IndexError): output = None
+    while completed.poll() is None:
+        elapsed = int(time.monotonic() - started)
+        discovered = 0
+        if output and output.is_dir():
+            try: discovered = sum(1 for path in output.rglob("*") if path.is_file())
+            except OSError: discovered = 0
+        is_uas_scan = any(Path(str(part)).name.casefold() == "uas.exe" for part in command[:1])
+        detail = (("Scanning cooked containers · " if is_uas_scan else "") +
+                  f"{elapsed // 60}:{elapsed % 60:02d} elapsed")
+        if discovered: detail += f" · {discovered:,} output files currently present"
+        emit_progress(label, detail=detail, current=discovered or None, log=False)
+        time.sleep(2)
     if completed.returncode:
         raise RuntimeError(f"{label} failed with exit code {completed.returncode}")
+    emit_progress(label, detail=f"Completed in {int(time.monotonic() - started)} seconds", log=False)
 
 
 def update_stage(path: Path | None, stage: str) -> None:
@@ -330,7 +551,7 @@ def json_matches_target(path: Path, json_root: Path, target: str) -> bool:
 
 
 def apply_json_delta(common: list[str], temporary: Path, json_root: Path,
-                     old_targets: list[str], new_targets: list[str]) -> None:
+                     old_targets: list[str], new_targets: list[str]) -> dict[str, list[str]]:
     removed = sorted(set(old_targets) - set(new_targets), key=str.casefold)
     added = sorted(set(new_targets) - set(old_targets), key=str.casefold)
     removed_files = 0
@@ -346,7 +567,7 @@ def apply_json_delta(common: list[str], temporary: Path, json_root: Path,
         print(f"[Zanik] Removed {removed_files} cached catalog file(s) for {len(removed)} retired selector(s)", flush=True)
     if not added:
         print("[Zanik] Catalog selectors unchanged; retained JSON verified and UnrealAssetScout catalog pass skipped", flush=True)
-        return
+        return {"added": [], "removed": removed}
     for target in added:
         identity = hashlib.sha256(target.encode("utf-8")).hexdigest()[:12]
         delta = temporary / f"json-delta-{identity}"
@@ -368,10 +589,11 @@ def apply_json_delta(common: list[str], temporary: Path, json_root: Path,
             raise RuntimeError(f"new catalog selector exported no JSON files: {target}")
         remove_tree(delta)
     print(f"[Zanik] Exported {len(added)} newly required catalog selector(s)", flush=True)
+    return {"added": added, "removed": removed}
 
 
 def apply_texture_delta(common: list[str], temporary: Path, texture_root: Path,
-                        old_targets: list[str], new_targets: list[str]) -> None:
+                        old_targets: list[str], new_targets: list[str]) -> dict[str, list[str]]:
     removed = sorted(set(old_targets) - set(new_targets), key=str.casefold)
     added = sorted(set(new_targets) - set(old_targets), key=str.casefold)
     if removed:
@@ -386,17 +608,18 @@ def apply_texture_delta(common: list[str], temporary: Path, texture_root: Path,
         print(f"[Zanik] Removed {len(removed)} retired texture target(s) from the retained cache", flush=True)
     if not added:
         print("[Zanik] No new texture exports are required; UnrealAssetScout texture passes skipped", flush=True)
-        return
+        return {"added": [], "removed": removed}
     additions = missing_texture_targets(texture_root, added)
     if not additions:
         print("[Zanik] No new texture exports are required; UnrealAssetScout texture passes skipped", flush=True)
-        return
+        return {"added": [], "removed": removed}
     for expression in filter_chunks(additions):
         identity = hashlib.sha256(expression.encode("utf-8")).hexdigest()[:12]
         batch = texture_root / f"batch-delta-{identity}"
         run(common + ["-f", expression, "export", "Textures", "-o", str(batch), "-c", "-r",
                       "-l", str(temporary / f"texture-delta-{identity}.log")],
             f"Exporting {len(additions)} newly required web texture target(s)", quiet=True)
+    return {"added": additions, "removed": removed}
 
 
 def missing_texture_targets(texture_root: Path, targets: list[str]) -> list[str]:
@@ -520,7 +743,7 @@ def complete_remaining_exports(common: list[str], temporary: Path, recipe: dict,
         rebuild = [] if incremental else ["-r"]
         run(common + ["-f", expression, "export", "Textures", "-o", str(batch), "-c", *rebuild,
                       "-l", str(temporary / f"texture-export-{index:02d}.log")],
-            f"Exporting targeted web textures ({index})", quiet=True)
+            f"Exporting targeted web textures ({index}/{len(chunks)})", quiet=True)
     if incremental and texture_root.is_dir():
         for stale in (path for path in texture_root.iterdir()
                       if path.is_dir() and path.name.startswith("batch-") and path.name not in expected_batches):
@@ -581,6 +804,8 @@ def extract(args: argparse.Namespace) -> int:
         json_root = temporary / "json"; texture_root = temporary / "textures"; font_root = temporary / "font"; web = temporary / "web"; internal = temporary / "internal"
         internal.mkdir(parents=True, exist_ok=True)
         common = [str(uas), "-p", str(paks), "-g", recipe["engine"], "-u", str(mapping)]
+        previous_recipe: dict = {}; prior: dict | None = None; selective = False
+        texture_delta = {"added": [], "removed": []}
         if args.resume_work:
             print("[Zanik] Validating retained extraction work", flush=True)
             checkpoint_path = temporary / EXPORT_CHECKPOINT
@@ -635,7 +860,7 @@ def extract(args: argparse.Namespace) -> int:
             new_targets = old_targets if target_inputs_unchanged else referenced_textures(
                 json_root, recipe["requiredTextureAssets"])
             if selective and isinstance(old_targets, list) and texture_root.is_dir():
-                apply_texture_delta(common, temporary, texture_root, old_targets, new_targets)
+                texture_delta = apply_texture_delta(common, temporary, texture_root, old_targets, new_targets)
                 if previous_recipe.get("fontFilter") == recipe.get("fontFilter"):
                     validate_font_export(font_root)
                     print("[Zanik] Web-font filter unchanged; retained font verified and UnrealAssetScout font pass skipped", flush=True)
@@ -656,28 +881,65 @@ def extract(args: argparse.Namespace) -> int:
                 recover_or_create_export_checkpoint(temporary, recipe, reviewed_counts, mapping, stage_journal)
             write_incremental_state(temporary, recipe, new_targets, stage_journal)
             update_stage(stage_journal, "exports")
-        reset_partial_generation(temporary)
-        update_stage(stage_journal, "generating")
         scripts = Path(__file__).resolve().parent; repo = scripts.parent; py = sys.executable
-        run([py, str(scripts / "generate_building_catalog.py"), str(json_root), str(texture_root), str(web / "buildings"), "--catalogue-root", str(json_root)], "Generating building catalog")
-        run([py, str(scripts / "generate_plan_item_catalog.py"), "--assets", str(json_root), "--icons", str(texture_root), "--web", str(web)], "Generating plan-item catalog")
+        contracts = generation_contracts(scripts, repo, recipe)
+        prior_generation_path = temporary / GENERATION_STATE
+        prior_generation = read_operational_json(prior_generation_path) if prior_generation_path.is_file() else None
+        reset_partial_generation(temporary)
+        dirty = set(GENERATION_GROUPS)
+        if args.incremental_work and selective and args.baseline_bundle:
+            previous_sha = str((prior or {}).get("recipeSha256") or "")
+            previous_executable = str((prior or {}).get("fingerprints", {}).get("gameExecutableSha256") or "")
+            seed_validated_baseline(args.baseline_bundle.resolve(), web, previous_sha, previous_executable)
+            dirty = selective_generation_groups(
+                previous_recipe, recipe, prior_generation, contracts,
+                texture_delta["added"], texture_delta["removed"],
+                previous_sha in REVIEWED_LEGACY_GENERATION_RECIPES)
+            remove_group_outputs(web, dirty)
+            reused = len(GENERATION_GROUPS) - len(dirty)
+            emit_progress("Planning generated website update",
+                          detail=f"Reusing {reused} validated output group(s); rebuilding {len(dirty)}",
+                          current=reused, total=len(GENERATION_GROUPS))
+        update_stage(stage_journal, "generating")
+        if "buildings" in dirty:
+            run([py, str(scripts / "generate_building_catalog.py"), str(json_root), str(texture_root), str(web / "buildings"), "--catalogue-root", str(json_root)], "Generating building catalog")
+        if "plan-items" in dirty:
+            run([py, str(scripts / "generate_plan_item_catalog.py"), "--assets", str(json_root), "--icons", str(texture_root), "--web", str(web)], "Generating plan-item catalog")
         cells = next((path for path in json_root.rglob("_Generated_") if path.is_dir() and "L_World" in path.as_posix()), None)
         if cells is None: raise RuntimeError("the targeted export contains no L_World partition cells")
-        run([py, str(scripts / "generate_world_catalogs.py"), "npc", "--cells-root", str(cells), "--spawn-root", str(json_root), "--character-root", str(json_root), "--placed-root", str(json_root), "--public-output", str(web / "npc-catalog.json"), "--identities-output", str(web / "npc-identities.tsv"), "--exclusions-output", str(internal / "npc-exclusions.tsv")], "Generating NPC catalog")
-        run([py, str(scripts / "generate_world_catalogs.py"), "resource", "--cells-root", str(cells), "--blueprint-root", str(json_root), "--item-root", str(json_root), "--public-output", str(web / "resource-catalog.json"), "--identities-output", str(web / "resource-identities.tsv")], "Generating resource catalog")
+        if "npc" in dirty:
+            run([py, str(scripts / "generate_world_catalogs.py"), "npc", "--cells-root", str(cells), "--spawn-root", str(json_root), "--character-root", str(json_root), "--placed-root", str(json_root), "--public-output", str(web / "npc-catalog.json"), "--identities-output", str(web / "npc-identities.tsv"), "--exclusions-output", str(internal / "npc-exclusions.tsv")], "Generating NPC catalog")
+        if "resources" in dirty:
+            run([py, str(scripts / "generate_world_catalogs.py"), "resource", "--cells-root", str(cells), "--blueprint-root", str(json_root), "--item-root", str(json_root), "--public-output", str(web / "resource-catalog.json"), "--identities-output", str(web / "resource-identities.tsv")], "Generating resource catalog")
         deploy = scripts.parent / "deploy"
-        run([py, str(scripts / "generate_quest_catalog.py"), "--source", str(json_root), "--public", str(web / "quest-catalog.json"), "--runtime", str(web / "quest-runtime-catalog.tsv"), "--overrides", str(deploy / "quest-overrides.json")], "Generating quest catalog")
-        run([py, str(scripts / "generate_web_assets.py"), "--json-root", str(json_root), "--texture-root", str(texture_root), "--font-root", str(font_root), "--web-root", str(web)], "Resolving web-visible artwork")
+        if "quests" in dirty:
+            run([py, str(scripts / "generate_quest_catalog.py"), "--source", str(json_root), "--public", str(web / "quest-catalog.json"), "--runtime", str(web / "quest-runtime-catalog.tsv"), "--overrides", str(deploy / "quest-overrides.json")], "Generating quest catalog")
+        artwork_groups = {"item-artwork": "items", "npc-artwork": "npc", "resource-artwork": "resources",
+                          "skills": "skills", "map-icons": "map-icons", "world-map": "world-map",
+                          "font": "font", "quest-badges": "quest-badges"}
+        selected_artwork = [value for group, value in artwork_groups.items() if group in dirty]
+        if selected_artwork:
+            artwork_command = [py, str(scripts / "generate_web_assets.py"), "--json-root", str(json_root),
+                               "--texture-root", str(texture_root), "--font-root", str(font_root),
+                               "--web-root", str(web)]
+            for group in selected_artwork: artwork_command.extend(["--group", group])
+            run(artwork_command, "Resolving " + ", ".join(selected_artwork).replace("-", " "))
         history_seed = repo / "asset-tools/recipe-runtime-catalog-history.tsv"
         if not history_seed.is_file():
             history_seed = repo / "web/recipe-runtime-catalog-history.tsv"
         recipe_command = [py, str(scripts / "generate_recipe_unlock_catalog.py"), "--assets", str(json_root), "--building-assets", str(json_root), "--building-catalog", str(web / "buildings/catalog.json"), "--usmap", str(mapping), "--game-exe", str(executable), "--rules", str(repo / "asset-tools/catalog-rules.json"), "--output", str(internal / "recipe-unlocks-audit.json"), "--docs-dir", str(internal / "docs"), "--web-output", str(web / "recipe-unlocks.json"), "--runtime-web-output", str(web / "recipe-runtime-catalog.tsv"), "--runtime-history-output", str(web / "recipe-runtime-catalog-history.tsv")]
         if history_seed.is_file():
             recipe_command.extend(["--runtime-history-seed", str(history_seed)])
-        run(recipe_command, "Generating recipe catalog")
-        run([py, str(scripts / "analyze_quest_steps.py"), "--source", str(json_root), "--quest-catalog", str(web / "quest-catalog.json"), "--quest-runtime-catalog", str(web / "quest-runtime-catalog.tsv"), "--npc-catalog", str(web / "npc-catalog.json"), "--npc-identities", str(web / "npc-identities.tsv"), "--overrides", str(deploy / "quest-step-overrides.json"), "--analysis-output", str(internal / "quest-step-analysis.json"), "--public-output", str(web / "quest-step-locations.json"), "--coverage-output", str(internal / "quest-step-location-coverage.md")], "Generating quest destination catalog")
+        if "recipes" in dirty:
+            run(recipe_command, "Generating recipe catalog")
+        if "quest-destinations" in dirty:
+            run([py, str(scripts / "analyze_quest_steps.py"), "--source", str(json_root), "--quest-catalog", str(web / "quest-catalog.json"), "--quest-runtime-catalog", str(web / "quest-runtime-catalog.tsv"), "--npc-catalog", str(web / "npc-catalog.json"), "--npc-identities", str(web / "npc-identities.tsv"), "--overrides", str(deploy / "quest-step-overrides.json"), "--analysis-output", str(internal / "quest-step-analysis.json"), "--public-output", str(web / "quest-step-locations.json"), "--coverage-output", str(internal / "quest-step-location-coverage.md")], "Generating quest destination catalog")
         asset_tool = scripts / "zanik_assets.py"
         run([py, str(asset_tool), "validate", "--generated-root", str(web)], "Validating generated asset tree")
+        generation_state = {"schemaVersion": 1, "graphVersion": GENERATION_GRAPH_VERSION,
+                            "recipeSha256": sha256(Path(recipe["_path"])), "contracts": contracts,
+                            "outputDigests": {group: output_digest(web, group) for group in GENERATION_GROUPS}}
+        write_json_atomic(prior_generation_path, generation_state)
         replacement = output.with_name(output.name + ".new")
         if replacement.exists(): remove_tree(replacement)
         shutil.copytree(web, replacement)
@@ -712,6 +974,7 @@ def main() -> int:
     parser.add_argument("--game-changed", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--workspace", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--stage-journal", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--baseline-bundle", type=Path, help=argparse.SUPPRESS)
     return extract(parser.parse_args())
 
 

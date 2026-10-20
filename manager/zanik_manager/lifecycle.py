@@ -410,7 +410,13 @@ class PterodactylProvider(ServerProvider):
         modes: dict[str, list[tuple[str, int]]] = {}
         total = len(payload.entries)
         for index, (name, entry) in enumerate(payload.entries.items(), 1):
-            progress(f"Uploading and verifying {name}", 25 + int(index * 35 / max(total, 1)))
+            message = f"Uploading and verifying {name}"
+            percent = 25 + int(index * 35 / max(total, 1))
+            try:
+                progress(message, percent, {"detail": f"Server payload file {index} of {total}",
+                                            "taskCurrent": index, "taskTotal": total})
+            except TypeError:
+                progress(message, percent)
             directory = str(PurePosixPath(stage) / PurePosixPath(name).parent)
             data = payload.read(name)
             self.client.upload(server_id, directory, PurePosixPath(name).name, data)

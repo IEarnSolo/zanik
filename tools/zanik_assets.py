@@ -317,7 +317,7 @@ def validate_generated(source: Path) -> dict:
         asset_references.update(clean_relative(match) for match in re.findall(r"/assets/([A-Za-z0-9_./-]+)", contents))
     missing_references = sorted(reference for reference in asset_references if not (source / reference).is_file())
     errors.extend(f"web asset reference is unresolved: {reference}" for reference in missing_references)
-    return {
+    manifest = {
         "valid": not errors,
         "missingRequired": missing_required,
         "missingOptional": missing_optional,
@@ -328,6 +328,7 @@ def validate_generated(source: Path) -> dict:
         "buildingIconSources": building_icon_sources,
         "recipeRouteCoverage": recipe_route_coverage,
     }
+    return manifest
 
 
 def source_kind(paths: list[Path]) -> str:
@@ -413,7 +414,8 @@ def zip_timestamp(epoch: int) -> tuple[int, int, int, int, int, int]:
 def manifest_for(root: Path, source: Path, files: list[Path], validation: dict,
                  mapping_path: Path | None = None, tool_versions: dict | None = None,
                  recipe_version: int = EXTRACTION_RECIPE_VERSION, profile: dict | None = None,
-                 extraction_mode: str = "full", recipe_sha256: str | None = None) -> dict:
+                 extraction_mode: str = "full", recipe_sha256: str | None = None,
+                 generation: dict | None = None) -> dict:
     containers = container_paths(root)
     epoch = int(os.environ.get("SOURCE_DATE_EPOCH", str(int(time.time()))))
     expected = (profile or {}).get("catalogProfile", {}).get("catalogCounts", {})
@@ -432,7 +434,7 @@ def manifest_for(root: Path, source: Path, files: list[Path], validation: dict,
     for path in files:
         relative = path.relative_to(source)
         categories[relative.parts[0] if len(relative.parts) > 1 else "core"] += 1
-    return {
+    manifest = {
         "schemaVersion": SCHEMA_VERSION,
         "gameBuild": game_build(root),
         "sourceKind": source_kind(containers),
@@ -467,6 +469,14 @@ def manifest_for(root: Path, source: Path, files: list[Path], validation: dict,
         "missingOptional": validation["missingOptional"],
         "warnings": warnings,
     }
+    if generation:
+        manifest["generationGraphVersion"] = generation.get("graphVersion")
+        manifest["generationGroups"] = {
+            name: {"contractSha256": contract,
+                   "outputSha256": generation.get("outputDigests", {}).get(name)}
+            for name, contract in sorted(generation.get("contracts", {}).items())
+        }
+    return manifest
 
 
 def build(args: argparse.Namespace) -> int:
@@ -482,10 +492,24 @@ def build(args: argparse.Namespace) -> int:
     mapping = Path(args.mapping).resolve() if getattr(args, "mapping", None) else None
     profile_path = Path(args.profile) if getattr(args, "profile", None) else None
     profile = json.loads(profile_path.read_text(encoding="utf-8")) if profile_path else None
+    generation_path = Path(args.generation_provenance_file).resolve() if getattr(args, "generation_provenance_file", None) else None
+    generation = json.loads(generation_path.read_text(encoding="utf-8")) if generation_path else None
+    if generation is not None:
+        contracts = generation.get("contracts") if isinstance(generation, dict) else None
+        outputs = generation.get("outputDigests") if isinstance(generation, dict) else None
+        if (generation.get("schemaVersion") != 1 or not isinstance(generation.get("graphVersion"), int)
+                or not isinstance(contracts, dict) or not contracts
+                or set(contracts) != set(outputs or {})):
+            raise ValueError("generation provenance is incomplete or malformed")
+        for name, contract in contracts.items():
+            if (not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9-]*", name)
+                    or not isinstance(contract, str) or not re.fullmatch(r"[0-9a-f]{64}", contract)
+                    or not isinstance(outputs[name], str) or not re.fullmatch(r"[0-9a-f]{64}", outputs[name])):
+                raise ValueError(f"generation provenance is invalid for group {name!r}")
     manifest = manifest_for(root, source, files, validation, mapping, tool_versions,
                             getattr(args, "recipe_version", 1), profile,
                             getattr(args, "extraction_mode", "full"),
-                            digest(profile_path) if profile_path else None)
+                            digest(profile_path) if profile_path else None, generation)
     archive_time = zip_timestamp(calendar.timegm(time.strptime(
         manifest["generatedAt"], "%Y-%m-%dT%H:%M:%SZ")))
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -590,6 +614,15 @@ def validate_manifest_tree(root: Path, require_compatible: bool = False) -> dict
         raise ValueError("asset bundle manifest is incompatible or incomplete")
     if require_compatible and manifest.get("compatibility") != "compatible":
         raise ValueError("asset bundle is marked incompatible by its reviewed catalog profile")
+    generation_groups = manifest.get("generationGroups")
+    if generation_groups is not None:
+        if not isinstance(manifest.get("generationGraphVersion"), int) or not isinstance(generation_groups, dict):
+            raise ValueError("asset bundle has malformed generation provenance")
+        for name, record in generation_groups.items():
+            if (not isinstance(name, str) or not isinstance(record, dict)
+                    or not re.fullmatch(r"[0-9a-f]{64}", str(record.get("contractSha256", "")))
+                    or not re.fullmatch(r"[0-9a-f]{64}", str(record.get("outputSha256", "")))):
+                raise ValueError(f"asset bundle has malformed generation group: {name}")
     records = manifest.get("files")
     if not isinstance(records, list) or not records:
         raise ValueError("asset bundle manifest has no file records")
@@ -1045,6 +1078,7 @@ def main() -> int:
     create.add_argument("--recipe-version", type=int, default=EXTRACTION_RECIPE_VERSION)
     create.add_argument("--profile")
     create.add_argument("--extraction-mode", choices=("full", "incremental"), default="full")
+    create.add_argument("--generation-provenance-file")
     create.set_defaults(run=build)
     bundle = commands.add_parser("bundle")
     bundle.add_argument("--game-root", required=True)
@@ -1056,6 +1090,7 @@ def main() -> int:
     bundle.add_argument("--recipe-version", type=int, default=EXTRACTION_RECIPE_VERSION)
     bundle.add_argument("--profile")
     bundle.add_argument("--extraction-mode", choices=("full", "incremental"), default="full")
+    bundle.add_argument("--generation-provenance-file")
     bundle.set_defaults(run=build)
     parts = commands.add_parser("bundle-set")
     parts.add_argument("--bundle", required=True)

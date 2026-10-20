@@ -9,6 +9,7 @@ param(
     [switch]$PreserveExistingLoader,
     [string]$RecoveryDirectory,
     [string]$WorkDirectory,
+    [string]$BaselineBundle,
     [switch]$Resume,
     [switch]$Incremental,
     [string]$InstallBundle,
@@ -133,6 +134,7 @@ $Generated = Join-Path $Work 'generated-web'
 $MappingWasGenerated = $false
 $Succeeded = $false
 try {
+$PipelineWorkspace = Join-Path $Work 'pipeline'
 if ($StateOrder[$Journal.stage] -lt $StateOrder['mappings'] -and -not $UsmapPath) {
     if ($SkipGameLaunch) { throw '-SkipGameLaunch requires -UsmapPath because cooked catalog assets need locally generated mappings.' }
     $Ue4ss = Join-Path $Root 'third_party\ue4ss'
@@ -153,7 +155,6 @@ if ($StateOrder[$Journal.stage] -lt $StateOrder['mappings'] -and -not $UsmapPath
     $UsmapPath = if ($UsmapPath) { [IO.Path]::GetFullPath($UsmapPath) } else { Join-Path $Work 'Mappings.usmap' }
 }
 if ($StateOrder[$Journal.stage] -lt $StateOrder['generated']) {
-$PipelineWorkspace = Join-Path $Work 'pipeline'
 $PipelineArguments = @($Pipeline, '--game-root', $GameRoot, '--output', $Generated, '--tool-root', $Root, '--usmap-path', $UsmapPath, '--recipe', $Recipe, '--work-root', $Work, '--stage-journal', $JournalPath)
 $IncrementalPipeline = $Incremental -and (Test-Path -LiteralPath $PipelineWorkspace -PathType Container)
 $ResumePipeline = (($Resume -and (Test-Path -LiteralPath $PipelineWorkspace -PathType Container)) -or ($Journal.stage -in @('exports', 'generating') -and -not $IncrementalPipeline))
@@ -161,6 +162,7 @@ if ($ResumePipeline) { $PipelineArguments += @('--resume-work', $PipelineWorkspa
 elseif ($IncrementalPipeline) { $PipelineArguments += @('--incremental-work', $PipelineWorkspace) }
 else { $PipelineArguments += @('--workspace', $PipelineWorkspace) }
 if ($GameChanged) { $PipelineArguments += '--game-changed' }
+if ($BaselineBundle) { $PipelineArguments += @('--baseline-bundle', ([IO.Path]::GetFullPath($BaselineBundle))) }
 if ($KeepWork) { $PipelineArguments += '--keep-work' }
 if ($CatalogsOnly) { Write-Warning '-CatalogsOnly retains artwork referenced by runtime catalogs and omits only unreachable exports.' }
 if ($IncrementalPipeline) { Write-ZanikEvent 'extract' 'Checking retained exports and applying only changed, added, or removed packages' }
@@ -178,7 +180,7 @@ $Bundle = Join-Path $OutputDirectory "zanik-assets-$Build.zip"
 if ($StateOrder[$Journal.stage] -lt $StateOrder['bundled']) {
 Write-ZanikEvent 'bundle' 'Validating and packaging the complete asset bundle'
 $ExtractionMode = if ($Incremental) { 'incremental' } else { 'full' }
-& $Python $AssetTool bundle --game-root $GameRoot --generated-root $Generated --output $Bundle --mapping $UsmapPath --tool-versions-file $ToolLock --recipe-version $RecipeVersion --profile $Recipe --extraction-mode $ExtractionMode
+& $Python $AssetTool bundle --game-root $GameRoot --generated-root $Generated --output $Bundle --mapping $UsmapPath --tool-versions-file $ToolLock --recipe-version $RecipeVersion --profile $Recipe --extraction-mode $ExtractionMode --generation-provenance-file (Join-Path $PipelineWorkspace 'generation-state.json')
 if ($LASTEXITCODE -ne 0) { throw "Asset bundling failed with exit code $LASTEXITCODE" }
 Set-ExtractionStage 'bundled'
 } elseif (-not (Test-Path -LiteralPath $Bundle)) {

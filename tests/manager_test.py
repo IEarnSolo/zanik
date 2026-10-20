@@ -497,7 +497,11 @@ class ManagerTests(unittest.TestCase):
 
     def test_manager_long_operations_are_modal_and_report_asset_progress(self):
         source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
-        self.assertIn("QProgressDialog", source)
+        self.assertIn("class OperationProgressDialog(QDialog)", source)
+        self.assertIn("self.setFixedSize(660, 260)", source)
+        self.assertIn("self.task = QProgressBar()", source)
+        self.assertIn("Current step active for", source)
+        self.assertIn("self.setWindowFlag(Qt.WindowCloseButtonHint, False)", source)
         self.assertIn("Qt.ApplicationModal", source)
         self.assertIn("Wait for the current operation to finish", source)
         self.assertIn('phase_percent = {"preserve": 10, "mappings": 15, "restore": 30,', source)
@@ -709,6 +713,36 @@ class ManagerTests(unittest.TestCase):
         self.assertLess(cache_check, incremental_check)
         self.assertIn("No extraction is required", source)
         self.assertIn("Run extraction anyway", source)
+
+    def test_incremental_baseline_uses_retained_recipe_not_new_journal(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); tools = root / "tools"; game = root / "game"; work = root / "work"
+            executable = game / "RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe"
+            executable.parent.mkdir(parents=True); executable.write_bytes(b"same-game")
+            (tools / "asset-tools").mkdir(parents=True)
+            (tools / "asset-tools/extraction-recipes.json").write_text("new-recipe")
+            (tools / "asset-tools/tools.lock.json").write_text("tools")
+            cache = BundleCache(root / "cache"); extractor = AssetExtractor(tools, cache)
+            executable_sha = extractor.current_fingerprints(game)["gameExecutableSha256"]
+            old_sha, new_sha = "a" * 64, "b" * 64
+            manifest = {"schemaVersion": 2, "compatibility": "compatible",
+                        "extractionStage": "validated-and-packaged", "gameBuild": "1",
+                        "generatedAt": "2026-10-20T00:00:00Z",
+                        "extractionRecipeSha256": old_sha,
+                        "sourceExecutable": {"sha256": executable_sha}}
+            bundle = root / "old.zip"
+            with zipfile.ZipFile(bundle, "w") as archive:
+                archive.writestr("asset-manifest.json", json.dumps(manifest))
+            cached = cache.add(bundle, game_root_id(game), manifest)
+            (work / "pipeline").mkdir(parents=True)
+            (work / "pipeline/incremental-state.json").write_text(json.dumps({
+                "schemaVersion": 1, "recipeSha256": old_sha,
+                "fingerprints": {"recipeSha256": old_sha, "gameExecutableSha256": executable_sha}}))
+            (work / "extraction-journal.json").write_text(json.dumps({
+                "schemaVersion": 1, "stage": "created",
+                "fingerprints": {"recipeSha256": new_sha, "gameExecutableSha256": executable_sha},
+                "previousFingerprints": {"recipeSha256": old_sha, "gameExecutableSha256": executable_sha}}))
+            self.assertEqual(extractor.incremental_baseline_bundle(game, work), cached.path)
 
     def test_profile_store_has_only_credential_reference(self):
         with tempfile.TemporaryDirectory() as temporary:
