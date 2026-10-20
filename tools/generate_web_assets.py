@@ -26,6 +26,7 @@ MAP_SIZE = 4096
 # seams. This color matches the ocean used by Zanik's original web map.
 MAP_OCEAN_RGB = (79, 107, 110)
 LODESTONE_MAP_ICON_PACKAGE = "RSDragonwilds/Content/Art/UI/Icons/T_LodestoneMapIcon"
+NODESTONE_MAP_ICON_PACKAGE = "RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal"
 
 
 def png_chunk(kind: bytes, data: bytes) -> bytes:
@@ -171,8 +172,9 @@ def main() -> int:
             placeholder(web / "skills" / f"{skill}.png", (193, 166, 77, 255)); missing.append(f"skill:{skill}")
     if not copy_package(args.texture_root, LODESTONE_MAP_ICON_PACKAGE, web / "lodestone-icon.png"):
         placeholder(web / "lodestone-icon.png", (67, 155, 219, 255)); missing.append("lodestone-icon.png")
+    if not copy_package(args.texture_root, NODESTONE_MAP_ICON_PACKAGE, web / "nodestone-icon.png"):
+        raise RuntimeError(f"required nodestone map artwork is unavailable: {NODESTONE_MAP_ICON_PACKAGE}")
     for target, candidates, color in (
-        ("nodestone-icon.png", ("T_Icon_Nodestone", "T_Icon_NodeStone"), (126, 196, 223, 255)),
         ("gravestone-icon.png", ("T_Icon_Gravestone",), (180, 180, 180, 255)),
     ):
         if not next((copy(images, candidate, web / target) for candidate in candidates), False):

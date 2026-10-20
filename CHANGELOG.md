@@ -4,6 +4,7 @@ All notable changes to Zanik are documented here.
 
 ## [0.2.47] - 2026-10-19
 
+- Extract the fixed Dowdun Reach nodestone marker from its authoritative fragment-crystal navigation texture instead of emitting a blank fallback square, and revise the map URL so browsers refresh the corrected image.
 - Retry Windows mapping launch through the discovered Steam executable when a Steam client update or restart silently loses the initial `steam://` game-launch request, while retaining bounded failure and exact loader restoration.
 - Fix **Resume extraction** before mapping so it repeats loader-safety preflight and remembers that an existing UE4SS installation must be preserved and restored.
 - Recover safely when a delayed Steam launch restores the user-owned UE4SS loader but leaves the mapping journal at `running`, allowing only known runtime log/state changes while rejecting operational loader drift.
