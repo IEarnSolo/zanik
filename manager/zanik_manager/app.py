@@ -7,12 +7,12 @@ import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal, Slot
+from PySide6.QtCore import QEvent, QObject, QThread, QTimer, Qt, Signal, Slot
 from PySide6.QtGui import QCursor, QDesktopServices
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                QFormLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
                                QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar, QProgressDialog, QPushButton, QScrollArea,
-                               QSizePolicy, QSpinBox, QTabWidget, QTextBrowser, QTreeWidget, QTreeWidgetItem,
+                               QSizePolicy, QSpinBox, QStyle, QTabWidget, QTextBrowser, QToolButton, QTreeWidget, QTreeWidgetItem,
                                QVBoxLayout, QWidget)
 from PySide6.QtCore import QUrl
 
@@ -508,10 +508,14 @@ class MainWindow(QMainWindow):
         scope = QLabel("This read-only browser shows only files associated with Zanik. Dragonwilds saves and unrelated server files are not included.")
         scope.setWordWrap(True); scope.setStyleSheet("font-weight:600")
         controls = QHBoxLayout()
-        self.files_back_button = button_help(QPushButton("Back"), "Return to the previously viewed Zanik folder.")
-        self.files_forward_button = button_help(QPushButton("Forward"), "Move forward to the next viewed Zanik folder.")
-        self.files_up_button = button_help(QPushButton("Up"), "Move to this folder's parent within the Zanik-only browser.")
-        self.files_refresh_button = button_help(QPushButton("Refresh"), "Discard the selected server's five-minute metadata cache and rebuild it.")
+        def navigation_button(icon, name, help_text):
+            button = QToolButton(); button.setIcon(self.style().standardIcon(icon)); button.setAutoRaise(True)
+            button.setToolTip(help_text); button.setAccessibleName(name); button.setFixedSize(30, 30)
+            return button
+        self.files_back_button = navigation_button(QStyle.SP_ArrowBack, "Back", "Return to the previously viewed Zanik folder.")
+        self.files_forward_button = navigation_button(QStyle.SP_ArrowForward, "Forward", "Move forward to the next viewed Zanik folder.")
+        self.files_up_button = navigation_button(QStyle.SP_ArrowUp, "Up", "Move to this folder's parent within the Zanik-only browser.")
+        self.files_refresh_button = navigation_button(QStyle.SP_BrowserReload, "Refresh", "Discard the selected server's five-minute metadata cache and rebuild it.")
         self.files_back_button.clicked.connect(self.files_go_back)
         self.files_forward_button.clicked.connect(self.files_go_forward)
         self.files_up_button.clicked.connect(self.files_go_up)
@@ -521,6 +525,10 @@ class MainWindow(QMainWindow):
         self.files_breadcrumb = QLabel("Zanik files")
         self.files_breadcrumb.setTextInteractionFlags(Qt.TextSelectableByMouse)
         controls.addWidget(self.files_breadcrumb, 1)
+        self.files_raw_paths = QCheckBox("Show raw server paths")
+        self.files_raw_paths.setToolTip("Show exact server paths instead of friendly Zanik area names.")
+        self.files_raw_paths.toggled.connect(self.render_files_location)
+        controls.addWidget(self.files_raw_paths)
         self.files_tree = QTreeWidget(); self.files_tree.setColumnCount(4)
         self.files_tree.setHeaderLabels(["Name", "Date modified", "Type", "Size"])
         self.files_tree.setRootIsDecorated(False); self.files_tree.setSortingEnabled(True)
@@ -532,7 +540,9 @@ class MainWindow(QMainWindow):
         self.files_totals.setWordWrap(True)
         layout.addWidget(scope); layout.addLayout(controls); layout.addWidget(self.files_tree, 1)
         layout.addWidget(self.files_status); layout.addWidget(self.files_totals)
+        self.files_page = page
         self.tabs.addTab(page, "Files")
+        QApplication.instance().installEventFilter(self)
 
     def _doctor_tab(self):
         page = QWidget(); layout = QVBoxLayout(page); row = QHBoxLayout()
@@ -637,6 +647,8 @@ class MainWindow(QMainWindow):
         cache.directory_count = int(update.get("directories", cache.directory_count))
         cache.total_size = int(update.get("bytes", cache.total_size))
         cache.root_totals = dict(update.get("rootTotals", cache.root_totals))
+        if update.get("directoryTotals"):
+            cache.directory_totals = dict(update["directoryTotals"])
         cache.warnings = list(update.get("warnings", cache.warnings))
         if update.get("state") == "partial":
             cache.partial = True
@@ -680,13 +692,16 @@ class MainWindow(QMainWindow):
         if not profile or not cache:
             self.files_tree.setSortingEnabled(True); self.update_files_controls(); return
         if self.files_location is None:
-            self.files_breadcrumb.setText(f"Zanik files · {profile.name}")
+            self.files_breadcrumb.setText(profile.server_root if self.files_raw_paths.isChecked()
+                                          else f"Zanik files · {profile.name}")
             for root in cache.roots:
                 size = cache.root_totals.get(root.key, 0)
                 kind = "Zanik-managed file" if root.is_file else "Zanik folder"
                 exact = cache.directories.get(root.path, []) if root.is_file else []
                 modified = format_modified(exact[0].modified_at) if exact else ""
-                item = SortableFileItem([root.label, modified, kind, format_size(size)])
+                shown_name = root.path if self.files_raw_paths.isChecked() else root.label
+                item = SortableFileItem([shown_name, modified, kind, format_size(size)])
+                item.setIcon(0, self.style().standardIcon(QStyle.SP_FileIcon if root.is_file else QStyle.SP_DirIcon))
                 item.setData(0, Qt.UserRole, None if root.is_file else (root.key, ""))
                 item.setData(0, Qt.UserRole + 1, (0 if not root.is_file else 1, root.label.lower()))
                 item.setData(3, Qt.UserRole + 1, size)
@@ -694,9 +709,12 @@ class MainWindow(QMainWindow):
         else:
             root = self.files_root(self.files_location[0])
             relative = self.files_location[1].strip("/")
-            crumbs = ["Zanik files", root.label] + ([part for part in relative.split("/") if part] if relative else [])
-            self.files_breadcrumb.setText("  ›  ".join(crumbs))
             physical = self.files_physical_path(self.files_location)
+            if self.files_raw_paths.isChecked():
+                self.files_breadcrumb.setText(physical)
+            else:
+                crumbs = ["Zanik files", root.label] + ([part for part in relative.split("/") if part] if relative else [])
+                self.files_breadcrumb.setText("  ›  ".join(crumbs))
             entries = cache.directories.get(physical)
             if entries is None:
                 self.files_status.setText("Loading this folder's metadata…")
@@ -704,14 +722,16 @@ class MainWindow(QMainWindow):
                 entries = []
             for entry in entries:
                 modified = format_modified(entry.modified_at)
-                shown_size = format_size(entry.size) if entry.is_file else ""
+                folder_size = cache.directory_totals.get(entry.path)
+                shown_size = format_size(entry.size if entry.is_file else folder_size) if (entry.is_file or folder_size is not None) else "Calculating…"
                 item = SortableFileItem([entry.name, modified, file_type(entry), shown_size])
+                item.setIcon(0, self.style().standardIcon(QStyle.SP_FileIcon if entry.is_file else QStyle.SP_DirIcon))
                 child_relative = entry.path[len(root.path):].strip("/")
                 item.setData(0, Qt.UserRole, (root.key, child_relative) if not entry.is_file else None)
                 item.setData(0, Qt.UserRole + 1, (1 if entry.is_file else 0, entry.name.lower()))
                 item.setData(1, Qt.UserRole + 1, entry.modified_at)
                 item.setData(2, Qt.UserRole + 1, file_type(entry).lower())
-                item.setData(3, Qt.UserRole + 1, entry.size if entry.is_file else -1)
+                item.setData(3, Qt.UserRole + 1, entry.size if entry.is_file else (folder_size if folder_size is not None else -1))
                 self.files_tree.addTopLevelItem(item)
         self.files_tree.setSortingEnabled(True); self.files_tree.sortItems(0, Qt.AscendingOrder)
         if cache.partial:
@@ -777,6 +797,16 @@ class MainWindow(QMainWindow):
         self.files_forward_button.setEnabled(bool(self.files_forward_history))
         self.files_up_button.setEnabled(self.files_location is not None)
         self.files_refresh_button.setEnabled(bool(self.active()))
+
+    def eventFilter(self, watched, event):
+        if (hasattr(self, "files_page") and self.tabs.currentWidget() is self.files_page and
+                isinstance(watched, QWidget) and (watched is self or self.isAncestorOf(watched)) and
+                event.type() == QEvent.MouseButtonPress):
+            if event.button() == Qt.BackButton:
+                self.files_go_back(); event.accept(); return True
+            if event.button() == Qt.ForwardButton:
+                self.files_go_forward(); event.accept(); return True
+        return super().eventFilter(watched, event)
 
     def set_doctor_result(self, result: dict, mode: str = "quick"):
         self.doctor_result = dict(result or {})

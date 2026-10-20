@@ -36,6 +36,7 @@ class FileIndex:
     generation: int
     roots: list[VirtualRoot]
     directories: dict[str, list[FileEntry]] = field(default_factory=dict)
+    directory_totals: dict[str, int] = field(default_factory=dict)
     root_totals: dict[str, int] = field(default_factory=dict)
     file_count: int = 0
     directory_count: int = 0
@@ -142,6 +143,17 @@ def format_modified(value: str) -> str:
         return value
 
 
+def calculate_directory_totals(directories: dict[str, list[FileEntry]]) -> dict[str, int]:
+    """Calculate recursive folder sizes from already indexed metadata."""
+    totals = {directory: sum(entry.size for entry in entries if entry.is_file)
+              for directory, entries in directories.items()}
+    for directory in sorted(totals, key=lambda path: path.count("/"), reverse=True):
+        parent = posixpath.dirname(directory.rstrip("/"))
+        if parent in totals:
+            totals[parent] += totals[directory]
+    return totals
+
+
 class RemoteFileIndexer:
     """Build a bounded metadata-only index using list_files and no content endpoints."""
 
@@ -164,6 +176,7 @@ class RemoteFileIndexer:
                 self._index_file_root(root, progress)
             else:
                 self._index_directory_root(root, progress)
+        self.index.directory_totals = calculate_directory_totals(self.index.directories)
         self.index.complete = not self.index.partial
         self.index.completed_at = time.monotonic()
         progress(self._update("complete" if self.index.complete else "partial"))
@@ -224,4 +237,7 @@ class RemoteFileIndexer:
                 "state": state, "rootKey": root_key, "directory": directory,
                 "entries": entries or [], "files": self.index.file_count,
                 "directories": self.index.directory_count, "bytes": self.index.total_size,
-                "rootTotals": dict(self.index.root_totals), "warnings": list(self.index.warnings)}
+                "rootTotals": dict(self.index.root_totals),
+                "directoryTotals": (dict(self.index.directory_totals)
+                                    if state in {"complete", "partial"} else {}),
+                "warnings": list(self.index.warnings)}

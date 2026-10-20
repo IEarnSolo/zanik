@@ -25,7 +25,7 @@ from manager.zanik_manager.changelog import parse_changelog
 from manager.zanik_manager.config import (ConfigError, ConfigModel, content_hash, update_website_settings,
                                           website_configuration_ready)
 from manager.zanik_manager.doctor_view import doctor_presentation, render_doctor_html
-from manager.zanik_manager.files import (CACHE_SECONDS, FileEntry, FileIndex, RemoteFileIndexer, file_type,
+from manager.zanik_manager.files import (CACHE_SECONDS, FileEntry, FileIndex, RemoteFileIndexer, calculate_directory_totals, file_type,
                                          format_modified, format_size, normalize_entry, virtual_roots)
 from manager.zanik_manager.journal import JournalStore, OperationJournal
 from manager.zanik_manager.lifecycle import (PterodactylProvider, ReleasePayload, is_exact_legacy_launcher,
@@ -181,6 +181,19 @@ class ManagerTests(unittest.TestCase):
         self.assertTrue(fresh.fresh(100.0 + CACHE_SECONDS - 1))
         self.assertFalse(fresh.fresh(100.0 + CACHE_SECONDS + 1))
 
+    def test_folder_sizes_are_recursive_without_content_reads(self):
+        directories = {
+            "/home/container/zanik": [FileEntry("bin", "/home/container/zanik/bin", False, 0, ""),
+                                      FileEntry("VERSION", "/home/container/zanik/VERSION", True, 7, "")],
+            "/home/container/zanik/bin": [FileEntry("nested", "/home/container/zanik/bin/nested", False, 0, ""),
+                                          FileEntry("launcher", "/home/container/zanik/bin/launcher", True, 100, "")],
+            "/home/container/zanik/bin/nested": [FileEntry("data", "/home/container/zanik/bin/nested/data", True, 20, "")],
+        }
+        totals = calculate_directory_totals(directories)
+        self.assertEqual(totals["/home/container/zanik/bin/nested"], 20)
+        self.assertEqual(totals["/home/container/zanik/bin"], 120)
+        self.assertEqual(totals["/home/container/zanik"], 127)
+
     def test_manager_doctor_and_files_ui_contract(self):
         source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
         self.assertIn('self.doctor_views.addTab(self.doctor_human, "Human-readable")', source)
@@ -188,6 +201,11 @@ class ManagerTests(unittest.TestCase):
         self.assertIn('self.tabs.addTab(page, "Files")', source)
         self.assertIn("diagnostics = self.doctor_result", source)
         self.assertNotIn("self.doctor_output", source)
+        self.assertIn('QCheckBox("Show raw server paths")', source)
+        self.assertIn("QStyle.SP_DirIcon", source)
+        self.assertIn("QStyle.SP_FileIcon", source)
+        self.assertIn("Qt.BackButton", source)
+        self.assertIn("Qt.ForwardButton", source)
 
     def test_journal_retention_keeps_unresolved_and_newest_completed(self):
         with tempfile.TemporaryDirectory() as temporary:
