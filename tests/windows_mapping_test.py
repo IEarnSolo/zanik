@@ -127,6 +127,30 @@ with tempfile.TemporaryDirectory() as name:
     assert not backup.exists()
     assert json.loads(journal.read_text())["state"] == "restored"
 
+    # A late client launch may leave the journal at running even though the
+    # verified user loader was restored and its backup was already removed.
+    # Runtime logs may change, but every operational loader file must match.
+    (owned / "UE4SS.log").write_text("new runtime log")
+    stale = json.loads(journal.read_text())
+    stale.update({"state": "running", "preservedBackupVerified": True,
+                  "backupDirectory": str(backup), "preservedInventory": preserved})
+    journal.write_text(json.dumps(stale))
+    assert mapping.recover(journal)
+    recovered = json.loads(journal.read_text())
+    assert recovered["state"] == "restored" and recovered["recoveredFromStaleState"]
+    assert mapping.checked_snapshot(proxy) == original_proxy
+    assert (owned / "Mods/RSDWTools/main.lua").read_text() == "user mod"
+
+    stale["state"] = "running"
+    journal.write_text(json.dumps(stale))
+    (owned / "unexpected.dll").write_bytes(b"changed user loader")
+    try:
+        mapping.recover(journal)
+        raise AssertionError("stale recovery accepted a changed operational loader")
+    except RuntimeError as error:
+        assert "ownership marker" in str(error)
+    (owned / "unexpected.dll").unlink()
+
 with tempfile.TemporaryDirectory() as name:
     root = Path(name); binary = root / "game/RSDragonwilds/Binaries/Win64"; binary.mkdir(parents=True)
     executable = binary / "RSDragonwilds-Win64-Shipping.exe"; executable.write_bytes(b"game")
