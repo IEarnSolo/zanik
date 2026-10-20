@@ -26,7 +26,7 @@ MAP_SIZE = 4096
 # seams. This color matches the ocean used by Zanik's original web map.
 MAP_OCEAN_RGB = (79, 107, 110)
 LODESTONE_MAP_ICON_PACKAGE = "RSDragonwilds/Content/Art/UI/Icons/T_LodestoneMapIcon"
-NODESTONE_MAP_ICON_PACKAGE = "RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal"
+NODESTONE_MAP_ICON = Path(__file__).resolve().parents[1] / "asset-tools/artwork/nodestone-icon-map.png"
 
 
 def progress(message: str, current: int | None = None, total: int | None = None) -> None:
@@ -89,6 +89,20 @@ def copy_package(root: Path, package: str, destination: Path) -> bool:
     destination.parent.mkdir(parents=True, exist_ok=True)
     copy_file(matches[0], destination)
     return True
+
+
+def copy_authored_nodestone_icon(destination: Path) -> None:
+    """Install Zanik's reviewed transparent map derivative, failing closed on drift."""
+    payload = read_bytes(NODESTONE_MAP_ICON)
+    if len(payload) < 24 or payload[:8] != b"\x89PNG\r\n\x1a\n" or payload[12:16] != b"IHDR":
+        raise RuntimeError(f"authored nodestone map artwork is not a valid PNG: {NODESTONE_MAP_ICON}")
+    width, height = struct.unpack(">II", payload[16:24])
+    if (width, height) != (256, 256):
+        raise RuntimeError(
+            f"authored nodestone map artwork must be 256x256, found {width}x{height}: {NODESTONE_MAP_ICON}"
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    copy_file(NODESTONE_MAP_ICON, destination)
 
 
 def svg(path: Path, main: bool) -> None:
@@ -197,8 +211,7 @@ def main() -> int:
         progress("Resolving fixed map artwork", ordered_groups.index("map-icons") + 1, len(ordered_groups))
         if not copy_package(args.texture_root, LODESTONE_MAP_ICON_PACKAGE, web / "lodestone-icon.png"):
             placeholder(web / "lodestone-icon.png", (67, 155, 219, 255)); missing.append("lodestone-icon.png")
-        if not copy_package(args.texture_root, NODESTONE_MAP_ICON_PACKAGE, web / "nodestone-icon.png"):
-            raise RuntimeError(f"required nodestone map artwork is unavailable: {NODESTONE_MAP_ICON_PACKAGE}")
+        copy_authored_nodestone_icon(web / "nodestone-icon.png")
         for target, candidates, color in (
             ("gravestone-icon.png", ("T_Icon_Gravestone",), (180, 180, 180, 255)),
         ):

@@ -11,7 +11,7 @@ REQUIRED={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scri
 EXECUTABLE={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','scripts/verify-assets.sh','scripts/check-game-update.sh','scripts/check-compatible-release.sh','scripts/update-game.sh','scripts/apply-asset-delta.sh'}
 WINDOWS_ASSET_REQUIRED={'init-assets.ps1','runtime/python.exe','runtime/LICENSE.txt','third_party/uas/uas.exe',
     'third_party/uas/LICENSE.txt','third_party/ue4ss/dwmapi.dll','third_party/ue4ss/ue4ss/UE4SS.dll',
-    'third_party/ue4ss/ue4ss/LICENSE','asset-tools/extraction-recipes.json','asset-tools/extraction-recipe-history.json','tools/zanik_assets.py',
+    'third_party/ue4ss/ue4ss/LICENSE','asset-tools/extraction-recipes.json','asset-tools/extraction-recipe-history.json','asset-tools/artwork/nodestone-icon-map.png','tools/zanik_assets.py',
     'tools/windows_mapping.py','tools/windows_asset_pipeline.py','tools/generate_web_assets.py','tools/asset_filesystem.py','tools/quest_schema.py',
     'tools/generate_world_catalogs.py','deploy/quest-overrides.json','deploy/quest-step-overrides.json'}
 MANAGER_REQUIRED={'ZanikManager.exe','ZanikManagerUpdater.exe','VERSION','runtime/pythonw.exe','app/zanik_manager/app.py','app/zanik_manager/pterodactyl.py','app/zanik_manager/payload_contract.py',
