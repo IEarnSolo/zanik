@@ -26,6 +26,11 @@ def doctor_presentation(result: dict | None) -> dict:
     metadata = result.get("managerDoctor", {}) if isinstance(result.get("managerDoctor"), dict) else {}
     checks = result.get("checks", {}) if isinstance(result.get("checks"), dict) else {}
     installation = result.get("installation") if isinstance(result.get("installation"), dict) else None
+    freshness = result.get("managerFreshness", {}) if isinstance(result.get("managerFreshness"), dict) else {}
+    payload_freshness = (freshness.get("serverPayload", {})
+                         if isinstance(freshness.get("serverPayload"), dict) else {})
+    asset_freshness = (freshness.get("websiteAssets", {})
+                       if isinstance(freshness.get("websiteAssets"), dict) else {})
 
     if result.get("doctorPending") is True:
         return {
@@ -49,9 +54,20 @@ def doctor_presentation(result: dict | None) -> dict:
     if installation:
         version = installation.get("version", "unknown")
         mode = installation.get("mode", "unknown")
-        sections = [_section("Installation and payload", "healthy",
-                             f"Zanik {version} is installed in {mode} mode.",
-                             "Run Update / repair Zanik if the installed payload is damaged or outdated.")]
+        if payload_freshness.get("status") == "update-available":
+            manager_version = payload_freshness.get("managerVersion", "this Manager")
+            sections = [_section(
+                "Installation and payload", "attention",
+                f"Zanik {version} is installed in {mode} mode and is operating normally, but its server payload is out of date with Manager {manager_version}.",
+                "Use Update / repair Zanik when you are ready; configuration, persistent data, and compatible assets are preserved.")]
+        elif payload_freshness.get("status") == "current":
+            sections = [_section("Installation and payload", "healthy",
+                                 f"Zanik {version} is installed in {mode} mode and its server payload is up to date.",
+                                 "Run Update / repair Zanik only if the installed payload needs repair.")]
+        else:
+            sections = [_section("Installation and payload", "healthy",
+                                 f"Zanik {version} is installed in {mode} mode and is operating normally.",
+                                 "Manager is still determining whether a newer server payload is available.")]
     else:
         detail = str(checks.get("installation") or "No recognized Zanik installation was found.")
         sections = [_section("Installation and payload", "error", detail,
@@ -113,10 +129,24 @@ def doctor_presentation(result: dict | None) -> dict:
     elif assets.get("compatible") is False or assets.get("mismatches"):
         sections.append(_section("Website assets", "error", "The active website asset bundle did not pass validation.",
                                  "Deploy a compatible validated bundle; the prior active bundle remains protected."))
+    elif asset_freshness.get("status") == "out-of-date":
+        build = assets.get("gameBuild") or asset_freshness.get("gameBuild")
+        suffix = f" for client build {build}" if build else ""
+        manager_version = asset_freshness.get("managerVersion", "this Manager")
+        sections.append(_section(
+            "Website assets", "attention",
+            f"The active website asset bundle is healthy and compatible{suffix}, but it is out of date with Manager {manager_version}'s extraction contract.",
+            "Use the Assets tab to perform an incremental refresh when convenient."))
+    elif asset_freshness.get("status") == "current":
+        build = assets.get("gameBuild")
+        suffix = f" for client build {build}" if build else ""
+        sections.append(_section("Website assets", "healthy",
+                                 "The active website asset bundle is compatible and up to date" + suffix + "."))
     else:
         build = assets.get("gameBuild")
         suffix = f" for client build {build}" if build else ""
-        sections.append(_section("Website assets", "healthy", "The active website asset bundle is compatible" + suffix + "."))
+        sections.append(_section("Website assets", "healthy",
+                                 "The active website asset bundle is compatible" + suffix + "."))
 
     storage = result.get("storageAndBackups", {}) if isinstance(result.get("storageAndBackups"), dict) else {}
     remote = storage.get("remote", result.get("backupRetention", {}))

@@ -142,6 +142,28 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(game["status"], "healthy")
         self.assertIn("current and up to date", game["summary"])
 
+    def test_doctor_separates_health_from_server_and_asset_freshness(self):
+        presentation = doctor_presentation({
+            "healthy": True,
+            "installation": {"version": "0.2.42", "mode": "replace-executable"},
+            "assets": {"installed": True, "compatible": True, "gameBuild": "25812671"},
+            "managerFreshness": {
+                "serverPayload": {"status": "update-available", "managerVersion": "0.2.47"},
+                "websiteAssets": {"status": "out-of-date", "managerVersion": "0.2.47"},
+            },
+        })
+        self.assertEqual(presentation["overall"], "Healthy")
+        installation = next(section for section in presentation["sections"]
+                            if section["title"] == "Installation and payload")
+        assets = next(section for section in presentation["sections"]
+                      if section["title"] == "Website assets")
+        self.assertEqual(installation["status"], "attention")
+        self.assertIn("operating normally", installation["summary"])
+        self.assertIn("out of date with Manager 0.2.47", installation["summary"])
+        self.assertEqual(assets["status"], "attention")
+        self.assertIn("healthy and compatible", assets["summary"])
+        self.assertIn("out of date with Manager 0.2.47", assets["summary"])
+
     def test_doctor_cache_is_profile_scoped_and_bom_tolerant(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

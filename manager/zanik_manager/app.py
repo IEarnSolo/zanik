@@ -934,6 +934,41 @@ class MainWindow(QMainWindow):
         self.doctor_results[profile_id] = dict(result)
         save_doctor_cache(self.paths["doctor_cache"], profile_id, result)
 
+    def apply_doctor_freshness(self, profile_id: str, result: dict) -> dict:
+        enriched = dict(result)
+        freshness = dict(enriched.get("managerFreshness", {}))
+        installation = self.installation_states.get(profile_id)
+        if isinstance(installation, dict) and installation.get("installed") and not installation.get("checking"):
+            freshness["serverPayload"] = {
+                "status": installation.get("payloadCompatibility", "unknown"),
+                "installedVersion": installation.get("version"),
+                "managerVersion": self.manager_version,
+            }
+        assets = self.asset_contract_states.get(profile_id)
+        if isinstance(assets, dict) and not assets.get("checking"):
+            freshness["websiteAssets"] = {
+                "status": "current" if assets.get("valid") else "out-of-date",
+                "installed": assets.get("installed"),
+                "gameBuild": assets.get("gameBuild"),
+                "reasons": list(assets.get("reasons", [])),
+                "managerVersion": self.manager_version,
+            }
+        if freshness:
+            enriched["managerFreshness"] = freshness
+        return enriched
+
+    def merge_doctor_freshness(self, profile_id: str) -> None:
+        result = self.doctor_results.get(profile_id)
+        if not isinstance(result, dict):
+            result = load_doctor_cache(self.paths["doctor_cache"], profile_id)
+        if not isinstance(result, dict):
+            return
+        result = self.apply_doctor_freshness(profile_id, result)
+        self.cache_doctor_result(profile_id, result)
+        if self.active() and self.active().id == profile_id:
+            mode = result.get("managerDoctor", {}).get("mode", "quick")
+            self.set_doctor_result(result, mode, preserve_run_time=True)
+
     def start_background_doctor(self, profile: ServerProfile, reason: str = "automatic") -> bool:
         profile_id = profile.id
         key = f"doctor-{profile_id}"
@@ -967,6 +1002,7 @@ class MainWindow(QMainWindow):
             game = self.game_update_results.get(profile_id)
             if isinstance(game, dict):
                 result["gameUpdate"] = dict(game)
+            result = self.apply_doctor_freshness(profile_id, result)
             self.cache_doctor_result(profile_id, result)
             if self.active() and self.active().id == profile_id:
                 self.set_doctor_result(result, "quick", preserve_run_time=True)
@@ -1482,6 +1518,7 @@ class MainWindow(QMainWindow):
                 if mode != profile.install_mode:
                     profile.install_mode = mode; self.store.save(self.profiles)
             self.render_server_summary(profile)
+            self.merge_doctor_freshness(selected_id)
             if installed:
                 self.check_asset_contract_state(profile)
             else:
@@ -1518,6 +1555,7 @@ class MainWindow(QMainWindow):
             else:
                 self.asset_contract_states[selected_id] = result
             self.render_server_summary(profile)
+            self.merge_doctor_freshness(selected_id)
         self.run_background(f"asset-contract-state-{selected_id}",
                             lambda: self.provider(profile, background=True).asset_contract_status(
                                 profile.server_id, profile.server_root, contract), done)
@@ -1743,6 +1781,7 @@ class MainWindow(QMainWindow):
             game = self.game_update_results.get(selected_id)
             if isinstance(game, dict):
                 result["gameUpdate"] = dict(game)
+            result = self.apply_doctor_freshness(selected_id, result)
             self.set_doctor_result(result, "deep" if deep else "quick")
             self.cache_doctor_result(selected_id, self.doctor_result)
             self.log("Doctor reports a healthy installation." if result.get("healthy") else
