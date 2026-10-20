@@ -10,6 +10,8 @@ Malformed configuration logs the exact non-secret key/line error and launches th
 
 Read-only player/status, kills, map/catalog, resource/NPC, recipe/quest, and authenticated read administration default on. All teleport, mutation, recipe-unlock administration, and QoL gameplay options default off. A disabled admin operation authenticates first, then returns HTTP 403 with `Feature disabled by server operator`; its UI control is hidden.
 
+`FEATURE_ADMIN_TELEPORT` controls every authenticated teleport action: teleports between players, player-built lodestones, fixed nodestones, storage, and gravestones. Its independently validated compatibility gates can still disable only an unsafe destination family while leaving the others available.
+
 `FEATURE_QOL_AUTO_COMPOST` is reserved for an incomplete feature with no deployable server integration. Leave it `false`; it is not currently a supported opt-in capability.
 
 `/api/update-status` reports configuration validity, install mode, feature booleans and states, native compatibility, and asset/catalog health.

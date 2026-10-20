@@ -23,6 +23,7 @@ FEATURE_ADMIN_READ=true
 
 # State-changing and gameplay features default off.
 FEATURE_ADMIN_RECIPE_SETTINGS=false
+# Allows authenticated player, player-built lodestone, fixed nodestone, storage, and gravestone teleports.
 FEATURE_ADMIN_TELEPORT=false
 FEATURE_ADMIN_STORAGE_MUTATION=false
 FEATURE_ADMIN_GRAVESTONE_MUTATION=false
