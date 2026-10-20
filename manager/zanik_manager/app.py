@@ -26,6 +26,7 @@ from .cache import BundleCache, format_bundle_timestamp
 from .changelog import ChangelogRelease, parse_changelog
 from .config import ConfigModel, content_hash, update_website_settings, website_configuration_ready
 from .doctor_view import render_doctor_html
+from .doctor_cache import delete_doctor_cache, load_doctor_cache, save_doctor_cache
 from .files import (FileEntry, FileIndex, RemoteFileIndexer, delete_file_index, file_type,
                     format_modified, format_size, list_directory, load_file_index, save_file_index,
                     virtual_roots)
@@ -396,6 +397,9 @@ class MainWindow(QMainWindow):
         self.manager_release_status = None
         self.game_update_results = {}
         self.doctor_result = {}
+        self.doctor_results: dict[str, dict] = {}
+        self.doctor_generations: dict[str, int] = {}
+        self.doctor_pending_refresh: dict[str, str] = {}
         self.files_caches: dict[str, FileIndex] = {}
         self.files_generations: dict[str, int] = {}
         self.files_location = None
@@ -913,14 +917,83 @@ class MainWindow(QMainWindow):
                 self.files_go_forward(); event.accept(); return True
         return super().eventFilter(watched, event)
 
-    def set_doctor_result(self, result: dict, mode: str = "quick"):
+    def set_doctor_result(self, result: dict, mode: str = "quick", *, preserve_run_time: bool = False):
         self.doctor_result = dict(result or {})
-        self.doctor_result["managerDoctor"] = {
+        existing = self.doctor_result.get("managerDoctor", {})
+        metadata = dict(existing) if isinstance(existing, dict) else {}
+        metadata.update({
             "mode": mode,
-            "runAt": datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %I:%M:%S %p %Z"),
-        }
+            "runAt": (metadata.get("runAt") if preserve_run_time else None)
+                     or datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %I:%M:%S %p %Z"),
+        })
+        self.doctor_result["managerDoctor"] = metadata
         self.doctor_human.setHtml(render_doctor_html(self.doctor_result))
         self.doctor_raw.setPlainText(json.dumps(self.doctor_result, indent=2, sort_keys=True))
+
+    def cache_doctor_result(self, profile_id: str, result: dict) -> None:
+        self.doctor_results[profile_id] = dict(result)
+        save_doctor_cache(self.paths["doctor_cache"], profile_id, result)
+
+    def start_background_doctor(self, profile: ServerProfile, reason: str = "automatic") -> bool:
+        profile_id = profile.id
+        key = f"doctor-{profile_id}"
+        if any(item[0] == key for item in self.background_threads):
+            return False
+        generation = self.doctor_generations.get(profile_id, 0) + 1
+        self.doctor_generations[profile_id] = generation
+
+        def action():
+            result = self.provider(profile, silent=True).diagnose(
+                profile.server_id, profile.server_root, False)
+            result.setdefault("storageAndBackups", {})["local"] = self.local_storage_status()
+            result["storageAndBackups"]["remote"] = result.get("backupRetention", {})
+            result["managerDoctor"] = {
+                "mode": "quick",
+                "runAt": datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %I:%M:%S %p %Z"),
+                "automatic": True,
+                "reason": reason,
+            }
+            return result
+
+        def done(result, error):
+            pending_reason = self.doctor_pending_refresh.pop(profile_id, None)
+            if pending_reason:
+                QTimer.singleShot(250, lambda p=profile, r=pending_reason: self.start_background_doctor(p, r))
+            if self.doctor_generations.get(profile_id) != generation:
+                return
+            if error:
+                self.log(f"Background Doctor could not refresh {profile.name}: {error}")
+                return
+            game = self.game_update_results.get(profile_id)
+            if isinstance(game, dict):
+                result["gameUpdate"] = dict(game)
+            self.cache_doctor_result(profile_id, result)
+            if self.active() and self.active().id == profile_id:
+                self.set_doctor_result(result, "quick", preserve_run_time=True)
+                self.check_installation_state(profile_id)
+
+        return self.run_background(key, action, done)
+
+    def schedule_background_doctor(self, profile_id: str, reason: str = "operation") -> None:
+        profile = next((item for item in self.profiles if item.id == profile_id), None)
+        if profile:
+            def launch(p=profile, r=reason):
+                if not self.start_background_doctor(p, r):
+                    self.doctor_pending_refresh[profile_id] = r
+            QTimer.singleShot(750, launch)
+
+    def merge_doctor_game_update(self, profile_id: str, game_update: dict) -> None:
+        result = self.doctor_results.get(profile_id)
+        if not isinstance(result, dict):
+            result = load_doctor_cache(self.paths["doctor_cache"], profile_id)
+        if not isinstance(result, dict):
+            return
+        result = dict(result)
+        result["gameUpdate"] = dict(game_update)
+        self.cache_doctor_result(profile_id, result)
+        if self.active() and self.active().id == profile_id:
+            mode = result.get("managerDoctor", {}).get("mode", "quick")
+            self.set_doctor_result(result, mode, preserve_run_time=True)
 
     def append_activity(self, message: str):
         self.activity.appendPlainText(format_activity_entry(redact(message)))
@@ -1029,6 +1102,7 @@ class MainWindow(QMainWindow):
                                        "The read-only dedicated-server update check failed. See Activity for details.")
                 self.log(f"Game update check failed for {profile.name}: {error}"); return
             self.game_update_results[profile_id] = result
+            self.merge_doctor_game_update(profile_id, result)
             status = result.get("status")
             mod_state = ("Zanik is not installed." if result.get("zanikInstalled") is False else
                          "Zanik is installed but disabled." if result.get("zanikEnabled") is False else
@@ -1088,6 +1162,7 @@ class MainWindow(QMainWindow):
         def done(update):
             self.log(f"Dragonwilds updated on {profile.name} to build {update['installedBuild']} using {update['mode']} mode.")
             self.invalidate_files_cache(profile.id)
+            self.schedule_background_doctor(profile.id, "game-update")
             QMessageBox.information(self, "Dragonwilds update complete",
                                     "The game update completed and the server was started. If the build is not yet supported, Zanik is serving its maintenance page without loading native features.")
             self.check_game_update(True); self.check_installation_state(profile.id)
@@ -1196,12 +1271,14 @@ class MainWindow(QMainWindow):
     def active(self) -> ServerProfile | None:
         return self.profile_box.currentData()
 
-    def provider(self, profile: ServerProfile | None = None, *, background: bool = False) -> PterodactylProvider:
+    def provider(self, profile: ServerProfile | None = None, *, background: bool = False,
+                 silent: bool = False) -> PterodactylProvider:
         profile = profile or self.active()
         if not profile: raise RuntimeError("Add and select a server first")
         token = self.vault.read(profile.credential_target)
         if not token: raise RuntimeError("The API key is missing from Windows Credential Manager")
-        status = ((lambda message: self.activity_signal.emit(message)) if background else
+        status = ((lambda _message: None) if silent else
+                  (lambda message: self.activity_signal.emit(message)) if background else
                   (lambda message: self.operation_progress_signal.emit(message, -1)))
         return PterodactylProvider(PterodactylClient(profile.panel_origin, token, status=status),
                                    JournalStore(self.paths["journals"]))
@@ -1229,7 +1306,13 @@ class MainWindow(QMainWindow):
         profile = self.active()
         self.doctor_result = {}
         if hasattr(self, "doctor_human"):
-            self.set_doctor_result({}, "quick")
+            cached_doctor = self.doctor_results.get(profile.id) if profile else None
+            if cached_doctor is None and profile:
+                cached_doctor = load_doctor_cache(self.paths["doctor_cache"], profile.id)
+                if cached_doctor is not None:
+                    self.doctor_results[profile.id] = cached_doctor
+            self.set_doctor_result(cached_doctor or {"doctorPending": True}, "quick",
+                                   preserve_run_time=True)
         if hasattr(self, "files_tree"):
             self.prepare_files_profile(profile)
         needs_config_load = bool(profile and self.current_config_profile_id != profile.id)
@@ -1258,6 +1341,7 @@ class MainWindow(QMainWindow):
                               self.check_game_update(False) if self.active() and self.active().id == profile_id else None)
             QTimer.singleShot(250, lambda profile_id=profile.id: self.load_startup_config(profile_id))
             QTimer.singleShot(100, lambda profile_id=profile.id: self.check_installation_state(profile_id))
+            QTimer.singleShot(400, lambda p=profile: self.start_background_doctor(p, "profile-selected"))
         elif hasattr(self, "game_update_label"):
             self.server_summary.setText("Add a server to begin.")
             self.open_website_button.setEnabled(False)
@@ -1458,7 +1542,10 @@ class MainWindow(QMainWindow):
         remaining_ids = {profile.id for profile in self.profiles}
         for removed_id in prior_ids - remaining_ids:
             delete_file_index(self.paths["file_metadata"], removed_id)
+            delete_doctor_cache(self.paths["doctor_cache"], removed_id)
             self.files_caches.pop(removed_id, None); self.files_generations.pop(removed_id, None)
+            self.doctor_results.pop(removed_id, None)
+            self.doctor_pending_refresh.pop(removed_id, None)
         self.installation_states = {key: value for key, value in self.installation_states.items() if key in remaining_ids}
         self.website_states = {key: value for key, value in self.website_states.items() if key in remaining_ids}
         self.asset_contract_states = {key: value for key, value in self.asset_contract_states.items() if key in remaining_ids}
@@ -1587,6 +1674,7 @@ class MainWindow(QMainWindow):
             profile.install_mode = selected; self.store.save(self.profiles)
             self.invalidate_files_cache(profile.id)
             self.check_installation_state(profile.id)
+            self.schedule_background_doctor(profile.id, "install-or-repair")
             backup_note = f" Backup: {result['backup']}" if result.get("backup") else " No prior installation required a backup."
             if selected == "wrapper" and not adapter:
                 self.log("Files installed; startup action remains." + backup_note)
@@ -1633,6 +1721,7 @@ class MainWindow(QMainWindow):
         self.run_async(lambda: self.provider().uninstall(profile.id, profile.server_id, profile.server_root),
                        lambda result: (self.log(f"Uninstalled; recovery backup: {result['backup']}"),
                                        self.invalidate_files_cache(profile.id),
+                                       self.schedule_background_doctor(profile.id, "uninstall"),
                                        self.check_installation_state(profile.id)),
                        title="Uninstalling Zanik…")
 
@@ -1640,15 +1729,22 @@ class MainWindow(QMainWindow):
         profile = self.active()
         if not profile: return
         selected_id = profile.id
+        generation = self.doctor_generations.get(selected_id, 0) + 1
+        self.doctor_generations[selected_id] = generation
         def action():
             result = self.provider(profile).diagnose(profile.server_id, profile.server_root, deep)
             result.setdefault("storageAndBackups", {})["local"] = self.local_storage_status()
             result["storageAndBackups"]["remote"] = result.get("backupRetention", {})
             return result
         def done(result):
-            if not self.active() or self.active().id != selected_id:
+            if (self.doctor_generations.get(selected_id) != generation or
+                    not self.active() or self.active().id != selected_id):
                 return
+            game = self.game_update_results.get(selected_id)
+            if isinstance(game, dict):
+                result["gameUpdate"] = dict(game)
             self.set_doctor_result(result, "deep" if deep else "quick")
+            self.cache_doctor_result(selected_id, self.doctor_result)
             self.log("Doctor reports a healthy installation." if result.get("healthy") else
                      "Doctor found installation problems; review the Doctor tab.")
             self.check_installation_state(profile.id)
@@ -1676,6 +1772,10 @@ class MainWindow(QMainWindow):
                 "count": sum(1 for _ in self.paths["file_metadata"].glob("*.json")),
                 "bytes": directory_size(self.paths["file_metadata"]),
                 "retention": "one current metadata-only index per saved server profile"},
+            "doctorCache": {
+                "count": sum(1 for _ in self.paths["doctor_cache"].glob("*.json")),
+                "bytes": directory_size(self.paths["doctor_cache"]),
+                "retention": "one latest completed quick Doctor result per saved server profile"},
         }
 
     def review_storage_cleanup(self):
@@ -2196,6 +2296,8 @@ class MainWindow(QMainWindow):
         result = "Reused current validated" if reused else "Resumed and validated" if resumed else "Validated"
         self.log(f"{result} asset bundle: {item.path}")
         profile = self.asset_target_box.currentData()
+        if profile:
+            self.schedule_background_doctor(profile.id, "asset-extraction")
         if not profile:
             QMessageBox.information(self, "Assets already current" if reused else "Asset extraction complete",
                                     f"The validated asset bundle is ready at:\n{item.path}")
@@ -2249,6 +2351,7 @@ class MainWindow(QMainWindow):
 
     def asset_activation_complete(self, profile: ServerProfile, result: dict):
         self.invalidate_files_cache(profile.id)
+        self.schedule_background_doctor(profile.id, "asset-activation")
         if result.get("unchanged"):
             self.log(f"Assets on {profile.name} already match the selected bundle; no upload or restart was needed")
         elif result.get("deltaUpload"):
@@ -2427,6 +2530,7 @@ class MainWindow(QMainWindow):
                                                "url": profile.web_base_url}
             self.store.save(self.profiles); self.render_server_summary(profile)
             self.invalidate_files_cache(profile.id)
+            self.schedule_background_doctor(profile.id, "configuration-save")
             if QMessageBox.question(self, "Configuration saved", "Restart the server now to apply these settings?",
                                     QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
                 self.provider().client.power(profile.server_id, "restart")

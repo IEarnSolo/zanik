@@ -4,6 +4,8 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+- Run a quiet quick Doctor scan when Manager starts or the active server changes, persist the latest completed result per profile for immediate reuse, and refresh it after server-changing operations.
+- Merge the active server's dedicated-game update result into Doctor so a current build is shown explicitly in green as up to date instead of appearing unchecked.
 - Add route-aware public nodestone tooltips with authoritative coordinates and authenticated admin map teleporting through Dragonwilds' native switchable-teleporter named-location pathway, guarded by independent compatibility and game-thread performance gates.
 - Add public lodestone hover tooltips to the world map showing authoritative X/Y/Z coordinates. Dragonwilds does not persist historical placement ownership, so Zanik deliberately does not guess or introduce incomplete forward-only attribution.
 - Replace the Dowdun Reach nodestone's generic fragment-crystal marker with detailed Zanik-authored top-down structure artwork, retain its full-resolution transparent master, and ship a crisp 256×256 map derivative with a revised browser cache key.

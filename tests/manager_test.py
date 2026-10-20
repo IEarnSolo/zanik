@@ -25,6 +25,7 @@ from manager.zanik_manager.changelog import parse_changelog
 from manager.zanik_manager.config import (ConfigError, ConfigModel, content_hash, update_website_settings,
                                           website_configuration_ready)
 from manager.zanik_manager.doctor_view import doctor_presentation, render_doctor_html
+from manager.zanik_manager.doctor_cache import delete_doctor_cache, load_doctor_cache, save_doctor_cache
 from manager.zanik_manager.files import (FileEntry, FileIndex, RemoteFileIndexer, calculate_directory_totals,
                                          delete_file_index, file_type, format_modified, format_size,
                                          load_file_index, normalize_entry, save_file_index, virtual_roots)
@@ -126,6 +127,33 @@ class ManagerTests(unittest.TestCase):
                                         "checks": {}, "assets": {"installed": False}})
         self.assertEqual(degraded["overall"], "Attention required")
         self.assertTrue(any(section["title"] == "Website assets" for section in degraded["sections"]))
+
+    def test_doctor_pending_and_current_game_are_unambiguous(self):
+        pending = doctor_presentation({"doctorPending": True})
+        self.assertEqual(pending["overall"], "Checking…")
+        self.assertEqual(pending["overallState"], "neutral")
+        current = doctor_presentation({
+            "healthy": True,
+            "installation": {"version": "1", "mode": "wrapper"},
+            "gameUpdate": {"status": "current", "updateAvailable": False},
+        })
+        game = next(section for section in current["sections"]
+                    if section["title"] == "Dragonwilds update state")
+        self.assertEqual(game["status"], "healthy")
+        self.assertIn("current and up to date", game["summary"])
+
+    def test_doctor_cache_is_profile_scoped_and_bom_tolerant(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            result = {"healthy": True, "managerDoctor": {"mode": "quick", "runAt": "now"}}
+            save_doctor_cache(root, "profile-a", result)
+            self.assertEqual(load_doctor_cache(root, "profile-a"), result)
+            self.assertIsNone(load_doctor_cache(root, "profile-b"))
+            cache_file = next(root.glob("*.json"))
+            cache_file.write_bytes(b"\xef\xbb\xbf" + cache_file.read_bytes())
+            self.assertEqual(load_doctor_cache(root, "profile-a"), result)
+            delete_doctor_cache(root, "profile-a")
+            self.assertIsNone(load_doctor_cache(root, "profile-a"))
 
     def test_file_roots_are_zanik_scoped_and_launcher_requires_verified_replacement(self):
         roots = virtual_roots("/home/container")
