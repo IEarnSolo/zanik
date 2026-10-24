@@ -56,6 +56,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(PYTHON) tests/github_release_test.py
 	$(PYTHON) tests/game_update_25811348_test.py
 	$(PYTHON) tests/game_update_25991736_test.py
+	$(PYTHON) tests/game_update_26161880_test.py
 	$(PYTHON) tests/storage_teleport_compatibility_test.py
 	$(PYTHON) tests/storage_mutation_pipeline_test.py
 	$(PYTHON) tests/quest_schema_test.py

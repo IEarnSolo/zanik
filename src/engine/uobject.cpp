@@ -214,7 +214,7 @@ uintptr_t Engine::GetWorld() const {
        Mem::ReadPtr(cachedWorld+Offsets::World_PersistentLevel)){
         worldSource="cached-object-sweep";return cachedWorld;
     }
-    for(uintptr_t offset:{Offsets::GWorld_25991736,Offsets::GWorld_25811348,Offsets::GWorld_25630937,Offsets::GWorld_25501739,Offsets::GWorld}){
+    for(uintptr_t offset:{Offsets::GWorld_26161880,Offsets::GWorld_25991736,Offsets::GWorld_25811348,Offsets::GWorld_25630937,Offsets::GWorld_25501739,Offsets::GWorld}){
         uintptr_t world=Mem::ReadPtr(moduleBase+offset);
         if(world&&GetObjectClassName(world)=="World"&&
            Mem::ReadPtr(world+Offsets::World_PersistentLevel)){
@@ -437,8 +437,9 @@ std::string Engine::GetPlayerStorageJson(const std::string& characterGuid) const
     static const std::string updatedSha="ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac";
     static const std::string umbralHotfixSha="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c";
     static const std::string latestSha="b5017cf67bc6127dbec443e00fed1f818e82afd5d6d17f912d959a1dd87d5687";
+    static const std::string currentSha="45cd13cf24658153f4c53777816ffa38ac893a471ebdf5d9c9768f7e4e74c966";
     static const std::string executableSha=FileSha256("/proc/self/exe");
-    if(executableSha!=expectedSha&&executableSha!=updatedSha&&executableSha!=umbralHotfixSha&&executableSha!=latestSha)return "";
+    if(executableSha!=expectedSha&&executableSha!=updatedSha&&executableSha!=umbralHotfixSha&&executableSha!=latestSha&&executableSha!=currentSha)return "";
     auto escape=[](const std::string& s){std::string out;for(unsigned char c:s){if(c=='"'||c=='\\'){out+='\\';out+=char(c);}else if(c>=32)out+=char(c);}return out;};
     auto cleanType=[](std::string value){
         auto exact=BuildingActorDisplayNames().find(value);if(exact!=BuildingActorDisplayNames().end())return exact->second;
@@ -460,10 +461,10 @@ std::string Engine::GetPlayerStorageJson(const std::string& characterGuid) const
     using GetDisplayStringFn=const FString* (*)(const void*);
     using GetSlotCountFn=int (*)(const void*);
     using GetMaxStackSizeFn=int(*)(void*);
-    const bool currentFamily=executableSha==umbralHotfixSha||executableSha==latestSha;
+    const bool currentFamily=executableSha==umbralHotfixSha||executableSha==latestSha||executableSha==currentSha;
     const uintptr_t displayAddress=moduleBase+(currentFamily?0x04ACAA80:0x04AA1A80);
-    const uintptr_t emptyAddress=moduleBase+(executableSha==latestSha?0x0A65A8B0:(currentFamily?0x0A65A7A0:0x0A618DE0));
-    const uintptr_t filledAddress=moduleBase+(executableSha==latestSha?0x0A65D330:(currentFamily?0x0A65D220:0x0A61B860));
+    const uintptr_t emptyAddress=moduleBase+(executableSha==currentSha?0x0A65B160:(executableSha==latestSha?0x0A65A8B0:(currentFamily?0x0A65A7A0:0x0A618DE0)));
+    const uintptr_t filledAddress=moduleBase+(executableSha==currentSha?0x0A65DBE0:(executableSha==latestSha?0x0A65D330:(currentFamily?0x0A65D220:0x0A61B860)));
     const unsigned char displaySignature[]={0x53,0x48,0x89,0xfb,0x48,0x8b,0x3f,0x48,0x85,0xff,0x74,0x18};
     const unsigned char emptySignature[]={0x8b,0x87,0xd8,0x01,0x00,0x00,0x48,0x63,0x8f,0x70,0x01,0x00,0x00,0x29,0xc8};
     const unsigned char filledSignature[]={0x8b,0x87,0xd8,0x01,0x00,0x00,0x48,0x63,0x8f,0x70,0x01,0x00,0x00,0x41,0x89,0xc0};

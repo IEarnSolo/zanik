@@ -31,12 +31,13 @@
 
 namespace DomEngine {
 namespace {
-constexpr const char* CurrentSha="b5017cf67bc6127dbec443e00fed1f818e82afd5d6d17f912d959a1dd87d5687";
+constexpr const char* PreviousSha="b5017cf67bc6127dbec443e00fed1f818e82afd5d6d17f912d959a1dd87d5687";
+constexpr const char* CurrentSha="45cd13cf24658153f4c53777816ffa38ac893a471ebdf5d9c9768f7e4e74c966";
 // The current build's native storage entry points are statically understood and
 // request preparation is now off-thread. Keep mutation compatibility closed in
 // ordinary releases until the bounded dispatcher passes live performance testing.
-bool ExpectedSha(const std::string& hash){const char*candidate=std::getenv("ZANIK_STORAGE_PERFORMANCE_CANDIDATE");struct stat marker{};const bool candidateEnabled=(candidate&&std::string(candidate)=="1")||stat("/home/container/zanik-data/storage-performance-candidate",&marker)==0;return hash=="445f8b65047d208adb04a3cb03bc7706f069306d814172ae29caec16c15bec7e"||hash=="ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac"||(candidateEnabled&&hash==CurrentSha);}
-bool ExpectedDispatcherSha(const std::string& hash){return ExpectedSha(hash)||hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"||hash=="b5017cf67bc6127dbec443e00fed1f818e82afd5d6d17f912d959a1dd87d5687";}
+bool ExpectedSha(const std::string& hash){const char*candidate=std::getenv("ZANIK_STORAGE_PERFORMANCE_CANDIDATE");struct stat marker{};const bool candidateEnabled=(candidate&&std::string(candidate)=="1")||stat("/home/container/zanik-data/storage-performance-candidate",&marker)==0;return hash=="445f8b65047d208adb04a3cb03bc7706f069306d814172ae29caec16c15bec7e"||hash=="ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac"||(candidateEnabled&&(hash==PreviousSha||hash==CurrentSha));}
+bool ExpectedDispatcherSha(const std::string& hash){return ExpectedSha(hash)||hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"||hash==PreviousSha||hash==CurrentSha;}
 constexpr std::size_t QueueCapacity=32;
 constexpr uintptr_t AddItemByDataOffset=0x0A6118E0;
 constexpr uintptr_t CanAddItemByDataOffset=0x0A612180;
@@ -62,10 +63,11 @@ struct StorageOffsets {
 };
 StorageOffsets OffsetsFor(const std::string& hash){
     StorageOffsets value;
-    if(hash==CurrentSha)value={0x0A653420,0x0A653CC0,0x0A6554F0,0x0A656FD0,0x0A654980,0x0A65F7E0,0x0A3DAA00,0x04A89480,0x07ABFE00,0x0A0EF130,0x0A0EF3A0,0x0A0EF780,0x04ACFAE0,0x079D0710,0x04A1F9F0,0x0A3B5970};
+    if(hash==PreviousSha)value={0x0A653420,0x0A653CC0,0x0A6554F0,0x0A656FD0,0x0A654980,0x0A65F7E0,0x0A3DAA00,0x04A89480,0x07ABFE00,0x0A0EF130,0x0A0EF3A0,0x0A0EF780,0x04ACFAE0,0x079D0710,0x04A1F9F0,0x0A3B5970};
+    else if(hash==CurrentSha)value={0x0A653CD0,0x0A654570,0x0A655DA0,0x0A657880,0x0A655230,0x0A660090,0x0A3DA9D0,0x04A89480,0x07ABFE00,0x0A0EF090,0x0A0EF300,0x0A0EF6E0,0x04ACFAE0,0x079D0710,0x04A1F9F0,0x0A3B58D0};
     return value;
 }
-uintptr_t DisplayTextOffset(){static const uintptr_t value=FileSha256("/proc/self/exe")==CurrentSha?0x04ACAA80:0x04AA1A80;return value;}
+uintptr_t DisplayTextOffset(){static const std::string hash=FileSha256("/proc/self/exe");static const uintptr_t value=(hash==PreviousSha||hash==CurrentSha)?0x04ACAA80:0x04AA1A80;return value;}
 
 using AddItemByDataFn=bool(*)(void*,void*,int,float,const void*);
 using CanAddItemByDataFn=bool(*)(void*,void*,int);
@@ -479,14 +481,14 @@ bool InitializeAdminStorage(uintptr_t moduleBase,uintptr_t moduleEnd){
     // The current build's setter returned successfully during live validation, but the
     // authoritative CustomName property did not reflect the requested value. Keep only
     // this independently breakable capability closed until setter/readback is re-proven.
-    renameCompatibility=hash=="b5017cf67bc6127dbec443e00fed1f818e82afd5d6d17f912d959a1dd87d5687"?-1:1;
+    renameCompatibility=(hash==PreviousSha||hash==CurrentSha)?-1:1;
     if(renameCompatibility.load()!=1)LogMessage("Storage rename setter/readback validation failed for this game build; rename remains disabled");
     catalogCompatibility=1;unlockCatalogCompatibility=UnlockCatalogAssetsValid()?1:-1;const auto& buildCatalog=AuthoritativeBuildingCatalog();buildingTaxonomyCompatibility=buildCatalog.valid?1:-1;buildingIconsCompatibility=buildCatalog.iconsValid?1:-1;buildingRequirementsCompatibility=batchCompatibility.load()==1?1:-1;craftingRecipeCompatibility=batchCompatibility.load()==1?1:-1;if(unlockCatalogCompatibility.load()!=1)LogMessage("Vestige and mount unlock catalog assets unavailable; ordinary item catalog remains enabled");if(buildingTaxonomyCompatibility.load()!=1)LogMessage("Authoritative building catalogue is invalid; crafting recipes remain enabled");if(buildingIconsCompatibility.load()!=1)LogMessage("One or more authoritative building catalogue icons are unavailable");removalTrackingCompatibility=InstallBuildingEndPlayHook(moduleBase,moduleEnd,offsets.buildingEndPlay)?1:-1;if(removalTrackingCompatibility.load()!=1)LogMessage("Immediate storage removal tracking unavailable; storage editing remains enabled with ordinary actor reconciliation");dispatcherCompatibility=1;compatibility=1;return true;
 }
 bool InitializeAdminStorageHookEarly(){
     if(earlyHookInstalled.load())return true;
     std::string hash=FileSha256("/proc/self/exe");if(!ExpectedDispatcherSha(hash)){LogMessage("Admin storage dispatcher fingerprint mismatch: "+hash);return false;}
-    const bool currentDispatcher=hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"||hash=="b5017cf67bc6127dbec443e00fed1f818e82afd5d6d17f912d959a1dd87d5687";
+    const bool currentDispatcher=hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"||hash==PreviousSha||hash==CurrentSha;
     const uintptr_t dispatcherOffset=currentDispatcher?0x07ABFE00:EngineTickOffset;
     uintptr_t bounds[3]={0,0,0};dl_iterate_phdr(&ExecutableBounds,bounds);if(!bounds[2]||bounds[0]+dispatcherOffset+EngineTickHookBytes>bounds[1]){LogMessage("Admin storage dispatcher executable bounds unavailable");return false;}
     auto* target=reinterpret_cast<unsigned char*>(bounds[0]+dispatcherOffset);

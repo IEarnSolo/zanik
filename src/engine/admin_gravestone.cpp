@@ -23,8 +23,9 @@
 
 namespace DomEngine {
 namespace {
-constexpr const char* CurrentSha="b5017cf67bc6127dbec443e00fed1f818e82afd5d6d17f912d959a1dd87d5687";
-bool ExpectedSha(const std::string& hash){return hash=="445f8b65047d208adb04a3cb03bc7706f069306d814172ae29caec16c15bec7e"||hash=="ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac"||hash==CurrentSha;}
+constexpr const char* PreviousSha="b5017cf67bc6127dbec443e00fed1f818e82afd5d6d17f912d959a1dd87d5687";
+constexpr const char* CurrentSha="45cd13cf24658153f4c53777816ffa38ac893a471ebdf5d9c9768f7e4e74c966";
+bool ExpectedSha(const std::string& hash){return hash=="445f8b65047d208adb04a3cb03bc7706f069306d814172ae29caec16c15bec7e"||hash=="ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac"||hash==PreviousSha||hash==CurrentSha;}
 constexpr uintptr_t MoveItemOffset=0x0A6139B0;
 constexpr uintptr_t RemoveFromSlotOffset=0x0A615490;
 constexpr uintptr_t CanAddItemByDataOffset=0x0A612180;
@@ -51,10 +52,11 @@ struct GravestoneOffsets {
 };
 GravestoneOffsets OffsetsFor(const std::string& hash){
     GravestoneOffsets value;
-    if(hash==CurrentSha)value={0x0A6554F0,0x0A656FD0,0x0A653CC0,0x0A654980,0x0A655550,0x0A64FDD0,0x0A64E920,0x0A64EF50,0x0A64D740,0x08731130,0x08731180,0x07E66460,0x08731610,0x09E17F00,0x09E0EDB0,0x09E17830,0x07E59100,0x0837ECB0,0x08737420,0x07E6B520};
+    if(hash==PreviousSha)value={0x0A6554F0,0x0A656FD0,0x0A653CC0,0x0A654980,0x0A655550,0x0A64FDD0,0x0A64E920,0x0A64EF50,0x0A64D740,0x08731130,0x08731180,0x07E66460,0x08731610,0x09E17F00,0x09E0EDB0,0x09E17830,0x07E59100,0x0837ECB0,0x08737420,0x07E6B520};
+    else if(hash==CurrentSha)value={0x0A655DA0,0x0A657880,0x0A654570,0x0A655230,0x0A655E00,0x0A650680,0x0A64F1D0,0x0A64F800,0x0A64DFF0,0x08731130,0x08731180,0x07E66460,0x08731610,0x09E17E60,0x09E0ED10,0x09E17790,0x07E59100,0x0837ECB0,0x08737420,0x07E6B520};
     return value;
 }
-uintptr_t DisplayTextOffset(){static const uintptr_t value=FileSha256("/proc/self/exe")==CurrentSha?0x04ACAA80:0x04AA1A80;return value;}
+uintptr_t DisplayTextOffset(){static const std::string hash=FileSha256("/proc/self/exe");static const uintptr_t value=(hash==PreviousSha||hash==CurrentSha)?0x04ACAA80:0x04AA1A80;return value;}
 constexpr size_t QueueCapacity=32;
 constexpr uintptr_t RegistryGravesOffset=0x2E0;
 constexpr int32_t GraveRecordSize=0x68;
