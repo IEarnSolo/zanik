@@ -91,7 +91,7 @@ assert "Another storage operation is already pending" in storage
 
 # Rename is independently fail-closed on the current build after the live
 # setter returned success without an authoritative CustomName readback.
-assert 'renameCompatibility=hash=="b5017cf67bc6127dbec443e00fed1f818e82afd5d6d17f912d959a1dd87d5687"?-1:1' in storage
+assert "renameCompatibility=(hash==PreviousSha||hash==CurrentSha)?-1:1" in storage
 assert 'if(renameCompatibility.load()!=1){error="Storage naming is unavailable for this game build"' in planner
 assert '\\"storageRename\\"' in main
 assert "storageRenameAvailable=Boolean(capabilities.storageRename)" in web
@@ -99,7 +99,7 @@ assert "if(storageRenameAvailable)renderStorageHeading" in web
 
 # Normal current-build releases remain fail-closed until live validation opts in.
 assert 'ZANIK_STORAGE_PERFORMANCE_CANDIDATE' in storage
-assert "candidateEnabled&&hash==CurrentSha" in storage
+assert "candidateEnabled&&(hash==PreviousSha||hash==CurrentSha)" in storage
 
 # Independent operational diagnostics remain public and bounded.
 for field in (

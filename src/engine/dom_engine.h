@@ -46,6 +46,11 @@ constexpr uintptr_t GWorld_25811348   = 0x0DDB25F8;
 constexpr uintptr_t GObjects_25991736 = 0x0DC97510;
 constexpr uintptr_t GNames_25991736   = 0x0DBDBFF8;
 constexpr uintptr_t GWorld_25991736   = 0x0DDB35F8;
+// Build 26161880 retains the same ELF data layout and Unreal globals. The
+// candidates remain subject to the full runtime object/name/world validators.
+constexpr uintptr_t GObjects_26161880 = 0x0DC97510;
+constexpr uintptr_t GNames_26161880   = 0x0DBDBFF8;
+constexpr uintptr_t GWorld_26161880   = 0x0DDB35F8;
 
 // TUObjectArray / FUObjectItem - Source: RSDWSDK/CppSDK/SDK/Basic.hpp
 constexpr uintptr_t ObjArray_Objects     = 0x00;

@@ -4,6 +4,8 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+- Restore native compatibility with Dragonwilds dedicated-server build `26161880`, including independently validated read-only, resource, teleport, storage, and gravestone paths.
+- Retry one bounded SteamCMD validation pass inside guarded replace-executable game updates when the initial delta pass marks the managed launcher pathname for a full executable download.
 - Run a quiet quick Doctor scan when Manager starts or the active server changes, persist the latest completed result per profile for immediate reuse, and refresh it after server-changing operations.
 - Merge the active server's dedicated-game update result into Doctor so a current build is shown explicitly in green as up to date instead of appearing unchecked.
 - Report server-payload and website-asset freshness separately from operational health in Doctor, so a working older installation remains Healthy while clearly identifying available updates and incremental asset refreshes.

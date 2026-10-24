@@ -50,7 +50,20 @@ cp -p "$server_root/steamapps/appmanifest_4019830.acf" "$backup_root/appmanifest
 
 # SteamCMD replaces this running script's pathname with the new official ELF.
 # The shell already has the script open, so it can safely finish the transaction.
-if ! timeout 900 "$steamcmd" +force_install_dir "$server_root" +login anonymous +app_update 4019830 validate +quit >"$backup_root/steamcmd.log.full" 2>&1; then
+# Its delta pass can first reject the managed script at the official pathname as
+# a corrupt old chunk. That marks the file for a full download, so allow one
+# bounded retry inside the same journaled operation.
+update_ok=false
+attempt=1
+while [ "$attempt" -le 2 ]; do
+  printf '%s\n' "Zanik SteamCMD attempt $attempt" >>"$backup_root/steamcmd.log.full"
+  if timeout 900 "$steamcmd" +force_install_dir "$server_root" +login anonymous +app_update 4019830 validate +quit >>"$backup_root/steamcmd.log.full" 2>&1; then
+    update_ok=true
+    break
+  fi
+  attempt=$((attempt + 1))
+done
+if [ "$update_ok" != true ]; then
   tail -c 1048576 "$backup_root/steamcmd.log.full" >"$backup_root/steamcmd.log" 2>/dev/null || true
   rm -f "$backup_root/steamcmd.log.full"
   restore_launcher || true

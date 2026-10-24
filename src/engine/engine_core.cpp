@@ -107,7 +107,7 @@ bool Engine::ValidateObjectArray(uintptr_t candidate) const {
 }
 
 bool Engine::ResolveObjectArray() {
-    for(uintptr_t offset:{Offsets::GObjects_25991736,Offsets::GObjects_25811348,Offsets::GObjects_25630937,Offsets::GObjects_25501739,Offsets::GObjects}){
+    for(uintptr_t offset:{Offsets::GObjects_26161880,Offsets::GObjects_25991736,Offsets::GObjects_25811348,Offsets::GObjects_25630937,Offsets::GObjects_25501739,Offsets::GObjects}){
         uintptr_t candidate=moduleBase+offset;
         if(ValidateObjectArray(candidate)){
             gObjects=candidate;gObjectsSource="fingerprint-candidate";
@@ -164,7 +164,7 @@ bool Engine::ValidateNamePool(uintptr_t candidate) const {
 }
 
 bool Engine::ResolveNamePool() {
-    for(uintptr_t offset:{Offsets::GNames_25991736,Offsets::GNames_25811348,Offsets::GNames_25630937,Offsets::GNames_25501739,Offsets::GNames}){
+    for(uintptr_t offset:{Offsets::GNames_26161880,Offsets::GNames_25991736,Offsets::GNames_25811348,Offsets::GNames_25630937,Offsets::GNames_25501739,Offsets::GNames}){
         uintptr_t candidate=moduleBase+offset;
         if(ValidateNamePool(candidate)){
             gNames=candidate;gNamesSource="fingerprint-candidate";
