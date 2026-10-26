@@ -72,6 +72,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(PYTHON) tests/update_awareness_test.py
 	sh tests/installer_test.sh
 	sh tests/server_asset_verifier_test.sh
+	sh tests/server_asset_delta_helper_test.sh
 	sh tests/server_game_update_test.sh
 	$(NODE) tests/map_page_test.js
 	$(PYTHON) tests/http_core_test.py
