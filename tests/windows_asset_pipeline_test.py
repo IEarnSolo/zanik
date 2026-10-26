@@ -123,6 +123,46 @@ with tempfile.TemporaryDirectory() as name:
         "package:RSDragonwilds/Content/UI/T_Icon_Log", "basename:T_Icon_Log"
     ]) == []
     assert pipeline.missing_texture_targets(root / "textures", ["basename:T_Missing"]) == ["basename:T_Missing"]
+
+    additive_old = {
+        "jsonTargets": ["same"],
+        "requiredTextureAssets": ["T_Existing"],
+    }
+    additive_new = {
+        "_path": str(ROOT / "asset-tools/extraction-recipes.json"),
+        "jsonTargets": ["same"],
+        "requiredTextureAssets": ["T_Existing", "T_New"],
+    }
+    with patch.object(pipeline, "recipe_snapshot", return_value={"jsonTargets": ["same"]}), \
+         patch.object(pipeline, "referenced_textures", side_effect=AssertionError("JSON rescan")):
+        assert pipeline.incremental_texture_targets(
+            ["basename:T_Existing", "basename:T_FromJson"], additive_old,
+            additive_new, root / "json") == [
+                "basename:T_Existing", "basename:T_FromJson", "basename:T_New"]
+
+    removing_new = dict(additive_new, requiredTextureAssets=[])
+    (root / "json").mkdir(exist_ok=True)
+    with patch.object(pipeline, "recipe_snapshot", return_value={"jsonTargets": ["same"]}), \
+         patch.object(pipeline, "referenced_textures", side_effect=AssertionError("JSON rescan")):
+        assert pipeline.incremental_texture_targets(
+            ["basename:T_Existing", "basename:T_FromJson"], additive_old,
+            removing_new, root / "json") == ["basename:T_FromJson"]
+        assert pipeline.incremental_texture_targets(
+            ["basename:T_Existing", "basename:T_FromJson"], additive_old,
+            additive_new, root / "json") == [
+                "basename:T_Existing", "basename:T_FromJson", "basename:T_New"]
+        mixed_new = dict(additive_new, requiredTextureAssets=["T_New"])
+        assert pipeline.incremental_texture_targets(
+            ["basename:T_Existing", "basename:T_FromJson"], additive_old,
+            mixed_new, root / "json") == ["basename:T_FromJson", "basename:T_New"]
+    (root / "json" / "reference.json").write_text(
+        '{"ObjectPath":"/Game/UI/T_Existing.T_Existing"}', encoding="utf-8")
+    with patch.object(pipeline, "recipe_snapshot", return_value={"jsonTargets": ["same"]}), \
+         patch.object(pipeline, "referenced_textures", return_value=["basename:T_Existing"]) as rescan:
+        assert pipeline.incremental_texture_targets(
+            ["basename:T_Existing", "basename:T_FromJson"], additive_old,
+            removing_new, root / "json") == ["basename:T_Existing"]
+        rescan.assert_called_once()
     assert pipeline.cooked_package_path("/UmbralSands/UI/T_Icon.T_Icon") == (
         "RSDragonwilds/Plugins/GameFeatures/UmbralSands/Content/UI/T_Icon"
     )
@@ -266,8 +306,9 @@ with tempfile.TemporaryDirectory() as name:
     assert texture_delta_calls == [], "unchanged texture inventory must make zero exporter calls"
 
     history = json.loads((ROOT / "asset-tools/extraction-recipe-history.json").read_text(encoding="utf-8"))
-    recipe6, recipe7, recipe8 = [entry for entry in history["recipes"] if entry["sha256"] in
-                                 pipeline.REVIEWED_LEGACY_GENERATION_RECIPES]
+    by_version = {entry["recipe"]["schemaVersion"]: entry for entry in history["recipes"]}
+    recipe6, recipe7, recipe8, recipe9, recipe10, recipe11 = (
+        by_version[index] for index in (6, 7, 8, 9, 10, 11))
     recipe6["recipe"]["jsonTargets"] = recipe6["jsonTargets"]
     recipe7["recipe"]["jsonTargets"] = recipe7["jsonTargets"]
     recipe7["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
@@ -289,6 +330,30 @@ with tempfile.TemporaryDirectory() as name:
          "contracts": {group: "b" * 64 for group in pipeline.GENERATION_GROUPS}},
         contracts, [], [pipeline.RETIRED_FRAGMENT_CRYSTAL_TARGET], True)
     assert dirty == {"map-icons"}, f"reviewed shared-generator migration rebuilt unrelated groups: {dirty}"
+    recipe9["recipe"]["jsonTargets"] = recipe9["jsonTargets"]
+    recipe9["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
+    dirty = pipeline.selective_generation_groups(
+        recipe8["recipe"], recipe9["recipe"],
+        {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,
+         "contracts": {group: "b" * 64 for group in pipeline.GENERATION_GROUPS}},
+        contracts, ["basename:T_Icon_ObjectiveArrow"], [], True)
+    assert dirty == {"map-icons"}, f"one map icon rebuilt unrelated groups: {dirty}"
+    recipe10["recipe"]["jsonTargets"] = recipe10["jsonTargets"]
+    recipe10["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
+    dirty = pipeline.selective_generation_groups(
+        recipe9["recipe"], recipe10["recipe"],
+        {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,
+         "contracts": {group: "b" * 64 for group in pipeline.GENERATION_GROUPS}},
+        contracts, ["basename:T_Icon_Clipboard"], [], True)
+    assert dirty == {"map-icons"}, f"recipe-10 clipboard icon rebuilt unrelated groups: {dirty}"
+    recipe11["recipe"]["jsonTargets"] = recipe11["jsonTargets"]
+    recipe11["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
+    dirty = pipeline.selective_generation_groups(
+        recipe10["recipe"], recipe11["recipe"],
+        {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,
+         "contracts": {group: "b" * 64 for group in pipeline.GENERATION_GROUPS}},
+        contracts, [], ["basename:T_Icon_Clipboard", "basename:T_Icon_ObjectiveArrow"], True)
+    assert dirty == {"map-icons"}, f"recipe-11 test-icon removal rebuilt unrelated groups: {dirty}"
     dirty = pipeline.selective_generation_groups(
         recipe7["recipe"], recipe7["recipe"],
         {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,
@@ -315,6 +380,24 @@ with tempfile.TemporaryDirectory() as name:
     seeded = root / "seeded"
     pipeline.seed_validated_baseline(baseline_zip, seeded, "recipe6", "game")
     assert (seeded / baseline_file.name).read_bytes() == b"old"
+    cached = root / "cached"; cached.mkdir()
+    cached_bundle = cached / "baseline.zip"; cached_bundle.write_bytes(baseline_zip.read_bytes())
+    canonical = json.dumps(baseline_manifest, sort_keys=True, separators=(",", ":"))
+    (cached / "cache.json").write_text(json.dumps({
+        "manifestHash": pipeline.hashlib.sha256(canonical.encode()).hexdigest()
+    }))
+    retained_tree = root / "retained-tree"; retained_tree.mkdir()
+    (retained_tree / baseline_file.name).write_bytes(b"old")
+    linked_tree = root / "linked-tree"
+    pipeline.seed_validated_private_tree(cached_bundle, retained_tree, linked_tree, "recipe6", "game")
+    assert (linked_tree / baseline_file.name).read_bytes() == b"old"
+    (retained_tree / baseline_file.name).write_bytes(b"changed")
+    try:
+        pipeline.seed_validated_private_tree(
+            cached_bundle, retained_tree, root / "bad-linked-tree", "recipe6", "game")
+        raise AssertionError("altered retained generated tree was accepted")
+    except RuntimeError as error:
+        assert "failed validation" in str(error)
     baseline_manifest["files"][0]["sha256"] = "0" * 64
     bad_zip = root / "bad-baseline.zip"
     with zipfile.ZipFile(bad_zip, "w") as archive:
@@ -458,5 +541,6 @@ with tempfile.TemporaryDirectory() as name:
     assert "game launch and UnrealAssetScout extraction are skipped" in powershell
     assert "$Journal.preserveExistingLoader" in powershell
     assert "-NotePropertyName preserveExistingLoader" in powershell
+    assert "$env:PATHEXT = '.COM;.EXE;.BAT;.CMD;" in powershell
 
 print("windows asset pipeline tests passed")

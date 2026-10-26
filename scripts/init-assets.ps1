@@ -10,12 +10,20 @@ param(
     [string]$RecoveryDirectory,
     [string]$WorkDirectory,
     [string]$BaselineBundle,
+    [switch]$SkipBundleSet,
+    [switch]$SkipPostBuildValidation,
     [switch]$Resume,
     [switch]$Incremental,
     [string]$InstallBundle,
     [string]$Destination
 )
 $ErrorActionPreference = 'Stop'
+# Some launchers and application sandboxes provide an incomplete PATHEXT
+# (observed as only .CPL). Windows PowerShell then ShellExecutes python.exe as
+# a document, returns before it finishes, and leaves $LASTEXITCODE unset.
+# Establish the executable extensions this wrapper relies on so every native
+# tool invocation is synchronous and has a trustworthy exit code.
+$env:PATHEXT = '.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.CPL'
 function Write-ZanikEvent([string]$Phase, [string]$Message) {
     $payload = @{ phase = $Phase; message = $Message } | ConvertTo-Json -Compress
     Write-Output "ZANIK_EVENT $payload"
@@ -192,19 +200,24 @@ $ResolvedParts = [IO.Path]::GetFullPath($Parts)
 if (-not $ResolvedParts.StartsWith($ResolvedOutput + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Refusing to replace a bundle-parts directory outside the selected output directory.'
 }
-if ($StateOrder[$Journal.stage] -lt $StateOrder['parts']) {
+if (-not $SkipBundleSet -and $StateOrder[$Journal.stage] -lt $StateOrder['parts']) {
 & $Python $AssetTool bundle-set --bundle $Bundle --output-dir $Parts --replace
 if ($LASTEXITCODE -ne 0) { throw "Multipart bundling failed with exit code $LASTEXITCODE" }
 Set-ExtractionStage 'parts'
 }
-& $Python $AssetTool validate --bundle $Bundle
-if ($LASTEXITCODE -ne 0) { throw "Bundle validation failed with exit code $LASTEXITCODE" }
+if ($SkipBundleSet -and $StateOrder[$Journal.stage] -lt $StateOrder['parts']) {
+    Set-ExtractionStage 'parts'
+}
+if (-not $SkipPostBuildValidation) {
+    & $Python $AssetTool validate --bundle $Bundle
+    if ($LASTEXITCODE -ne 0) { throw "Bundle validation failed with exit code $LASTEXITCODE" }
+}
 Set-ExtractionStage 'complete'
 $Succeeded = $true
 Write-Host "Created $Bundle"
-Write-Host "Created Pterodactyl bundle set at $Parts"
+if (-not $SkipBundleSet) { Write-Host "Created Pterodactyl bundle set at $Parts" }
 Write-ZanikEvent 'complete' "Created validated bundle $Bundle"
-Write-Host "Upload the part directory to /home/container/zanik-assets-incoming/$Build/ and install bundle-index.json."
+if (-not $SkipBundleSet) { Write-Host "Upload the part directory to /home/container/zanik-assets-incoming/$Build/ and install bundle-index.json." }
 } finally {
     if ($KeepWork) {
         Write-Warning "Intermediate game exports remain at '$Work'. They are game-derived and must not be redistributed."
