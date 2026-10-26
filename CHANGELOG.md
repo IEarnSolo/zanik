@@ -4,6 +4,13 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.49] - 2026-10-26
+
+### Fixed
+
+- Normalize Zanik Manager's Windows CRLF removal lists before server-side asset-delta validation, so remove-only and mixed deltas delete the intended paths instead of rolling back with a file-set mismatch.
+- Include the server helper's explicit rejection reason in Manager errors so future delta failures identify the failed validation stage immediately.
+
 ## [0.2.48] - 2026-10-26
 
 - Normalize Windows executable extensions inside the asset wrapper so packaged Python runs synchronously with a reliable exit code even when Zanik Manager inherits a broken `PATHEXT` from its launcher.

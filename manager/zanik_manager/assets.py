@@ -744,13 +744,15 @@ class AssetDeployer:
         (delta_root / "target-asset-manifest.json").write_bytes(target_manifest_raw)
         checksum_lines = [f"{record['sha256']}  {record['path']}" for record in manifest["files"]]
         checksum_lines.append(f"{sha256(target_manifest_raw)}  asset-manifest.json")
-        (delta_root / "target-files.sha256").write_text(
-            "\n".join(sorted(checksum_lines, key=str.casefold)) + "\n", encoding="utf-8")
-        (delta_root / "target-files.list").write_text(
-            "\n".join(sorted([record["path"] for record in manifest["files"]]
-                               + ["asset-manifest.json"])) + "\n", encoding="utf-8")
-        (delta_root / "removed.list").write_text("\n".join(removed) + ("\n" if removed else ""), encoding="utf-8")
-        (delta_root / "base-manifest.sha256").write_text(sha256(base_manifest_raw) + "\n", encoding="ascii")
+        (delta_root / "target-files.sha256").write_bytes(
+            ("\n".join(sorted(checksum_lines, key=str.casefold)) + "\n").encode("utf-8"))
+        (delta_root / "target-files.list").write_bytes(
+            ("\n".join(sorted([record["path"] for record in manifest["files"]]
+                                + ["asset-manifest.json"])) + "\n").encode("utf-8"))
+        (delta_root / "removed.list").write_bytes(
+            ("\n".join(removed) + ("\n" if removed else "")).encode("utf-8"))
+        (delta_root / "base-manifest.sha256").write_bytes(
+            (sha256(base_manifest_raw) + "\n").encode("ascii"))
         for record in changed:
             relative = safe_archive_name(record["path"])
             item = members.get(relative)
@@ -830,7 +832,9 @@ class AssetDeployer:
                                                 [PurePosixPath(stage).name])
                 except Exception:
                     pass
-                raise RuntimeError("The restarted launcher rejected the staged asset delta")
+                reason = str(report.get("reason") or "unknown")
+                raise RuntimeError(
+                    f"The restarted launcher rejected the staged asset delta ({reason})")
             raise RuntimeError("Server-side delta validation failed after the active bundle changed unexpectedly")
         try:
             self.provider.client.delete(server_id, f"{root}/zanik/state", [PurePosixPath(report_path).name])

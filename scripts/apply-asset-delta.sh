@@ -46,14 +46,18 @@ actual_base=$(sha256sum "$current/asset-manifest.json" | awk '{print $1}')
 [ "$actual_base" = "$expected_base" ] || { write_report base-mismatch; exit 0; }
 candidate=$ZANIK_DIR/assets/.delta-$request_id.new
 target=$ZANIK_DIR/assets/build-delta-$request_id
+carriage_return=$(printf '\r')
 rm -rf "$candidate"
 mkdir -p "$candidate"
 if ! cp -al "$current/." "$candidate/" 2>/dev/null; then
   rm -rf "$candidate"; mkdir -p "$candidate"; cp -a "$current/." "$candidate/"
 fi
 while IFS= read -r relative; do
+  # Manager runs on Windows, whose text-mode writes may use CRLF. Strip the
+  # transport carriage return before validating or applying a removal path.
+  relative=${relative%"$carriage_return"}
   [ -n "$relative" ] || continue
-    safe_relative "$relative" || { rm -rf "$candidate"; write_report failed 0 0 0 unsafe-removal; exit 0; }
+  safe_relative "$relative" || { rm -rf "$candidate"; write_report failed 0 0 0 unsafe-removal; exit 0; }
   rm -f "$candidate/$relative"
 done <"$stage/removed.list"
 changed=0
