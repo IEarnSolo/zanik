@@ -523,6 +523,19 @@ def build(args: argparse.Namespace) -> int:
             info = zipfile.ZipInfo(path.relative_to(source).as_posix(), date_time=archive_time)
             info.external_attr = 0o644 << 16
             archive.writestr(info, path.read_bytes())
+    # The source tree was validated and hashed immediately above. Reopen the
+    # completed archive and stream its CRCs once so Manager can trust this
+    # freshly built artifact without extracting it to another 190+ MiB tree.
+    with zipfile.ZipFile(output) as archive:
+        names = [item.filename for item in archive.infolist() if not item.is_dir()]
+        expected_names = {"asset-manifest.json", *(record["path"] for record in manifest["files"])}
+        if len(names) != len(set(names)) or set(names) != expected_names:
+            raise RuntimeError("completed asset bundle has an unexpected file set")
+        corrupt = archive.testzip()
+        if corrupt is not None:
+            raise RuntimeError(f"completed asset bundle failed ZIP verification: {corrupt}")
+        if json.loads(archive.read("asset-manifest.json")) != manifest:
+            raise RuntimeError("completed asset bundle manifest changed during packaging")
     print(f"created {output} ({len(manifest['files'])} files)")
     return 0
 

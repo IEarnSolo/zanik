@@ -362,7 +362,7 @@ class ManagerTests(unittest.TestCase):
             self.assertTrue((work / "Mappings.usmap").is_file())
             self.assertFalse((pipeline / "web").exists())
             self.assertFalse((pipeline / "internal").exists())
-            self.assertFalse((work / "generated-web").exists())
+            self.assertTrue((work / "generated-web" / "asset.bin").is_file())
             self.assertFalse((pipeline / "export.log").exists())
 
     def test_extraction_output_cleanup_removes_only_manager_bundle_products(self):
@@ -717,6 +717,9 @@ class ManagerTests(unittest.TestCase):
         self.assertIn("UE4SS", assets_source)
         self.assertIn("game_build", assets_source)
         self.assertIn('command.append("-Incremental")', assets_source)
+        self.assertIn('command += ["-SkipBundleSet", "-SkipPostBuildValidation"]', assets_source)
+        self.assertIn("the full bundle was not uploaded", assets_source)
+        self.assertNotIn("using the full-bundle fallback", assets_source)
         script_source = (ROOT / "scripts" / "init-assets.ps1").read_text(encoding="utf-8")
         self.assertIn("[switch]$Incremental", script_source)
         self.assertIn("only changed, added, or removed game packages", script_source)

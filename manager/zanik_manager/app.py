@@ -392,6 +392,11 @@ class MainWindow(QMainWindow):
         self.asset_contract_states = {}
         self.threads = []; self.background_threads = []; self.busy_dialog = None; self.last_progress_message = ""
         self.manager_version = current_manager_version(distribution_root())
+        try:
+            recipe_version = expected_asset_contract(resource_path("asset-tools"))["extractionRecipeVersion"]
+            self.setWindowTitle(f"Zanik Manager {self.manager_version} · asset recipe {recipe_version}")
+        except Exception:
+            self.setWindowTitle(f"Zanik Manager {self.manager_version}")
         self.release_checker = GitHubReleaseChecker(self.paths["updates"])
         self.validated_manager_update = None
         self.manager_release_status = None

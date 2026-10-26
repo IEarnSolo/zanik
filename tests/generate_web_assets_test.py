@@ -67,6 +67,8 @@ with tempfile.TemporaryDirectory(prefix="zanik-web-assets-") as temporary:
     assert (web / "resources" / "barrel-cactus.png").read_bytes() == b"cactus"
     assert (web / "lodestone-icon.png").read_bytes() == b"correct-map-icon"
     assert (web / "nodestone-icon.png").read_bytes() == generator.NODESTONE_MAP_ICON.read_bytes()
+    assert not (web / "quests/clipboard-icon.png").exists()
+    assert not (web / "quests/objective-arrow-icon.png").exists()
 
     # A fixed-map-artwork refresh must not rewrite unrelated generated groups.
     sentinel = web / "npc-catalog.json"; sentinel.write_bytes(b"unchanged-catalog")

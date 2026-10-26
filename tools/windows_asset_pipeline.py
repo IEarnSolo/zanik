@@ -23,14 +23,17 @@ except ModuleNotFoundError:  # Imported as tools.* by repository tests.
     from tools.asset_filesystem import extended_path, read_json as read_json_file
 
 
-RECIPE_VERSION = 8
+RECIPE_VERSION = 11
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 EXPORT_CHECKPOINT = "export-checkpoint.json"
 INCREMENTAL_STATE = "incremental-state.json"
+INCREMENTAL_STATE_SCHEMA_VERSION = 2
 GENERATION_STATE = "generation-state.json"
 GENERATION_GRAPH_VERSION = 1
 MAP_ICON_TARGETS = {
     "package:RSDragonwilds/Content/Art/UI/Icons/T_LodestoneMapIcon",
+    "basename:T_Icon_Clipboard",
+    "basename:T_Icon_ObjectiveArrow",
     # Retained for the exact reviewed recipe-7 -> recipe-8 removal. The
     # fragment-crystal texture is no longer used for nodestone map markers.
     "package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal",
@@ -45,9 +48,20 @@ REVIEWED_LEGACY_GENERATION_RECIPES = {
     "fee0d17d8c0d51276ec4d9f62939fd1dade779905f5e403f174d819325b5f412",  # recipe 6
     "bdf48eadbc433e4680f1cb2485b75accd2169498d5277616828992a94bf566a7",  # recipe 7
     "6956f42170b02bf55190521492f867e2800dfcc5666806dda8023022ca0f2459",  # recipe 8
+    "7a36e2a1feeab1530b5235f814167722c11bce85f39f37c1c0050aa2828b78b5",  # recipe 9
+    "b472ea5a3d7e02a4b0abbb5487188f5b310e7dc0a205e0377b020cb755551012",  # recipe 10
+    "0b9898ed11bc9a8afc00c0c3e05370bbbd8e022af8dfff32e4510ef6e8610bad",  # recipe 11
 }
 RETIRED_FRAGMENT_CRYSTAL_TARGET = \
     "package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal"
+# These reviewed recipe fixtures were added explicitly and were proven absent
+# from the retained catalog reference inventory. This also upgrades recipe-10
+# schema-1 workspaces without making users rescan 17,000+ JSON exports.
+REVIEWED_STANDALONE_TEXTURE_TARGETS = {
+    "basename:T_Icon_Clipboard",
+    "basename:T_Icon_ObjectiveArrow",
+    RETIRED_FRAGMENT_CRYSTAL_TARGET,
+}
 GROUP_OUTPUTS = {
     "buildings": ("buildings",), "plan-items": ("plan-items.tsv",),
     "npc": ("npc-catalog.json", "npc-identities.tsv"),
@@ -55,7 +69,8 @@ GROUP_OUTPUTS = {
     "quests": ("quest-catalog.json", "quest-runtime-catalog.tsv"),
     "item-artwork": ("items",), "npc-artwork": ("npcs",),
     "resource-artwork": ("resources",), "skills": ("skills",),
-    "map-icons": ("lodestone-icon.png", "nodestone-icon.png", "gravestone-icon.png"),
+    "map-icons": ("lodestone-icon.png", "nodestone-icon.png", "gravestone-icon.png",
+                  "quests/clipboard-icon.png", "quests/objective-arrow-icon.png"),
     "world-map": ("world-map.jpg",), "font": ("Jancient-Regular.ttf",),
     "quest-badges": ("quests/main-quest.svg", "quests/side-quest.svg"),
     "recipes": ("recipe-unlocks.json", "recipe-runtime-catalog.tsv", "recipe-runtime-catalog-history.tsv"),
@@ -156,6 +171,57 @@ def seed_validated_baseline(bundle: Path, destination: Path, expected_recipe_sha
     return manifest
 
 
+def _link_or_copy(source: Path | str, destination: Path | str) -> str:
+    """Clone a private cache file without duplicating its bytes when possible."""
+    source = Path(source); destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.link(extended_path(source), extended_path(destination))
+    except OSError:
+        shutil.copy2(extended_path(source), extended_path(destination))
+    return str(destination)
+
+
+def seed_validated_private_tree(bundle: Path, source: Path, destination: Path,
+                                expected_recipe_sha: str,
+                                expected_executable_sha: str) -> dict:
+    """Clone a retained tree after proving it matches the cached bundle manifest."""
+    metadata_path = bundle.parent / "cache.json"
+    if not source.is_dir() or not metadata_path.is_file():
+        raise RuntimeError("no authenticated retained generated tree is available")
+    metadata = read_operational_json(metadata_path)
+    with zipfile.ZipFile(bundle) as archive:
+        members = [item for item in archive.infolist() if not item.is_dir()]
+        names = {_safe_zip_name(item.filename): item for item in members}
+        if len(names) != len(members) or "asset-manifest.json" not in names:
+            raise RuntimeError("cached baseline has an invalid ZIP file set")
+        manifest = json.loads(archive.read(names["asset-manifest.json"]))
+    canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"))
+    if hashlib.sha256(canonical.encode()).hexdigest() != metadata.get("manifestHash"):
+        raise RuntimeError("cached baseline manifest no longer matches its cache record")
+    executable = manifest.get("sourceExecutable") or {}
+    if (manifest.get("schemaVersion") != 2 or manifest.get("compatibility") != "compatible"
+            or manifest.get("extractionStage") != "validated-and-packaged"
+            or manifest.get("extractionRecipeSha256") != expected_recipe_sha
+            or executable.get("sha256") != expected_executable_sha):
+        raise RuntimeError("cached baseline does not match the retained extraction state")
+    records = {record.get("path"): record for record in manifest.get("files", [])
+               if isinstance(record, dict) and isinstance(record.get("path"), str)}
+    actual = {path.relative_to(source).as_posix(): path for path in source.rglob("*")
+              if path.is_file() and not path.is_symlink()}
+    if not records or set(records) != set(actual):
+        raise RuntimeError("retained generated tree does not match the cached bundle file set")
+    for relative, record in records.items():
+        path = actual[relative]
+        if path.stat().st_size != record.get("size") or sha256(path) != record.get("sha256"):
+            raise RuntimeError(f"retained generated tree failed validation for {relative}")
+    if destination.exists(): remove_tree(destination)
+    shutil.copytree(source, destination, copy_function=_link_or_copy)
+    emit_progress("Reusing validated generated assets",
+                  detail=f"Verified and linked {len(records):,} retained files")
+    return manifest
+
+
 def generation_contracts(scripts: Path, repo: Path, recipe: dict) -> dict[str, str]:
     """Fingerprint generator code and authored inputs for independent output groups."""
     shared = scripts / "generate_web_assets.py"
@@ -216,8 +282,9 @@ def selective_generation_groups(previous_recipe: dict, recipe: dict, prior_state
                          "requiredTextureAssets", "catalogProfile", "jsonTargets")
     old = {key: previous_recipe.get(key) for key in comparison_fields}
     new = recipe_snapshot(recipe)
-    old_required = set(old.pop("requiredTextureAssets", []) or [])
-    new_required = set(new.pop("requiredTextureAssets", []) or [])
+    normalize_target = lambda value: value if value.startswith(("package:", "basename:")) else f"basename:{value}"
+    old_required = {normalize_target(value) for value in (old.pop("requiredTextureAssets", []) or [])}
+    new_required = {normalize_target(value) for value in (new.pop("requiredTextureAssets", []) or [])}
     old.pop("catalogProfile", None); new.pop("catalogProfile", None)
     current_sha = sha256(Path(recipe["_path"])) if recipe.get("_path") else ""
     # Reviewed recipe-only migrations must not manufacture catalog
@@ -225,13 +292,14 @@ def selective_generation_groups(previous_recipe: dict, recipe: dict, prior_state
     # recipe 7 -> 8 removes it in favor of bundled Zanik-authored artwork.
     if legacy_reviewed and current_sha in REVIEWED_LEGACY_GENERATION_RECIPES:
         old.pop("schemaVersion", None); new.pop("schemaVersion", None)
-    reviewed_authored_nodestone_migration = (
+    reviewed_map_only_migration = (
         legacy_reviewed
-        and current_sha == "6956f42170b02bf55190521492f867e2800dfcc5666806dda8023022ca0f2459"
+        and current_sha in REVIEWED_LEGACY_GENERATION_RECIPES
         and old == new
-        and old_required ^ new_required == {RETIRED_FRAGMENT_CRYSTAL_TARGET}
+        and bool(old_required ^ new_required)
+        and old_required ^ new_required <= MAP_ICON_TARGETS
     )
-    if reviewed_authored_nodestone_migration:
+    if reviewed_map_only_migration:
         # generate_web_assets.py owns several independent groups, so changing
         # its map-icon branch changes their code contract mechanically. This
         # exact reviewed migration affects only map-icons; accept the previous
@@ -483,12 +551,64 @@ def recipe_snapshot(recipe: dict) -> dict:
     return snapshot
 
 
+def normalized_required_texture_targets(recipe: dict) -> set[str]:
+    return {
+        value if value.startswith(("package:", "basename:")) else f"basename:{value}"
+        for value in recipe.get("requiredTextureAssets", [])
+    }
+
+
+def incremental_texture_targets(old_targets: list[str], previous_recipe: dict,
+                                recipe: dict, json_root: Path,
+                                standalone_targets: list[str] | None = None) -> list[str]:
+    """Avoid fully parsing every retained JSON file for narrow recipe changes.
+
+    Unchanged catalog selectors preserve every previously discovered reference.
+    Explicit additions can be unioned directly. For removals, a cheap byte search
+    proves that each retired basename is absent from retained JSON. Any possible
+    reference falls back to the complete semantic scan, preserving correctness.
+    """
+    old_required = normalized_required_texture_targets(previous_recipe)
+    new_required = normalized_required_texture_targets(recipe)
+    if previous_recipe.get("jsonTargets") == recipe_snapshot(recipe).get("jsonTargets"):
+        removed = old_required - new_required
+        if not removed:
+            return sorted(set(old_targets) | (new_required - old_required), key=str.casefold)
+        known_standalone = set(standalone_targets or ()) | REVIEWED_STANDALONE_TEXTURE_TARGETS
+        uncertain = removed - known_standalone
+        if not uncertain:
+            return sorted((set(old_targets) - removed) | (new_required - old_required), key=str.casefold)
+        needles = {
+            target: Path(target.split(":", 1)[1]).name.casefold().encode("utf-8")
+            for target in uncertain
+        }
+        possible_references: set[str] = set()
+        for path in json_root.rglob("*.json"):
+            if path.name == ".uas-manifest.json":
+                continue
+            try:
+                payload = path.read_bytes().lower()
+            except OSError as error:
+                raise RuntimeError(f"cannot inspect exported JSON {path.name}: {error}") from error
+            possible_references.update(target for target, needle in needles.items() if needle in payload)
+            if possible_references == uncertain:
+                break
+        if not possible_references:
+            return sorted((set(old_targets) - removed) | (new_required - old_required), key=str.casefold)
+    return referenced_textures(json_root, recipe["requiredTextureAssets"])
+
+
 def load_prior_incremental_state(temporary: Path, recipe: dict,
                                  stage_journal: Path | None) -> dict | None:
     state_path = temporary / INCREMENTAL_STATE
     if state_path.is_file():
         value = read_operational_json(state_path)
-        if value.get("schemaVersion") == 1 and isinstance(value.get("recipe"), dict):
+        if value.get("schemaVersion") in {1, INCREMENTAL_STATE_SCHEMA_VERSION} \
+                and isinstance(value.get("recipe"), dict):
+            if value.get("schemaVersion") == 1:
+                old_required = normalized_required_texture_targets(value["recipe"])
+                value["standaloneTextureTargets"] = sorted(
+                    old_required & REVIEWED_STANDALONE_TEXTURE_TARGETS, key=str.casefold)
             return value
     # Upgrade completed caches produced before incremental-state.json existed.
     journal = read_operational_json(stage_journal) if stage_journal and stage_journal.is_file() else {}
@@ -509,19 +629,25 @@ def load_prior_incremental_state(temporary: Path, recipe: dict,
     texture_root = temporary / "textures"
     targets = texture_target_inventory(texture_root) if texture_root.is_dir() else referenced_textures(
         json_root, old_recipe.get("requiredTextureAssets", []))
-    return {"schemaVersion": 1, "recipeSha256": previous_sha or current_sha,
+    old_required = normalized_required_texture_targets(old_recipe)
+    return {"schemaVersion": INCREMENTAL_STATE_SCHEMA_VERSION,
+            "recipeSha256": previous_sha or current_sha,
             "recipe": old_recipe,
-            "textureTargets": targets}
+            "textureTargets": targets,
+            "standaloneTextureTargets": sorted(
+                old_required & REVIEWED_STANDALONE_TEXTURE_TARGETS, key=str.casefold)}
 
 
 def write_incremental_state(temporary: Path, recipe: dict, targets: list[str],
-                            stage_journal: Path | None) -> None:
+                            stage_journal: Path | None,
+                            standalone_targets: list[str] | None = None) -> None:
     fingerprints = read_operational_json(stage_journal).get("fingerprints", {}) if stage_journal else {}
     write_json_atomic(temporary / INCREMENTAL_STATE, {
-        "schemaVersion": 1,
+        "schemaVersion": INCREMENTAL_STATE_SCHEMA_VERSION,
         "recipeSha256": sha256(Path(recipe["_path"])),
         "recipe": recipe_snapshot(recipe),
         "textureTargets": targets,
+        "standaloneTextureTargets": sorted(set(standalone_targets or ()), key=str.casefold),
         "fingerprints": fingerprints,
     })
 
@@ -873,11 +999,16 @@ def extract(args: argparse.Namespace) -> int:
             if last_export_error is not None:
                 raise RuntimeError(f"targeted catalog export remained incomplete after three attempts: {last_export_error}")
             old_targets = prior.get("textureTargets", []) if prior else []
+            old_required = normalized_required_texture_targets(previous_recipe)
+            new_required = normalized_required_texture_targets(recipe)
+            old_standalone = set(prior.get("standaloneTextureTargets", [])) if prior else set()
             target_inputs_unchanged = (structural_json and old_json_targets == new_json_targets
                                        and previous_recipe.get("requiredTextureAssets")
                                        == recipe.get("requiredTextureAssets"))
-            new_targets = old_targets if target_inputs_unchanged else referenced_textures(
-                json_root, recipe["requiredTextureAssets"])
+            new_targets = old_targets if target_inputs_unchanged else incremental_texture_targets(
+                old_targets, previous_recipe, recipe, json_root, sorted(old_standalone))
+            new_standalone = ((old_standalone & new_required)
+                              | ((new_required - old_required) - set(old_targets)))
             if selective and isinstance(old_targets, list) and texture_root.is_dir():
                 texture_delta = apply_texture_delta(common, temporary, texture_root, old_targets, new_targets)
                 if previous_recipe.get("fontFilter") == recipe.get("fontFilter"):
@@ -898,7 +1029,8 @@ def extract(args: argparse.Namespace) -> int:
                                                              mapping, stage_journal, new_targets))
             else:
                 recover_or_create_export_checkpoint(temporary, recipe, reviewed_counts, mapping, stage_journal)
-            write_incremental_state(temporary, recipe, new_targets, stage_journal)
+            write_incremental_state(temporary, recipe, new_targets, stage_journal,
+                                    sorted(new_standalone))
             update_stage(stage_journal, "exports")
         scripts = Path(__file__).resolve().parent; repo = scripts.parent; py = sys.executable
         contracts = generation_contracts(scripts, repo, recipe)
@@ -909,7 +1041,14 @@ def extract(args: argparse.Namespace) -> int:
         if args.incremental_work and selective and args.baseline_bundle:
             previous_sha = str((prior or {}).get("recipeSha256") or "")
             previous_executable = str((prior or {}).get("fingerprints", {}).get("gameExecutableSha256") or "")
-            seed_validated_baseline(args.baseline_bundle.resolve(), web, previous_sha, previous_executable)
+            try:
+                seed_validated_private_tree(
+                    args.baseline_bundle.resolve(), output, web, previous_sha, previous_executable)
+            except (OSError, ValueError, RuntimeError, zipfile.BadZipFile, json.JSONDecodeError) as error:
+                emit_progress("Retained generated tree unavailable",
+                              detail=f"Falling back to the validated prior bundle: {error}")
+                seed_validated_baseline(args.baseline_bundle.resolve(), web,
+                                        previous_sha, previous_executable)
             dirty = selective_generation_groups(
                 previous_recipe, recipe, prior_generation, contracts,
                 texture_delta["added"], texture_delta["removed"],
@@ -955,13 +1094,18 @@ def extract(args: argparse.Namespace) -> int:
             run([py, str(scripts / "analyze_quest_steps.py"), "--source", str(json_root), "--quest-catalog", str(web / "quest-catalog.json"), "--quest-runtime-catalog", str(web / "quest-runtime-catalog.tsv"), "--npc-catalog", str(web / "npc-catalog.json"), "--npc-identities", str(web / "npc-identities.tsv"), "--overrides", str(deploy / "quest-step-overrides.json"), "--analysis-output", str(internal / "quest-step-analysis.json"), "--public-output", str(web / "quest-step-locations.json"), "--coverage-output", str(internal / "quest-step-location-coverage.md")], "Generating quest destination catalog")
         asset_tool = scripts / "zanik_assets.py"
         run([py, str(asset_tool), "validate", "--generated-root", str(web)], "Validating generated asset tree")
+        prior_digests = prior_generation.get("outputDigests", {}) if isinstance(prior_generation, dict) else {}
+        output_digests = {
+            group: (output_digest(web, group) if group in dirty else prior_digests.get(group) or output_digest(web, group))
+            for group in GENERATION_GROUPS
+        }
         generation_state = {"schemaVersion": 1, "graphVersion": GENERATION_GRAPH_VERSION,
                             "recipeSha256": sha256(Path(recipe["_path"])), "contracts": contracts,
-                            "outputDigests": {group: output_digest(web, group) for group in GENERATION_GROUPS}}
+                            "outputDigests": output_digests}
         write_json_atomic(prior_generation_path, generation_state)
         replacement = output.with_name(output.name + ".new")
         if replacement.exists(): remove_tree(replacement)
-        shutil.copytree(web, replacement)
+        shutil.copytree(web, replacement, copy_function=_link_or_copy)
         previous = output.with_name(output.name + ".previous")
         if output.exists():
             if previous.exists(): remove_tree(previous)

@@ -4,6 +4,15 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.48] - 2026-10-26
+
+- Normalize Windows executable extensions inside the asset wrapper so packaged Python runs synchronously with a reliable exit code even when Zanik Manager inherits a broken `PATHEXT` from its launcher.
+- Refuse slow full-bundle uploads when a running server has a valid incremental base but an older launcher payload; identify the required server repair immediately and show the Manager version plus asset recipe in the window title.
+- Reduce a tested one-icon Windows asset refresh to about 52 seconds for extraction/bundling and about 83 seconds through atomic activation, reusing a hash-validated private tree and rebuilding only the affected output group.
+- Upload only changed asset members and activate them during one verified stop/start cycle, with complete server-side checksums, exact file-set validation, rollback, and no Python dependency in the game container.
+- Avoid rescanning every retained catalog export when an extraction recipe only adds explicit texture targets, and remove redundant multipart generation, post-build extraction, and cache copies from Manager-driven updates.
+- Exercise one-asset additions with temporary objective-arrow and clipboard extraction fixtures, then retire both fixtures in recipe 11 so the release validates a remove-only delta without shipping test artwork.
+- Avoid fully parsing every retained catalog export for explicit texture removals when a fast exact-name scan proves the retired texture is not referenced; mixed add/remove updates share the same optimized path and still fall back safely for possible references.
 - Restore native compatibility with Dragonwilds dedicated-server build `26161880`, including independently validated read-only, resource, teleport, storage, and gravestone paths.
 - Retry one bounded SteamCMD validation pass inside guarded replace-executable game updates when the initial delta pass marks the managed launcher pathname for a full executable download.
 - Run a quiet quick Doctor scan when Manager starts or the active server changes, persist the latest completed result per profile for immediate reuse, and refresh it after server-changing operations.

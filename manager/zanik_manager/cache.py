@@ -35,14 +35,17 @@ class BundleCache:
         self.root = root
         self.root.mkdir(parents=True, exist_ok=True)
 
-    def add(self, bundle: Path, game_root_id: str, manifest: dict) -> CachedBundle:
+    def add(self, bundle: Path, game_root_id: str, manifest: dict, *, move: bool = False) -> CachedBundle:
         build = str(manifest.get("gameBuild") or manifest.get("clientBuild") or "unknown")
         raw = json.dumps(manifest, sort_keys=True, separators=(",", ":"))
         digest = content_hash(raw)
         destination = self.root / game_root_id / build / digest
         destination.mkdir(parents=True, exist_ok=True)
         target = destination / bundle.name
-        shutil.copy2(bundle, target)
+        if move:
+            bundle.replace(target)
+        else:
+            shutil.copy2(bundle, target)
         metadata = {"build": build, "manifestHash": digest, "pinned": False,
                     "createdAt": manifest.get("generatedAt", ""), "bundle": bundle.name}
         (destination / "cache.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")

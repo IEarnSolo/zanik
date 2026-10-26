@@ -80,6 +80,39 @@ fi
 
 mkdir -p "$server_root/zanik-data" "$ZANIK_DIR/state"
 chmod 700 "$server_root/zanik-data"
+# ZANIK_ASSET_DELTA_ON_START=1
+# Asset updates are already followed by a restart. Applying a staged delta
+# before the game starts avoids depending on panel console-input forwarding
+# and combines activation with that single restart.
+pending_asset_delta="$ZANIK_DIR/state/pending-asset-delta"
+# Pterodactyl's file API may reject directory symlink traversal. Migrate any
+# earlier delta-created current symlink back to the physical directory form
+# while the game is stopped during launcher startup.
+asset_current="$ZANIK_DIR/assets/current"
+if [ -L "$asset_current" ]; then
+  asset_link=$(readlink "$asset_current")
+  case "$asset_link" in ''|/*|*/*|..*) zanik_log 'Refused an unsafe asset-current symlink migration.' ;;
+    *)
+      rm -f "$asset_current"
+      if ! mv "$ZANIK_DIR/assets/$asset_link" "$asset_current"; then
+        ln -s "$asset_link" "$asset_current"
+      fi
+      ;;
+  esac
+fi
+if [ -f "$pending_asset_delta" ]; then
+  IFS= read -r pending_request <"$pending_asset_delta" || pending_request=
+  rm -f "$pending_asset_delta"
+  case "$pending_request" in
+    ''|*[!0-9a-f]*) zanik_log 'Discarded an invalid pending asset delta request.' ;;
+    *)
+      if [ ${#pending_request} -ge 16 ] && [ ${#pending_request} -le 64 ]; then
+        "$ZANIK_DIR/scripts/apply-asset-delta.sh" --server-root "$server_root" \
+          --request-id "$pending_request" >/dev/null 2>&1 || true
+      fi
+      ;;
+  esac
+fi
 zanik_make_secret "$server_root/zanik-data/console-admin.key" || { zanik_log 'Could not create console secret; starting without Zanik.'; exec "$game" "$@"; }
 DW_CONSOLE_SECRET=$(tr -d '\r\n' < "$server_root/zanik-data/console-admin.key"); export DW_CONSOLE_SECRET
 zanik_export_runtime "$server_root" "$install_mode"

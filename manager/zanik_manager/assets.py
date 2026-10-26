@@ -30,6 +30,7 @@ CRITICAL_REMOTE_ASSETS = {
     "resource-catalog.json",
     "resource-identities.tsv",
 }
+DELTA_ON_START_MARKER = b"ZANIK_ASSET_DELTA_ON_START=1"
 
 GAME_EXECUTABLE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 
@@ -53,8 +54,7 @@ def compact_completed_asset_work(work_root: Path) -> int:
     if owner.get("owner") != "Zanik asset extractor" or state.get("stage") != "complete":
         return 0
     pipeline = work_root / "pipeline"
-    targets = [work_root / "generated-web", work_root / "generated-web.previous",
-               pipeline / "web", pipeline / "internal"]
+    targets = [work_root / "generated-web.previous", pipeline / "web", pipeline / "internal"]
     targets.extend(pipeline.glob("*.log") if pipeline.is_dir() else ())
     reclaimed = 0
     for target in targets:
@@ -296,18 +296,12 @@ class AssetExtractor:
         return json.loads(completed.stdout)
 
     def validate_bundle(self, bundle: Path, contract: dict | None = None) -> None:
-        tool = self.tool_root / "tools" / "zanik_assets.py"
-        completed = subprocess.run([self._python(), str(tool), "validate", "--bundle", str(bundle)],
-                                   capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
-                                   creationflags=background_creation_flags())
-        if completed.returncode:
-            raise RuntimeError("Cached asset bundle validation failed")
+        try:
+            with zipfile.ZipFile(bundle) as archive:
+                _members, manifest, _raw = AssetDeployer._bundle_members(archive)
+        except (OSError, KeyError, ValueError, zipfile.BadZipFile, json.JSONDecodeError) as error:
+            raise RuntimeError("Cached asset bundle manifest is unreadable") from error
         if contract:
-            try:
-                with zipfile.ZipFile(bundle) as archive:
-                    manifest = json.loads(archive.read("asset-manifest.json"))
-            except (OSError, KeyError, zipfile.BadZipFile, json.JSONDecodeError) as error:
-                raise RuntimeError("Cached asset bundle manifest is unreadable") from error
             if (manifest.get("extractionRecipeVersion") != contract.get("extractionRecipeVersion")
                     or manifest.get("compatibilityProfile", {}).get("version") !=
                     contract.get("compatibilityProfileVersion")
@@ -433,6 +427,9 @@ class AssetExtractor:
                 baseline = self.incremental_baseline_bundle(game_root, work_root)
                 if baseline:
                     command += ["-BaselineBundle", str(baseline)]
+        # Manager uploads directly from the validated full bundle and creates a
+        # tiny semantic delta itself. Standalone multipart output is redundant.
+        command += ["-SkipBundleSet", "-SkipPostBuildValidation"]
         event({"phase": "extract", "message": self.toolchain_summary(game_root)})
         event({"phase": "extract", "message": "Starting the Windows client asset extractor"})
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -457,7 +454,7 @@ class AssetExtractor:
             raise RuntimeError("Asset extraction completed without producing a bundle")
         with zipfile.ZipFile(bundles[0]) as archive:
             manifest = json.loads(archive.read("asset-manifest.json"))
-        item = self.cache.add(bundles[0], game_root_id(game_root), manifest)
+        item = self.cache.add(bundles[0], game_root_id(game_root), manifest, move=True)
         reclaimed = cleanup_extraction_output(output)
         if work_root:
             reclaimed += compact_completed_asset_work(work_root)
@@ -505,56 +502,72 @@ class AssetDeployer:
         root = server_root.rstrip("/")
         with tempfile.TemporaryDirectory(prefix="zanik-manager-assets-") as temporary:
             tree = Path(temporary) / "tree"
-            tree.mkdir()
             with zipfile.ZipFile(bundle) as archive:
-                for item in archive.infolist():
-                    if item.is_dir():
-                        continue
-                    name = safe_archive_name(item.filename)
+                members, manifest, target_manifest_raw = self._bundle_members(archive)
+                expected = self._manifest_records(manifest)
+                if expected is None:
+                    raise RuntimeError("The selected asset bundle has an invalid file manifest")
+                target_manifest_sha = sha256(target_manifest_raw)
+                remote_manifest_path = f"{root}/zanik/assets/current/asset-manifest.json"
+                try:
+                    base_manifest_raw = self.provider.client.read_file(server_id, remote_manifest_path)
+                    base_manifest = json.loads(base_manifest_raw)
+                except Exception:
+                    base_manifest_raw = b""
+                    base_manifest = None
+                if base_manifest_raw and sha256(base_manifest_raw) == target_manifest_sha:
+                    status("Website assets already match this bundle; no upload or restart is needed")
+                    return {"operationId": None, "manifest": manifest,
+                            "bundleSha256": self._file_sha256(bundle), "fileCount": len(expected),
+                            "archiveUpload": False, "deltaUpload": False, "unchanged": True,
+                            "uploadedFileCount": 0, "restartRequested": False,
+                            "restartPreviousUptime": None}
+                semantic_plan = self._delta_plan(base_manifest, manifest) if self._manifest_delta_eligible(base_manifest) else None
+                if semantic_plan == ([], []) and self._manifest_contract(base_manifest) == self._manifest_contract(manifest):
+                    status("Website asset contents and extraction contract are unchanged; no upload or restart is needed")
+                    return {"operationId": None, "manifest": base_manifest,
+                            "bundleSha256": self._file_sha256(bundle), "fileCount": len(expected),
+                            "archiveUpload": False, "deltaUpload": False, "unchanged": True,
+                            "uploadedFileCount": 0, "restartRequested": False,
+                            "restartPreviousUptime": None}
+                helper = f"{root}/zanik/scripts/apply-asset-delta.sh"
+                launcher = f"{root}/zanik/bin/zanik-server"
+                running = self.provider.client.resources(server_id).get("current_state", "") == "running"
+                if semantic_plan is not None and running:
+                    if not self.provider._exists(server_id, helper):
+                        raise RuntimeError(
+                            "The target server's installed Zanik payload is missing the asset-delta helper. "
+                            "Use Servers > Update / repair Zanik with this Manager, then retry; "
+                            "the full bundle was not uploaded.")
+                    try:
+                        launcher_data = self.provider.client.read_file(server_id, launcher)
+                    except Exception as error:
+                        raise RuntimeError(
+                            "The installed Zanik launcher could not be verified for delta activation. "
+                            "Use Servers > Update / repair Zanik with this Manager, then retry; "
+                            "the full bundle was not uploaded.") from error
+                    if DELTA_ON_START_MARKER not in launcher_data:
+                        raise RuntimeError(
+                            "The installed Zanik launcher is from an older payload and does not support "
+                            "delta-on-start activation. Use Servers > Update / repair Zanik with this "
+                            "Manager, then retry; the full bundle was not uploaded.")
+                    delta_result = self._activate_delta(
+                        profile_id, server_id, root, archive, members, manifest, base_manifest_raw, base_manifest,
+                        target_manifest_raw, bundle, Path(temporary), progress, status)
+                    if delta_result is not None:
+                        return delta_result
+                    raise RuntimeError("The validated asset manifests could not produce a safe delta plan")
+                # The full fallback is uncommon. Materialize and verify the
+                # complete archive only when the server cannot apply a delta.
+                tree.mkdir()
+                for name, item in members.items():
                     target = tree / name
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(archive.read(item))
-            manifest = json.loads((tree / "asset-manifest.json").read_text(encoding="utf-8"))
-            if manifest.get("compatible") is False:
-                raise RuntimeError("The selected asset bundle is marked incompatible")
-            expected = {entry["path"]: entry["sha256"] for entry in manifest.get("files", [])}
-            for name, digest in expected.items():
-                target = tree / safe_archive_name(name)
-                if not target.is_file() or sha256(target.read_bytes()) != digest:
-                    raise RuntimeError(f"Bundle validation failed for {name}")
-            target_manifest_raw = (tree / "asset-manifest.json").read_bytes()
-            target_manifest_sha = sha256(target_manifest_raw)
-            remote_manifest_path = f"{root}/zanik/assets/current/asset-manifest.json"
-            try:
-                base_manifest_raw = self.provider.client.read_file(server_id, remote_manifest_path)
-                base_manifest = json.loads(base_manifest_raw)
-            except Exception:
-                base_manifest_raw = b""
-                base_manifest = None
-            if base_manifest_raw and sha256(base_manifest_raw) == target_manifest_sha:
-                status("Website assets already match this bundle; no upload or restart is needed")
-                return {"operationId": None, "manifest": manifest,
-                        "bundleSha256": sha256(bundle.read_bytes()), "fileCount": len(expected),
-                        "archiveUpload": False, "deltaUpload": False, "unchanged": True,
-                        "uploadedFileCount": 0, "restartRequested": False,
-                        "restartPreviousUptime": None}
-            semantic_plan = self._delta_plan(base_manifest, manifest) if self._manifest_delta_eligible(base_manifest) else None
-            if semantic_plan == ([], []) and self._manifest_contract(base_manifest) == self._manifest_contract(manifest):
-                status("Website asset contents and extraction contract are unchanged; no upload or restart is needed")
-                return {"operationId": None, "manifest": base_manifest,
-                        "bundleSha256": sha256(bundle.read_bytes()), "fileCount": len(expected),
-                        "archiveUpload": False, "deltaUpload": False, "unchanged": True,
-                        "uploadedFileCount": 0, "restartRequested": False,
-                        "restartPreviousUptime": None}
-            helper = f"{root}/zanik/scripts/apply-asset-delta.sh"
-            running = self.provider.client.resources(server_id).get("current_state", "") == "running"
-            if self._manifest_delta_eligible(base_manifest) and running and self.provider._exists(server_id, helper):
-                delta_result = self._activate_delta(
-                    profile_id, server_id, root, tree, manifest, base_manifest_raw, base_manifest,
-                    target_manifest_raw, bundle, Path(temporary), progress, status)
-                if delta_result is not None:
-                    return delta_result
-                status("The installed launcher does not support delta activation; using the full-bundle fallback")
+                for name, record in expected.items():
+                    target = tree / name
+                    if not target.is_file() or sha256(target.read_bytes()) != record["sha256"]:
+                        raise RuntimeError(f"Bundle validation failed for {name}")
             journal = self.provider.journals
             from .journal import OperationJournal
             operation = OperationJournal.create(profile_id, "activate-assets")
@@ -614,9 +627,46 @@ class AssetDeployer:
             if restarted:
                 operation.completed_steps.append("runtime-restart-requested"); journal.save(operation)
             return {"operationId": operation.operation_id, "manifest": manifest,
-                    "bundleSha256": sha256(bundle.read_bytes()), "fileCount": len(files),
+                    "bundleSha256": self._file_sha256(bundle), "fileCount": len(expected),
                     "archiveUpload": used_archives, "restartRequested": restarted,
                     "restartPreviousUptime": (restart_context or {}).get("previousUptime")}
+
+    @staticmethod
+    def _file_sha256(path: Path) -> str:
+        value = hashlib.sha256()
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                value.update(block)
+        return value.hexdigest()
+
+    @classmethod
+    def _bundle_members(cls, archive: zipfile.ZipFile) -> tuple[dict[str, zipfile.ZipInfo], dict, bytes]:
+        members: dict[str, zipfile.ZipInfo] = {}
+        for item in archive.infolist():
+            if item.is_dir():
+                continue
+            name = safe_archive_name(item.filename)
+            if name in members or ((item.external_attr >> 16) & 0o170000) == 0o120000:
+                raise RuntimeError(f"The selected asset bundle has an unsafe or duplicate entry: {name}")
+            members[name] = item
+        manifest_item = members.get("asset-manifest.json")
+        if manifest_item is None:
+            raise RuntimeError("The selected asset bundle has no asset manifest")
+        target_manifest_raw = archive.read(manifest_item)
+        try:
+            manifest = json.loads(target_manifest_raw)
+        except (UnicodeError, json.JSONDecodeError) as error:
+            raise RuntimeError("The selected asset bundle manifest is unreadable") from error
+        if manifest.get("compatible") is False or not cls._manifest_delta_eligible(manifest):
+            raise RuntimeError("The selected asset bundle is marked incompatible")
+        records = cls._manifest_records(manifest)
+        if records is None or set(records) != set(members) - {"asset-manifest.json"}:
+            raise RuntimeError("The selected asset bundle file set does not match its manifest")
+        for name, record in records.items():
+            size = record.get("size")
+            if not isinstance(size, int) or size < 0 or members[name].file_size != size:
+                raise RuntimeError(f"The selected asset bundle has an invalid size for {name}")
+        return members, manifest, target_manifest_raw
 
     @staticmethod
     def _manifest_records(manifest: dict) -> dict[str, dict] | None:
@@ -665,7 +715,8 @@ class AssetDeployer:
                    if path not in base_records or base_records[path].get("sha256") != target_records[path].get("sha256")]
         return changed, sorted(set(base_records) - set(target_records))
 
-    def _activate_delta(self, profile_id: str, server_id: str, root: str, tree: Path,
+    def _activate_delta(self, profile_id: str, server_id: str, root: str,
+                        archive: zipfile.ZipFile, members: dict[str, zipfile.ZipInfo],
                         manifest: dict, base_manifest_raw: bytes, base_manifest: dict,
                         target_manifest_raw: bytes, bundle: Path, temporary: Path,
                         progress, status) -> dict | None:
@@ -691,11 +742,26 @@ class AssetDeployer:
                 "removed": removed}
         (delta_root / "asset-delta.json").write_text(json.dumps(spec, sort_keys=True), encoding="utf-8")
         (delta_root / "target-asset-manifest.json").write_bytes(target_manifest_raw)
+        checksum_lines = [f"{record['sha256']}  {record['path']}" for record in manifest["files"]]
+        checksum_lines.append(f"{sha256(target_manifest_raw)}  asset-manifest.json")
+        (delta_root / "target-files.sha256").write_text(
+            "\n".join(sorted(checksum_lines, key=str.casefold)) + "\n", encoding="utf-8")
+        (delta_root / "target-files.list").write_text(
+            "\n".join(sorted([record["path"] for record in manifest["files"]]
+                               + ["asset-manifest.json"])) + "\n", encoding="utf-8")
+        (delta_root / "removed.list").write_text("\n".join(removed) + ("\n" if removed else ""), encoding="utf-8")
+        (delta_root / "base-manifest.sha256").write_text(sha256(base_manifest_raw) + "\n", encoding="ascii")
         for record in changed:
             relative = safe_archive_name(record["path"])
-            source, target = tree / relative, files_root / relative
+            item = members.get(relative)
+            if item is None:
+                raise RuntimeError(f"Changed asset is missing from the bundle: {relative}")
+            data = archive.read(item)
+            if len(data) != record.get("size") or sha256(data) != record["sha256"]:
+                raise RuntimeError(f"Changed asset failed bundle verification: {relative}")
+            target = files_root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, target)
+            target.write_bytes(data)
         delta_zip = temporary / "asset-delta.zip"
         with zipfile.ZipFile(delta_zip, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
             for path in sorted(delta_root.rglob("*")):
@@ -712,8 +778,16 @@ class AssetDeployer:
             self.provider.client.delete(server_id, stage, [part.name])
             progress(index, len(parts), part.name)
         report_path = f"{root}/zanik/state/asset-delta-status-{request_id}.json"
-        self.provider.client.command(server_id, f"zanik-apply-asset-delta {request_id}")
-        deadline = time.monotonic() + 90
+        pending_path = f"{root}/zanik/state/pending-asset-delta"
+        self.provider.client.write_file(server_id, pending_path, (request_id + "\n").encode())
+        resources = self.provider.client.resources(server_id)
+        previous_uptime = int(resources.get("resources", {}).get("uptime") or 0)
+        status("Stopping the game server before atomically activating the asset delta")
+        self.provider.client.power(server_id, "stop")
+        self.provider._wait_offline(server_id)
+        status("Starting the game server and applying the staged asset delta")
+        self.provider.client.power(server_id, "start")
+        deadline = time.monotonic() + 180
         report = None
         while time.monotonic() < deadline:
             try:
@@ -737,7 +811,7 @@ class AssetDeployer:
                                                     [PurePosixPath(stage).name])
                     except Exception:
                         pass
-                    return None
+                    raise RuntimeError("The restarted launcher did not apply the staged asset delta")
                 raise RuntimeError("Delta activation timed out after the active bundle changed unexpectedly")
             report = {"status": "activated", "changed": len(changed), "removed": len(removed),
                       "fileCount": len(target_records)}
@@ -756,20 +830,19 @@ class AssetDeployer:
                                                 [PurePosixPath(stage).name])
                 except Exception:
                     pass
-                return None
+                raise RuntimeError("The restarted launcher rejected the staged asset delta")
             raise RuntimeError("Server-side delta validation failed after the active bundle changed unexpectedly")
         try:
             self.provider.client.delete(server_id, f"{root}/zanik/state", [PurePosixPath(report_path).name])
             self.provider.client.delete(server_id, f"{root}/.zanik-manager/staging", [PurePosixPath(stage).name])
         except Exception:
             pass
-        restart_context = self._restart_runtime_if_running(server_id, status)
         return {"operationId": request_id, "manifest": manifest,
-                "bundleSha256": sha256(bundle.read_bytes()), "fileCount": len(target_records),
+                "bundleSha256": self._file_sha256(bundle), "fileCount": len(target_records),
                 "archiveUpload": True, "deltaUpload": True, "unchanged": False,
                 "uploadedFileCount": len(changed), "removedFileCount": len(removed),
-                "restartRequested": restart_context is not None,
-                "restartPreviousUptime": (restart_context or {}).get("previousUptime")}
+                "restartRequested": True,
+                "restartPreviousUptime": previous_uptime}
 
     def _restart_runtime_if_running(self, server_id: str, status=lambda message: None) -> dict | None:
         resources = self.provider.client.resources(server_id)
