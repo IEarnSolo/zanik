@@ -99,6 +99,9 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert 'data-player-panel="quests"' in page
             assert 'id="manageSidebarGroup" class="player-sidebar-group" hidden' in page
             assert '.player-sidebar [hidden]{display:none!important}' in page
+            assert 'class="overview-grid"' in page
+            assert 'id="activityList"' in page and 'id="activityMore"' in page
+            assert "/api/player-activity?id=" in page
         with get(base, "/map") as response:
             page = response.read().decode()
             assert "Live world map" in page
@@ -112,6 +115,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert 'id="enemyList"' in page and "selectScore" in page
 
         expect_error(base, "/api/quests/catalog", 503, "Quest catalog unavailable")
+        expect_error(base, "/api/player-activity?id=missing", 404, "Player not found")
         expect_error(base, "/api/map/npcs/catalog", 503, "NPC catalog unavailable")
         with get(base, "/api/recipe-unlocks") as response:
             assert json.loads(response.read())["counts"]["recipes"] == 100
@@ -174,7 +178,9 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
         with get(base, "/api/kills") as response:
             assert response.read() == b'{"totalKills":0,"enemies":[]}'
         with get(base, "/api/skills") as response:
-            assert response.read() == b'{"skills":[]}'
+            assert response.read() == b'{"playerCount":0,"skills":[]}'
+        with get(base, "/api/skill-leaderboard") as response:
+            assert response.read() == b'{"skill":null,"players":[]}'
         with get(base, "/api/skill-leaderboard?skill=Mining") as response:
             assert response.read() == b'{"skill":"Mining","players":[]}'
 

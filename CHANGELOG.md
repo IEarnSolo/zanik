@@ -4,6 +4,21 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.53] - 2026-10-27
+
+### Added
+
+- Persist a privacy-safe player activity history for skill levels, quests, recipe unlocks, regions, first-pickup materials, and deaths, with silent initial baselines, restart-safe duplicate suppression, and paginated public access.
+
+### Changed
+
+- Make Overall the default Skills highscore view, ranking players by the sum of all recorded skill levels with total experience as the tie-breaker.
+- Redesign the player Overview as responsive Skills and Recent activity cards, including compact skill tiles, live timeline updates, exact timestamps, and in-card history pagination.
+
+### Fixed
+
+- Verify large server binaries through Pterodactyl's signed download endpoint when its file editor refuses to return them, preventing incremental Update / repair Zanik operations from failing after upload.
+
 ## [0.2.52] - 2026-10-27
 
 ### Changed

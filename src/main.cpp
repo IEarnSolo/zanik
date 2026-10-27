@@ -6,6 +6,7 @@
 #include "recipe_settings_store.h"
 #include "recipe_snapshot_store.h"
 #include "quest_snapshot_store.h"
+#include "player_activity_store.h"
 #include "utils/logger.h"
 #include "utils/memory.h"
 #include "web_page.h"
@@ -38,6 +39,7 @@ std::unique_ptr<AdminStore> adminStore;
 std::unique_ptr<RecipeSettingsStore> recipeSettingsStore;
 std::unique_ptr<RecipeSnapshotStore> recipeSnapshotStore;
 std::unique_ptr<QuestSnapshotStore> questSnapshotStore;
+std::unique_ptr<PlayerActivityStore> playerActivityStore;
 std::unordered_map<std::string,std::chrono::steady_clock::time_point> adminTeleportRate;
 std::unordered_map<std::string,std::chrono::steady_clock::time_point> adminStorageRate;
 std::unordered_map<std::string,std::chrono::steady_clock::time_point> adminGravestoneRate;
@@ -353,6 +355,19 @@ std::string QueryValue(const std::string& query, const std::string& key) {
         start = end + 1;
     }
     return "";
+}
+
+bool ParseUnsigned(const std::string& value, std::uint64_t& result) {
+    if (value.empty() || value.size() > 20 ||
+        !std::all_of(value.begin(), value.end(), [](unsigned char c) { return std::isdigit(c); }))
+        return false;
+    try {
+        size_t used = 0;
+        result = std::stoull(value, &used);
+        return used == value.size();
+    } catch (...) {
+        return false;
+    }
 }
 
 void Handle(int fd) {
@@ -683,6 +698,14 @@ void Handle(int fd) {
                 Respond(fd, 200, "application/json; charset=utf-8", Status::PlayerJson(player));
             }
         }
+    } else if(path=="/api/player-activity"){
+        if(!ZanikConfig::PlayerStatus()){unavailable();return;}
+        const std::string id=QueryValue(query,"id");StoredPlayer player;
+        if(id.empty())Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Player id required"));
+        else if(!playerStore->Find(id,player)||player.identity.rfind("character:",0)!=0)Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Player not found"));
+        else {std::size_t limit=8;std::uint64_t before=0,parsed=0;const auto rawLimit=QueryValue(query,"limit"),rawBefore=QueryValue(query,"before");if((!rawLimit.empty()&&(!ParseUnsigned(rawLimit,parsed)||parsed==0))||(!rawBefore.empty()&&!ParseUnsigned(rawBefore,before))){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Invalid activity cursor"));return;}if(!rawLimit.empty())limit=static_cast<std::size_t>(std::min<std::uint64_t>(parsed,50));Respond(fd,200,"application/json; charset=utf-8",playerActivityStore?playerActivityStore->PageJson(player.identity.substr(10),limit,before):"{\"events\":[],\"hasMore\":false,\"nextBefore\":null}");}
+    } else if(path=="/api/player-activity-diagnostics"){
+        auto store=playerActivityStore?playerActivityStore->Diagnostics():PlayerActivityDiagnostics{};auto engine=DomEngine::GetPlayerActivityDiscoveryDiagnostics();std::ostringstream out;out<<"{\"compatibility\":"<<store.compatibility<<",\"regionCompatibility\":"<<engine.regionCompatibility<<",\"materialCompatibility\":"<<engine.materialCompatibility<<",\"events\":"<<store.events<<",\"players\":"<<store.players<<",\"snapshots\":"<<store.snapshots+engine.snapshots<<",\"droppedSamples\":"<<store.droppedSamples+engine.droppedSamples<<",\"persistenceFailures\":"<<store.persistenceFailures<<'}';Respond(fd,200,"application/json; charset=utf-8",out.str());
     } else if (path == "/api/player-recipes") {
         if(!ZanikConfig::PlayerRecipeTracking()){unavailable();return;}
         const std::string id=QueryValue(query,"id");StoredPlayer player;
@@ -832,7 +855,7 @@ void Handle(int fd) {
         auto adminAuth = adminStore->Diagnostics();
         bool adminAuthorizationCompatible = adminAuth.allowlistReadable && adminAuth.sessionStorageReadable && adminAuth.sessionStorageWritable && adminAuth.sessionStorageRestricted && adminAuth.lastSaveSucceeded && adminAuth.malformedSessionRecords == 0;
         bool adminConsoleCompatible = adminAuthorizationCompatible && !ConsoleSecret().empty();
-        auto onlinePlayers = playerStore->Online().size();auto playerRecipes=DomEngine::GetPlayerRecipeDiagnostics();auto playerQuests=DomEngine::GetPlayerQuestDiagnostics();
+        auto onlinePlayers = playerStore->Online().size();auto playerRecipes=DomEngine::GetPlayerRecipeDiagnostics();auto playerQuests=DomEngine::GetPlayerQuestDiagnostics();auto activity=playerActivityStore?playerActivityStore->Diagnostics():PlayerActivityDiagnostics{};auto activityDiscovery=DomEngine::GetPlayerActivityDiscoveryDiagnostics();
         bool playerCompatible = DomEngine::g_Engine && DomEngine::g_Engine->IsInitialized();
         bool mapCompatible = playerCompatible && DomEngine::g_Engine->IsMapProjectionAvailable();
         const bool recipeSettingsCompatible=recipeSettings.readable&&recipeSettings.writable&&recipeSettings.restricted&&recipeSettings.lastSaveSucceeded&&recipeSettings.malformed==0;
@@ -913,6 +936,7 @@ void Handle(int fd) {
             ",\"playerRecipeSlowQueries\":"+std::to_string(playerRecipes.slowQueries)+
             ",\"playerRecipeQueryIntervalMilliseconds\":"+std::to_string(playerRecipes.queryIntervalMilliseconds)+
             ",\"playerQuestEnabled\":"+std::to_string(playerQuests.enabled)+",\"playerQuestCompatibility\":"+std::to_string(playerQuests.compatibility)+",\"playerQuestDispatcherCompatibility\":"+std::to_string(adminStorage.dispatcherCompatibility)+",\"playerQuestCatalogCompatibility\":"+std::to_string(playerQuests.catalogCompatibility)+",\"playerQuestComponentCompatibility\":"+std::to_string(playerQuests.componentCompatibility)+",\"playerQuestQueryCompatibility\":"+std::to_string(playerQuests.queryCompatibility)+",\"playerQuestCatalogEntries\":"+std::to_string(playerQuests.catalogEntries)+",\"playerQuestResolvedEntries\":"+std::to_string(playerQuests.resolvedEntries)+",\"playerQuestSnapshots\":"+std::to_string(questSnapshotStore?questSnapshotStore->Count():0)+",\"playerQuestScansCompleted\":"+std::to_string(playerQuests.scansCompleted)+",\"playerQuestQueryFailures\":"+std::to_string(playerQuests.queryFailures)+",\"playerQuestMaximumQueryMicroseconds\":"+std::to_string(playerQuests.maximumQueryMicroseconds)+",\"playerQuestSlowQueries\":"+std::to_string(playerQuests.slowQueries)+
+            ",\"playerActivityCompatibility\":"+std::to_string(activity.compatibility)+",\"playerActivityRegionCompatibility\":"+std::to_string(activityDiscovery.regionCompatibility)+",\"playerActivityMaterialCompatibility\":"+std::to_string(activityDiscovery.materialCompatibility)+",\"playerActivityEvents\":"+std::to_string(activity.events)+",\"playerActivitySnapshots\":"+std::to_string(activity.snapshots+activityDiscovery.snapshots)+",\"playerActivityDroppedSamples\":"+std::to_string(activity.droppedSamples+activityDiscovery.droppedSamples)+",\"playerActivityPersistenceFailures\":"+std::to_string(activity.persistenceFailures)+
             ",\"adminAuthorizationStorage\":" + std::string(adminAuthorizationCompatible ? "true" : "false") +
             ",\"adminConsoleCompatibility\":" + std::to_string(adminConsoleCompatible ? 1 : 0) +
             ",\"adminTeleportCompatibility\":" + std::to_string(adminTeleport.compatibility) +
@@ -1020,6 +1044,7 @@ void Run() {
     recipeSnapshotStore=std::make_unique<RecipeSnapshotStore>(DataRoot()+"/player-recipe-snapshots.db");
     recipeSnapshotStore->Load();
     questSnapshotStore=std::make_unique<QuestSnapshotStore>(DataRoot()+"/player-quest-snapshots.db");questSnapshotStore->Load();
+    playerActivityStore=std::make_unique<PlayerActivityStore>(DataRoot()+"/player-activity.db");playerActivityStore->Load();
     // Migrate names confirmed from records created before native FText lookup.
     // Future internal names are migrated automatically when first observed.
     playerStore->RenameEnemy("AI GiantRat Character", "Giant Rat");
@@ -1111,9 +1136,13 @@ void Run() {
                 DomEngine::UpdateKillPlayerCache(livePlayers);
                 if(ZanikConfig::PlayerRecipeTracking())DomEngine::UpdatePlayerRecipeTargets(livePlayers);
                 if(ZanikConfig::PlayerQuestTracking())DomEngine::UpdatePlayerQuestTargets(livePlayers);
+                auto recipeSnapshots=ZanikConfig::PlayerRecipeTracking()?DomEngine::ReadPlayerRecipeSnapshots():std::vector<DomEngine::PlayerRecipeSnapshot>{};
+                auto questSnapshots=ZanikConfig::PlayerQuestTracking()?DomEngine::ReadPlayerQuestSnapshots():std::vector<DomEngine::PlayerQuestSnapshot>{};
+                auto discoverySnapshots=DomEngine::ReadPlayerActivityDiscoveries(livePlayers);
+                if(playerActivityStore)playerActivityStore->Sync(livePlayers,recipeSnapshots,questSnapshots,discoverySnapshots);
                 playerStore->Sync(livePlayers);
-                if(ZanikConfig::PlayerRecipeTracking()&&recipeSnapshotStore)recipeSnapshotStore->Sync(DomEngine::ReadPlayerRecipeSnapshots());
-                if(ZanikConfig::PlayerQuestTracking()&&questSnapshotStore&&!questSnapshotStore->Sync(DomEngine::ReadPlayerQuestSnapshots()))DomEngine::RecordPlayerQuestPersistenceFailure();
+                if(ZanikConfig::PlayerRecipeTracking()&&recipeSnapshotStore)recipeSnapshotStore->Sync(recipeSnapshots);
+                if(ZanikConfig::PlayerQuestTracking()&&questSnapshotStore&&!questSnapshotStore->Sync(questSnapshots))DomEngine::RecordPlayerQuestPersistenceFailure();
             } else DomEngine::UpdateKillPlayerCache({});
             nextSync = now + std::chrono::seconds(2);
         }
@@ -1139,6 +1168,7 @@ void Run() {
     playerStore->Save();
     if(recipeSnapshotStore)recipeSnapshotStore->Save();
     if(questSnapshotStore)questSnapshotStore->Save();
+    if(playerActivityStore)playerActivityStore->Save();
     close(listener);
 }
 }

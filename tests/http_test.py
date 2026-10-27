@@ -56,6 +56,10 @@ try:
         assert 'data-player-view="quests"' in page
         assert 'data-player-panel="quests"' in page
         assert "selectPlayerView" in page
+        assert 'class="overview-grid"' in page
+        assert 'id="activityList"' in page
+        assert 'id="activityMore"' in page
+        assert "/api/player-activity?id=" in page
 
     with urllib.request.urlopen(base + "/api/quests/catalog", timeout=3) as response:
         quest_catalog = json.loads(response.read())
@@ -177,7 +181,10 @@ try:
         assert response.read() == b'{"enemy":null,"players":[]}'
 
     with urllib.request.urlopen(base + "/api/skills", timeout=3) as response:
-        assert response.read() == b'{"skills":[]}'
+        assert response.read() == b'{"playerCount":0,"skills":[]}'
+
+    with urllib.request.urlopen(base + "/api/skill-leaderboard", timeout=3) as response:
+        assert response.read() == b'{"skill":null,"players":[]}'
 
     with urllib.request.urlopen(base + "/api/skill-leaderboard?skill=Mining", timeout=3) as response:
         assert response.read() == b'{"skill":"Mining","players":[]}'
