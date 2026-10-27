@@ -4,6 +4,15 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.52] - 2026-10-27
+
+### Changed
+
+- Ship the updated website and server payload through Zanik Manager 0.2.52.
+- Track each player's current online session and show a live-updating online duration on their player page, resetting the timer when they disconnect and reconnect.
+- Simplify the global navigation by making the Zanik brand the sole home link and renaming Kills to Highscores, then add Combat and Skills highscore tabs with per-enemy and per-skill player rankings.
+- Hide the player page's complete Manage navigation group unless the authenticated administrator can read Storage or Gravestones, including an explicit CSS guarantee that hidden sidebar controls cannot be displayed.
+
 ## [0.2.51] - 2026-10-27
 
 ### Changed

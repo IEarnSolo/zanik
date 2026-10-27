@@ -86,6 +86,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert "Dragonwilds Server" in page
             assert "encodeURIComponent(String(player.id))" in page
             assert page.index('class="site-header"') < page.index("<main>")
+            assert '>Server</a>' not in page and '>Highscores</a>' in page
         with get(base, "/players") as response:
             page = response.read().decode()
             assert "Known players" in page and 'class="site-header"' in page
@@ -96,6 +97,8 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert 'data-player-panel="combat"' in page
             assert 'data-player-panel="recipes"' in page
             assert 'data-player-panel="quests"' in page
+            assert 'id="manageSidebarGroup" class="player-sidebar-group" hidden' in page
+            assert '.player-sidebar [hidden]{display:none!important}' in page
         with get(base, "/map") as response:
             page = response.read().decode()
             assert "Live world map" in page
@@ -103,9 +106,10 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert page.index('class="site-header"') < page.index('id="headerContent"')
         with get(base, "/kills") as response:
             page = response.read().decode()
-            assert "Kill highscores" in page
+            assert "Highscores" in page
             assert 'class="kills-sidebar"' in page
-            assert 'id="enemyList"' in page and "selectEnemy" in page
+            assert 'id="combatTab"' in page and 'id="skillsTab"' in page
+            assert 'id="enemyList"' in page and "selectScore" in page
 
         expect_error(base, "/api/quests/catalog", 503, "Quest catalog unavailable")
         expect_error(base, "/api/map/npcs/catalog", 503, "NPC catalog unavailable")
@@ -169,6 +173,10 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert response.read() == b'{"count":0,"players":[]}'
         with get(base, "/api/kills") as response:
             assert response.read() == b'{"totalKills":0,"enemies":[]}'
+        with get(base, "/api/skills") as response:
+            assert response.read() == b'{"skills":[]}'
+        with get(base, "/api/skill-leaderboard?skill=Mining") as response:
+            assert response.read() == b'{"skill":"Mining","players":[]}'
 
         expect_error(base, "/api/player?id=abc123", 404)
         expect_error(base, "/api/kick", 404)

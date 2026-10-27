@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory(prefix='zanik-gates-') as name:
             except (OSError, urllib.error.URLError): time.sleep(.1)
         else: raise AssertionError('listener did not start')
         assert all(update['featureStates'][key]=='disabled' for key in ('playerStatus','killTracking','map','resourceTracking','npcTracking','playerRecipeTracking','playerQuestTracking','adminRead'))
-        for path,status in (('/',404),('/map',404),('/kills',404),('/api/players',503),('/api/kills',503),('/api/map/resources/catalog',503),('/api/map/npcs/catalog',503),('/api/quests/catalog',503)):
+        for path,status in (('/',404),('/map',404),('/kills',404),('/api/players',503),('/api/kills',503),('/api/skills',503),('/api/skill-leaderboard?skill=Mining',503),('/api/map/resources/catalog',503),('/api/map/npcs/catalog',503),('/api/quests/catalog',503)):
             try: urllib.request.urlopen(base+path,timeout=2); raise AssertionError(path)
             except urllib.error.HTTPError as error:
                 assert error.code==status,(path,error.code)
