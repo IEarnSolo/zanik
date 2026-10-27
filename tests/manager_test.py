@@ -978,6 +978,23 @@ class ManagerTests(unittest.TestCase):
                 "dev", "/home/container/zanik/config/zanik.conf")
         self.assertEqual(len(calls), 1)
 
+    def test_file_contents_editor_size_limit_uses_signed_download_fallback(self):
+        calls = []
+        def transport(method, url, headers, body, timeout):
+            calls.append((method, url, headers))
+            if "/files/contents" in url:
+                return Response(400, b'{"errors":[{"detail":"The file you are attempting to open is too large to view in the file editor."}]}', {})
+            if "/files/download" in url:
+                return Response(200, b'{"attributes":{"url":"https://node.example/library"}}', {})
+            if url == "https://node.example/library":
+                return Response(200, b"\x7fELFlarge", {})
+            raise AssertionError(url)
+        content = PterodactylClient("https://panel.example", "secret", transport).read_file(
+            "dev", "/home/container/zanik/bin/libzanik.so")
+        self.assertEqual(content, b"\x7fELFlarge")
+        self.assertEqual(len(calls), 3)
+        self.assertNotIn("Authorization", calls[-1][2])
+
     def test_pterodactyl_translates_container_paths_to_virtual_root(self):
         calls = []
         def transport(method, url, headers, body, timeout):

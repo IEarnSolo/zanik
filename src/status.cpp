@@ -139,11 +139,13 @@ std::string KillLeaderboardJson(const std::vector<StoredPlayer>& players,
 
 std::string SkillSummaryJson(const std::vector<StoredPlayer>& players) {
     std::map<std::string, std::size_t> skills;
+    std::size_t playerCount = 0;
     for (const auto& player : players) {
+        if (!player.skills.empty()) ++playerCount;
         for (const auto& skill : player.skills) ++skills[SkillName(skill.name)];
     }
     std::ostringstream json;
-    json << "{\"skills\":[";
+    json << "{\"playerCount\":" << playerCount << ",\"skills\":[";
     std::size_t index = 0;
     for (const auto& entry : skills) {
         if (index++) json << ',';
@@ -155,15 +157,26 @@ std::string SkillSummaryJson(const std::vector<StoredPlayer>& players) {
 
 std::string SkillLeaderboardJson(const std::vector<StoredPlayer>& players,
                                  const std::string& skill) {
-    struct Row { std::string id, name; int xp = 0; };
+    struct Row { std::string id, name; int level = 0; std::int64_t xp = 0; };
     std::vector<Row> rows;
     for (const auto& player : players) {
+        if (skill.empty()) {
+            if (player.skills.empty()) continue;
+            Row row{player.id, player.name};
+            for (const auto& value : player.skills) {
+                row.level += SkillLevel(value.xp);
+                row.xp += value.xp;
+            }
+            rows.push_back(std::move(row));
+            continue;
+        }
         auto found = std::find_if(player.skills.begin(), player.skills.end(), [&](const auto& value) {
             return SkillName(value.name) == skill;
         });
-        if (found != player.skills.end()) rows.push_back({player.id, player.name, found->xp});
+        if (found != player.skills.end()) rows.push_back({player.id, player.name, SkillLevel(found->xp), found->xp});
     }
     std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) {
+        if (a.level != b.level) return a.level > b.level;
         return a.xp != b.xp ? a.xp > b.xp : a.name < b.name;
     });
     std::ostringstream json;
@@ -171,7 +184,8 @@ std::string SkillLeaderboardJson(const std::vector<StoredPlayer>& players,
     for (std::size_t i = 0; i < rows.size(); ++i) {
         if (i) json << ',';
         json << "{\"id\":\"" << Escape(rows[i].id) << "\",\"name\":\"" << Escape(rows[i].name)
-             << "\",\"level\":" << SkillLevel(rows[i].xp) << ",\"xp\":" << rows[i].xp << '}';
+             << (skill.empty() ? "\",\"totalLevel\":" : "\",\"level\":") << rows[i].level
+             << (skill.empty() ? ",\"totalXp\":" : ",\"xp\":") << rows[i].xp << '}';
     }
     json << "]}";
     return json.str();

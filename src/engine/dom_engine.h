@@ -708,6 +708,24 @@ std::vector<PlayerQuestSnapshot> ReadPlayerQuestSnapshots();
 PlayerQuestDiagnostics GetPlayerQuestDiagnostics();
 std::string GetPlayerQuestCatalogFingerprint();
 void RecordPlayerQuestPersistenceFailure();
+struct ActivityRegionInfo { std::uint8_t id=0;std::string name; };
+struct ActivityMaterialInfo { std::string key,name,icon; };
+struct PlayerActivityDiscoverySnapshot {
+    std::string characterGuid;
+    bool regionsComplete=false;
+    std::uint32_t regionBitmap=0;
+    std::vector<ActivityRegionInfo> regions;
+    bool materialsComplete=false;
+    std::vector<ActivityMaterialInfo> materials;
+    std::int64_t capturedAt=0;
+};
+struct PlayerActivityDiscoveryDiagnostics {
+    int regionCompatibility=0,materialCompatibility=0;
+    std::uint64_t snapshots=0,droppedSamples=0;
+};
+std::vector<PlayerActivityDiscoverySnapshot> ReadPlayerActivityDiscoveries(
+    const std::vector<PlayerInfo>& players);
+PlayerActivityDiscoveryDiagnostics GetPlayerActivityDiscoveryDiagnostics();
 std::string FileSha256(const char* path);
 
 class Engine {
@@ -758,6 +776,7 @@ public:
                                            const std::vector<PlayerInfo>& players) const;
     std::string GetEnemyDisplayName(uintptr_t actor) const;
     std::string GetMapRegionName(uintptr_t context, const FVector3d& location) const;
+    std::string ReadObjectText(uintptr_t object, const char* propertyName) const;
     uintptr_t GetDungeonAtLocation(uintptr_t context, const FVector3d& location) const;
     std::string GetDungeonName(uintptr_t dungeon) const;
     std::string GetDungeonRegionName(uintptr_t context, uintptr_t dungeon) const;

@@ -186,7 +186,8 @@ class PterodactylClient:
             return self.request("GET", f"/api/client/servers/{server_id}/files/contents",
                                 query={"file": api_file_path(path)}).body
         except PterodactylError as error:
-            if error.status not in {500, 502, 503, 504}:
+            editor_limit = "too large to view in the file editor" in str(error).lower()
+            if error.status not in {500, 502, 503, 504} and not editor_limit:
                 raise
             return self.download_file(server_id, path)
 

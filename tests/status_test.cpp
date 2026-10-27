@@ -3,14 +3,44 @@
 #include "player_store.h"
 #include "recipe_snapshot_store.h"
 #include "quest_snapshot_store.h"
+#include "player_activity_store.h"
 
 #include <cassert>
 #include <cstdio>
 #include <fstream>
+#include <filesystem>
 #include <string>
+#include <sys/stat.h>
 #include <vector>
 
 int main() {
+    {
+        const std::string web="dist/activity-web";std::filesystem::create_directories(web);
+        std::ofstream recipes(web+"/recipe-runtime-catalog.tsv");recipes<<"# schema=2 fingerprint=test count=3\n"<<"r1\tcrafting\tRECIPE_Bronze\tBronze bar\t/assets/items/bronze.png\n"<<"r1-alt\tcrafting\tRECIPE_BronzeAlt\tBronze bar\t/assets/items/bronze.png\n"<<"r2\tcrafting\tRECIPE_Iron\tIron bar\t/assets/items/iron.png\n";recipes.close();
+        std::ofstream quests(web+"/quest-runtime-catalog.tsv");quests<<"# schema=1 fingerprint=test count=1\nq1\tDragon \"Slayer\"\tQuest_DragonSlayer\n";quests.close();setenv("DW_WEB_ROOT",web.c_str(),1);
+        const std::string path="dist/player-activity-test.db";std::remove(path.c_str());
+        PlayerActivityStore activity(path);assert(activity.Load());
+        DomEngine::PlayerInfo player;player.characterGuid="hero";player.skills={{"SKILL_Attack",33}};player.hasHealth=true;player.health=10;player.isDead=false;player.location="Ashenfall";
+        DomEngine::PlayerRecipeSnapshot recipe{"hero",{"r1"},"recipes-a",100,true};
+        DomEngine::PlayerQuestSnapshot quest{"hero",{{"q1","not_started","",0}},"quests-a",100,true};
+        DomEngine::PlayerActivityDiscoverySnapshot discovery;discovery.characterGuid="hero";discovery.regionsComplete=true;discovery.regionBitmap=1;discovery.regions={{0,"Ashenfall"},{1,"Dowdun Reach"}};discovery.materialsComplete=true;discovery.materials={{"wood","Wood","/assets/items/wood.png"}};
+        assert(activity.Sync({player},{recipe},{quest},{discovery},100));assert(activity.Page("hero",8).events.empty());
+        player.skills[0].currentXP=463;player.health=0;player.isDead=true;
+        recipe.unlockedIds.push_back("r1-alt");recipe.unlockedIds.push_back("r2");quest.quests[0]={"q1","in_progress","Find the dragon",0};discovery.regionBitmap=3;discovery.materials.push_back({"iron","Iron ore","/assets/items/iron.png"});
+        assert(activity.Sync({player},{recipe},{quest},{discovery},200));auto page=activity.Page("hero",8);assert(page.events.size()==6&&!page.hasMore);const auto count=activity.Diagnostics().events;
+        assert(!activity.Sync({player},{recipe},{quest},{discovery},201));assert(activity.Diagnostics().events==count);
+        auto regressedPlayer=player;regressedPlayer.skills[0].currentXP=33;assert(!activity.Sync({regressedPlayer},{},{},{},210));assert(!activity.Sync({player},{},{},{},211));
+        auto regressedRecipe=recipe;regressedRecipe.unlockedIds={"r1"};assert(!activity.Sync({},{regressedRecipe},{},{},220));assert(!activity.Sync({},{recipe},{},{},221));
+        auto regressedDiscovery=discovery;regressedDiscovery.regionBitmap=1;regressedDiscovery.materials.resize(1);assert(!activity.Sync({},{},{},{regressedDiscovery},230));assert(!activity.Sync({},{},{},{discovery},231));
+        quest.quests[0].objective.clear();assert(!activity.Sync({},{},{quest},{},290));quest.quests[0].objective="Defeat the dragon";assert(activity.Sync({player},{recipe},{quest},{discovery},300));quest.quests[0].status="completed";assert(activity.Sync({player},{recipe},{quest},{discovery},400));
+        page=activity.Page("hero",3);assert(page.events.size()==3&&page.hasMore&&page.events[0].type=="quest_completed");auto older=activity.Page("hero",50,page.nextBefore);assert(!older.events.empty());
+        const auto beforeCatalogChange=activity.Diagnostics().events;recipe.catalogFingerprint="recipes-b";recipe.unlockedIds={"r1"};quest.catalogFingerprint="quests-b";quest.quests[0]={"q1","not_started","",0};assert(activity.Sync({},{recipe},{quest},{},450));assert(activity.Diagnostics().events==beforeCatalogChange);
+        const std::string json=activity.PageJson("hero",8);assert(json.find("characterGuid")==std::string::npos&&json.find("hero")==std::string::npos&&json.find("quest_completed")!=std::string::npos&&json.find("Dragon \\\"Slayer\\\"")!=std::string::npos);
+        struct stat activityMode{};assert(stat(path.c_str(),&activityMode)==0&&(activityMode.st_mode&0777)==0600);
+        {std::ofstream bad(path,std::ios::app);bad<<"E\tmalformed\n";}
+        PlayerActivityStore loaded(path);assert(loaded.Load());assert(loaded.Diagnostics().events==activity.Diagnostics().events);assert(loaded.Page("hero",8).events[0].type=="quest_completed");std::remove(path.c_str());
+        const std::string missing="dist/missing-activity-parent/player-activity.db";std::filesystem::remove_all("dist/missing-activity-parent");PlayerActivityStore failing(missing);assert(failing.Load());assert(!failing.Sync({player},{},{},{},500));assert(failing.Diagnostics().persistenceFailures==1);assert(failing.PageJson("hero",8).find("\"persistenceError\":true")!=std::string::npos);
+    }
     {
         std::ofstream hashInput("dist/sha256-test.txt", std::ios::binary);
         hashInput << "abc";
@@ -120,10 +150,17 @@ int main() {
            std::string("{\"enemy\":\"Goblin Archer\",\"players\":[{\"id\":\"") + publicId +
            "\",\"name\":\"Saved Player\",\"count\":2}]}");
     assert(Status::SkillSummaryJson({loaded}) ==
-           R"({"skills":[{"skill":"Mining","players":1}]})");
+           R"({"playerCount":1,"skills":[{"skill":"Mining","players":1}]})");
     assert(Status::SkillLeaderboardJson({loaded}, "Mining") ==
            std::string("{\"skill\":\"Mining\",\"players\":[{\"id\":\"") + publicId +
            "\",\"name\":\"Saved Player\",\"level\":30,\"xp\":5367}]}");
+    StoredPlayer multiSkill;
+    multiSkill.id = "multi";
+    multiSkill.name = "Multi Skill";
+    multiSkill.skills = {{"SKILL_Attack", 33}, {"SKILL_Woodcutting", 463}};
+    assert(Status::SkillLeaderboardJson({multiSkill, loaded}, "") ==
+           std::string("{\"skill\":null,\"players\":[{\"id\":\"") + publicId +
+           "\",\"name\":\"Saved Player\",\"totalLevel\":30,\"totalXp\":5367},{\"id\":\"multi\",\"name\":\"Multi Skill\",\"totalLevel\":12,\"totalXp\":496}]}");
     std::remove(storePath);
     const char* recipeStorePath="dist/player-recipe-snapshot-test.db";
     std::remove(recipeStorePath);

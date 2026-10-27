@@ -9,6 +9,7 @@ SRC = src/main.cpp src/status.cpp src/player_store.cpp src/admin_store.cpp src/r
 SRC += src/engine/admin_storage.cpp
 SRC += src/engine/admin_gravestone.cpp
 SRC += src/recipe_snapshot_store.cpp src/engine/player_recipes.cpp src/quest_snapshot_store.cpp src/engine/player_quests.cpp
+SRC += src/player_activity_store.cpp src/engine/player_activity_discovery.cpp
 OBJ = $(SRC:.cpp=.o)
 DEP = $(OBJ:.o=.d)
 OUT = dist/libdwstatus.so
@@ -36,12 +37,13 @@ test: test-core
 
 test-core: $(OUT) dist/zanik-compat-analyzer
 	mkdir -p dist
-	$(CXX) $(CXXFLAGS) tests/status_test.cpp src/status.o src/player_store.o src/recipe_snapshot_store.o src/quest_snapshot_store.o src/engine/engine_core.o \
+	$(CXX) $(CXXFLAGS) tests/status_test.cpp src/status.o src/player_store.o src/player_activity_store.o src/recipe_snapshot_store.o src/quest_snapshot_store.o src/engine/engine_core.o \
 		src/engine/uobject.o src/engine/players.o src/engine/kills.o src/engine/resources.o src/engine/npcs.o src/engine/admin_teleport.o src/utils/memory.o \
 	src/engine/admin_storage.o \
 	src/engine/admin_gravestone.o \
 	src/engine/player_recipes.o \
 	src/engine/player_quests.o \
+	src/engine/player_activity_discovery.o \
 	src/utils/glibc_compat.o -o dist/status_test -pthread -ldl
 	./dist/status_test
 	$(CXX) $(CXXFLAGS) tests/admin_store_test.cpp src/admin_store.o -o dist/admin_store_test -pthread
@@ -76,6 +78,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	sh tests/server_game_update_test.sh
 	$(NODE) tests/map_page_test.js
 	$(PYTHON) tests/http_core_test.py
+	$(PYTHON) tests/player_activity_http_test.py
 	$(PYTHON) tests/maintenance_http_test.py
 	$(PYTHON) tests/feature_gate_http_test.py
 	sh tests/updater_test.sh

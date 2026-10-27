@@ -563,6 +563,18 @@ bool GetAdminTeleportOffsets(uintptr_t& playerTick,uintptr_t& actorTeleportTo,ui
     return playerTick&&actorTeleportTo&&processEvent&&lodestoneTryTeleport&&lodestoneCanTeleport;
 }
 
+std::string Engine::ReadObjectText(uintptr_t object,const char* propertyName)const{
+    if(!object||!propertyName)return {};
+    if(!activeBuild.fTextDisplayString){BuildCompatibility candidate;if(!LoadCompatibility(ComputeFileSha256("/proc/self/exe"),candidate))return {};activeBuild=std::move(candidate);}
+    int32_t offset=FindPropertyOffset(object,propertyName);if(offset<0||offset>0x4000)return {};
+    using GetDisplayStringFn=const FString*(*)(const void*);
+    uintptr_t function=moduleBase+activeBuild.fTextDisplayString;
+    if(function<moduleBase||!Mem::InImage(reinterpret_cast<void*>(function)))return {};
+    auto display=reinterpret_cast<GetDisplayStringFn>(function);
+    const FString* shown=display(reinterpret_cast<const void*>(object+uintptr_t(offset)));
+    return shown&&Mem::Readable(shown,sizeof(FString))?ReadFString(reinterpret_cast<uintptr_t>(shown)):std::string{};
+}
+
 bool ReadMapLabels(std::vector<MapLabelInfo>& out){
     out.clear();
     labelComponents=0;labelTextProperties=0;labelReadableTexts=0;labelActorOwners=0;labelValidAnchors=0;
