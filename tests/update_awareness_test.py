@@ -14,7 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from manager.zanik_manager.updates import (GitHubReleaseChecker, parse_version, prune_update_staging,
-                                           release_update_components, update_staging_cleanup_pending)
+                                           newer_server_payload_available, release_update_components,
+                                           update_staging_cleanup_pending)
 from manager.zanik_manager.game_updates import PublicSteamBuildChecker, installed_build
 
 
@@ -67,6 +68,16 @@ class UpdateAwarenessTests(unittest.TestCase):
         both = {**assets, "serverPayload": {"contractSha256": "d" * 64}}
         self.assertEqual(release_update_components(both, current_server, current_assets),
                          ["Zanik server", "website assets"])
+
+    def test_newer_server_payload_gate_requires_a_real_contract_change(self):
+        embedded = "a" * 64
+        self.assertFalse(newer_server_payload_available(None, embedded))
+        self.assertFalse(newer_server_payload_available(
+            {"updateAvailable": True, "serverPayload": {"contractSha256": embedded}}, embedded))
+        self.assertFalse(newer_server_payload_available(
+            {"updateAvailable": True, "serverPayload": {"contractSha256": "invalid"}}, embedded))
+        self.assertTrue(newer_server_payload_available(
+            {"updateAvailable": True, "serverPayload": {"contractSha256": "b" * 64}}, embedded))
 
     def test_release_metadata_and_digest_are_validated(self):
         archive = manager_zip("0.2.16")

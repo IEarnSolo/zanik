@@ -4,6 +4,10 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+### Changed
+
+- Prevent an older Zanik Manager from attempting a known newer Zanik server update; require the Manager update first while still offering an explicit repair of the currently installed payload when it matches the older Manager.
+
 ## [0.2.50] - 2026-10-26
 
 ### Changed

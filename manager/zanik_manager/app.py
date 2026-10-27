@@ -41,7 +41,8 @@ from .pterodactyl import PterodactylClient
 from .security import CredentialVault, credential_target, redact
 from .support import create_support_bundle
 from .updates import (GitHubReleaseChecker, current_manager_version, prune_update_staging, prune_updater_backups,
-                      release_update_components, update_staging_cleanup_pending, write_startup_handshake)
+                      newer_server_payload_available, release_update_components,
+                      update_staging_cleanup_pending, write_startup_handshake)
 
 
 def distribution_root() -> Path:
@@ -1648,6 +1649,41 @@ class MainWindow(QMainWindow):
             return
         embedded = resource_path("VERSION").read_text(encoding="utf-8").strip()
         current = state.get("version") or "unknown"
+        embedded_contract = None
+        try:
+            payload_metadata = json.loads(
+                resource_path("payload", "server-payload.json").read_text(encoding="utf-8-sig"))
+            embedded_contract = payload_metadata.get("payloadContractSha256")
+        except (OSError, ValueError, TypeError):
+            pass
+        repair_confirmed = False
+        if newer_server_payload_available(self.manager_release_status, embedded_contract):
+            latest = self.manager_release_status.get("latestVersion", "newer version")
+            can_repair_current = state.get("payloadCompatibility") == "current"
+            box = QMessageBox(self); box.setWindowTitle("Update Zanik Manager first")
+            box.setIcon(QMessageBox.Warning)
+            box.setText(
+                f"Zanik Manager {latest} is available and contains newer Zanik server files. "
+                f"Manager {embedded} cannot install that server update. Update Zanik Manager first.")
+            if can_repair_current:
+                box.setInformativeText(
+                    f"The installed server still matches Manager {embedded}. If you only intended to verify and "
+                    "repair that current payload, you may explicitly repair it without installing the newer Zanik version.")
+            else:
+                box.setInformativeText(
+                    "Repair current version is unavailable because the installed server payload does not match the "
+                    "payload embedded in this older Manager.")
+            update_manager = box.addButton("Update Manager first", QMessageBox.AcceptRole)
+            repair_current = (box.addButton("Repair current version", QMessageBox.ActionRole)
+                              if can_repair_current else None)
+            box.addButton(QMessageBox.Cancel); box.setDefaultButton(update_manager); box.exec()
+            if box.clickedButton() is update_manager:
+                self.install_manager_update(); return
+            if repair_current is None or box.clickedButton() is not repair_current:
+                return
+            repair_confirmed = True
+            self.log(f"Repairing the current Zanik {current} payload with Manager {embedded}; "
+                     f"the newer Zanik payload in Manager {latest} was not installed.")
         if state.get("payloadCompatibility") == "current":
             action = (f"Repair {profile.name} using the server payload already compatible with Manager {embedded}?\n\n"
                       f"The installed Zanik release is {current}. This is an intentional verified repair; no server update is required.")
@@ -1657,8 +1693,9 @@ class MainWindow(QMainWindow):
                    "and active website assets will be preserved.")
         if mode == "replace-executable":
             message += "\n\nThis mode manages the game executable path while preserving the verified official executable."
-        if QMessageBox.warning(self, "Update / repair Zanik", message,
-                               QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+        if (not repair_confirmed and QMessageBox.warning(
+                self, "Update / repair Zanik", message,
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes):
             return
         self.install_profile(profile, forced_mode=mode,
                              replacement_acknowledged=(mode == "replace-executable"), maintenance=True)

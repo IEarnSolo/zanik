@@ -51,6 +51,17 @@ def release_update_components(result: dict, current_server_contract: dict | None
     return components or ["Manager only"]
 
 
+def newer_server_payload_available(result: dict | None, embedded_contract_sha256: str | None) -> bool:
+    """Whether a validated newer Manager carries a server payload this Manager cannot install."""
+    result = result or {}
+    latest = result.get("serverPayload") or {}
+    latest_digest = str(latest.get("contractSha256") or "").lower()
+    embedded_digest = str(embedded_contract_sha256 or "").lower()
+    valid = lambda value: len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+    return bool(result.get("updateAvailable") and valid(latest_digest)
+                and valid(embedded_digest) and latest_digest != embedded_digest)
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
