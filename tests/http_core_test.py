@@ -85,12 +85,27 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             page = response.read().decode()
             assert "Dragonwilds Server" in page
             assert "encodeURIComponent(String(player.id))" in page
+            assert page.index('class="site-header"') < page.index("<main>")
         with get(base, "/players") as response:
-            assert "Known players" in response.read().decode()
+            page = response.read().decode()
+            assert "Known players" in page and 'class="site-header"' in page
+        with get(base, "/player?id=test") as response:
+            page = response.read().decode()
+            assert 'class="player-sidebar"' in page
+            assert 'data-player-panel="overview"' in page
+            assert 'data-player-panel="combat"' in page
+            assert 'data-player-panel="recipes"' in page
+            assert 'data-player-panel="quests"' in page
         with get(base, "/map") as response:
             page = response.read().decode()
             assert "Live world map" in page
             assert "/api/map/npcs/state" in page
+            assert page.index('class="site-header"') < page.index('id="headerContent"')
+        with get(base, "/kills") as response:
+            page = response.read().decode()
+            assert "Kill highscores" in page
+            assert 'class="kills-sidebar"' in page
+            assert 'id="enemyList"' in page and "selectEnemy" in page
 
         expect_error(base, "/api/quests/catalog", 503, "Quest catalog unavailable")
         expect_error(base, "/api/map/npcs/catalog", 503, "NPC catalog unavailable")

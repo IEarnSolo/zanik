@@ -41,6 +41,8 @@ try:
         page = response.read().decode()
         assert "Dragonwilds Server" in page
         assert "encodeURIComponent(String(player.id))" in page
+        assert page.index('class="site-header"') < page.index("<main>")
+        assert 'class="site-nav"' in page
 
     with urllib.request.urlopen(base + "/players", timeout=3) as response:
         page = response.read().decode()
@@ -50,7 +52,10 @@ try:
         page = response.read().decode()
         assert "skill-icon-wrap" in page
         assert "/assets/skills/" in page
-        assert ">Quests</summary>" in page
+        assert 'class="player-sidebar"' in page
+        assert 'data-player-view="quests"' in page
+        assert 'data-player-panel="quests"' in page
+        assert "selectPlayerView" in page
 
     with urllib.request.urlopen(base + "/api/quests/catalog", timeout=3) as response:
         quest_catalog = json.loads(response.read())
@@ -87,7 +92,9 @@ try:
 
     with urllib.request.urlopen(base + "/kills", timeout=3) as response:
         page = response.read().decode()
-        assert "Server kill statistics" in page
+        assert "Kill highscores" in page
+        assert 'class="kills-sidebar"' in page
+        assert "'/api/kill-leaderboard'+(selectedEnemy?'?enemy='" in page
 
     with urllib.request.urlopen(base + "/map", timeout=3) as response:
         page = response.read().decode()

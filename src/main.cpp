@@ -377,7 +377,7 @@ void Handle(int fd) {
             Respond(fd,200,"application/json; charset=utf-8","{\"website\":true,\"maintenance\":true,\"reason\":\"unsupported-game-build\",\"nativeRuntimeLoaded\":false,\"gameBuild\":\""+JsonEscape(build?build:"unknown")+"\",\"gameExecutableSha256\":\""+JsonEscape(hash?hash:"")+"\",\"zanikVersion\":\""+JsonEscape(version?version:"unknown")+"\",\"installMode\":\""+JsonEscape(mode?mode:"unknown")+"\",\"autoUpdate\":{\"value\":\""+JsonEscape(autoValue?autoValue:"unknown")+"\",\"health\":\""+JsonEscape(autoHealth?autoHealth:"unknown")+"\",\"requirement\":\""+std::string(mode&&std::strcmp(mode,"replace-executable")==0?"must-be-zero":"preserved")+"\"},\"release\":"+MaintenanceReleaseJson()+",\"backupRetention\":"+BackupRetentionStateJson()+"}");return;
         }
         if(path.rfind("/api/",0)==0){Respond(fd,503,"application/json; charset=utf-8","{\"error\":\"Zanik is in maintenance mode for an unsupported Dragonwilds build\"}");return;}
-        Respond(fd,200,"text/html; charset=utf-8",MaintenancePage());return;
+        Respond(fd,200,"text/html; charset=utf-8",PageWithSiteHeader(MaintenancePage(),""));return;
     }
     static const std::unordered_set<std::string> postRoutes={
         "/api/admin/claim","/api/admin/console-claim","/api/admin/recipe-unlock-settings",
@@ -396,21 +396,21 @@ void Handle(int fd) {
         Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));return;
     }
     if (path == "/") {
-        if(!ZanikConfig::PlayerStatus())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", kWebPage);
+        if(!ZanikConfig::PlayerStatus())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", PageWithSiteHeader(kWebPage,"server"));
     } else if (path == "/player") {
-        if(!ZanikConfig::PlayerStatus())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", kPlayerPage);
+        if(!ZanikConfig::PlayerStatus())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", PageWithSiteHeader(kPlayerPage,"players"));
     } else if (path == "/players") {
-        if(!ZanikConfig::PlayerStatus())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", kPlayersPage);
+        if(!ZanikConfig::PlayerStatus())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", PageWithSiteHeader(kPlayersPage,"players"));
     } else if (path == "/kills") {
-        if(!ZanikConfig::KillTracking())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", kKillsPage);
+        if(!ZanikConfig::KillTracking())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", PageWithSiteHeader(kKillsPage,"kills"));
     } else if (path == "/map") {
-        if(!ZanikConfig::Map())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", kMapPage);
+        if(!ZanikConfig::Map())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", PageWithSiteHeader(kMapPage,"map"));
     } else if (path == "/recipe-unlocks") {
-        Respond(fd, 200, "text/html; charset=utf-8", kRecipeUnlocksPage);
+        Respond(fd, 200, "text/html; charset=utf-8", PageWithSiteHeader(kRecipeUnlocksPage,"recipes"));
     } else if(path=="/admin/recipe-unlocks"){
-        AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(!ZanikConfig::AdminRecipeSettings()){disabled();return;}Respond(fd,200,"text/html; charset=utf-8",kRecipeUnlockSettingsPage,PersistentAdminCookie(raw));
+        AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(!ZanikConfig::AdminRecipeSettings()){disabled();return;}Respond(fd,200,"text/html; charset=utf-8",PageWithSiteHeader(kRecipeUnlockSettingsPage,"recipes"),PersistentAdminCookie(raw));
     } else if(path=="/admin/claim"){
-        Respond(fd,200,"text/html; charset=utf-8",R"HTML(<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Zanik admin login</title><style>body{font:16px system-ui;background:#101816;color:#eef7f1;display:grid;place-items:center;min-height:100vh}main{max-width:32rem;padding:2rem;background:#1b2925;border:1px solid #789487;border-radius:.8rem}a{color:#9ee8c0}</style><main><h1>Zanik administration</h1><p id="status">Redeeming private login link…</p><p><a href="/map">Open map</a></p></main><script>(async()=>{const s=document.getElementById('status'),p=new URLSearchParams(location.hash.slice(1)),token=p.get('token');history.replaceState(null,'',location.pathname);if(!token){s.textContent='This login link is missing its token.';return}try{const r=await fetch('/api/admin/claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})}),j=await r.json();if(!r.ok)throw Error(j.error||'Login failed');s.textContent='Signed in as '+j.characterName+'. Redirecting to the map…';setTimeout(()=>location.replace('/map'),600)}catch(e){s.textContent=e.message}})()</script>)HTML");
+        Respond(fd,200,"text/html; charset=utf-8",PageWithSiteHeader(R"HTML(<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Zanik admin login</title><style>body{font:16px system-ui;background:#101816;color:#eef7f1;display:grid;place-items:center;min-height:100vh}main{max-width:32rem;padding:2rem;background:#1b2925;border:1px solid #789487;border-radius:.8rem}a{color:#9ee8c0}</style><main><h1>Zanik administration</h1><p id="status">Redeeming private login link…</p><p><a href="/map">Open map</a></p></main><script>(async()=>{const s=document.getElementById('status'),p=new URLSearchParams(location.hash.slice(1)),token=p.get('token');history.replaceState(null,'',location.pathname);if(!token){s.textContent='This login link is missing its token.';return}try{const r=await fetch('/api/admin/claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})}),j=await r.json();if(!r.ok)throw Error(j.error||'Login failed');s.textContent='Signed in as '+j.characterName+'. Redirecting to the map…';setTimeout(()=>location.replace('/map'),600)}catch(e){s.textContent=e.message}})()</script>)HTML","map"));
     } else if(path=="/api/admin/claim"){
         if(!requirePost())return;if(!ZanikConfig::AdminRead()){disabled();return;}std::string raw;AdminSession s;std::string token=JsonValue(request.body,"token");
         if(token.size()!=64||!adminStore->RedeemClaim(token,raw,s))Respond(fd,401,"application/json; charset=utf-8",Status::ErrorJson("Invalid, expired, or used login link"));
