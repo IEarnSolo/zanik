@@ -1337,11 +1337,16 @@ class ManagerTests(unittest.TestCase):
                 self.directories = {"/", "/home", "/home/container", "/home/container/RSDragonwilds", "/home/container/RSDragonwilds/Binaries", "/home/container/RSDragonwilds/Binaries/Linux"}
                 self.state = "offline"
                 self.auto_update = "1"
+                self.uploads = []
+                self.signals = []
             def server(self, _): return {"server_owner": True}
             def resources(self, _): return {"current_state": self.state}
-            def power(self, _, signal): self.state = "running" if signal in {"start", "restart"} else "offline"
+            def power(self, _, signal):
+                self.signals.append(signal); self.state = "running" if signal in {"start", "restart"} else "offline"
             def create_folder(self, _, root, name): self.directories.add(str(Path(root) / name).replace("\\", "/"))
-            def upload(self, _, directory, name, content): self.files[f"{directory.rstrip('/')}/{name}"] = content
+            def upload(self, _, directory, name, content):
+                path = f"{directory.rstrip('/')}/{name}"
+                self.uploads.append(path); self.files[path] = content
             def write_file(self, _, path, content): self.files[path] = content
             def read_file(self, _, path):
                 if path not in self.files: raise PterodactylError("not found", 404)
@@ -1355,7 +1360,9 @@ class ManagerTests(unittest.TestCase):
                 names=set()
                 for name in self.files:
                     if name.startswith(prefix) and '/' not in name[len(prefix):]:
-                        names.add(name[len(prefix):]); result.append({"name":name[len(prefix):],"is_file":True})
+                        names.add(name[len(prefix):]); result.append({"name":name[len(prefix):],"is_file":True,
+                                                                     "size":len(self.files[name]),
+                                                                     "modified_at":"2026-10-26T12:00:00Z"})
                 for name in self.directories:
                     if name.startswith(prefix) and name != path and '/' not in name[len(prefix):] and name[len(prefix):] not in names:
                         result.append({"name":name[len(prefix):],"is_file":False})
@@ -1384,7 +1391,8 @@ class ManagerTests(unittest.TestCase):
                      "scripts/check-compatible-release.sh": b"#!/bin/sh\nexit 0\n", "scripts/update-game.sh": b"#!/bin/sh\n# ZANIK_GAME_UPDATER=1\n",
                      "scripts/apply-asset-delta.sh": b"#!/bin/sh\nexit 0\n",
                      "config/zanik.conf.example": b"FEATURE_MAP=true\n",
-                     "config/zanik-config.schema.json": b"{}", "compatibility/compatibility.tsv": b"sha\toffsets\n", "VERSION": b"0.2.0\n"}
+                     "config/zanik-config.schema.json": b"{}", "compatibility/compatibility.tsv": b"sha\toffsets\n",
+                     "docs/obsolete.md": b"old documentation\n", "VERSION": b"0.2.0\n"}
             write_payload_archive(archive, files)
             client=FakeClient(); provider=PterodactylProvider(client, JournalStore(root/"journals"))
             result=provider.install("profile", "dev", "/home/container", ReleasePayload(archive), "replace-executable", True)
@@ -1397,8 +1405,11 @@ class ManagerTests(unittest.TestCase):
             original_launcher = client.files[game]
             config_path = "/home/container/zanik/config/zanik.conf"
             client.files[config_path] = b"FEATURE_MAP=false\n"
+            client.uploads.clear()
+            del client.files["/home/container/zanik/config/zanik-config.schema.json"]
             files["scripts/compat-launcher.sh"] = b"#!/bin/sh\n# ZANIK_COMPAT_LAUNCHER=1\n# updated\n"
             files["VERSION"] = b"0.2.1\n"
+            del files["docs/obsolete.md"]
             write_payload_archive(archive, files, "0.2.1")
             update = provider.install("profile", "dev", "/home/container", ReleasePayload(archive), "replace-executable", True)
             self.assertIsNotNone(update["backup"])
@@ -1406,8 +1417,25 @@ class ManagerTests(unittest.TestCase):
             self.assertEqual((backup_manifest["family"], backup_manifest["state"]), ("payload", "complete"))
             self.assertEqual(update["installation"]["version"], "0.2.1")
             self.assertNotEqual(client.files[game], original_launcher)
-            journal = provider.journals.load(provider.journals.root / f"{update['operationId']}.json")
-            provider.rollback(journal, "dev", "/home/container")
+            uploaded = {path.removeprefix("/home/container/zanik/") for path in client.uploads
+                        if path.startswith("/home/container/zanik/")}
+            self.assertEqual(uploaded, {"VERSION", "config/zanik-config.schema.json", "payload-contract.json",
+                                        "scripts/compat-launcher.sh"})
+            self.assertNotIn("bin/libzanik.so", uploaded)
+            self.assertNotIn("/home/container/zanik/docs/obsolete.md", client.files)
+            self.assertEqual(update["reconciliation"], {"uploaded": 4, "removed": 1,
+                                                        "reused": len(files) - 3,
+                                                        "serverRestarted": False})
+            update_journal = provider.journals.load(provider.journals.root / f"{update['operationId']}.json")
+            client.uploads.clear(); client.signals.clear(); client.state = "running"
+            repair = provider.install("profile", "dev", "/home/container", ReleasePayload(archive),
+                                      "replace-executable", True)
+            self.assertEqual(repair["reconciliation"], {"uploaded": 0, "removed": 0,
+                                                        "reused": len(files) + 1,
+                                                        "serverRestarted": False})
+            self.assertEqual(client.uploads, []); self.assertEqual(client.signals, [])
+            self.assertIsNone(repair["backup"])
+            provider.rollback(update_journal, "dev", "/home/container")
             self.assertEqual(client.files[game], original_launcher)
             self.assertEqual(client.files[config_path], b"FEATURE_MAP=false\n")
             restored = json.loads(client.files["/home/container/zanik/install-state.json"])
