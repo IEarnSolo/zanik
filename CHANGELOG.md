@@ -4,6 +4,13 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.54] - 2026-10-27
+
+### Changed
+
+- Publish the player activity, Overview, skills-highscore, and Zanik Manager changes first tagged in 0.2.53 after correcting the release-notes contract.
+- Remove stale generated release archives before local packaging so repeated builds validate only the current version's five artifacts.
+
 ## [0.2.53] - 2026-10-27
 
 ### Added

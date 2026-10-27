@@ -11,6 +11,7 @@ SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-315532800}; export SOURCE_DATE_EPOCH
 RELEASE_TAG=${RELEASE_TAG:-}
 RELEASE_COMMIT=${RELEASE_COMMIT:-}
 rm -rf "$WORK"
+find "$OUT" -maxdepth 1 -type f \( -name 'zanik-*' -o -name SHA256SUMS -o -name release-manifest.json -o -name release-notes.md -o -name assets-links.json -o -name github-release.json -o -name curseforge-upload.json \) -delete
 mkdir -p "$WORK/server/bin" "$WORK/server/lib" "$WORK/server/config" "$WORK/server/compatibility" "$WORK/server/scripts" "$WORK/server/tools" "$WORK/server/docs"
 
 install -m 0755 "$ROOT/dist/libdwstatus.so" "$WORK/server/bin/libzanik.so"
