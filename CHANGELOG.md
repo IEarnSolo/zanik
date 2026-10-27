@@ -4,10 +4,12 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.50] - 2026-10-26
+
 ### Changed
 
 - Rotate successful server-side asset deltas through one bounded `assets/previous` rollback tree instead of accumulating request-specific pre-delta directories.
-- Reconcile Update / repair Zanik at file level: reuse verified unchanged server files, upload missing or changed files, retire files removed from the packaged payload, and avoid restarting a fully current server.
+- Make Zanik Manager reconcile Update / repair Zanik at file level: reuse verified unchanged server files, upload missing or changed files, retire files removed from the packaged payload, and avoid restarting a fully current server.
 
 ## [0.2.49] - 2026-10-26
 
