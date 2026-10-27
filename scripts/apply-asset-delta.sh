@@ -94,11 +94,18 @@ if [ -L "$current" ]; then
     rm -rf "$current"; ln -s "$old_link" "$current"
     write_report failed 0 0 0 activation-swap; exit 0
   fi
+  previous=$ZANIK_DIR/assets/previous
+  rm -rf "$previous"
+  case "$old_link" in ''|/*|*/*|..*) ;; *)
+    [ ! -d "$ZANIK_DIR/assets/$old_link" ] || mv "$ZANIK_DIR/assets/$old_link" "$previous"
+    ;;
+  esac
 else
-  legacy=$ZANIK_DIR/assets/build-pre-delta-$request_id
-  if ! mv "$current" "$legacy" || ! mv "$target" "$current"; then
+  previous=$ZANIK_DIR/assets/previous
+  rm -rf "$previous"
+  if ! mv "$current" "$previous" || ! mv "$target" "$current"; then
     rm -rf "$current"
-    [ ! -d "$legacy" ] || mv "$legacy" "$current"
+    [ ! -d "$previous" ] || mv "$previous" "$current"
     write_report failed 0 0 0 activation-migration; exit 0
   fi
 fi

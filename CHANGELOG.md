@@ -4,6 +4,10 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+### Changed
+
+- Rotate successful server-side asset deltas through one bounded `assets/previous` rollback tree instead of accumulating request-specific pre-delta directories.
+
 ## [0.2.49] - 2026-10-26
 
 ### Fixed

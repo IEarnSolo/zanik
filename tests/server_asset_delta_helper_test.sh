@@ -33,4 +33,7 @@ grep -q '"fileCount":1' "$REPORT"
 test -f "$CURRENT/keep.txt"
 test ! -e "$CURRENT/quests/retired.png"
 grep -q '"recipe":11' "$CURRENT/asset-manifest.json"
+test -f "$ZANIK/assets/previous/quests/retired.png"
+grep -q '"recipe":10' "$ZANIK/assets/previous/asset-manifest.json"
+test "$(find "$ZANIK/assets" -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 2
 echo 'server asset delta helper CRLF test passed'
