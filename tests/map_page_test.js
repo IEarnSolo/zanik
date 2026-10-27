@@ -1,6 +1,22 @@
 'use strict';
 const fs=require('fs');
 const source=fs.readFileSync(require('path').join(__dirname,'..','src','web_page.h'),'utf8');
+const playerPage=source.match(/constexpr const char\* kPlayerPage = R"DWHTML\(([\s\S]*?)\)DWHTML";/);
+if(!playerPage)throw new Error('player page not found');
+const playerScripts=[...playerPage[1].matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match=>match[1]);
+if(!playerScripts.length)throw new Error('player scripts not found');
+for(const script of playerScripts)new Function(script);
+for(const token of ['class="player-sidebar"','data-player-view="overview"','data-player-view="storage"','data-player-panel="recipes"','selectPlayerView']){
+  if(!playerPage[1].includes(token))throw new Error('missing focused-player token: '+token);
+}
+const killsPage=source.match(/constexpr const char\* kKillsPage = R"DWHTML\(([\s\S]*?)\)DWHTML";/);
+if(!killsPage)throw new Error('kills page not found');
+const killsScripts=[...killsPage[1].matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match=>match[1]);
+if(!killsScripts.length)throw new Error('kills scripts not found');
+for(const script of killsScripts)new Function(script);
+for(const token of ['class="kills-sidebar"','id="enemyList"','Overall kills','selectEnemy','?enemy=']){
+  if(!killsPage[1].includes(token))throw new Error('missing focused-kills token: '+token);
+}
 const page=source.match(/constexpr const char\* kMapPage = R"DWHTML\(([\s\S]*?)\)DWHTML";/);
 if(!page)throw new Error('map page not found');
 const scripts=[...page[1].matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match=>match[1]);

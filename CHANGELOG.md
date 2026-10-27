@@ -4,9 +4,13 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.51] - 2026-10-27
+
 ### Changed
 
 - Prevent an older Zanik Manager from attempting a known newer Zanik server update; require the Manager update first while still offering an explicit repair of the currently installed payload when it matches the older Manager.
+- Redesign player details as a focused sidebar workspace that shows one section at a time, and add the same compact Zanik navigation header at the absolute top of every website page, including map, maintenance, and administration views.
+- Redesign kill highscores around an overall player leaderboard with a searchable sidebar of every recorded enemy, allowing direct per-enemy player rankings without leaving the page.
 
 ## [0.2.50] - 2026-10-26
 

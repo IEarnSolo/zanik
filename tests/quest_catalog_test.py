@@ -24,7 +24,7 @@ assert f'count={len(quests)}' in runtime[0] and catalog['fingerprint'] in runtim
 assert len([line for line in runtime if line and not line.startswith('#')])==len(quests)
 assert {line.split('\t',1)[0] for line in runtime if line and not line.startswith('#')}=={q['id'] for q in quests}
 page=(root/'src/web_page.h').read_text(encoding='utf-8')
-for token in ('>Quests</summary>','/api/player-quests','/api/quests/catalog','questRegion','questSort','questHideCompleted','zanik-quests-hide-completed','setInterval(refreshQuests, 2000)'): assert token in page
+for token in ('data-player-panel="quests"','<h2>Quests</h2>','/api/player-quests','/api/quests/catalog','questRegion','questSort','questHideCompleted','zanik-quests-hide-completed','setInterval(refreshQuests, 2000)'): assert token in page
 steps=json.loads((root/'web/quest-step-locations.json').read_text(encoding='utf-8'))
 assert steps['schemaVersion']==2
 assert steps['catalogFingerprint']==catalog['fingerprint']

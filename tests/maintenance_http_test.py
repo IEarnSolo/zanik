@@ -21,6 +21,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-maintenance-") as temporary:
         with urllib.request.urlopen(base+"/") as response:
             page=response.read().decode(); assert "waiting for a compatibility update" in page
             assert "AUTO_UPDATE must remain 0" in page and "Update / repair Zanik" in page, page
+            assert 'class="site-header"' in page and page.index('class="site-header"') < page.index("<main>")
         with urllib.request.urlopen(base+"/api/update-status") as response:
             status=json.loads(response.read()); assert status["maintenance"] is True
             assert status["nativeRuntimeLoaded"] is False and status["release"]["status"]=="compatible-release-available"

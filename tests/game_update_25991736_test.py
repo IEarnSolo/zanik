@@ -97,8 +97,8 @@ assert '\\"capabilities\\":' in main
 assert '\\"storageRead\\"' in main
 assert '\\"gravestoneRead\\"' in main
 assert "Promise.all([fetch('/api/admin/session'" not in page
-assert "storageAdmin.style.display=capabilities.storageRead?'block':'none'" in page
-assert "gravestoneAdmin.style.display=capabilities.gravestoneRead?'block':'none'" in page
+assert "storageAdmin.hidden=!capabilities.storageRead" in page
+assert "gravestoneAdmin.hidden=!capabilities.gravestoneRead" in page
 assert "if(storageMutationAvailable){try{const response=await fetch('/api/admin/storage/catalog'" in page
 
 print("game update 25991736 compatibility checks passed")
