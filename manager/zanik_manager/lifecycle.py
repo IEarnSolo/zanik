@@ -432,6 +432,180 @@ class PterodactylProvider(ServerProvider):
         journal.completed_steps.append("payload-uploaded-and-verified")
         self.journals.save(journal)
 
+    @staticmethod
+    def _payload_file_records(state: dict | None,
+                              legacy_contract: dict | None = None) -> dict[str, dict]:
+        """Return only validated package-owned records from prior installation metadata."""
+        source = (state or {}).get("payloadFiles")
+        if not isinstance(source, list):
+            source = (legacy_contract or {}).get("files", [])
+        records: dict[str, dict] = {}
+        for item in source:
+            if not isinstance(item, dict):
+                continue
+            try:
+                name = safe_archive_name(str(item["path"]))
+                digest = str(item["sha256"]).lower()
+                size = int(item["size"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if (len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest)
+                    or size < 0):
+                continue
+            # A prior inventory may name files no longer present in the new archive,
+            # but it must never claim mutable data outside package-owned locations.
+            if name in {"install-state.json", "admins.txt", "compatibility.tsv"} or name.startswith("assets/"):
+                continue
+            records[name] = {**item, "path": name, "sha256": digest, "size": size}
+        return records
+
+    def _payload_metadata(self, server_id: str, install: str,
+                          paths: set[str]) -> dict[str, dict]:
+        result: dict[str, dict] = {}
+        parents = sorted({str(PurePosixPath(name).parent) for name in paths})
+        for parent in parents:
+            directory = install if parent == "." else f"{install}/{parent}"
+            failures = 0
+            while True:
+                try:
+                    rows = self.client.list_files(server_id, directory)
+                    break
+                except PterodactylError as error:
+                    if error.status == 404:
+                        rows = []
+                        break
+                    if (error.status in {500, 502, 503, 504}
+                            and self._directory_definitely_missing(server_id, PurePosixPath(directory))):
+                        rows = []
+                        break
+                    if error.status == 522 or (error.status in {500, 502, 503, 504} and failures < 5):
+                        failures += 1
+                        self._status(
+                            f"The server node is temporarily unavailable (HTTP {error.status}). Retrying in 60 seconds…"
+                        )
+                        time.sleep(self.client.retry_seconds)
+                        continue
+                    raise
+            for row in rows:
+                if not row.get("is_file", False):
+                    continue
+                relative = str(PurePosixPath(parent) / str(row.get("name", "")))
+                if relative.startswith("./"):
+                    relative = relative[2:]
+                if relative in paths:
+                    result[relative] = row
+        return result
+
+    def _plan_payload_reconciliation(self, server_id: str, root: str, payload: ReleasePayload,
+                                     previous_install: dict | None,
+                                     progress: Callable[[str, int], None]) -> dict:
+        install = f"{root}/zanik"
+        legacy_contract = None
+        has_verified_snapshot = isinstance((previous_install or {}).get("payloadFiles"), list)
+        if not has_verified_snapshot:
+            try:
+                candidate = json.loads(self.client.read_file(server_id, f"{install}/payload-contract.json"))
+                if candidate.get("schemaVersion") == CONTRACT_SCHEMA_VERSION:
+                    legacy_contract = candidate
+            except Exception:
+                pass
+        previous = self._payload_file_records(previous_install, legacy_contract)
+        expected = payload.entries
+        paths = set(expected) | set(previous)
+        metadata = self._payload_metadata(server_id, install, paths)
+        changed: list[str] = []
+        unchanged: list[str] = []
+        total = len(expected)
+        for index, (name, entry) in enumerate(expected.items(), 1):
+            try:
+                progress("Comparing installed Zanik files", 12 + int(index * 10 / max(total, 1)),
+                         {"detail": f"Checking server payload file {index} of {total}",
+                          "taskCurrent": index, "taskTotal": total})
+            except TypeError:
+                progress("Comparing installed Zanik files", 12 + int(index * 10 / max(total, 1)))
+            remote = metadata.get(name)
+            if not remote or int(remote.get("size") or -1) != entry.size:
+                changed.append(name)
+                continue
+            prior = previous.get(name)
+            if prior and prior["sha256"] == entry.sha256 and prior["size"] == entry.size:
+                prior_modified = str(prior.get("remoteModifiedAt") or "")
+                remote_modified = str(remote.get("modified_at") or "")
+                if has_verified_snapshot and prior_modified and remote_modified and prior_modified == remote_modified:
+                    unchanged.append(name)
+                    continue
+            # Only uncertain files cross the network. Known changed files never do.
+            if prior and prior["sha256"] != entry.sha256:
+                changed.append(name)
+                continue
+            try:
+                current = self.client.read_file(server_id, f"{install}/{name}")
+            except Exception:
+                changed.append(name)
+                continue
+            (unchanged if sha256(current) == entry.sha256 else changed).append(name)
+        removed = sorted(name for name in previous if name not in expected and name in metadata)
+        return {"changed": sorted(changed), "unchanged": sorted(unchanged), "removed": removed,
+                "metadata": metadata, "previous": previous}
+
+    def _payload_snapshot(self, server_id: str, root: str, payload: ReleasePayload) -> list[dict]:
+        metadata = self._payload_metadata(server_id, f"{root}/zanik", set(payload.entries))
+        result = []
+        for name in sorted(payload.entries):
+            entry = payload.entries[name]
+            record = asdict(entry)
+            modified = str(metadata.get(name, {}).get("modified_at") or "")
+            if modified:
+                record["remoteModifiedAt"] = modified
+            result.append(record)
+        return result
+
+    def _apply_payload_delta(self, server_id: str, root: str, payload: ReleasePayload,
+                             plan: dict, backup: str, journal: OperationJournal,
+                             ensure_backup: Callable[[], None],
+                             progress: Callable[[str, int], None]) -> None:
+        changed = list(plan["changed"])
+        removed = list(plan["removed"])
+        existing = [name for name in changed if name in plan["metadata"]]
+        restore = sorted(set(existing + removed))
+        created = sorted(name for name in changed if name not in plan["metadata"])
+        if restore:
+            ensure_backup()
+            for parent in sorted({str(PurePosixPath(name).parent) for name in restore}):
+                self._mkdir(server_id, f"{backup}/zanik/{parent}")
+            journal.rollback.append({"kind": "restore-payload-delta", "backup": f"{backup}/zanik",
+                                     "restore": restore, "remove": created})
+            self.journals.save(journal)
+            for name in restore:
+                self.client.rename(server_id, root, [(f"zanik/{name}",
+                                                       f"zanik-backups/manager/{PurePosixPath(backup).name}/zanik/{name}")])
+        elif created:
+            journal.rollback.append({"kind": "restore-payload-delta", "backup": f"{backup}/zanik",
+                                     "restore": [], "remove": created})
+            self.journals.save(journal)
+        modes: dict[str, list[tuple[str, int]]] = {}
+        total = len(changed)
+        for index, name in enumerate(changed, 1):
+            entry = payload.entries[name]
+            directory = str(PurePosixPath(f"{root}/zanik") / PurePosixPath(name).parent)
+            self._mkdir(server_id, directory)
+            try:
+                progress(f"Uploading and verifying {name}", 30 + int(index * 30 / max(total, 1)),
+                         {"detail": f"Changed server payload file {index} of {total}",
+                          "taskCurrent": index, "taskTotal": total})
+            except TypeError:
+                progress(f"Uploading and verifying {name}", 30 + int(index * 30 / max(total, 1)))
+            data = payload.read(name)
+            self.client.upload(server_id, directory, PurePosixPath(name).name, data)
+            if sha256(self.client.read_file(server_id, f"{root}/zanik/{name}")) != entry.sha256:
+                raise RuntimeError(f"Remote verification failed for {name}")
+            modes.setdefault(directory, []).append((PurePosixPath(name).name, entry.mode))
+        for directory, files in modes.items():
+            for file in files:
+                self.client.chmod(server_id, directory, [file])
+        journal.completed_steps.append("payload-delta-uploaded-and-verified")
+        self.journals.save(journal)
+
     def _wait_offline(self, server_id: str, timeout: float = 120.0) -> None:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -520,13 +694,16 @@ class PterodactylProvider(ServerProvider):
             self._write_backup_manifest(server_id, backup, "payload", journal.operation_id, "preparing")
             backup_created = True
         previous_install = None
+        previous_install_raw = None
         try:
             progress("Checking panel permissions", 5)
             self.preflight(server_id, "replacement-install" if mode == "replace-executable" else "install")
             try:
-                previous_install = json.loads(self.client.read_file(server_id, f"{root}/zanik/install-state.json"))
+                previous_install_raw = self.client.read_file(server_id, f"{root}/zanik/install-state.json")
+                previous_install = json.loads(previous_install_raw)
             except Exception:
                 previous_install = None
+            existing_install = self._directory_exists(server_id, f"{root}/zanik")
             auto_update = None
             if mode == "replace-executable":
                 progress("Disabling and verifying Pterodactyl automatic updates", 7)
@@ -546,49 +723,101 @@ class PterodactylProvider(ServerProvider):
                                    "managedByZanik": False, "verified": True}
                 except Exception:
                     auto_update = {"variable": "AUTO_UPDATE", "managedByZanik": False, "verified": False}
-            if stop_server:
-                progress("Stopping the game server", 10)
-                state = self.client.resources(server_id).get("current_state")
-                if state != "offline":
-                    self.client.power(server_id, "stop")
-                    self._wait_offline(server_id)
+            incremental = previous_install is not None
+            plan = (self._plan_payload_reconciliation(server_id, root, payload, previous_install, progress)
+                    if incremental else {"changed": sorted(payload.entries), "unchanged": [],
+                                         "removed": [], "metadata": {}, "previous": {}})
+            game = f"{root}/{GAME_RELATIVE}"
+            launcher = payload.read("scripts/compat-launcher.sh") if mode == "replace-executable" else None
+            current_launcher = None
+            if mode == "replace-executable":
+                game_entry = self._entry(server_id, game)
+                if game_entry and game_entry.get("is_file", False) and int(game_entry.get("size") or 0) <= 1024 * 1024:
+                    current_launcher = self.client.read_file(server_id, game)
+            launcher_change = mode == "replace-executable" and current_launcher != launcher
+            payload_change = bool(plan["changed"] or plan["removed"])
+            mutation_required = payload_change or launcher_change or not incremental
+            was_running = self.client.resources(server_id).get("current_state") != "offline"
+            server_stopped = False
+            if stop_server and mutation_required and was_running:
+                progress("Stopping the game server", 24)
+                self.client.power(server_id, "stop")
+                self._wait_offline(server_id)
+                server_stopped = True
                 journal.completed_steps.append("server-stopped")
                 self.journals.save(journal)
-            progress("Preparing verified staging", 18)
-            self._mkdir(server_id, stage)
-            self._upload_payload(server_id, stage, payload, journal, progress)
             remote_journal = f"{root}/.zanik-manager/transactions/{journal.operation_id}.json"
             self._mkdir(server_id, str(PurePosixPath(remote_journal).parent))
             self.client.write_file(server_id, remote_journal, json.dumps(asdict(journal), sort_keys=True).encode())
 
-            progress("Activating the verified Zanik payload", 68)
-            # Keep an existing installation recoverable before the critical activation.
-            if self._exists(server_id, f"{root}/zanik/install-state.json"):
+            if incremental and mutation_required and previous_install_raw is not None:
                 ensure_backup()
-                self.client.rename(server_id, root, [("zanik", f"zanik-backups/manager/{PurePosixPath(backup).name}/zanik")])
-                journal.rollback.append({"from": f"{backup}/zanik", "to": f"{root}/zanik"})
-            self.client.rename(server_id, root, [(str(PurePosixPath(stage).relative_to(root)), "zanik")])
-            journal.rollback.append({"from": f"{root}/zanik", "to": stage})
-            journal.state = "activating"
-            journal.completed_steps.append("payload-activated")
-            self.journals.save(journal)
+                self.client.write_file(server_id, f"{backup}/install-state.json", previous_install_raw)
+                journal.rollback.append({"kind": "restore-managed-file",
+                                         "from": f"{backup}/install-state.json",
+                                         "to": f"{root}/zanik/install-state.json",
+                                         "sha256": sha256(previous_install_raw), "mode": 0o600})
+                self.journals.save(journal)
 
+            if incremental:
+                if payload_change:
+                    try:
+                        progress("Applying changed Zanik files", 28,
+                                 {"detail": (f"{len(plan['changed'])} changed or missing · "
+                                             f"{len(plan['removed'])} retired · {len(plan['unchanged'])} unchanged")})
+                    except TypeError:
+                        progress("Applying changed Zanik files", 28)
+                    self._apply_payload_delta(server_id, root, payload, plan, backup, journal,
+                                              ensure_backup, progress)
+                else:
+                    try:
+                        progress("Server payload already verified", 60,
+                                 {"detail": f"Reused {len(plan['unchanged'])} unchanged files · no upload required"})
+                    except TypeError:
+                        progress("Server payload already verified", 60)
+            else:
+                progress("Preparing verified staging", 18)
+                self._mkdir(server_id, stage)
+                self._upload_payload(server_id, stage, payload, journal, progress)
+                progress("Activating the verified Zanik payload", 68)
+                if existing_install:
+                    ensure_backup()
+                    self.client.rename(server_id, root,
+                                       [("zanik", f"zanik-backups/manager/{PurePosixPath(backup).name}/zanik")])
+                    journal.rollback.append({"from": f"{backup}/zanik", "to": f"{root}/zanik"})
+                self.client.rename(server_id, root, [(str(PurePosixPath(stage).relative_to(root)), "zanik")])
+                journal.rollback.append({"from": f"{root}/zanik", "to": stage})
+                journal.completed_steps.append("payload-activated")
+                self.journals.save(journal)
+
+                if existing_install:
+                    old = f"{backup}/zanik"
+                    for relative in ("config/zanik.conf", "admins.txt", "assets"):
+                        source = f"{old}/{relative}"
+                        present = (self._directory_exists(server_id, source) if relative == "assets"
+                                   else self._exists(server_id, source))
+                        if present:
+                            destination = f"zanik/{relative}"
+                            self.client.rename(server_id, root,
+                                               [(str(PurePosixPath(source).relative_to(root)), destination)])
+                            journal.rollback.append({"kind": "move", "from": f"{root}/{destination}",
+                                                     "to": source})
+                            self.journals.save(journal)
+
+            journal.state = "activating"
             progress("Preserving configuration and persistent files", 76)
-            old = f"{backup}/zanik"
-            for relative in ("config/zanik.conf", "admins.txt", "assets"):
-                source = f"{old}/{relative}"
-                if self._exists(server_id, source) if relative != "assets" else self._directory_exists(server_id, source):
-                    destination = f"zanik/{relative}"
-                    self.client.rename(server_id, root, [(str(PurePosixPath(source).relative_to(root)), destination)])
-                    journal.rollback.append({"kind": "move", "from": f"{root}/{destination}", "to": source})
-                    self.journals.save(journal)
             if not self._exists(server_id, f"{root}/zanik/config/zanik.conf"):
                 example = self.client.read_file(server_id, f"{root}/zanik/config/zanik.conf.example")
                 self.client.write_file(server_id, f"{root}/zanik/config/zanik.conf", example)
             if not self._exists(server_id, f"{root}/zanik/admins.txt"):
                 self.client.write_file(server_id, f"{root}/zanik/admins.txt", b"")
             compatibility = self.client.read_file(server_id, f"{root}/zanik/compatibility/compatibility.tsv")
-            self.client.write_file(server_id, f"{root}/zanik/compatibility.tsv", compatibility)
+            try:
+                runtime_compatibility = self.client.read_file(server_id, f"{root}/zanik/compatibility.tsv")
+            except Exception:
+                runtime_compatibility = None
+            if runtime_compatibility != compatibility:
+                self.client.write_file(server_id, f"{root}/zanik/compatibility.tsv", compatibility)
             if sha256(self.client.read_file(server_id, f"{root}/zanik/compatibility.tsv")) != sha256(compatibility):
                 raise RuntimeError("Installed runtime compatibility manifest did not verify")
             self._mkdir(server_id, f"{root}/zanik-data")
@@ -598,29 +827,24 @@ class PterodactylProvider(ServerProvider):
                                                 ("zanik/compatibility.tsv", 0o644),
                                                 ("zanik-data/console-admin.key", 0o600)])
 
-            progress("Configuring the server launcher", 84)
-            game = f"{root}/{GAME_RELATIVE}"
+            progress("Checking the server launcher", 84)
             official = game
             official_data = None
+            official_sha = None
             if mode == "replace-executable":
                 original = game + ".zanik-original"
-                current = self.client.download_file(server_id, game)
-                if LAUNCHER_MARKER in current:
+                current = current_launcher if current_launcher is not None else self.client.download_file(server_id, game)
+                if current == launcher:
+                    pass
+                elif LAUNCHER_MARKER in current:
                     ensure_backup()
-                    original_data = self.client.download_file(server_id, original)
-                    if not original_data.startswith(b"\x7fELF"):
-                        raise RuntimeError("The preserved official executable is not a verified ELF file")
-                    official_data = original_data
-                    self.client.upload(server_id, backup, "managed-launcher", current)
+                    self.client.write_file(server_id, f"{backup}/managed-launcher", current)
                     journal.rollback.append({"kind": "restore-file", "from": f"{backup}/managed-launcher",
                                              "to": game, "sha256": sha256(current), "mode": 0o755})
                     self.journals.save(journal)
                 elif current.startswith(b"\x7fELF"):
                     if self._exists(server_id, original):
                         ensure_backup()
-                        prior = self.client.download_file(server_id, original)
-                        if not prior.startswith(b"\x7fELF"):
-                            raise RuntimeError("Existing .zanik-original is not a verified ELF file")
                         self.client.rename(server_id, root, [(str(PurePosixPath(original).relative_to(root)),
                                                               f"zanik-backups/manager/{PurePosixPath(backup).name}/official-before-steam-update")])
                     self.client.rename(server_id, root, [(str(PurePosixPath(game).relative_to(root)),
@@ -629,44 +853,49 @@ class PterodactylProvider(ServerProvider):
                     self.journals.save(journal)
                 elif is_exact_legacy_launcher(current, root):
                     ensure_backup()
-                    original_data = self.client.download_file(server_id, original)
-                    if not original_data.startswith(b"\x7fELF"):
-                        raise RuntimeError("The legacy launcher has no verified executable ELF at .zanik-original")
-                    official_data = original_data
-                    self.client.upload(server_id, backup, "managed-launcher", current)
+                    self.client.write_file(server_id, f"{backup}/managed-launcher", current)
                     journal.rollback.append({"kind": "restore-file", "from": f"{backup}/managed-launcher",
                                              "to": game, "sha256": sha256(current), "mode": 0o755})
                     self.journals.save(journal)
                 else:
                     raise RuntimeError("Unknown executable replacement state; refusing to guess")
-                launcher = self.client.read_file(server_id, f"{root}/zanik/scripts/compat-launcher.sh")
-                self.client.write_file(server_id, game, launcher)
-                self.client.chmod(server_id, str(PurePosixPath(game).parent), [(PurePosixPath(game).name, 0o755)])
+                if current != launcher:
+                    self.client.write_file(server_id, game, launcher)
+                    self.client.chmod(server_id, str(PurePosixPath(game).parent), [(PurePosixPath(game).name, 0o755)])
                 official = original
-            if official_data is None:
+            prior_sha = str((previous_install or {}).get("officialSha256") or "").lower()
+            if ((previous_install or {}).get("officialExecutable") == official and len(prior_sha) == 64
+                    and all(character in "0123456789abcdef" for character in prior_sha)
+                    and self._exists(server_id, official)):
+                official_sha = prior_sha
+            if official_sha is None:
                 official_data = self.client.download_file(server_id, official)
+                if not official_data.startswith(b"\x7fELF"):
+                    raise RuntimeError("The preserved official executable is not a verified ELF file")
+                official_sha = sha256(official_data)
             version = self.client.read_file(server_id, f"{root}/zanik/VERSION").decode().strip()
             progress("Writing and verifying installation metadata", 90)
-            state = {"schemaVersion": 2, "version": version, "mode": mode, "serverRoot": root,
-                     "officialExecutable": official, "officialSha256": sha256(official_data),
+            state = {"schemaVersion": 3, "version": version, "mode": mode, "serverRoot": root,
+                     "officialExecutable": official, "officialSha256": official_sha,
                      "librarySha256": payload.entries["bin/libzanik.so"].sha256,
                      "analyzerSha256": payload.entries["bin/zanik-compat-analyzer"].sha256,
                      "launcherSha256": payload.entries["bin/zanik-server"].sha256,
                      "payloadContractSchemaVersion": payload.contract["schemaVersion"],
                      "payloadContractSha256": payload.contract["contractSha256"],
+                     "payloadFiles": self._payload_snapshot(server_id, root, payload),
                      "autoUpdate": auto_update,
                      "installedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
             self.client.write_file(server_id, f"{root}/zanik/install-state.json", (json.dumps(state, separators=(",", ":")) + "\n").encode())
             self.client.chmod(server_id, f"{root}/zanik", [("install-state.json", 0o600)])
             startup_action_required = mode == "wrapper" and not wrapper_adapter
             journal.state = "complete"; journal.completed_steps.append("installation-verified")
-            if mode == "wrapper" and wrapper_adapter:
+            if mode == "wrapper" and wrapper_adapter and wrapper_adapter.get("previous") != wrapper_adapter["value"]:
                 progress("Configuring the Pterodactyl startup command", 94)
                 self.client.set_startup_variable(server_id, wrapper_adapter["key"], wrapper_adapter["value"])
                 journal.completed_steps.append("wrapper-startup-configured")
             self.journals.save(journal)
             self.client.write_file(server_id, remote_journal, json.dumps(asdict(journal), sort_keys=True).encode())
-            if stop_server and not startup_action_required:
+            if server_stopped and not startup_action_required:
                 progress("Starting the game server", 97)
                 self.client.power(server_id, "start")
             if backup_created:
@@ -679,8 +908,10 @@ class PterodactylProvider(ServerProvider):
                 pass
             self.journals.prune()
             progress("Installation complete", 100)
-            return {"installation": state, "backup": backup if backup_created else None, "operationId": journal.operation_id,
-                    "startupActionRequired": startup_action_required}
+            return {"installation": state, "backup": backup if backup_created else None,
+                    "operationId": journal.operation_id, "startupActionRequired": startup_action_required,
+                    "reconciliation": {"uploaded": len(plan["changed"]), "removed": len(plan["removed"]),
+                                       "reused": len(plan["unchanged"]), "serverRestarted": server_stopped}}
         except Exception as error:
             journal.state = "failed"; journal.error = str(error); self.journals.save(journal)
             if backup_created:
@@ -700,6 +931,37 @@ class PterodactylProvider(ServerProvider):
                 current = self._auto_update(server_id)
                 if current["value"] == action.get("managedValue"):
                     self.client.set_startup_variable(server_id, action["key"], action["value"])
+                continue
+            if action.get("kind") == "restore-payload-delta":
+                for relative in action.get("remove", []):
+                    live = f"{root}/zanik/{safe_archive_name(relative)}"
+                    if self._exists(server_id, live):
+                        self.client.delete(server_id, str(PurePosixPath(live).parent),
+                                           [PurePosixPath(live).name])
+                backup_root = str(action.get("backup", ""))
+                for relative in action.get("restore", []):
+                    relative = safe_archive_name(relative)
+                    source = f"{backup_root}/{relative}"
+                    if not self._exists(server_id, source):
+                        continue
+                    live = f"{root}/zanik/{relative}"
+                    if self._exists(server_id, live):
+                        self.client.delete(server_id, str(PurePosixPath(live).parent),
+                                           [PurePosixPath(live).name])
+                    self._mkdir(server_id, str(PurePosixPath(live).parent))
+                    self.client.rename(server_id, root,
+                                       [(str(PurePosixPath(source).relative_to(root)),
+                                         str(PurePosixPath(live).relative_to(root)))])
+                continue
+            if action.get("kind") == "restore-managed-file":
+                source = str(action["from"]); destination = str(action["to"])
+                data = self.client.read_file(server_id, source)
+                if sha256(data) != action["sha256"]:
+                    raise RuntimeError("Rollback managed-file backup hash mismatch")
+                self._mkdir(server_id, str(PurePosixPath(destination).parent))
+                self.client.write_file(server_id, destination, data)
+                self.client.chmod(server_id, str(PurePosixPath(destination).parent),
+                                  [(PurePosixPath(destination).name, action.get("mode", 0o600))])
                 continue
             if action.get("kind") == "restore-game-launcher":
                 source=action["from"]; destination=action["to"]

@@ -1719,6 +1719,10 @@ class MainWindow(QMainWindow):
             self.check_installation_state(profile.id)
             self.schedule_background_doctor(profile.id, "install-or-repair")
             backup_note = f" Backup: {result['backup']}" if result.get("backup") else " No prior installation required a backup."
+            reconciliation = result.get("reconciliation") or {}
+            reconciliation_note = (f"{reconciliation.get('uploaded', 0)} uploaded, "
+                                   f"{reconciliation.get('removed', 0)} retired, "
+                                   f"{reconciliation.get('reused', 0)} verified and reused")
             if selected == "wrapper" and not adapter:
                 self.log("Files installed; startup action remains." + backup_note)
                 QMessageBox.information(self, "Startup action required", f"The server remains stopped and installation is not yet active. Set the egg startup executable to:\n{profile.server_root}/zanik/bin/zanik-server --server-root {profile.server_root} --\n\nThen start the server and run Doctor to verify it.")
@@ -1727,9 +1731,12 @@ class MainWindow(QMainWindow):
             else:
                 self.log("Installation complete." + backup_note)
                 if maintenance:
-                    self.log(f"Update / repair complete; backup: {result['backup']}")
+                    self.log(f"Update / repair complete: {reconciliation_note}; "
+                             f"server restarted: {'yes' if reconciliation.get('serverRestarted') else 'no'}; "
+                             f"backup: {result['backup']}")
                     QMessageBox.information(self, "Update / repair complete",
-                                            "Zanik was updated and verified. Existing configuration, persistent data, and website assets were preserved.")
+                                            f"Zanik was reconciled and verified: {reconciliation_note}. "
+                                            "Existing configuration, persistent data, and website assets were preserved.")
                     self.post_update_checks(profile)
                 elif repair_context:
                     QMessageBox.information(self, "Launcher repaired",
@@ -1738,7 +1745,8 @@ class MainWindow(QMainWindow):
                     QMessageBox.information(self, "Installation complete",
                                             "Zanik was installed successfully and the server was started.")
                     self.offer_website_settings(profile)
-        self.run_async(action, done, title="Installing Zanik…", determinate=True)
+        self.run_async(action, done, title="Updating or repairing Zanik…" if maintenance else "Installing Zanik…",
+                       determinate=True)
 
     def offer_launcher_repair(self, profile: ServerProfile, launcher: dict):
         self.log(f"Steam displaced the replacement launcher on {profile.name}; website service is not active.")
