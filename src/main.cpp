@@ -402,7 +402,7 @@ void Handle(int fd) {
     } else if (path == "/players") {
         if(!ZanikConfig::PlayerStatus())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", PageWithSiteHeader(kPlayersPage,"players"));
     } else if (path == "/kills") {
-        if(!ZanikConfig::KillTracking())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", PageWithSiteHeader(kKillsPage,"kills"));
+        if(!ZanikConfig::KillTracking()&&!ZanikConfig::PlayerStatus())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", PageWithSiteHeader(kKillsPage,"kills"));
     } else if (path == "/map") {
         if(!ZanikConfig::Map())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", PageWithSiteHeader(kMapPage,"map"));
     } else if (path == "/recipe-unlocks") {
@@ -704,6 +704,12 @@ void Handle(int fd) {
     } else if (path == "/api/kill-leaderboard") {
         Respond(fd, 200, "application/json; charset=utf-8",
                 Status::KillLeaderboardJson(playerStore->All(), QueryValue(query, "enemy")));
+    } else if (path == "/api/skills") {
+        if(!ZanikConfig::PlayerStatus()){unavailable();return;}Respond(fd, 200, "application/json; charset=utf-8",
+                Status::SkillSummaryJson(playerStore->All()));
+    } else if (path == "/api/skill-leaderboard") {
+        if(!ZanikConfig::PlayerStatus()){unavailable();return;}Respond(fd, 200, "application/json; charset=utf-8",
+                Status::SkillLeaderboardJson(playerStore->All(), QueryValue(query, "skill")));
     } else if (path == "/api/kill-tracker-diagnostics") {
         auto d = DomEngine::GetKillDiagnostics();
         Respond(fd, 200, "application/json; charset=utf-8",

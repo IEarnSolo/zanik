@@ -6,7 +6,7 @@ if(!playerPage)throw new Error('player page not found');
 const playerScripts=[...playerPage[1].matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match=>match[1]);
 if(!playerScripts.length)throw new Error('player scripts not found');
 for(const script of playerScripts)new Function(script);
-for(const token of ['class="player-sidebar"','data-player-view="overview"','data-player-view="storage"','data-player-panel="recipes"','selectPlayerView']){
+for(const token of ['class="player-sidebar"','id="manageSidebarGroup"','id="onlineDuration"','Online for ','data-player-view="overview"','data-player-view="storage"','data-player-panel="recipes"','manageSidebarGroup.hidden=!adminStorage','selectPlayerView']){
   if(!playerPage[1].includes(token))throw new Error('missing focused-player token: '+token);
 }
 const killsPage=source.match(/constexpr const char\* kKillsPage = R"DWHTML\(([\s\S]*?)\)DWHTML";/);
@@ -14,7 +14,7 @@ if(!killsPage)throw new Error('kills page not found');
 const killsScripts=[...killsPage[1].matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match=>match[1]);
 if(!killsScripts.length)throw new Error('kills scripts not found');
 for(const script of killsScripts)new Function(script);
-for(const token of ['class="kills-sidebar"','id="enemyList"','Overall kills','selectEnemy','?enemy=']){
+for(const token of ['class="kills-sidebar"','id="combatTab"','id="skillsTab"','id="enemyList"','Overall kills','selectScore','/api/skill-leaderboard?skill=']){
   if(!killsPage[1].includes(token))throw new Error('missing focused-kills token: '+token);
 }
 const page=source.match(/constexpr const char\* kMapPage = R"DWHTML\(([\s\S]*?)\)DWHTML";/);

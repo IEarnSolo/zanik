@@ -20,6 +20,9 @@ std::string PlayerJson(const StoredPlayer& player);
 std::string KillSummaryJson(const std::vector<StoredPlayer>& players);
 std::string KillLeaderboardJson(const std::vector<StoredPlayer>& players,
                                 const std::string& enemy);
+std::string SkillSummaryJson(const std::vector<StoredPlayer>& players);
+std::string SkillLeaderboardJson(const std::vector<StoredPlayer>& players,
+                                 const std::string& skill);
 std::string MapPlayersJson(const std::vector<StoredPlayer>& players,
                            const std::string& assetVersion, std::int64_t updatedAt);
 std::string MapLodestonesJson(const std::vector<DomEngine::LodestoneInfo>& lodestones,

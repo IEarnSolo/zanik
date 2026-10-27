@@ -137,6 +137,46 @@ std::string KillLeaderboardJson(const std::vector<StoredPlayer>& players,
     return json.str();
 }
 
+std::string SkillSummaryJson(const std::vector<StoredPlayer>& players) {
+    std::map<std::string, std::size_t> skills;
+    for (const auto& player : players) {
+        for (const auto& skill : player.skills) ++skills[SkillName(skill.name)];
+    }
+    std::ostringstream json;
+    json << "{\"skills\":[";
+    std::size_t index = 0;
+    for (const auto& entry : skills) {
+        if (index++) json << ',';
+        json << "{\"skill\":\"" << Escape(entry.first) << "\",\"players\":" << entry.second << '}';
+    }
+    json << "]}";
+    return json.str();
+}
+
+std::string SkillLeaderboardJson(const std::vector<StoredPlayer>& players,
+                                 const std::string& skill) {
+    struct Row { std::string id, name; int xp = 0; };
+    std::vector<Row> rows;
+    for (const auto& player : players) {
+        auto found = std::find_if(player.skills.begin(), player.skills.end(), [&](const auto& value) {
+            return SkillName(value.name) == skill;
+        });
+        if (found != player.skills.end()) rows.push_back({player.id, player.name, found->xp});
+    }
+    std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) {
+        return a.xp != b.xp ? a.xp > b.xp : a.name < b.name;
+    });
+    std::ostringstream json;
+    json << "{\"skill\":" << (skill.empty() ? "null" : "\"" + Escape(skill) + "\"") << ",\"players\":[";
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        if (i) json << ',';
+        json << "{\"id\":\"" << Escape(rows[i].id) << "\",\"name\":\"" << Escape(rows[i].name)
+             << "\",\"level\":" << SkillLevel(rows[i].xp) << ",\"xp\":" << rows[i].xp << '}';
+    }
+    json << "]}";
+    return json.str();
+}
+
 std::string PlayersJson(const std::vector<StoredPlayer>& players) {
     std::ostringstream json;
     json << "{\"count\":" << players.size() << ",\"players\":[";
@@ -280,6 +320,7 @@ std::string PlayerJson(const StoredPlayer& player) {
     json << "{\"id\":\"" << Escape(player.id)
          << "\",\"name\":\"" << Escape(player.name)
          << "\",\"online\":" << (player.online ? "true" : "false")
+         << ",\"onlineSince\":" << (player.online ? player.onlineSince : 0)
          << ",\"lastSeen\":" << player.lastSeen
          << ",\"location\":" << (player.location.empty() ? "null" : "\"" + Escape(player.location) + "\"")
          << ",\"skills\":[";

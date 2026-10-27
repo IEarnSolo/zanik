@@ -92,9 +92,10 @@ try:
 
     with urllib.request.urlopen(base + "/kills", timeout=3) as response:
         page = response.read().decode()
-        assert "Kill highscores" in page
+        assert "Highscores" in page
         assert 'class="kills-sidebar"' in page
-        assert "'/api/kill-leaderboard'+(selectedEnemy?'?enemy='" in page
+        assert 'id="combatTab"' in page and 'id="skillsTab"' in page
+        assert "/api/skill-leaderboard?skill=" in page
 
     with urllib.request.urlopen(base + "/map", timeout=3) as response:
         page = response.read().decode()
@@ -174,6 +175,12 @@ try:
 
     with urllib.request.urlopen(base + "/api/kill-leaderboard", timeout=3) as response:
         assert response.read() == b'{"enemy":null,"players":[]}'
+
+    with urllib.request.urlopen(base + "/api/skills", timeout=3) as response:
+        assert response.read() == b'{"skills":[]}'
+
+    with urllib.request.urlopen(base + "/api/skill-leaderboard?skill=Mining", timeout=3) as response:
+        assert response.read() == b'{"skill":"Mining","players":[]}'
 
     with urllib.request.urlopen(base + "/api/kill-tracker-diagnostics", timeout=3) as response:
         diagnostics = json.loads(response.read())

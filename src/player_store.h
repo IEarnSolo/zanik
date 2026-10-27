@@ -33,6 +33,7 @@ struct StoredPlayer {
     std::vector<StoredKill> kills;
     std::vector<RecentKill> recentKills;
     std::int64_t lastSeen = 0;
+    std::int64_t onlineSince = 0;
     bool online = false;
     bool hasMapLocation = false;
     double mapX = 0, mapY = 0;

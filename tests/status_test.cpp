@@ -39,16 +39,18 @@ int main() {
     stored.id = "abc123";
     stored.name = "Ada <Admin>";
     stored.online = false;
+    stored.onlineSince = 120000;
     stored.lastSeen = 123456;
     stored.location = "Temple <Woods>";
     stored.skills = {{"SKILL_Woodcutting", 463}, {"SKILL_Attack", 33}};
     stored.kills = {{"Goblin", 3, 100, 300}, {"Wolf", 2, 200, 250}};
     stored.recentKills = {{"Goblin", 300}, {"Wolf", 250}};
     assert(Status::PlayerJson(stored) ==
-           R"({"id":"abc123","name":"Ada <Admin>","online":false,"lastSeen":123456,"location":"Temple <Woods>","skills":[{"name":"Attack","level":2,"xp":33},{"name":"Woodcutting","level":10,"xp":463}],"totalKills":5,"kills":[{"enemy":"Goblin","count":3,"firstKill":100,"lastKill":300},{"enemy":"Wolf","count":2,"firstKill":200,"lastKill":250}],"recentKills":[{"enemy":"Goblin","time":300},{"enemy":"Wolf","time":250}]})");
+           R"({"id":"abc123","name":"Ada <Admin>","online":false,"onlineSince":0,"lastSeen":123456,"location":"Temple <Woods>","skills":[{"name":"Attack","level":2,"xp":33},{"name":"Woodcutting","level":10,"xp":463}],"totalKills":5,"kills":[{"enemy":"Goblin","count":3,"firstKill":100,"lastKill":300},{"enemy":"Wolf","count":2,"firstKill":200,"lastKill":250}],"recentKills":[{"enemy":"Goblin","time":300},{"enemy":"Wolf","time":250}]})");
     assert(Status::PlayersJson(std::vector<StoredPlayer>{stored}) ==
            R"({"count":1,"players":[{"id":"abc123","name":"Ada <Admin>","online":false,"lastSeen":123456}]})");
     stored.online = true;
+    assert(Status::PlayerJson(stored).find("\"onlineSince\":120000") != std::string::npos);
     stored.hasMapLocation = true;
     stored.mapX = 0.25;
     stored.mapY = 0.75;
@@ -87,9 +89,17 @@ int main() {
     store.Sync({live});
     auto known = store.All();
     assert(known.size() == 1 && known[0].online && known[0].skills[0].xp == 5367);
+    assert(known[0].onlineSince > 0);
     assert(known[0].location == "Bramblemead Valley");
     assert(known[0].hasMapLocation && known[0].mapX == 0.125 && known[0].mapY == 0.625);
+    const std::int64_t sessionStarted = known[0].onlineSince;
+    StoredPlayer disconnected;
     assert(!store.Sync({live}));
+    assert(store.Find(known[0].id, disconnected) && disconnected.onlineSince == sessionStarted);
+    assert(store.Sync({}));
+    assert(store.Find(known[0].id, disconnected) && !disconnected.online && disconnected.onlineSince == 0);
+    assert(store.Sync({live}));
+    assert(store.Find(known[0].id, disconnected) && disconnected.online && disconnected.onlineSince > 0);
     assert(store.RecordKill("character-guid", "Goblin <Scout>", 1000));
     assert(store.RecordKill("character-guid", "Goblin <Scout>", 1010));
     assert(store.RenameEnemy("Goblin <Scout>", "Goblin Archer"));
@@ -109,6 +119,11 @@ int main() {
     assert(Status::KillLeaderboardJson({loaded}, "Goblin Archer") ==
            std::string("{\"enemy\":\"Goblin Archer\",\"players\":[{\"id\":\"") + publicId +
            "\",\"name\":\"Saved Player\",\"count\":2}]}");
+    assert(Status::SkillSummaryJson({loaded}) ==
+           R"({"skills":[{"skill":"Mining","players":1}]})");
+    assert(Status::SkillLeaderboardJson({loaded}, "Mining") ==
+           std::string("{\"skill\":\"Mining\",\"players\":[{\"id\":\"") + publicId +
+           "\",\"name\":\"Saved Player\",\"level\":30,\"xp\":5367}]}");
     std::remove(storePath);
     const char* recipeStorePath="dist/player-recipe-snapshot-test.db";
     std::remove(recipeStorePath);

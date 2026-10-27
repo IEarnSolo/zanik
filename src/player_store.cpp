@@ -183,13 +183,18 @@ bool PlayerStore::Sync(const std::vector<DomEngine::PlayerInfo>& onlinePlayers) 
             stored.skills = std::move(skills);
             changed = true;
         }
-        if (!stored.online) { stored.online = true; changed = true; }
+        if (!stored.online || stored.onlineSince <= 0) {
+            stored.online = true;
+            stored.onlineSince = now;
+            changed = true;
+        }
         // Persist last-seen at most once per minute; online status remains live in memory.
         if (now - stored.lastSeen >= 60) { stored.lastSeen = now; changed = true; }
     }
     for (auto& entry : players_) {
         if (entry.second.online && seen.find(entry.first) == seen.end()) {
             entry.second.online = false;
+            entry.second.onlineSince = 0;
             entry.second.hasMapLocation = false;
             changed = true;
         }
