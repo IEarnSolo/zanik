@@ -187,6 +187,22 @@ publish-github-release:
     expire_in: never
     paths: [dist/release/github-release.json]
 
+update-github-release-notes:
+  stage: distribute
+  rules:
+    - if: '$RELEASE_NOTES_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
+  needs: []
+  resource_group: github-production
+  environment:
+    name: github-production
+  script:
+    - RELEASE_NOTES_VERSION="${RELEASE_NOTES_TAG#v}"
+    - python3 tools/update_github_release_notes.py --version "$RELEASE_NOTES_VERSION" --tag "$RELEASE_NOTES_TAG" --changelog CHANGELOG.md --report github-release-notes-update.json
+  artifacts:
+    when: always
+    expire_in: never
+    paths: [github-release-notes-update.json]
+
 publish-curseforge:
   stage: distribute
   rules:
