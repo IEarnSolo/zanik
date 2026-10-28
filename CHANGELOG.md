@@ -4,6 +4,16 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.60] - 2026-10-28
+
+### Changed
+
+- Ship independent material, perk, and spell compatibility states plus their resolved runtime catalog counts through Zanik Manager so unavailable activity sources are immediately diagnosable.
+
+### Fixed
+
+- Initialize first-pickup material tracking independently from perk and spell tracking, preventing an unavailable unlock query from disabling material discoveries such as Ash Plank.
+
 ## [0.2.59] - 2026-10-28
 
 ### Added

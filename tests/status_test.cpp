@@ -14,6 +14,13 @@
 #include <vector>
 
 int main() {
+    assert(DomEngine::PlayerActivitySourceCompatibility(false,false,false)==-2);
+    assert(DomEngine::PlayerActivitySourceCompatibility(true,false,true)==-3);
+    assert(DomEngine::PlayerActivitySourceCompatibility(true,true,false)==-4);
+    assert(DomEngine::PlayerActivitySourceCompatibility(true,true,true)==1);
+    assert(DomEngine::PlayerActivityDiscoveryReady(1,-2));
+    assert(DomEngine::PlayerActivityDiscoveryReady(-2,1));
+    assert(!DomEngine::PlayerActivityDiscoveryReady(-2,-3));
     {
         const std::string web="dist/activity-web";std::filesystem::create_directories(web);
         std::ofstream recipes(web+"/recipe-runtime-catalog.tsv");recipes<<"# schema=2 fingerprint=test count=3\n"<<"r1\tcrafting\tRECIPE_Bronze\tBronze bar\t/assets/items/bronze.png\n"<<"r1-alt\tcrafting\tRECIPE_BronzeAlt\tBronze bar\t/assets/items/bronze.png\n"<<"r2\tcrafting\tRECIPE_Iron\tIron bar\t/assets/items/iron.png\n";recipes.close();
