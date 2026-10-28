@@ -10,6 +10,7 @@ SRC += src/engine/admin_storage.cpp
 SRC += src/engine/admin_gravestone.cpp
 SRC += src/recipe_snapshot_store.cpp src/engine/player_recipes.cpp src/quest_snapshot_store.cpp src/engine/player_quests.cpp
 SRC += src/player_activity_store.cpp src/engine/player_activity_discovery.cpp
+SRC += src/server_performance_store.cpp
 OBJ = $(SRC:.cpp=.o)
 DEP = $(OBJ:.o=.d)
 OUT = dist/libdwstatus.so
@@ -48,6 +49,8 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	./dist/status_test
 	$(CXX) $(CXXFLAGS) tests/admin_store_test.cpp src/admin_store.o -o dist/admin_store_test -pthread
 	./dist/admin_store_test
+	$(CXX) $(CXXFLAGS) tests/server_performance_store_test.cpp src/server_performance_store.o -o dist/server_performance_store_test -pthread
+	./dist/server_performance_store_test
 	$(MAKE) -C qol test
 	$(PYTHON) tests/player_recipe_links_test.py
 	$(PYTHON) tests/recipe_category_navigation_test.py

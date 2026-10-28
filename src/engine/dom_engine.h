@@ -574,6 +574,14 @@ std::string GetAdminPlayerStorageJson(const std::string& characterGuid,
                                       const std::string& administratorCharacterGuid = {});
 void InvalidateAdminStorageSnapshots();
 AdminStorageDiagnostics GetAdminStorageDiagnostics();
+struct PerformanceTickSnapshot {
+    int compatibility = 0;
+    std::uint64_t frames = 0;
+    double maximumFrameMilliseconds = -1;
+    double maximumZanikMilliseconds = -1;
+    std::uint64_t hitches = 0;
+};
+PerformanceTickSnapshot TakePerformanceTickSnapshot();
 struct AdminGravestoneDiagnostics {
     int compatibility = 0;
     int inventoryCompatibility = 0;
