@@ -71,8 +71,12 @@ private:
         std::uint32_t regions = 0;
         std::uint32_t everRegions = 0;
         bool materialsInitialized = false;
+        std::string materialFingerprint;
         std::set<std::string> materials;
         std::set<std::string> everMaterials;
+        bool unlocksInitialized = false;
+        std::string unlockFingerprint;
+        std::set<std::string> perks,spells,everPerks,everSpells;
     };
 
     void Add(const std::string& guid, std::int64_t timestamp, const std::string& type,

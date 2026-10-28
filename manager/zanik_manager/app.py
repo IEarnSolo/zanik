@@ -467,10 +467,15 @@ class MainWindow(QMainWindow):
                                                "Open the configured public Zanik website for the selected server.")
         self.open_website_button.clicked.connect(self.open_website); self.open_website_button.setEnabled(False)
         row.addWidget(self.open_website_button)
-        actions = (("Recover interrupted", self.recover_interrupted, "Resume or roll back an interrupted Manager transaction for this server."),
-                   ("Uninstall", self.uninstall, "Remove verified Zanik-managed files while preserving server data by default."))
-        for label, handler, tooltip in actions:
-            button = button_help(QPushButton(label), tooltip); button.clicked.connect(handler); row.addWidget(button)
+        self.recover_button = button_help(
+            QPushButton("Recover interrupted"),
+            "Restore the last safe state recorded by an interrupted Manager transaction for this server.")
+        self.recover_button.clicked.connect(self.recover_interrupted)
+        self.recover_button.setEnabled(False); row.addWidget(self.recover_button)
+        uninstall_button = button_help(
+            QPushButton("Uninstall"),
+            "Remove verified Zanik-managed files while preserving server data by default.")
+        uninstall_button.clicked.connect(self.uninstall); row.addWidget(uninstall_button)
         layout.addWidget(self.server_summary); layout.addWidget(self.server_compatibility); layout.addWidget(self.server_assets)
         layout.addWidget(self.server_details); layout.addLayout(row); layout.addStretch(); self.tabs.addTab(page, "Servers")
 
@@ -482,8 +487,8 @@ class MainWindow(QMainWindow):
         browse.clicked.connect(self.choose_game_root)
         row = QHBoxLayout(); row.addWidget(self.game_root); row.addWidget(browse)
         self.bundle_box = QComboBox(); self.extract_button = button_help(
-            QPushButton("Extract and validate assets"),
-            "Generate a complete validated website asset bundle from the selected local Dragonwilds client.")
+            QPushButton("Refresh or extract assets"),
+            "Use the retained incremental cache when available, resume verified work, or generate a new validated website asset bundle.")
         self.extract_button.clicked.connect(self.extract_assets)
         self.resume_extract_button = button_help(QPushButton("Resume extraction"),
                                                  "Continue a verified interrupted extraction without repeating completed stages.")
@@ -495,15 +500,18 @@ class MainWindow(QMainWindow):
         self.upload_asset_button = button_help(QPushButton("Upload and activate selected bundle"),
                                                "Upload the selected validated bundle to the explicitly selected target server and activate it atomically.")
         self.upload_asset_button.clicked.connect(lambda: self.upload_assets())
-        open_button = button_help(QPushButton("Open bundle folder"),
-                                  "Open the Windows folder containing the selected validated bundle.")
-        open_button.clicked.connect(self.open_asset_folder)
+        self.open_asset_folder_button = button_help(
+            QPushButton("Open bundle folder"),
+            "Open the Windows cache folder containing the selected validated bundle.")
+        self.open_asset_folder_button.clicked.connect(self.open_asset_folder)
         layout.addRow("Dragonwilds client", row); layout.addRow(self.extract_button); layout.addRow(recovery_row)
         self.asset_target_box = QComboBox()
         layout.addRow("Validated bundle", self.bundle_box)
         layout.addRow("Target server", self.asset_target_box)
-        layout.addRow(self.upload_asset_button); layout.addRow(open_button)
+        layout.addRow(self.upload_asset_button); layout.addRow(self.open_asset_folder_button)
         self.game_root.editingFinished.connect(self.refresh_bundles)
+        self.bundle_box.currentIndexChanged.connect(self.refresh_asset_controls)
+        self.asset_target_box.currentIndexChanged.connect(self.refresh_asset_controls)
         self.tabs.addTab(page, "Assets")
 
     def cleanup_local_storage(self, attempt: int = 0):
@@ -1406,8 +1414,15 @@ class MainWindow(QMainWindow):
         insecure = bool(profile and profile.allow_insecure_http and is_remote_http(profile.panel_origin))
         self.warning.setText("⚠ This panel connection uses HTTP; API traffic is not encrypted." if insecure else "")
         self.render_server_summary(profile)
+        incomplete = JournalStore(self.paths["journals"]).incomplete(profile.id) if profile else []
+        if hasattr(self, "recover_button"):
+            self.recover_button.setEnabled(bool(incomplete))
+            self.recover_button.setText(
+                f"Recover interrupted ({len(incomplete)})" if incomplete else "Recover interrupted")
+            self.recover_button.setToolTip(
+                "Restore the newest interrupted transaction to its recorded safe state."
+                if incomplete else "No interrupted Manager transaction exists for this server.")
         if profile:
-            incomplete=JournalStore(self.paths["journals"]).incomplete(profile.id)
             if incomplete:
                 self.warning.setText((self.warning.text()+"\n" if self.warning.text() else "")+f"An interrupted {incomplete[-1].action} operation needs attention.")
 
@@ -1603,21 +1618,33 @@ class MainWindow(QMainWindow):
         store=JournalStore(self.paths["journals"]); incomplete=store.incomplete(profile.id)
         if not incomplete: QMessageBox.information(self,"Recovery","No interrupted operation was found."); return
         journal=incomplete[-1]
+        details = (f"This is the newest of {len(incomplete)} unresolved transactions. "
+                   if len(incomplete) > 1 else "")
+        if not journal.rollback:
+            QMessageBox.warning(
+                self, "Automatic recovery unavailable",
+                details + "This transaction did not record a verified automatic rollback plan. No server files were changed by Recovery. "
+                "Use Refresh and Doctor to inspect the server, then run the relevant repair workflow.")
+            return
         box=QMessageBox(self); box.setWindowTitle("Interrupted operation")
-        box.setText(f"Recover interrupted {journal.action} operation {journal.operation_id}?")
-        box.setInformativeText("Retry first restores the last safe state and then reopens the workflow. Rollback only restores it.")
-        box.setStandardButtons(QMessageBox.Retry|QMessageBox.Reset|QMessageBox.Cancel)
-        box.button(QMessageBox.Reset).setText("Rollback only")
-        box.button(QMessageBox.Retry).setToolTip("Restore the last safe state, then retry the interrupted workflow.")
-        box.button(QMessageBox.Reset).setToolTip("Restore the last safe state without retrying the operation.")
-        box.button(QMessageBox.Cancel).setToolTip("Leave the recovery journal unchanged and close this prompt.")
-        choice=box.exec()
-        if choice in {QMessageBox.Retry,QMessageBox.Reset}:
-            retry=choice==QMessageBox.Retry
+        box.setText(f"Restore interrupted {journal.action} operation {journal.operation_id} to its last safe state?")
+        box.setInformativeText(
+            details + "Recovery will apply only the rollback actions recorded by that transaction. "
+            "It will not guess the original inputs or automatically repeat an upload, install, update, or uninstall.")
+        restore = box.addButton("Restore safe state", QMessageBox.AcceptRole)
+        cancel = box.addButton(QMessageBox.Cancel)
+        restore.setToolTip("Apply the transaction's recorded and verified rollback actions.")
+        cancel.setToolTip("Leave the recovery journal and server unchanged.")
+        box.setDefaultButton(cancel); box.exec()
+        if box.clickedButton() is restore:
+            def recovered(_):
+                self.log(f"Restored the safe state for interrupted {journal.action} operation {journal.operation_id}.")
+                self.invalidate_files_cache(profile.id); self.refresh_header()
+                self.check_installation_state(profile.id)
+                if journal.action == "activate-assets":
+                    self.tabs.setCurrentIndex(1)
             self.run_async(lambda:self.provider().rollback(journal,profile.server_id,profile.server_root),
-                           lambda _: (self.log("Rollback completed."), self.invalidate_files_cache(profile.id),
-                                      self.refresh_header(), self.install() if retry and journal.action=="install" else None),
-                           title="Recovering the interrupted operation…")
+                           recovered, title="Restoring the interrupted operation's safe state…")
 
     def open_panel(self):
         if self.active(): QDesktopServices.openUrl(QUrl(self.active().panel_origin + "/server/" + self.active().server_id))
@@ -1926,28 +1953,57 @@ class MainWindow(QMainWindow):
 
     def refresh_bundles(self):
         self.bundle_box.clear(); root = Path(self.game_root.text()) if self.game_root.text() else None
-        if not root: return
+        self.resume_extract_button.setEnabled(False); self.discard_extract_button.setEnabled(False)
+        self.resume_extract_button.setText("Resume extraction")
+        self.discard_extract_button.setText("Discard generated work")
+        self.discard_extract_button.setToolTip(
+            "Delete a verified incomplete extraction workspace without removing validated bundles.")
+        if not root:
+            self.refresh_asset_controls(); return
         for item in BundleCache(self.paths["assets"]).list(game_root_id(root)):
             self.bundle_box.addItem(
                 f"Build {item.build} · validated {format_bundle_timestamp(item.created_at)} · {item.manifest_hash[:12]}",
                 str(item.path))
         tool_root = resource_path("asset-tools")
-        status = AssetExtractor(tool_root, BundleCache(self.paths["assets"])).resumable(self.asset_work_root(root))
+        extractor = AssetExtractor(tool_root, BundleCache(self.paths["assets"]))
+        try:
+            status = extractor.resume_compatibility(self.asset_work_root(root), root)
+        except (OSError, RuntimeError):
+            status = extractor.resumable(self.asset_work_root(root))
         complete = bool(status and status.get("stage") == "complete")
-        self.resume_extract_button.setEnabled(bool(status) and not complete)
+        compatible = bool(status and status.get("compatible", True))
+        self.resume_extract_button.setEnabled(bool(status) and compatible)
         self.discard_extract_button.setEnabled(bool(status))
-        if complete:
-            self.resume_extract_button.setText("Incremental cache ready")
+        if complete and compatible:
+            self.resume_extract_button.setText("Update incrementally")
+            self.resume_extract_button.setToolTip(
+                "Check retained game packages and export only changed, added, or removed assets, then validate a new bundle.")
             self.discard_extract_button.setText("Clear incremental cache")
             self.discard_extract_button.setToolTip(
                 "Reclaim disk space by deleting the private raw extraction cache. Validated bundles and server assets remain, but the next asset update will require a full extraction.")
+        elif status and not compatible:
+            self.resume_extract_button.setText("Saved work is incompatible")
+            self.resume_extract_button.setToolTip(
+                "This workspace cannot be resumed with the current game or packaged tools. Discard it safely to start again.")
+            self.discard_extract_button.setText("Discard incompatible work")
         elif status:
             self.resume_extract_button.setText(f"Resume extraction ({status['stage']})")
+            self.resume_extract_button.setToolTip(
+                "Continue this verified extraction without repeating completed stages.")
             self.discard_extract_button.setText("Discard generated work")
-        else:
-            self.resume_extract_button.setText("Resume extraction")
-            self.discard_extract_button.setText("Discard generated work")
-            self.discard_extract_button.setToolTip("Delete a verified incomplete extraction workspace without removing validated bundles.")
+        self.refresh_asset_controls()
+
+    def refresh_asset_controls(self):
+        if not hasattr(self, "upload_asset_button"):
+            return
+        has_bundle = bool(self.bundle_box.currentData())
+        has_target = bool(self.asset_target_box.currentData())
+        self.upload_asset_button.setEnabled(has_bundle and has_target)
+        self.upload_asset_button.setToolTip(
+            "Validate, upload, and atomically activate the selected bundle on the explicitly selected server. Unchanged assets are skipped."
+            if has_bundle and has_target else
+            "Select both a validated bundle and a target server before uploading.")
+        self.open_asset_folder_button.setEnabled(bool(self.paths["assets"].exists()))
 
     def asset_recovery_root(self, root: Path) -> Path:
         return self.paths["mapping_recovery"] / game_root_id(root)
@@ -2274,8 +2330,9 @@ class MainWindow(QMainWindow):
                     self, "Update assets incrementally" if incremental else "Resume verified extraction", prompt,
                     QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Yes) != QMessageBox.Yes:
                 return
-            preflight = (self.confirm_asset_preflight(root, extractor)
-                         if incremental and resume_status.get("mappingRequired") else (False, False))
+            needs_mapping = ((incremental and resume_status.get("mappingRequired"))
+                             or (not incremental and resume_status.get("stage") == "created"))
+            preflight = self.confirm_asset_preflight(root, extractor) if needs_mapping else (False, False)
         else:
             incremental = False
             preflight = self.confirm_asset_preflight(root, extractor)
@@ -2298,7 +2355,8 @@ class MainWindow(QMainWindow):
                                      work_root=work, resume=bool(resume_status) and not incremental,
                                      incremental=incremental)
         self.run_async(action,
-                       lambda item: self.asset_extraction_complete(item, resumed=False),
+                       lambda item: self.asset_extraction_complete(
+                           item, resumed=bool(resume_status) and not incremental),
                        title=("Updating Dragonwilds web assets incrementally… This can take several minutes." if incremental else
                               f"Resuming asset extraction from {resume_status['stage']}… This can take several minutes." if resume_status
                               else "Extracting Dragonwilds web assets… This can take several minutes."), determinate=True)
@@ -2312,12 +2370,11 @@ class MainWindow(QMainWindow):
         if not status:
             QMessageBox.information(self, "Nothing to resume", "No verified Zanik extraction workspace exists for this game installation.")
             self.refresh_bundles(); return
-        if status.get("incremental"):
-            self.extract_assets(); return
         if not status["compatible"]:
             self.offer_stale_asset_cleanup(root, extractor, status, self.extract_assets)
             return
-        needs_mapping = status.get("stage") == "created"
+        incremental = bool(status.get("incremental"))
+        needs_mapping = status.get("stage") == "created" or (incremental and status.get("mappingRequired"))
         preflight = self.confirm_asset_preflight(root, extractor) if needs_mapping else (False, False)
         if preflight is None:
             return
@@ -2335,11 +2392,12 @@ class MainWindow(QMainWindow):
                     raise RuntimeError("Dragonwilds did not close normally. Close it manually and retry; it was not force-terminated.")
             return extractor.extract(root, output, event, preserve_existing_loader=preserve,
                                      recovery_root=self.asset_recovery_root(root),
-                                     work_root=work, resume=True)
+                                     work_root=work, resume=not incremental, incremental=incremental)
         self.run_async(
             action,
-            lambda item: self.asset_extraction_complete(item, resumed=True),
-            title=f"Resuming asset extraction from {status['stage']}…", determinate=True,
+            lambda item: self.asset_extraction_complete(item, resumed=not incremental),
+            title=("Updating Dragonwilds web assets incrementally…" if incremental else
+                   f"Resuming asset extraction from {status['stage']}…"), determinate=True,
         )
 
     def discard_asset_extraction(self):
@@ -2429,7 +2487,7 @@ class MainWindow(QMainWindow):
         bundle = Path(value)
         if not confirmed and QMessageBox.question(self, "Confirm asset target",
                                 f"Upload and activate {bundle.name} on:\n\n{profile.name}\n{profile.panel_origin}\nServer {profile.server_id}?\n\n"
-                                "If the game server is running, Zanik Manager will restart it after activation so native catalog tracking loads the new assets.",
+                                "The bundle is validated again before upload. Unchanged files are skipped; a running game server is restarted only when activation changes assets.",
                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes: return
         def progress(current, total, path):
             percent = 15 + int(current * 75 / max(total, 1))
@@ -2460,7 +2518,7 @@ class MainWindow(QMainWindow):
         if result.get("unchanged"):
             self.log(f"Assets on {profile.name} already match the selected bundle; no upload or restart was needed")
         elif result.get("deltaUpload"):
-            self.log(f"Activated {result.get('uploadedFileCount', 0)} changed and removed "
+            self.log(f"Activated {result.get('uploadedFileCount', 0)} changed asset files and removed "
                      f"{result.get('removedFileCount', 0)} retired asset files on {profile.name}")
         else:
             self.log(f"Activated {result['fileCount']} asset files on {profile.name}")
