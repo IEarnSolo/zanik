@@ -11,6 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("publish_github_release", ROOT / "tools/publish_github_release.py")
 github = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(github)
+NOTES_SPEC = importlib.util.spec_from_file_location(
+    "update_github_release_notes", ROOT / "tools/update_github_release_notes.py")
+notes_updater = importlib.util.module_from_spec(NOTES_SPEC)
+sys.path.insert(0, str(ROOT / "tools"))
+NOTES_SPEC.loader.exec_module(notes_updater)
 
 
 def fixture(root: Path, version: str = "1.2.3") -> list[Path]:
@@ -119,6 +124,13 @@ with tempfile.TemporaryDirectory() as temporary:
     assert any(call[0] == "PATCH" for call in existing.calls)
     assert not any(call[0] == "POST" and "uploads.example" in call[1] for call in existing.calls)
 
+    note_client = FakeClient(release=existing_release)
+    note_result = notes_updater.update_release_notes(
+        note_client, "IEarnSolo/zanik", "v1.2.3", "1.2.3", "Complete notes\n")
+    assert note_result["status"] == "updated"
+    note_patch = next(call for call in note_client.calls if call[0] == "PATCH")
+    assert json.loads(note_patch[2]) == {"name": "Zanik 1.2.3", "body": "Complete notes\n"}
+
     conflict = FakeClient(release=existing_release)
     conflict.assets = [{"name": paths[0].name, "digest": "sha256:different"}]
     try:
@@ -158,6 +170,8 @@ with tempfile.TemporaryDirectory() as temporary:
 
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     assert "publish-github-release:" in ci
+    assert "update-github-release-notes:" in ci
+    assert "RELEASE_NOTES_TAG" in ci
     assert "name: github-production" in ci
     assert "GITHUB_RELEASE_TOKEN" not in ci
 
