@@ -18,6 +18,8 @@ int main() {
     assert(DomEngine::PlayerActivitySourceCompatibility(true,false,true)==-3);
     assert(DomEngine::PlayerActivitySourceCompatibility(true,true,false)==-4);
     assert(DomEngine::PlayerActivitySourceCompatibility(true,true,true)==1);
+    assert(DomEngine::PlayerActivityQueryLayoutValid({{"ItemData",0},{"ReturnValue",8},{"UnrelatedInheritedField",64}},{"ItemData"}));
+    assert(!DomEngine::PlayerActivityQueryLayoutValid({{"ItemData",8},{"ReturnValue",0},{"UnrelatedInheritedField",64}},{"ItemData"}));
     assert(DomEngine::PlayerActivityDiscoveryReady(1,-2));
     assert(DomEngine::PlayerActivityDiscoveryReady(-2,1));
     assert(!DomEngine::PlayerActivityDiscoveryReady(-2,-3));

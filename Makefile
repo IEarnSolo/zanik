@@ -82,6 +82,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(NODE) tests/map_page_test.js
 	$(PYTHON) tests/http_core_test.py
 	$(PYTHON) tests/player_activity_http_test.py
+	$(PYTHON) tests/material_activity_catalog_test.py
 	$(PYTHON) tests/maintenance_http_test.py
 	$(PYTHON) tests/feature_gate_http_test.py
 	sh tests/updater_test.sh
