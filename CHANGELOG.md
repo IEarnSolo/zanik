@@ -4,6 +4,17 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.61] - 2026-10-28
+
+### Added
+
+- Package an authoritative 393-entry first-pickup item catalog in the Zanik Manager server payload, generated from the game's `bShowNotificationOnFirstPickup` data, with resolved-entry counts in player activity diagnostics.
+
+### Fixed
+
+- Restore recent-activity material discoveries by validating the real `HasPickedUpItem` parameter instead of unrelated inherited reflection fields.
+- Resolve first-pickup item objects continuously rather than relying on whichever item assets happened to be loaded during server startup; Small Animal Fang and other newly loaded materials can now be detected reliably.
+
 ## [0.2.60] - 2026-10-28
 
 ### Changed

@@ -20,6 +20,7 @@ install -m 0755 "$ROOT/scripts/zanik-server" "$WORK/server/bin/zanik-server"
 install -m 0644 "$ROOT/scripts/lib/zanik-common.sh" "$WORK/server/lib/zanik-common.sh"
 install -m 0644 "$ROOT/config/zanik.conf.example" "$WORK/server/config/zanik.conf.example"
 install -m 0644 "$ROOT/config/zanik-config.schema.json" "$WORK/server/config/zanik-config.schema.json"
+install -m 0644 "$ROOT/config/material-first-pickup-catalog.tsv" "$WORK/server/config/material-first-pickup-catalog.tsv"
 install -m 0644 "$ROOT/deploy/compatibility.tsv" "$WORK/server/compatibility/compatibility.tsv"
 for file in install update uninstall doctor init-assets compat-launcher verify-assets check-game-update check-compatible-release update-game apply-asset-delta; do install -m 0755 "$ROOT/scripts/$file.sh" "$WORK/server/scripts/$file.sh"; done
 install -m 0644 "$ROOT/tools/zanik_assets.py" "$WORK/server/tools/zanik_assets.py"

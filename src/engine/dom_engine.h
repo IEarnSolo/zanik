@@ -734,12 +734,14 @@ struct PlayerActivityDiscoverySnapshot {
 };
 struct PlayerActivityDiscoveryDiagnostics {
     int regionCompatibility=0,materialCompatibility=0,unlockCompatibility=0;
-    std::uint64_t materialCatalogEntries=0,perkCatalogEntries=0,spellCatalogEntries=0;
+    std::uint64_t materialCatalogEntries=0,resolvedMaterialEntries=0,perkCatalogEntries=0,spellCatalogEntries=0;
     std::uint64_t snapshots=0,droppedSamples=0;
 };
 int PlayerActivitySourceCompatibility(bool queryFound,bool queryValid,bool catalogReady);
 bool PlayerActivityDiscoveryReady(int materialStatus,int unlockStatus);
-bool InitializePlayerActivityDiscovery(uintptr_t moduleBase,uintptr_t moduleEnd);
+bool PlayerActivityQueryLayoutValid(const std::vector<std::pair<std::string,int32_t>>& fields,const std::vector<std::string>& inputNames);
+bool InitializePlayerActivityDiscovery(const std::string& materialCatalogPath,uintptr_t moduleBase,uintptr_t moduleEnd);
+void RefreshPlayerActivityDiscoveryCompatibility();
 void UpdatePlayerActivityDiscoveryTargets(const std::vector<PlayerInfo>& players);
 void ProcessPlayerActivityDiscoveryTracking();
 std::vector<PlayerActivityDiscoverySnapshot> ReadPlayerActivityDiscoveries();
