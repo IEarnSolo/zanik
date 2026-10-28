@@ -4,6 +4,20 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.55] - 2026-10-27
+
+### Added
+
+- Add a persistent Server Diagnostics page with selectable one-, three-, five-, twelve-, twenty-four-hour and full-uptime charts for engine frame time, Zanik game-thread work, authoritative player ping, process CPU and memory, host load, and web latency, including correlated spike attribution.
+
+### Changed
+
+- Ship the new diagnostics dashboard and timing sampler through Zanik Manager 0.2.55.
+
+### Fixed
+
+- Hide the combat kill total and its label while viewing Skills highscores.
+
 ## [0.2.54] - 2026-10-27
 
 ### Changed

@@ -59,6 +59,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
         LD_PRELOAD=str(LIBRARY),
         DW_STATUS_PORT=str(port),
         DW_STATUS_DATA=str(data_file),
+        DW_DATA_ROOT=str(temporary_root),
         DW_WEB_ROOT=str(web_root),
         DW_GAME_UPDATE_STATE=str(game_update_file),
         DW_STATUS_TEST_HOST="1",
@@ -87,6 +88,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert "encodeURIComponent(String(player.id))" in page
             assert page.index('class="site-header"') < page.index("<main>")
             assert '>Server</a>' not in page and '>Highscores</a>' in page
+            assert 'href="/diagnostics"' in page
         with get(base, "/players") as response:
             page = response.read().decode()
             assert "Known players" in page and 'class="site-header"' in page
@@ -113,6 +115,17 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert 'class="kills-sidebar"' in page
             assert 'id="combatTab"' in page and 'id="skillsTab"' in page
             assert 'id="enemyList"' in page and "selectScore" in page
+        with get(base, "/diagnostics") as response:
+            page = response.read().decode()
+            assert "Server diagnostics" in page
+            assert 'id="chart"' in page and "/api/server-performance?window=" in page
+            assert "Engine frame" in page and "Player network" in page and "Spike analysis" in page
+        with get(base, "/api/server-performance?window=3600") as response:
+            performance = json.loads(response.read())
+            assert performance["windowSeconds"] == 3600
+            assert performance["sampleIntervalSeconds"] == 10
+            assert isinstance(performance["points"], list) and isinstance(performance["insights"], list)
+        expect_error(base, "/api/server-performance?window=7", 400, "Unsupported performance window")
 
         expect_error(base, "/api/quests/catalog", 503, "Quest catalog unavailable")
         expect_error(base, "/api/player-activity?id=missing", 404, "Player not found")

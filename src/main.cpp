@@ -7,6 +7,7 @@
 #include "recipe_snapshot_store.h"
 #include "quest_snapshot_store.h"
 #include "player_activity_store.h"
+#include "server_performance_store.h"
 #include "utils/logger.h"
 #include "utils/memory.h"
 #include "web_page.h"
@@ -40,6 +41,7 @@ std::unique_ptr<RecipeSettingsStore> recipeSettingsStore;
 std::unique_ptr<RecipeSnapshotStore> recipeSnapshotStore;
 std::unique_ptr<QuestSnapshotStore> questSnapshotStore;
 std::unique_ptr<PlayerActivityStore> playerActivityStore;
+std::unique_ptr<ServerPerformanceStore> serverPerformanceStore;
 std::unordered_map<std::string,std::chrono::steady_clock::time_point> adminTeleportRate;
 std::unordered_map<std::string,std::chrono::steady_clock::time_point> adminStorageRate;
 std::unordered_map<std::string,std::chrono::steady_clock::time_point> adminGravestoneRate;
@@ -59,6 +61,7 @@ std::string StorePath() {
 
 std::string ZanikRoot(){const char* raw=std::getenv("DW_ZANIK_ROOT");return raw&&*raw?raw:"/home/container/zanik";}
 std::string DataRoot(){const char* raw=std::getenv("DW_DATA_ROOT");return raw&&*raw?raw:"/home/container/zanik-data";}
+std::string PerformancePath(){const char* raw=std::getenv("DW_PERFORMANCE_DATA");return raw&&*raw?raw:DataRoot()+"/server-performance.db";}
 
 std::string WebRoot() {
     const char* raw = std::getenv("DW_WEB_ROOT");
@@ -418,6 +421,8 @@ void Handle(int fd) {
         if(!ZanikConfig::PlayerStatus())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", PageWithSiteHeader(kPlayersPage,"players"));
     } else if (path == "/kills") {
         if(!ZanikConfig::KillTracking()&&!ZanikConfig::PlayerStatus())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", PageWithSiteHeader(kKillsPage,"kills"));
+    } else if (path == "/diagnostics") {
+        Respond(fd,200,"text/html; charset=utf-8",PageWithSiteHeader(kDiagnosticsPage,"diagnostics"));
     } else if (path == "/map") {
         if(!ZanikConfig::Map())Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Not found"));else Respond(fd, 200, "text/html; charset=utf-8", PageWithSiteHeader(kMapPage,"map"));
     } else if (path == "/recipe-unlocks") {
@@ -704,6 +709,8 @@ void Handle(int fd) {
         if(id.empty())Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Player id required"));
         else if(!playerStore->Find(id,player)||player.identity.rfind("character:",0)!=0)Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Player not found"));
         else {std::size_t limit=8;std::uint64_t before=0,parsed=0;const auto rawLimit=QueryValue(query,"limit"),rawBefore=QueryValue(query,"before");if((!rawLimit.empty()&&(!ParseUnsigned(rawLimit,parsed)||parsed==0))||(!rawBefore.empty()&&!ParseUnsigned(rawBefore,before))){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Invalid activity cursor"));return;}if(!rawLimit.empty())limit=static_cast<std::size_t>(std::min<std::uint64_t>(parsed,50));Respond(fd,200,"application/json; charset=utf-8",playerActivityStore?playerActivityStore->PageJson(player.identity.substr(10),limit,before):"{\"events\":[],\"hasMore\":false,\"nextBefore\":null}");}
+    } else if(path=="/api/server-performance"){
+        std::uint64_t window=3600;const std::string raw=QueryValue(query,"window");if(!raw.empty()&&!ParseUnsigned(raw,window)){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Invalid performance window"));return;}static const std::unordered_set<std::uint64_t> allowed={0,3600,10800,18000,43200,86400};if(!allowed.count(window)){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Unsupported performance window"));return;}Respond(fd,200,"application/json; charset=utf-8",serverPerformanceStore?serverPerformanceStore->Json(window):"{\"error\":\"Performance history unavailable\"}");
     } else if(path=="/api/player-activity-diagnostics"){
         auto store=playerActivityStore?playerActivityStore->Diagnostics():PlayerActivityDiagnostics{};auto engine=DomEngine::GetPlayerActivityDiscoveryDiagnostics();std::ostringstream out;out<<"{\"compatibility\":"<<store.compatibility<<",\"regionCompatibility\":"<<engine.regionCompatibility<<",\"materialCompatibility\":"<<engine.materialCompatibility<<",\"events\":"<<store.events<<",\"players\":"<<store.players<<",\"snapshots\":"<<store.snapshots+engine.snapshots<<",\"droppedSamples\":"<<store.droppedSamples+engine.droppedSamples<<",\"persistenceFailures\":"<<store.persistenceFailures<<'}';Respond(fd,200,"application/json; charset=utf-8",out.str());
     } else if (path == "/api/player-recipes") {
@@ -1027,7 +1034,7 @@ void Run() {
         LogMessage("Zanik maintenance-only website listening; no native game integration was initialized");
         while(!stopping){fd_set set;FD_ZERO(&set);FD_SET(listener,&set);timeval wait{0,100000};if(select(listener+1,&set,nullptr,nullptr,&wait)<=0)continue;int client=accept(listener,nullptr,nullptr);if(client<0)continue;timeval io{5,0};setsockopt(client,SOL_SOCKET,SO_RCVTIMEO,&io,sizeof(io));setsockopt(client,SOL_SOCKET,SO_SNDTIMEO,&io,sizeof(io));Handle(client);close(client);}close(listener);return;
     }
-    const bool needsGameThreadDispatcher=ZanikConfig::PlayerRecipeTracking()||ZanikConfig::PlayerQuestTracking()||ZanikConfig::AdminTeleport()||ZanikConfig::AdminStorageMutation()||ZanikConfig::AdminGravestoneMutation();
+    const bool needsGameThreadDispatcher=true;
     const bool storageTickReady=needsGameThreadDispatcher&&(!testHost||std::strcmp(testHost,"1")!=0)&&DomEngine::InitializeAdminStorageHookEarly();
     if((!testHost||std::strcmp(testHost,"1")!=0)&&needsGameThreadDispatcher)LogMessage(storageTickReady?"Zanik bounded game-thread dispatcher installed before world startup":"Zanik game-thread dispatcher compatibility unavailable");
     int port = Port();
@@ -1045,6 +1052,7 @@ void Run() {
     recipeSnapshotStore->Load();
     questSnapshotStore=std::make_unique<QuestSnapshotStore>(DataRoot()+"/player-quest-snapshots.db");questSnapshotStore->Load();
     playerActivityStore=std::make_unique<PlayerActivityStore>(DataRoot()+"/player-activity.db");playerActivityStore->Load();
+    serverPerformanceStore=std::make_unique<ServerPerformanceStore>(PerformancePath());serverPerformanceStore->Start();
     // Migrate names confirmed from records created before native FText lookup.
     // Future internal names are migrated automatically when first observed.
     playerStore->RenameEnemy("AI GiantRat Character", "Giant Rat");
@@ -1081,6 +1089,8 @@ void Run() {
     auto nextResourceInit = std::chrono::steady_clock::now();
     auto nextResourceRefresh = std::chrono::steady_clock::now();
     auto nextNpcInit = std::chrono::steady_clock::now();
+    auto nextPerformance = std::chrono::steady_clock::now();
+    double latestAveragePing=-1,latestMaximumPing=-1;std::uint32_t latestOnlinePlayers=0;
     while (!stopping) {
         auto now = std::chrono::steady_clock::now();
         if ((!testHost||std::strcmp(testHost,"1")!=0) && !DomEngine::g_Engine->IsInitialized() && now >= nextDiscovery) {
@@ -1133,6 +1143,7 @@ void Run() {
             uintptr_t gameState = DomEngine::g_Engine->GetGameState();
             if (gameState && DomEngine::g_Engine->IsA(gameState, "DominionGameStateBase")) {
                 auto livePlayers=DomEngine::g_Engine->GetAllPlayers();
+                latestOnlinePlayers=static_cast<std::uint32_t>(livePlayers.size());double pingTotal=0;std::uint32_t pingCount=0;latestMaximumPing=-1;for(const auto&player:livePlayers)if(player.pingMs>=0&&player.pingMs<=10000){pingTotal+=player.pingMs;++pingCount;latestMaximumPing=std::max(latestMaximumPing,double(player.pingMs));}latestAveragePing=pingCount?pingTotal/pingCount:-1;
                 DomEngine::UpdateKillPlayerCache(livePlayers);
                 if(ZanikConfig::PlayerRecipeTracking())DomEngine::UpdatePlayerRecipeTargets(livePlayers);
                 if(ZanikConfig::PlayerQuestTracking())DomEngine::UpdatePlayerQuestTargets(livePlayers);
@@ -1143,9 +1154,10 @@ void Run() {
                 playerStore->Sync(livePlayers);
                 if(ZanikConfig::PlayerRecipeTracking()&&recipeSnapshotStore)recipeSnapshotStore->Sync(recipeSnapshots);
                 if(ZanikConfig::PlayerQuestTracking()&&questSnapshotStore&&!questSnapshotStore->Sync(questSnapshots))DomEngine::RecordPlayerQuestPersistenceFailure();
-            } else DomEngine::UpdateKillPlayerCache({});
+            } else {DomEngine::UpdateKillPlayerCache({});latestAveragePing=-1;latestMaximumPing=-1;latestOnlinePlayers=0;}
             nextSync = now + std::chrono::seconds(2);
         }
+        if(serverPerformanceStore&&now>=nextPerformance){const auto tick=DomEngine::TakePerformanceTickSnapshot();ServerPerformanceInput sample;sample.gameFrameMs=tick.maximumFrameMilliseconds;sample.zanikGameThreadMs=tick.maximumZanikMilliseconds;sample.gameThreadHitches=tick.hitches;sample.averagePingMs=latestAveragePing;sample.maximumPingMs=latestMaximumPing;sample.onlinePlayers=latestOnlinePlayers;serverPerformanceStore->Sample(sample);nextPerformance=now+std::chrono::seconds(10);}
         fd_set readSet;
         FD_ZERO(&readSet);
         FD_SET(listener, &readSet);
@@ -1162,7 +1174,7 @@ void Run() {
         timeval ioTimeout{5, 0};
         setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &ioTimeout, sizeof(ioTimeout));
         setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &ioTimeout, sizeof(ioTimeout));
-        Handle(client);
+        const auto httpStarted=std::chrono::steady_clock::now();Handle(client);if(serverPerformanceStore)serverPerformanceStore->RecordHttpDuration(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-httpStarted).count()));
         close(client);
     }
     playerStore->Save();
