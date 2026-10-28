@@ -20,6 +20,14 @@ def body(name: str, following: str) -> str:
 tick_action = body("void ProcessOneStorageAction()", "void WriteJump")
 planner = body("bool BuildMutationPlan(", "bool SubmitAdminStorageMutation(")
 snapshot = body("std::shared_ptr<const StorageSnapshot> BuildStorageSnapshot", "const SnapshotChest*")
+engine_tick = body("void HookEngineTick(", "bool WasAdminStorageBuildingRemoved")
+
+# Performance timing is elapsed monotonic execution around the original engine
+# dispatcher, never an assumed meaning or unit for one of its native arguments.
+assert "engineStarted=std::chrono::steady_clock::now()" in engine_tick
+assert engine_tick.index("engineStarted=") < engine_tick.index("originalEngineTick(") < engine_tick.index("engineMicros=")
+assert "double(delta)*1000000.0" not in engine_tick
+assert "engineMicros>=50000" in engine_tick
 
 # The game-thread path consumes an already built action and never performs discovery.
 for forbidden in (

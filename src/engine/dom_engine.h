@@ -577,7 +577,7 @@ AdminStorageDiagnostics GetAdminStorageDiagnostics();
 struct PerformanceTickSnapshot {
     int compatibility = 0;
     std::uint64_t frames = 0;
-    double maximumFrameMilliseconds = -1;
+    double maximumEngineTickMilliseconds = -1;
     double maximumZanikMilliseconds = -1;
     std::uint64_t hitches = 0;
 };

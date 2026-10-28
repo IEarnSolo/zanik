@@ -20,7 +20,7 @@ for(const token of ['class="kills-sidebar"','id="combatTab"','id="skillsTab"','i
 const diagnosticsPage=source.match(/constexpr const char\* kDiagnosticsPage = R"DWHTML\(([\s\S]*?)\)DWHTML";/);
 if(!diagnosticsPage)throw new Error('diagnostics page not found');
 for(const script of [...diagnosticsPage[1].matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match=>match[1]))new Function(script);
-for(const token of ['id="chart"','1h',"['All',0]",'gameFrameMs','zanikGameThreadMs','maximumPingMs','loadCapacity','Spike analysis','textContent=item.detail'])if(!diagnosticsPage[1].includes(token))throw new Error('missing diagnostics token: '+token);
+for(const token of ['id="chart"','1h',"['All',0]",'engineTickMs','zanikGameThreadMs','maximumPingMs','loadCapacity','Spike analysis','item.occurrences','setInterval(load,2000)','document.hidden'])if(!diagnosticsPage[1].includes(token))throw new Error('missing diagnostics token: '+token);
 const page=source.match(/constexpr const char\* kMapPage = R"DWHTML\(([\s\S]*?)\)DWHTML";/);
 if(!page)throw new Error('map page not found');
 const scripts=[...page[1].matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match=>match[1]);

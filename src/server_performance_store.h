@@ -7,9 +7,9 @@
 #include <vector>
 
 struct ServerPerformanceInput {
-    double gameFrameMs = -1;
+    double engineTickMs = -1;
     double zanikGameThreadMs = -1;
-    std::uint64_t gameThreadHitches = 0;
+    std::uint64_t engineTicks = 0, gameThreadHitches = 0;
     double averagePingMs = -1;
     double maximumPingMs = -1;
     std::uint32_t onlinePlayers = 0;
@@ -25,6 +25,7 @@ struct ServerPerformanceDiagnostics {
 class ServerPerformanceStore {
 public:
     explicit ServerPerformanceStore(std::string path);
+    ~ServerPerformanceStore();
     bool Start(std::uint64_t timestamp = 0);
     bool Sample(const ServerPerformanceInput& input, std::uint64_t timestamp = 0);
     void RecordHttpDuration(std::uint64_t microseconds);
@@ -34,17 +35,18 @@ public:
 private:
     struct Point {
         std::uint64_t timestamp = 0;
-        double gameFrameMs = -1, zanikGameThreadMs = -1;
-        std::uint64_t hitches = 0;
+        double engineTickMs = -1, zanikGameThreadMs = -1;
+        std::uint64_t engineTicks = 0, hitches = 0;
         double averagePingMs = -1, maximumPingMs = -1;
         std::uint32_t onlinePlayers = 0;
         double processCpuPercent = 0, rssMiB = 0, loadOne = 0;
         double httpAverageMs = 0, httpMaximumMs = 0;
-        std::uint64_t httpRequests = 0;
+        std::uint64_t httpRequests = 0, samples = 1;
     };
 
     static std::uint64_t Now();
     bool Append(const Point& point);
+    void Compact();
     Point Aggregate(const std::vector<Point>& points, std::size_t begin, std::size_t end) const;
     std::string path_;
     mutable pthread_mutex_t mutex_ = PTHREAD_MUTEX_INITIALIZER;
@@ -53,5 +55,6 @@ private:
     bool persistenceHealthy_ = true;
     std::uint64_t previousCpuTicks_ = 0;
     std::uint64_t previousCpuTimestampMs_ = 0;
+    int fileDescriptor_ = -1;
     std::atomic<std::uint64_t> httpMicros_{0}, httpMaximumMicros_{0}, httpRequests_{0};
 };
