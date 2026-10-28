@@ -6,12 +6,6 @@ All notable changes to Zanik are documented here.
 
 ## [0.2.59] - 2026-10-28
 
-### Changed
-
-- Publish the Zanik Manager Assets and Recovery audit plus authoritative material, perk, spell, recipe, and building activity tracking first tagged in 0.2.58 after correcting the release-notes contract.
-
-## [0.2.58] - 2026-10-28
-
 ### Added
 
 - Record newly unlocked skill perks and utility spells in each player's persistent Recent activity timeline, with restart-safe duplicate suppression and silent first-observation baselines.
@@ -26,6 +20,12 @@ All notable changes to Zanik are documented here.
 
 - Detect first-pickup materials through the game's authoritative progress query instead of decoding an internal sparse set, fixing missed discoveries such as flax.
 - Ignore malformed and superseded Manager recovery journals when deciding whether a server needs recovery.
+
+## [0.2.58] - 2026-10-28
+
+### Changed
+
+- Reserve the protected release tag after its release-notes contract check failed. No `0.2.58` packages or releases were published; the complete changes shipped in `0.2.59`.
 
 ## [0.2.57] - 2026-10-28
 
