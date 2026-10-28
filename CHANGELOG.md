@@ -4,6 +4,12 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.59] - 2026-10-28
+
+### Changed
+
+- Publish the Zanik Manager Assets and Recovery audit plus authoritative material, perk, spell, recipe, and building activity tracking first tagged in 0.2.58 after correcting the release-notes contract.
+
 ## [0.2.58] - 2026-10-28
 
 ### Added
