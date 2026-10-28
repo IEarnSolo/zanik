@@ -13,7 +13,7 @@ All notable changes to Zanik are documented here.
 ### Changed
 
 - Refresh first-pickup materials, perks, spells, recipes, and building unlocks in tightly bounded game-thread batches so new activity appears promptly without introducing frame-time spikes.
-- Bring the Assets tab up to date with retained incremental extraction: distinguish incremental updates, resumable work, and incompatible work; require an explicit bundle and server target; and clarify no-change uploads and cache cleanup.
+- Bring the Zanik Manager Assets tab up to date with retained incremental extraction: distinguish incremental updates, resumable work, and incompatible work; require an explicit bundle and server target; and clarify no-change uploads and cache cleanup.
 - Make Recover interrupted available only for unresolved transactions and restrict it to the exact rollback actions recorded by the newest recoverable operation instead of guessing or replaying the original workflow.
 
 ### Fixed
