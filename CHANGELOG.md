@@ -4,6 +4,12 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.57] - 2026-10-28
+
+### Changed
+
+- Bring Zanik Manager uninstall up to date with current wrapper and replacement installs: restore only verified Zanik-managed startup settings, preserve offline state, verify removal and official-executable restoration, retain all `zanik-data` persistence by default, and leave older/manual wrappers stopped when operator startup action is required.
+
 ## [0.2.56] - 2026-10-27
 
 ### Changed

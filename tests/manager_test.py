@@ -1356,7 +1356,7 @@ class ManagerTests(unittest.TestCase):
                 self.files = {"/home/container/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping": b"\x7fELFofficial"}
                 self.directories = {"/", "/home", "/home/container", "/home/container/RSDragonwilds", "/home/container/RSDragonwilds/Binaries", "/home/container/RSDragonwilds/Binaries/Linux"}
                 self.state = "offline"
-                self.auto_update = "1"
+                self.startup_values = {"AUTO_UPDATE": "1", "SERVER_BINARY": "RSDragonwildsServer-Linux-Shipping"}
                 self.uploads = []
                 self.signals = []
             def server(self, _): return {"server_owner": True}
@@ -1388,8 +1388,9 @@ class ManagerTests(unittest.TestCase):
                         result.append({"name":name[len(prefix):],"is_file":False})
                 return result
             def chmod(self, *args): pass
-            def startup_variable(self, _server, key): return {"key": key, "value": self.auto_update, "editable": True}
-            def set_startup_variable(self, _server, key, value): self.auto_update = value
+            def startup_variable(self, _server, key):
+                return {"key": key, "value": self.startup_values[key], "editable": True}
+            def set_startup_variable(self, _server, key, value): self.startup_values[key] = value
             def rename(self, _, root, pairs):
                 for source, target in pairs:
                     source = f"{root.rstrip('/')}/{source}"; target = f"{root.rstrip('/')}/{target}"
@@ -1398,6 +1399,8 @@ class ManagerTests(unittest.TestCase):
                     moved = [(path, target + path[len(source):]) for path in list(self.files) if path.startswith(source + "/")]
                     if not moved: raise PterodactylError("not found", 404)
                     for old, new in moved: self.files[new] = self.files.pop(old)
+                    self.directories = {directory for directory in self.directories
+                                        if directory != source and not directory.startswith(source + "/")}
                     self.directories.add(target)
             def delete(self, _, root, files):
                 for item in files:
@@ -1460,8 +1463,52 @@ class ManagerTests(unittest.TestCase):
             self.assertEqual(client.files[config_path], b"FEATURE_MAP=false\n")
             restored = json.loads(client.files["/home/container/zanik/install-state.json"])
             self.assertEqual(restored["version"], "0.2.0")
-            provider.uninstall("profile", "dev", "/home/container")
+            client.state = "offline"; client.signals.clear()
+            uninstall = provider.uninstall("profile", "dev", "/home/container")
             self.assertEqual(client.files[game], b"\x7fELFofficial")
+            self.assertFalse(uninstall["dataPurged"])
+            self.assertTrue(uninstall["dataPreserved"])
+            self.assertFalse(uninstall["startupActionRequired"])
+            self.assertFalse(uninstall["serverRestarted"])
+            self.assertEqual(client.signals, [])
+            self.assertNotIn(game + ".zanik-original", client.files)
+            self.assertNotIn("/home/container/zanik/install-state.json", client.files)
+            self.assertIn("/home/container/zanik-data/console-admin.key", client.files)
+            uninstall_manifest = json.loads(client.files[uninstall["backup"] + "/.zanik-backup.json"])
+            self.assertEqual((uninstall_manifest["family"], uninstall_manifest["state"]),
+                             ("uninstall", "complete"))
+
+            adapter = {"key": "SERVER_BINARY", "value": "zanik/bin/zanik-server",
+                       "previous": client.startup_values["SERVER_BINARY"]}
+            wrapper = provider.install("profile", "dev", "/home/container", ReleasePayload(archive), "wrapper",
+                                       wrapper_adapter=adapter)
+            self.assertEqual(client.startup_values["SERVER_BINARY"], "zanik/bin/zanik-server")
+            self.assertEqual(wrapper["installation"]["schemaVersion"], 4)
+            self.assertEqual(wrapper["installation"]["startupAdapter"]["previousValue"],
+                             "RSDragonwildsServer-Linux-Shipping")
+            adapter["previous"] = "zanik/bin/zanik-server"
+            repaired = provider.install("profile", "dev", "/home/container", ReleasePayload(archive), "wrapper",
+                                        wrapper_adapter=adapter)
+            self.assertEqual(repaired["installation"]["startupAdapter"]["previousValue"],
+                             "RSDragonwildsServer-Linux-Shipping")
+            client.state = "running"
+            client.signals.clear()
+            wrapper_uninstall = provider.uninstall("profile", "dev", "/home/container")
+            self.assertEqual(wrapper_uninstall["startupStatus"], "restored")
+            self.assertFalse(wrapper_uninstall["startupActionRequired"])
+            self.assertEqual(client.startup_values["SERVER_BINARY"], "RSDragonwildsServer-Linux-Shipping")
+            self.assertEqual(client.signals, ["stop", "start"])
+            self.assertIn("/home/container/zanik-data/console-admin.key", client.files)
+
+            manual = provider.install("profile", "dev", "/home/container", ReleasePayload(archive), "wrapper")
+            self.assertTrue(manual["startupActionRequired"])
+            client.state = "running"; client.signals.clear()
+            manual_uninstall = provider.uninstall("profile", "dev", "/home/container")
+            self.assertTrue(manual_uninstall["startupActionRequired"])
+            self.assertFalse(manual_uninstall["serverRestarted"])
+            self.assertEqual(client.signals, ["stop"])
+            self.assertEqual(client.state, "offline")
+            self.assertIn("/home/container/zanik-data/console-admin.key", client.files)
 
 
 if __name__ == "__main__":

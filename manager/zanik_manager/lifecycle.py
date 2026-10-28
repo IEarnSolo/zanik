@@ -169,6 +169,62 @@ class PterodactylProvider(ServerProvider):
         self.client.set_startup_variable(server_id, "AUTO_UPDATE", previous)
         return self._auto_update(server_id)["value"] == previous
 
+    def _wrapper_startup_metadata(self, server_id: str, adapter: dict,
+                                  previous_install: dict | None) -> dict:
+        """Describe and verify a wrapper variable without losing its pre-Zanik value on updates."""
+        key = str(adapter.get("key", ""))
+        managed = str(adapter.get("value", ""))
+        current = str(adapter.get("previous", ""))
+        if key not in {"SERVER_BINARY", "EXECUTABLE", "BINARY"} or not managed or len(managed) > 1024:
+            raise RuntimeError("The detected wrapper startup adapter is invalid")
+        prior = (previous_install or {}).get("startupAdapter") or {}
+        previous = current
+        has_prior = (prior.get("managedByZanik") and prior.get("variable") == key
+                     and prior.get("managedValue") == managed)
+        if has_prior:
+            candidate = prior.get("previousValue")
+            if isinstance(candidate, str) and len(candidate) <= 1024:
+                previous = candidate
+            else:
+                has_prior = False
+        if current == managed and not has_prior:
+            # Older Manager versions changed this value without recording its
+            # predecessor. Never invent a restoration target from the managed
+            # value itself; uninstall must leave this case stopped for review.
+            return {"variable": key, "managedValue": managed, "verified": True,
+                    "managedByZanik": False, "reason": "previous-value-unavailable"}
+        if current != managed:
+            self.client.set_startup_variable(server_id, key, managed)
+        verified = self.client.startup_variable(server_id, key)
+        if not verified or not verified.get("editable") or str(verified.get("value", "")) != managed:
+            raise RuntimeError(f"Manager could not set and verify {key} for wrapper mode")
+        return {"variable": key, "previousValue": previous, "managedValue": managed,
+                "verified": True, "managedByZanik": True}
+
+    def _restore_managed_wrapper_startup(self, server_id: str, metadata: dict | None) -> str:
+        """Restore a wrapper variable only while it still contains Zanik's managed value."""
+        if not metadata or not metadata.get("managedByZanik"):
+            return "unmanaged"
+        key = str(metadata.get("variable", ""))
+        managed = metadata.get("managedValue")
+        previous = metadata.get("previousValue")
+        if (key not in {"SERVER_BINARY", "EXECUTABLE", "BINARY"}
+                or not isinstance(managed, str) or not managed or len(managed) > 1024
+                or not isinstance(previous, str) or len(previous) > 1024):
+            raise RuntimeError("Stored wrapper startup metadata is invalid; refusing to alter panel settings")
+        current = self.client.startup_variable(server_id, key)
+        if not current:
+            raise RuntimeError(f"The managed {key} startup variable is no longer available")
+        if str(current.get("value", "")) != managed:
+            return "operator-managed"
+        if not current.get("editable"):
+            raise RuntimeError(f"The managed {key} startup variable is no longer editable")
+        self.client.set_startup_variable(server_id, key, previous)
+        verified = self.client.startup_variable(server_id, key)
+        if not verified or str(verified.get("value", "")) != previous:
+            raise RuntimeError(f"Manager could not restore the pre-Zanik {key} startup value")
+        return "restored"
+
     def _path(self, root: str, relative: str) -> str:
         return root.rstrip("/") + "/" + relative.lstrip("/")
 
@@ -874,8 +930,12 @@ class PterodactylProvider(ServerProvider):
                     raise RuntimeError("The preserved official executable is not a verified ELF file")
                 official_sha = sha256(official_data)
             version = self.client.read_file(server_id, f"{root}/zanik/VERSION").decode().strip()
+            startup_adapter = None
+            if mode == "wrapper" and wrapper_adapter:
+                progress("Configuring and verifying the Pterodactyl startup command", 88)
+                startup_adapter = self._wrapper_startup_metadata(server_id, wrapper_adapter, previous_install)
             progress("Writing and verifying installation metadata", 90)
-            state = {"schemaVersion": 3, "version": version, "mode": mode, "serverRoot": root,
+            state = {"schemaVersion": 4, "version": version, "mode": mode, "serverRoot": root,
                      "officialExecutable": official, "officialSha256": official_sha,
                      "librarySha256": payload.entries["bin/libzanik.so"].sha256,
                      "analyzerSha256": payload.entries["bin/zanik-compat-analyzer"].sha256,
@@ -883,15 +943,13 @@ class PterodactylProvider(ServerProvider):
                      "payloadContractSchemaVersion": payload.contract["schemaVersion"],
                      "payloadContractSha256": payload.contract["contractSha256"],
                      "payloadFiles": self._payload_snapshot(server_id, root, payload),
-                     "autoUpdate": auto_update,
+                     "autoUpdate": auto_update, "startupAdapter": startup_adapter,
                      "installedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
             self.client.write_file(server_id, f"{root}/zanik/install-state.json", (json.dumps(state, separators=(",", ":")) + "\n").encode())
             self.client.chmod(server_id, f"{root}/zanik", [("install-state.json", 0o600)])
             startup_action_required = mode == "wrapper" and not wrapper_adapter
             journal.state = "complete"; journal.completed_steps.append("installation-verified")
-            if mode == "wrapper" and wrapper_adapter and wrapper_adapter.get("previous") != wrapper_adapter["value"]:
-                progress("Configuring the Pterodactyl startup command", 94)
-                self.client.set_startup_variable(server_id, wrapper_adapter["key"], wrapper_adapter["value"])
+            if startup_adapter:
                 journal.completed_steps.append("wrapper-startup-configured")
             self.journals.save(journal)
             self.client.write_file(server_id, remote_journal, json.dumps(asdict(journal), sort_keys=True).encode())
@@ -1544,37 +1602,72 @@ class PterodactylProvider(ServerProvider):
         return {"sha256": sha256(content), "backup": f"{backup_dir}/zanik.conf"}
 
     def uninstall(self, profile_id: str, server_id: str, server_root: str, purge_data: bool = False) -> dict:
-        root = server_root.rstrip("/")
+        root = validate_server_root(server_root)
         operation = OperationJournal.create(profile_id, "uninstall")
         self.journals.save(operation)
         state = json.loads(self.client.read_file(server_id, f"{root}/zanik/install-state.json"))
-        if self.client.resources(server_id).get("current_state") != "offline":
+        mode = state.get("mode")
+        if mode not in {"wrapper", "replace-executable"}:
+            raise RuntimeError("Installation metadata has an unknown mode; refusing uninstall")
+        self.preflight(server_id, "replacement-install" if mode == "replace-executable"
+                       or (state.get("startupAdapter") or {}).get("managedByZanik") else "install")
+        was_running = self.client.resources(server_id).get("current_state") != "offline"
+        if was_running:
             self.client.power(server_id, "stop"); self._wait_offline(server_id)
         timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         backup = f"{root}/zanik-backups/manager/{timestamp}-{operation.operation_id[:8]}-uninstall"
         self._mkdir(server_id, backup)
-        self._write_backup_manifest(server_id, backup, "uninstall", operation.operation_id, "preparing")
+        data_was_present = self._directory_exists(server_id, f"{root}/zanik-data")
+        managed_paths = [f"{root}/zanik"]
+        if mode == "replace-executable":
+            managed_paths.extend([f"{root}/{GAME_RELATIVE}", f"{root}/{GAME_RELATIVE}.zanik-original"])
+        if purge_data and data_was_present:
+            managed_paths.append(f"{root}/zanik-data")
+        self._write_backup_manifest(server_id, backup, "uninstall", operation.operation_id, "preparing",
+                                    managed_paths=managed_paths)
         try:
             game = f"{root}/{GAME_RELATIVE}"
-            if state.get("mode") == "replace-executable":
+            startup_status = "not-applicable"
+            if mode == "replace-executable":
                 launcher = self.client.download_file(server_id, game)
                 original = self.client.download_file(server_id, game + ".zanik-original")
                 if LAUNCHER_MARKER not in launcher or not original.startswith(b"\x7fELF"):
                     raise RuntimeError("Executable state is not a verified Zanik replacement; refusing uninstall")
+                expected = str(state.get("officialSha256") or "").lower()
+                if len(expected) == 64 and all(character in "0123456789abcdef" for character in expected):
+                    if sha256(original) != expected:
+                        raise RuntimeError("Preserved official executable does not match installation metadata")
                 self.client.rename(server_id, root, [(str(PurePosixPath(game).relative_to(root)),
                                                       f"zanik-backups/manager/{PurePosixPath(backup).name}/compat-launcher"),
                                                      (str(PurePosixPath(game + '.zanik-original').relative_to(root)),
                                                       str(PurePosixPath(game).relative_to(root)))])
                 self._restore_managed_auto_update(server_id, state.get("autoUpdate"))
+            else:
+                startup_status = self._restore_managed_wrapper_startup(server_id, state.get("startupAdapter"))
             self.client.rename(server_id, root, [("zanik", f"zanik-backups/manager/{PurePosixPath(backup).name}/zanik")])
             if purge_data and self._directory_exists(server_id, f"{root}/zanik-data"):
                 self.client.rename(server_id, root, [("zanik-data", f"zanik-backups/manager/{PurePosixPath(backup).name}/purged-zanik-data")])
+            if self._directory_exists(server_id, f"{root}/zanik"):
+                raise RuntimeError("Uninstall verification found installed Zanik files still active")
+            if purge_data and self._directory_exists(server_id, f"{root}/zanik-data"):
+                raise RuntimeError("Uninstall verification found persistent data still active after the requested purge")
+            if not purge_data and data_was_present and not self._directory_exists(server_id, f"{root}/zanik-data"):
+                raise RuntimeError("Uninstall verification found that persistent Zanik data was not preserved")
+            if mode == "replace-executable":
+                restored = self.client.download_file(server_id, game)
+                if not restored.startswith(b"\x7fELF") or self._exists(server_id, game + ".zanik-original"):
+                    raise RuntimeError("Uninstall could not verify restoration of the official game executable")
             operation.state = "complete"; operation.completed_steps.append("uninstalled"); self.journals.save(operation)
             self._finish_backup(profile_id, "uninstall", server_id, root, backup, "uninstall",
                                 operation.operation_id, "complete")
             self.journals.prune()
-            self.client.power(server_id, "start")
-            return {"backup": backup, "dataPurged": purge_data, "operationId": operation.operation_id}
+            startup_action_required = mode == "wrapper" and startup_status == "unmanaged"
+            if was_running and not startup_action_required:
+                self.client.power(server_id, "start")
+            return {"backup": backup, "dataPurged": purge_data, "dataPreserved": not purge_data,
+                    "startupStatus": startup_status, "startupActionRequired": startup_action_required,
+                    "serverRestarted": was_running and not startup_action_required,
+                    "operationId": operation.operation_id}
         except Exception as error:
             operation.state = "failed"; operation.error = str(error); self.journals.save(operation)
             try:
