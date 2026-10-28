@@ -33,7 +33,7 @@ std::atomic<std::int64_t> lastScan{0};
 std::chrono::steady_clock::time_point nextCycle{};
 std::chrono::steady_clock::time_point nextResolve{};
 std::chrono::steady_clock::time_point nextQuery{};
-constexpr int QueryIntervalMilliseconds=20;
+constexpr int QueryIntervalMilliseconds=0;
 
 void RecordMaximum(std::atomic<std::uint64_t>&maximum,std::uint64_t value){
     auto prior=maximum.load();while(value>prior&&!maximum.compare_exchange_weak(prior,value)){}
@@ -99,11 +99,8 @@ void ProcessPlayerRecipeTracking(){
     if(!active){if(now<nextCycle)return;std::vector<Target> current;{Lock lock(targetMutex);current=targets;}if(current.empty()){nextCycle=now+std::chrono::seconds(2);return;}static size_t targetCursor=0;if(targetCursor>=current.size())targetCursor=0;Target target=current[targetCursor++];if(!target.progress||!g_Engine->IsObjectLive(target.progress)||!g_Engine->IsA(target.progress,"ProgressComponent")){layoutCompatibility=0;++failures;nextCycle=now+std::chrono::seconds(1);return;}layoutCompatibility=1;active=std::make_unique<Scan>();active->target=target;active->progress=target.progress;active->unlocked.reserve(catalog.size());nextQuery=now;}
     if(!active||!g_Engine->IsObjectLive(active->progress)){active.reset();++failures;return;}
     if(active->cursor<catalog.size()){
-        if(now<nextQuery)return;nextQuery=now+std::chrono::milliseconds(QueryIntervalMilliseconds);
-        const auto&entry=catalog[active->cursor];if(!entry.object||!g_Engine->IsObjectLive(entry.object)){active.reset();++failures;compatibility=-6;return;}
-        const auto queryStarted=std::chrono::steady_clock::now();const bool unlocked=Query(active->progress,entry);
-        const auto queryUs=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-queryStarted).count());
-        RecordMaximum(maximumSingleQueryUs,queryUs);if(queryUs>=1000)++slowQueries;if(unlocked)active->unlocked.push_back(entry.id);++active->cursor;
+        if(now<nextQuery)return;const auto batchStarted=std::chrono::steady_clock::now();int queries=0;
+        while(active&&active->cursor<catalog.size()&&queries<8){const auto&entry=catalog[active->cursor];if(!entry.object||!g_Engine->IsObjectLive(entry.object)){active.reset();++failures;compatibility=-6;return;}const auto queryStarted=std::chrono::steady_clock::now();const bool unlocked=Query(active->progress,entry);const auto queryUs=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-queryStarted).count());RecordMaximum(maximumSingleQueryUs,queryUs);if(queryUs>=1000)++slowQueries;if(unlocked)active->unlocked.push_back(entry.id);++active->cursor;++queries;if(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-batchStarted).count()>=250)break;}
     }
     if(active&&active->cursor==catalog.size()){std::sort(active->unlocked.begin(),active->unlocked.end());if(active->unlocked.empty()){++failures;active.reset();nextCycle=now+std::chrono::seconds(2);return;}PlayerRecipeSnapshot snapshot{active->target.guid,active->unlocked,fingerprint,Now(),true};{Lock lock(snapshotMutex);auto prior=snapshots.find(snapshot.characterGuid);if(prior==snapshots.end()||prior->second.catalogFingerprint!=snapshot.catalogFingerprint||snapshot.unlockedIds.size()>=prior->second.unlockedIds.size()||!std::includes(prior->second.unlockedIds.begin(),prior->second.unlockedIds.end(),snapshot.unlockedIds.begin(),snapshot.unlockedIds.end()))snapshots[snapshot.characterGuid]=std::move(snapshot);}lastScan=Now();++completed;active.reset();nextCycle=now+std::chrono::seconds(2);}
 }

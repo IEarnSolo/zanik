@@ -712,7 +712,7 @@ void Handle(int fd) {
     } else if(path=="/api/server-performance"){
         std::uint64_t window=3600;const std::string raw=QueryValue(query,"window");if(!raw.empty()&&!ParseUnsigned(raw,window)){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Invalid performance window"));return;}static const std::unordered_set<std::uint64_t> allowed={0,3600,10800,18000,43200,86400};if(!allowed.count(window)){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Unsupported performance window"));return;}Respond(fd,200,"application/json; charset=utf-8",serverPerformanceStore?serverPerformanceStore->Json(window):"{\"error\":\"Performance history unavailable\"}");
     } else if(path=="/api/player-activity-diagnostics"){
-        auto store=playerActivityStore?playerActivityStore->Diagnostics():PlayerActivityDiagnostics{};auto engine=DomEngine::GetPlayerActivityDiscoveryDiagnostics();std::ostringstream out;out<<"{\"compatibility\":"<<store.compatibility<<",\"regionCompatibility\":"<<engine.regionCompatibility<<",\"materialCompatibility\":"<<engine.materialCompatibility<<",\"events\":"<<store.events<<",\"players\":"<<store.players<<",\"snapshots\":"<<store.snapshots+engine.snapshots<<",\"droppedSamples\":"<<store.droppedSamples+engine.droppedSamples<<",\"persistenceFailures\":"<<store.persistenceFailures<<'}';Respond(fd,200,"application/json; charset=utf-8",out.str());
+        auto store=playerActivityStore?playerActivityStore->Diagnostics():PlayerActivityDiagnostics{};auto engine=DomEngine::GetPlayerActivityDiscoveryDiagnostics();std::ostringstream out;out<<"{\"compatibility\":"<<store.compatibility<<",\"regionCompatibility\":"<<engine.regionCompatibility<<",\"materialCompatibility\":"<<engine.materialCompatibility<<",\"unlockCompatibility\":"<<engine.unlockCompatibility<<",\"events\":"<<store.events<<",\"players\":"<<store.players<<",\"snapshots\":"<<store.snapshots+engine.snapshots<<",\"droppedSamples\":"<<store.droppedSamples+engine.droppedSamples<<",\"persistenceFailures\":"<<store.persistenceFailures<<'}';Respond(fd,200,"application/json; charset=utf-8",out.str());
     } else if (path == "/api/player-recipes") {
         if(!ZanikConfig::PlayerRecipeTracking()){unavailable();return;}
         const std::string id=QueryValue(query,"id");StoredPlayer player;
@@ -943,7 +943,7 @@ void Handle(int fd) {
             ",\"playerRecipeSlowQueries\":"+std::to_string(playerRecipes.slowQueries)+
             ",\"playerRecipeQueryIntervalMilliseconds\":"+std::to_string(playerRecipes.queryIntervalMilliseconds)+
             ",\"playerQuestEnabled\":"+std::to_string(playerQuests.enabled)+",\"playerQuestCompatibility\":"+std::to_string(playerQuests.compatibility)+",\"playerQuestDispatcherCompatibility\":"+std::to_string(adminStorage.dispatcherCompatibility)+",\"playerQuestCatalogCompatibility\":"+std::to_string(playerQuests.catalogCompatibility)+",\"playerQuestComponentCompatibility\":"+std::to_string(playerQuests.componentCompatibility)+",\"playerQuestQueryCompatibility\":"+std::to_string(playerQuests.queryCompatibility)+",\"playerQuestCatalogEntries\":"+std::to_string(playerQuests.catalogEntries)+",\"playerQuestResolvedEntries\":"+std::to_string(playerQuests.resolvedEntries)+",\"playerQuestSnapshots\":"+std::to_string(questSnapshotStore?questSnapshotStore->Count():0)+",\"playerQuestScansCompleted\":"+std::to_string(playerQuests.scansCompleted)+",\"playerQuestQueryFailures\":"+std::to_string(playerQuests.queryFailures)+",\"playerQuestMaximumQueryMicroseconds\":"+std::to_string(playerQuests.maximumQueryMicroseconds)+",\"playerQuestSlowQueries\":"+std::to_string(playerQuests.slowQueries)+
-            ",\"playerActivityCompatibility\":"+std::to_string(activity.compatibility)+",\"playerActivityRegionCompatibility\":"+std::to_string(activityDiscovery.regionCompatibility)+",\"playerActivityMaterialCompatibility\":"+std::to_string(activityDiscovery.materialCompatibility)+",\"playerActivityEvents\":"+std::to_string(activity.events)+",\"playerActivitySnapshots\":"+std::to_string(activity.snapshots+activityDiscovery.snapshots)+",\"playerActivityDroppedSamples\":"+std::to_string(activity.droppedSamples+activityDiscovery.droppedSamples)+",\"playerActivityPersistenceFailures\":"+std::to_string(activity.persistenceFailures)+
+            ",\"playerActivityCompatibility\":"+std::to_string(activity.compatibility)+",\"playerActivityRegionCompatibility\":"+std::to_string(activityDiscovery.regionCompatibility)+",\"playerActivityMaterialCompatibility\":"+std::to_string(activityDiscovery.materialCompatibility)+",\"playerActivityUnlockCompatibility\":"+std::to_string(activityDiscovery.unlockCompatibility)+",\"playerActivityEvents\":"+std::to_string(activity.events)+",\"playerActivitySnapshots\":"+std::to_string(activity.snapshots+activityDiscovery.snapshots)+",\"playerActivityDroppedSamples\":"+std::to_string(activity.droppedSamples+activityDiscovery.droppedSamples)+",\"playerActivityPersistenceFailures\":"+std::to_string(activity.persistenceFailures)+
             ",\"adminAuthorizationStorage\":" + std::string(adminAuthorizationCompatible ? "true" : "false") +
             ",\"adminConsoleCompatibility\":" + std::to_string(adminConsoleCompatible ? 1 : 0) +
             ",\"adminTeleportCompatibility\":" + std::to_string(adminTeleport.compatibility) +
@@ -1086,10 +1086,12 @@ void Run() {
     bool npcTrackingAttempted = false;
     bool playerRecipeTrackingAttempted=false;
     bool playerQuestTrackingAttempted=false;
+    bool playerActivityDiscoveryInitialized=false;
     auto nextResourceInit = std::chrono::steady_clock::now();
     auto nextResourceRefresh = std::chrono::steady_clock::now();
     auto nextNpcInit = std::chrono::steady_clock::now();
     auto nextPerformance = std::chrono::steady_clock::now();
+    auto nextActivityDiscoveryInit = std::chrono::steady_clock::now();
     double latestAveragePing=-1,latestMaximumPing=-1;std::uint32_t latestOnlinePlayers=0;
     while (!stopping) {
         auto now = std::chrono::steady_clock::now();
@@ -1113,6 +1115,7 @@ void Run() {
         if(ZanikConfig::PlayerRecipeTracking()&&DomEngine::g_Engine->IsInitialized()&&playerRecipeTrackingAttempted)DomEngine::RefreshPlayerRecipeTrackingCompatibility();
         if(ZanikConfig::PlayerQuestTracking()&&DomEngine::g_Engine->IsInitialized()&&!playerQuestTrackingAttempted){playerQuestTrackingAttempted=true;const bool quests=DomEngine::InitializePlayerQuestTracking(WebRoot()+"/quest-runtime-catalog.tsv",DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());LogMessage(quests?"Player quest tracking compatibility verified":"Player quest tracking unavailable or waiting for quest objects");}
         if(ZanikConfig::PlayerQuestTracking()&&DomEngine::g_Engine->IsInitialized()&&playerQuestTrackingAttempted)DomEngine::RefreshPlayerQuestTrackingCompatibility();
+        if(DomEngine::g_Engine->IsInitialized()&&!playerActivityDiscoveryInitialized&&now>=nextActivityDiscoveryInit){playerActivityDiscoveryInitialized=DomEngine::InitializePlayerActivityDiscovery(DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());nextActivityDiscoveryInit=now+std::chrono::seconds(5);LogMessage(playerActivityDiscoveryInitialized?"Player activity material, perk, and spell tracking initialized":"Player activity discovery catalog is not ready; retrying");}
         uintptr_t activeWorld=DomEngine::g_Engine->IsInitialized()?DomEngine::g_Engine->GetWorld():0;
         const bool mainWorldReady=activeWorld&&DomEngine::g_Engine->GetObjectName(activeWorld).find("L_World")!=std::string::npos;
         if(ZanikConfig::ResourceTracking()&&mainWorldReady&&!resourceTrackingInitialized&&now>=nextResourceInit){
@@ -1149,7 +1152,8 @@ void Run() {
                 if(ZanikConfig::PlayerQuestTracking())DomEngine::UpdatePlayerQuestTargets(livePlayers);
                 auto recipeSnapshots=ZanikConfig::PlayerRecipeTracking()?DomEngine::ReadPlayerRecipeSnapshots():std::vector<DomEngine::PlayerRecipeSnapshot>{};
                 auto questSnapshots=ZanikConfig::PlayerQuestTracking()?DomEngine::ReadPlayerQuestSnapshots():std::vector<DomEngine::PlayerQuestSnapshot>{};
-                auto discoverySnapshots=DomEngine::ReadPlayerActivityDiscoveries(livePlayers);
+                if(playerActivityDiscoveryInitialized)DomEngine::UpdatePlayerActivityDiscoveryTargets(livePlayers);
+                auto discoverySnapshots=playerActivityDiscoveryInitialized?DomEngine::ReadPlayerActivityDiscoveries():std::vector<DomEngine::PlayerActivityDiscoverySnapshot>{};
                 if(playerActivityStore)playerActivityStore->Sync(livePlayers,recipeSnapshots,questSnapshots,discoverySnapshots);
                 playerStore->Sync(livePlayers);
                 if(ZanikConfig::PlayerRecipeTracking()&&recipeSnapshotStore)recipeSnapshotStore->Sync(recipeSnapshots);

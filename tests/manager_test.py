@@ -452,7 +452,7 @@ class ManagerTests(unittest.TestCase):
         update_at = source.index('QPushButton("Update / repair Zanik")')
         panel_at = source.index('QPushButton("Open panel")')
         website_at = source.index('QPushButton("Open website")')
-        recover_at = source.index('("Recover interrupted", self.recover_interrupted')
+        recover_at = source.index('QPushButton("Recover interrupted")')
         self.assertLess(update_at, panel_at)
         self.assertLess(panel_at, website_at)
         self.assertLess(website_at, recover_at)
@@ -712,7 +712,10 @@ class ManagerTests(unittest.TestCase):
         self.assertIn("Discard generated work", source)
         self.assertIn("def resume_asset_extraction", source)
         self.assertIn("def discard_asset_extraction", source)
-        self.assertIn('needs_mapping = status.get("stage") == "created"', source)
+        self.assertIn('status.get("stage") == "created"', source)
+        self.assertIn('self.resume_extract_button.setText("Update incrementally")', source)
+        self.assertIn("incremental=incremental", source)
+        self.assertIn("refresh_asset_controls", source)
         self.assertIn("preserve_existing_loader=preserve", source)
         assets_source = (ROOT / "manager" / "zanik_manager" / "assets.py").read_text(encoding="utf-8")
         self.assertIn('encoding="utf-8-sig"', assets_source)
@@ -877,6 +880,24 @@ class ManagerTests(unittest.TestCase):
             store = JournalStore(Path(temporary)); journal = OperationJournal.create("profile", "install")
             store.save(journal); self.assertEqual(store.incomplete("profile")[0].operation_id, journal.operation_id)
             journal.state = "complete"; store.save(journal); self.assertEqual(store.incomplete("profile"), [])
+
+    def test_incomplete_journals_ignore_malformed_and_superseded_records(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); store = JournalStore(root)
+            active = OperationJournal.create("profile", "install"); store.save(active)
+            superseded = OperationJournal.create("profile", "activate-assets")
+            superseded.state = "superseded"; store.save(superseded)
+            (root / "malformed.json").write_text("not-json", encoding="utf-8")
+
+            self.assertEqual([item.operation_id for item in store.incomplete("profile")],
+                             [active.operation_id])
+
+    def test_recovery_only_applies_recorded_rollback_actions(self):
+        source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('if not journal.rollback:', source)
+        self.assertIn('"Restore safe state"', source)
+        self.assertIn("It will not guess the original inputs", source)
+        self.assertNotIn('self.install() if retry and journal.action=="install"', source)
 
     def test_newer_success_archives_only_superseded_failed_journal(self):
         with tempfile.TemporaryDirectory() as temporary:

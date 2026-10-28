@@ -415,6 +415,7 @@ void HookEngineTick(void* actor,float delta,int levelTick,void* tickFunction){
     auto sectionStarted=std::chrono::steady_clock::now();
     ProcessPlayerRecipeTracking();
     ProcessPlayerQuestTracking();
+    ProcessPlayerActivityDiscoveryTracking();
     measure(sectionStarted,maximumRecipeTickMicros);sectionStarted=std::chrono::steady_clock::now();
     measure(sectionStarted,maximumCustomNameTickMicros);sectionStarted=std::chrono::steady_clock::now();
     if(pendingCount.load(std::memory_order_acquire)&&std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-tickStarted).count()<250)ProcessOneStorageAction();

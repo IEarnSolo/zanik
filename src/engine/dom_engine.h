@@ -718,6 +718,7 @@ std::string GetPlayerQuestCatalogFingerprint();
 void RecordPlayerQuestPersistenceFailure();
 struct ActivityRegionInfo { std::uint8_t id=0;std::string name; };
 struct ActivityMaterialInfo { std::string key,name,icon; };
+struct ActivityUnlockInfo { std::string type,key,name,icon; };
 struct PlayerActivityDiscoverySnapshot {
     std::string characterGuid;
     bool regionsComplete=false;
@@ -725,14 +726,20 @@ struct PlayerActivityDiscoverySnapshot {
     std::vector<ActivityRegionInfo> regions;
     bool materialsComplete=false;
     std::vector<ActivityMaterialInfo> materials;
+    std::string materialFingerprint;
+    bool unlocksComplete=false;
+    std::vector<ActivityUnlockInfo> unlocks;
+    std::string unlockFingerprint;
     std::int64_t capturedAt=0;
 };
 struct PlayerActivityDiscoveryDiagnostics {
-    int regionCompatibility=0,materialCompatibility=0;
+    int regionCompatibility=0,materialCompatibility=0,unlockCompatibility=0;
     std::uint64_t snapshots=0,droppedSamples=0;
 };
-std::vector<PlayerActivityDiscoverySnapshot> ReadPlayerActivityDiscoveries(
-    const std::vector<PlayerInfo>& players);
+bool InitializePlayerActivityDiscovery(uintptr_t moduleBase,uintptr_t moduleEnd);
+void UpdatePlayerActivityDiscoveryTargets(const std::vector<PlayerInfo>& players);
+void ProcessPlayerActivityDiscoveryTracking();
+std::vector<PlayerActivityDiscoverySnapshot> ReadPlayerActivityDiscoveries();
 PlayerActivityDiscoveryDiagnostics GetPlayerActivityDiscoveryDiagnostics();
 std::string FileSha256(const char* path);
 

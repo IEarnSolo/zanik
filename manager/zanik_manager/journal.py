@@ -68,12 +68,15 @@ class JournalStore:
     def incomplete(self, profile_id: str) -> list[OperationJournal]:
         records = []
         for path in self.root.glob("*.json"):
-            journal = self.load(path)
+            try:
+                journal = self.load(path)
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                continue
             if journal.profile_id == profile_id:
                 records.append((path, journal))
         self._archive_superseded_failures(records)
         result = [journal for path, journal in records
-                  if path.exists() and journal.state not in {"complete", "rolled-back"}]
+                  if path.exists() and journal.state not in {"complete", "rolled-back", "superseded"}]
         return sorted(result, key=lambda item: item.created_at)
 
     def supersede_failed(self, profile_id: str, action: str, completed_at: str) -> set[str]:

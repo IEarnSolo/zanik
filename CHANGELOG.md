@@ -4,6 +4,23 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.58] - 2026-10-28
+
+### Added
+
+- Record newly unlocked skill perks and utility spells in each player's persistent Recent activity timeline, with restart-safe duplicate suppression and silent first-observation baselines.
+
+### Changed
+
+- Refresh first-pickup materials, perks, spells, recipes, and building unlocks in tightly bounded game-thread batches so new activity appears promptly without introducing frame-time spikes.
+- Bring the Assets tab up to date with retained incremental extraction: distinguish incremental updates, resumable work, and incompatible work; require an explicit bundle and server target; and clarify no-change uploads and cache cleanup.
+- Make Recover interrupted available only for unresolved transactions and restrict it to the exact rollback actions recorded by the newest recoverable operation instead of guessing or replaying the original workflow.
+
+### Fixed
+
+- Detect first-pickup materials through the game's authoritative progress query instead of decoding an internal sparse set, fixing missed discoveries such as flax.
+- Ignore malformed and superseded Manager recovery journals when deciding whether a server needs recovery.
+
 ## [0.2.57] - 2026-10-28
 
 ### Changed
