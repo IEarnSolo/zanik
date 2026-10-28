@@ -1157,7 +1157,7 @@ void Run() {
             } else {DomEngine::UpdateKillPlayerCache({});latestAveragePing=-1;latestMaximumPing=-1;latestOnlinePlayers=0;}
             nextSync = now + std::chrono::seconds(2);
         }
-        if(serverPerformanceStore&&now>=nextPerformance){const auto tick=DomEngine::TakePerformanceTickSnapshot();ServerPerformanceInput sample;sample.gameFrameMs=tick.maximumFrameMilliseconds;sample.zanikGameThreadMs=tick.maximumZanikMilliseconds;sample.gameThreadHitches=tick.hitches;sample.averagePingMs=latestAveragePing;sample.maximumPingMs=latestMaximumPing;sample.onlinePlayers=latestOnlinePlayers;serverPerformanceStore->Sample(sample);nextPerformance=now+std::chrono::seconds(10);}
+        if(serverPerformanceStore&&now>=nextPerformance){const auto tick=DomEngine::TakePerformanceTickSnapshot();ServerPerformanceInput sample;sample.engineTickMs=tick.maximumEngineTickMilliseconds;sample.zanikGameThreadMs=tick.maximumZanikMilliseconds;sample.engineTicks=tick.frames;sample.gameThreadHitches=tick.hitches;sample.averagePingMs=latestAveragePing;sample.maximumPingMs=latestMaximumPing;sample.onlinePlayers=latestOnlinePlayers;serverPerformanceStore->Sample(sample);nextPerformance=now+std::chrono::seconds(2);}
         fd_set readSet;
         FD_ZERO(&readSet);
         FD_SET(listener, &readSet);

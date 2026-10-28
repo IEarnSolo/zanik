@@ -119,11 +119,12 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             page = response.read().decode()
             assert "Server diagnostics" in page
             assert 'id="chart"' in page and "/api/server-performance?window=" in page
-            assert "Engine frame" in page and "Player network" in page and "Spike analysis" in page
+            assert "Engine tick work" in page and "Player network" in page and "Spike analysis" in page
+            assert "setInterval(load,2000)" in page and "document.hidden" in page
         with get(base, "/api/server-performance?window=3600") as response:
             performance = json.loads(response.read())
             assert performance["windowSeconds"] == 3600
-            assert performance["sampleIntervalSeconds"] == 10
+            assert performance["sampleIntervalSeconds"] == 2
             assert isinstance(performance["points"], list) and isinstance(performance["insights"], list)
         expect_error(base, "/api/server-performance?window=7", 400, "Unsupported performance window")
 

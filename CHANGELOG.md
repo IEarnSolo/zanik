@@ -4,6 +4,19 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.56] - 2026-10-27
+
+### Changed
+
+- Ship the corrected Server Diagnostics monitor and dashboard through Zanik Manager 0.2.56.
+- Sample and refresh Server Diagnostics every two seconds, pause browser polling in hidden tabs, preserve full-uptime history with bounded loss-aware in-memory compaction, and keep its append file open to avoid repeated filesystem setup.
+- Add resident-memory history and group consecutive spike samples into incidents with duration, occurrence count, and worst timing.
+
+### Fixed
+
+- Measure actual elapsed engine-dispatcher execution with a monotonic clock instead of interpreting an unrelated native hook argument as frame time, eliminating continuous false one-second hitch reports.
+- Treat isolated sub-100 ms engine samples as noise unless multiple hitches occur in the same sample, distinguish ordinary startup pressure, and avoid network warnings when no player is online.
+
 ## [0.2.55] - 2026-10-27
 
 ### Added
