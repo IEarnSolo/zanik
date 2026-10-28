@@ -61,4 +61,22 @@ class StartupSafetyTests(unittest.TestCase):
             self.assertTrue(provider._restore_managed_auto_update("dev",metadata))
             self.assertEqual(managed.writes,[("AUTO_UPDATE","1")])
 
+    def test_wrapper_metadata_never_invents_a_prior_value_for_legacy_install(self):
+        class Client:
+            def __init__(self): self.value = "zanik/bin/zanik-server"; self.writes = []
+            def startup_variable(self, _server, key):
+                return {"key": key, "value": self.value, "editable": True}
+            def set_startup_variable(self, _server, key, value):
+                self.writes.append((key, value)); self.value = value
+        adapter = {"key": "SERVER_BINARY", "value": "zanik/bin/zanik-server",
+                   "previous": "zanik/bin/zanik-server"}
+        with tempfile.TemporaryDirectory() as temporary:
+            client = Client()
+            provider = PterodactylProvider(client, JournalStore(pathlib.Path(temporary)))
+            metadata = provider._wrapper_startup_metadata("dev", adapter, {"mode": "wrapper"})
+            self.assertFalse(metadata["managedByZanik"])
+            self.assertEqual(metadata["reason"], "previous-value-unavailable")
+            self.assertEqual(provider._restore_managed_wrapper_startup("dev", metadata), "unmanaged")
+            self.assertEqual(client.writes, [])
+
 if __name__=="__main__": unittest.main()

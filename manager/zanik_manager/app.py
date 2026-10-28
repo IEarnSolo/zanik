@@ -1806,11 +1806,27 @@ class MainWindow(QMainWindow):
         profile = self.active()
         if not profile or QMessageBox.warning(self, "Uninstall Zanik", "Uninstall Zanik from the selected server? Persistent data will be kept.",
                                                QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes: return
+        def done(result):
+            self.log(f"Uninstalled; persistent data retained; recovery backup: {result['backup']}")
+            self.invalidate_files_cache(profile.id)
+            self.schedule_background_doctor(profile.id, "uninstall")
+            self.check_installation_state(profile.id)
+            if result.get("startupActionRequired"):
+                QMessageBox.warning(
+                    self, "Startup action required",
+                    "Zanik's files were removed and persistent data was retained, but this older or manually configured "
+                    "wrapper installation did not record a startup setting Manager can safely restore. The server was "
+                    "left stopped. Restore the egg's normal Dragonwilds startup executable before starting it."
+                )
+            else:
+                power = " The server was restarted in its prior running state." if result.get("serverRestarted") else ""
+                QMessageBox.information(
+                    self, "Uninstall complete",
+                    f"Zanik's installed files were removed and persistent data was retained at "
+                    f"{profile.server_root}/zanik-data.{power}"
+                )
         self.run_async(lambda: self.provider().uninstall(profile.id, profile.server_id, profile.server_root),
-                       lambda result: (self.log(f"Uninstalled; recovery backup: {result['backup']}"),
-                                       self.invalidate_files_cache(profile.id),
-                                       self.schedule_background_doctor(profile.id, "uninstall"),
-                                       self.check_installation_state(profile.id)),
+                       done,
                        title="Uninstalling Zanik…")
 
     def run_doctor(self, deep=False):
