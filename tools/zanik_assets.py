@@ -49,11 +49,10 @@ REQUIRED = (
     "gravestone-icon.png",
     "Jancient-Regular.ttf",
     "skills/attack.png",
-    "quests/main-quest.svg",
+    "quests/main-quest.png",
+    "quests/side-quest.png",
 )
-OPTIONAL = (
-    "quests/side-quest.svg",
-)
+OPTIONAL = ()
 OPTIONAL_GROUPS = (
     "items/*.png",
     "npcs/*.png",

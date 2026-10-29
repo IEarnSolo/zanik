@@ -57,7 +57,7 @@ def main():
                 value=text((item or {}).get('Value'))
                 if value and value not in objectives:objectives.append(value)
             override=overrides.get(qid,{})
-            entry={'id':qid,'name':name,'internal':export.get('Name',''),'type':'main' if p.get('bIsMainQuest') else 'side','region':override.get('region') or region(p.get('QuestRegion'),str(path)),'subregion':override.get('subregion',''),'starter':override.get('starter','Unknown'),'description':text(p.get('QuestDescription')),'objectives':objectives,'requirements':override.get('requirements',strings(p.get('QuestRequirements'))),'rewards':override.get('rewards',strings(p.get('QuestRewards'))),'icon':'/assets/quests/main-quest.svg' if p.get('bIsMainQuest') else '/assets/quests/side-quest.svg','map':override.get('map')}
+            entry={'id':qid,'name':name,'internal':export.get('Name',''),'type':'main' if p.get('bIsMainQuest') else 'side','region':override.get('region') or region(p.get('QuestRegion'),str(path)),'subregion':override.get('subregion',''),'starter':override.get('starter','Unknown'),'description':text(p.get('QuestDescription')),'objectives':objectives,'requirements':override.get('requirements',strings(p.get('QuestRequirements'))),'rewards':override.get('rewards',strings(p.get('QuestRewards'))),'icon':'/assets/quests/main-quest.png' if p.get('bIsMainQuest') else '/assets/quests/side-quest.png','map':override.get('map')}
             quests.append(entry)
     by_id={}
     for quest in quests:

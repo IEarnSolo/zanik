@@ -23,7 +23,7 @@ except ModuleNotFoundError:  # Imported as tools.* by repository tests.
     from tools.asset_filesystem import extended_path, read_json as read_json_file
 
 
-RECIPE_VERSION = 14
+RECIPE_VERSION = 15
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 EXPORT_CHECKPOINT = "export-checkpoint.json"
 INCREMENTAL_STATE = "incremental-state.json"
@@ -38,6 +38,10 @@ MAP_ICON_TARGETS = {
     # fragment-crystal texture is no longer used for nodestone map markers.
     "package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal",
     "basename:T_Icon_Gravestone",
+}
+QUEST_BADGE_TARGETS = {
+    "package:RSDragonwilds/Content/Art/UI/Map/QuestList/T_Icon_Quest_Primary",
+    "package:RSDragonwilds/Content/Art/UI/Map/QuestList/T_Icon_Quest_Secondary",
 }
 GENERATION_GROUPS = (
     "buildings", "plan-items", "npc", "resources", "quests", "item-artwork",
@@ -54,6 +58,7 @@ REVIEWED_LEGACY_GENERATION_RECIPES = {
     "ae31d34ea86b57ccad911eb872c5e4b92c0f475396e927715ede1778faf5874d",  # recipe 12
     "a8a4ae9a1078cb5c505b32fa4c0821a8295a5d13b58d5dc57db73a3c3d645f22",  # recipe 13
     "3b60bfa9d705491b9eca6378d12cc42eabfd3dbf17fc82d650e7ee621bed0058",  # recipe 14
+    "0e4641495656c163750e27ee7e5bcc037b5ffd7d5fa28b0ef7cf0bf08f5f4bcf",  # recipe 15
 }
 RETIRED_FRAGMENT_CRYSTAL_TARGET = \
     "package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal"
@@ -75,7 +80,7 @@ GROUP_OUTPUTS = {
     "map-icons": ("lodestone-icon.png", "nodestone-icon.png", "gravestone-icon.png",
                   "quests/clipboard-icon.png", "quests/objective-arrow-icon.png"),
     "world-map": ("world-map.jpg",), "font": ("Jancient-Regular.ttf",),
-    "quest-badges": ("quests/main-quest.svg", "quests/side-quest.svg"),
+    "quest-badges": ("quests/main-quest.png", "quests/side-quest.png"),
     "recipes": ("recipe-unlocks.json", "recipe-runtime-catalog.tsv", "recipe-runtime-catalog-history.tsv"),
     "quest-destinations": ("quest-step-locations.json",),
 }
@@ -264,6 +269,8 @@ def generation_contracts(scripts: Path, repo: Path, recipe: dict) -> dict[str, s
                                       "reviewedCounts": reviewed}, sort_keys=True).encode())
         elif group == "map-icons":
             digest.update(json.dumps(sorted(set(snapshot.get("requiredTextureAssets", [])) & MAP_ICON_TARGETS)).encode())
+        elif group == "quest-badges":
+            digest.update(json.dumps(sorted(set(snapshot.get("requiredTextureAssets", [])) & QUEST_BADGE_TARGETS)).encode())
         elif group == "font":
             digest.update(str(snapshot.get("fontFilter", "")).encode())
         result[group] = digest.hexdigest()
@@ -320,6 +327,15 @@ def selective_generation_groups(previous_recipe: dict, recipe: dict, prior_state
         and not added_textures
         and not removed_textures
     )
+    reviewed_recipe_15_migration = (
+        legacy_reviewed
+        and prior_recipe_version in {11, 12, 13, 14}
+        and recipe.get("schemaVersion") == 15
+        and {**old, "schemaVersion": None} == {**new, "schemaVersion": None}
+        and old_required ^ new_required == QUEST_BADGE_TARGETS
+        and set(added_textures) == QUEST_BADGE_TARGETS
+        and not removed_textures
+    )
     if old != new:
         dirty.update({"buildings", "plan-items", "npc", "resources", "quests", "recipes",
                       "quest-destinations", "item-artwork", "npc-artwork", "resource-artwork", "spell-and-perk-artwork"})
@@ -327,6 +343,8 @@ def selective_generation_groups(previous_recipe: dict, recipe: dict, prior_state
     if texture_changes:
         if texture_changes <= MAP_ICON_TARGETS:
             dirty.add("map-icons")
+        elif texture_changes <= QUEST_BADGE_TARGETS:
+            dirty.add("quest-badges")
         else:
             dirty.update({"buildings", "plan-items", "item-artwork", "npc-artwork",
                           "resource-artwork", "spell-and-perk-artwork", "skills", "map-icons", "world-map"})
@@ -344,6 +362,19 @@ def selective_generation_groups(previous_recipe: dict, recipe: dict, prior_state
         # also need the recipe-12 NPC identity update and recipe-13 final
         # hyphenated spell-and-perk artwork folder.
         migration_groups = {"recipes"}
+        if prior_recipe_version in {11, 12}:
+            migration_groups.add("spell-and-perk-artwork")
+        if prior_recipe_version == 11:
+            migration_groups.add("npc")
+        dirty.intersection_update(migration_groups)
+        dirty.update(migration_groups)
+    if reviewed_recipe_15_migration:
+        # Recipe 15 replaces only the generated quest badge placeholders and
+        # quest catalog references with the two authored game textures. It
+        # also preserves the reviewed narrow migrations for older caches.
+        migration_groups = {"quests", "quest-badges", "quest-destinations"}
+        if prior_recipe_version in {11, 12, 13}:
+            migration_groups.add("recipes")
         if prior_recipe_version in {11, 12}:
             migration_groups.add("spell-and-perk-artwork")
         if prior_recipe_version == 11:

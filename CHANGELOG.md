@@ -4,6 +4,28 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.69] - 2026-10-29
+
+### Added
+
+- Capture the quest selected in a player's journal from the validated server and login notifications, including on Linux game builds where the direct tracked-quest properties are stripped.
+- Report successful live tracked-quest notification captures in quest diagnostics.
+- Extract the game's authored gold primary-quest and blue secondary-quest icons from the licensed Windows client for player pages, activity entries, and quest maps.
+
+### Changed
+
+- Ship the tracked-quest capture, authentic quest artwork, and responsive Active quest layout through Zanik Manager 0.2.69.
+- Advance the website extraction contract to recipe 15 and migrate a recipe-14 retained cache by exporting only the two quest textures and regenerating only quest-related outputs.
+- Replace the generated quest-badge placeholders with the actual game artwork throughout generated catalogs and web views.
+- Make the Active quest card respond to its own available width: it keeps the details and mini-map side by side when spacious, then places the full-width map below readable quest details at cramped intermediate widths.
+
+### Fixed
+
+- Populate the Active quest card after a player logs in or changes their tracked quest instead of leaving it unavailable when Linux reflection metadata omits the tracked-quest fields.
+- Prevent narrow Active quest cards from squeezing quest names and objectives into an unusably thin column beside the mini-map.
+- Validate captured quest objects and constrain dynamic notification resolution to known live quest components so unrelated engine events cannot create a tracked-quest sample.
+- Mark recipe-14 bundles as needing the required website-asset refresh, while preserving the smallest reviewed incremental rebuild for older retained recipes.
+
 ## [0.2.68] - 2026-10-29
 
 ### Added

@@ -31,6 +31,11 @@ with tempfile.TemporaryDirectory(prefix="zanik-web-assets-") as temporary:
     (textures / "T_Arrows_Bone.png").write_bytes(b"fang-arrow")
     (textures / "T_Icon_Cactus_Steak_Raw.png").write_bytes(b"cactus")
     (textures / "T_Skill_Attack_Spell_Tempestshield.png").write_bytes(b"tempest-shield")
+    primary_quest = (textures / "batch-01" / generator.PRIMARY_QUEST_ICON_PACKAGE).with_suffix(".png")
+    secondary_quest = (textures / "batch-01" / generator.SECONDARY_QUEST_ICON_PACKAGE).with_suffix(".png")
+    primary_quest.parent.mkdir(parents=True, exist_ok=True)
+    primary_quest.write_bytes(b"primary-quest")
+    secondary_quest.write_bytes(b"secondary-quest")
     (json_root / "ammo.json").write_text(json.dumps([
         {
             "Name": "ITEM_Ammo_Arrows_Bone_Bodkin", "Type": "RangedAmmoData",
@@ -75,6 +80,8 @@ with tempfile.TemporaryDirectory(prefix="zanik-web-assets-") as temporary:
     assert (web / "spells-and-perks" / "PerkV2_Attack_TempestShield.png").read_bytes() == b"tempest-shield"
     assert (web / "lodestone-icon.png").read_bytes() == b"correct-map-icon"
     assert (web / "nodestone-icon.png").read_bytes() == generator.NODESTONE_MAP_ICON.read_bytes()
+    assert (web / "quests/main-quest.png").read_bytes() == b"primary-quest"
+    assert (web / "quests/side-quest.png").read_bytes() == b"secondary-quest"
     assert not (web / "quests/clipboard-icon.png").exists()
     assert not (web / "quests/objective-arrow-icon.png").exists()
 

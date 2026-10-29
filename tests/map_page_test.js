@@ -6,7 +6,7 @@ if(!playerPage)throw new Error('player page not found');
 const playerScripts=[...playerPage[1].matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match=>match[1]);
 if(!playerScripts.length)throw new Error('player scripts not found');
 for(const script of playerScripts)new Function(script);
-for(const token of ['class="player-sidebar"','id="manageSidebarGroup"','id="onlineDuration"','Online for ','data-player-view="overview"','data-player-view="storage"','data-player-panel="recipes"','manageSidebarGroup.hidden=!adminStorage','selectPlayerView','class="overview-grid"','id="activityList"','id="activityPrevious"','id="activityNext"',"refreshActivity('previous')","refreshActivity('next')",'&limit=10','id="activeQuestContent"','renderActiveQuest','trackedAvailable','titleNode.textContent','detail.textContent','@media(max-width:1050px)']){
+for(const token of ['class="player-sidebar"','id="manageSidebarGroup"','id="onlineDuration"','Online for ','data-player-view="overview"','data-player-view="storage"','data-player-panel="recipes"','manageSidebarGroup.hidden=!adminStorage','selectPlayerView','class="overview-grid"','id="activityList"','id="activityPrevious"','id="activityNext"',"refreshActivity('previous')","refreshActivity('next')",'&limit=10','id="activeQuestContent"','renderActiveQuest','trackedAvailable','titleNode.textContent','detail.textContent','@media(max-width:1050px)','container-type:inline-size','@container(max-width:29rem)',"grid-template-areas:'heading' 'objective' 'meta' 'map'"]){
   if(!playerPage[1].includes(token))throw new Error('missing focused-player token: '+token);
 }
 const killsPage=source.match(/constexpr const char\* kKillsPage = R"DWHTML\(([\s\S]*?)\)DWHTML";/);

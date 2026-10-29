@@ -35,7 +35,7 @@ int main() {
         const std::string web="dist/activity-web";std::filesystem::create_directories(web);
         std::ofstream recipes(web+"/recipe-runtime-catalog.tsv");recipes<<"# schema=2 fingerprint=test count=3\n"<<"r1\tcrafting\tRECIPE_Bronze\tBronze bar\t/assets/items/bronze.png\n"<<"r1-alt\tcrafting\tRECIPE_BronzeAlt\tBronze bar\t/assets/items/bronze.png\n"<<"r2\tcrafting\tRECIPE_Iron\tIron bar\t/assets/items/iron.png\n";recipes.close();
         std::ofstream quests(web+"/quest-runtime-catalog.tsv");quests<<"# schema=1 fingerprint=test count=1\nq1\tDragon \"Slayer\"\tQuest_DragonSlayer\n";quests.close();setenv("DW_WEB_ROOT",web.c_str(),1);
-        std::ofstream questCatalog(web+"/quest-catalog.json");questCatalog<<"{\n  \"quests\": [\n    {\"id\": \"q1\", \"name\": \"Dragon \\\"Slayer\\\"\", \"internal\": \"Quest_DragonSlayer\", \"type\": \"main\", \"icon\": \"/assets/quests/main-quest.svg\"}\n  ]\n}";questCatalog.close();
+        std::ofstream questCatalog(web+"/quest-catalog.json");questCatalog<<"{\n  \"quests\": [\n    {\"id\": \"q1\", \"name\": \"Dragon \\\"Slayer\\\"\", \"internal\": \"Quest_DragonSlayer\", \"type\": \"main\", \"icon\": \"/assets/quests/main-quest.png\"}\n  ]\n}";questCatalog.close();
         const std::string path="dist/player-activity-test.db";std::remove(path.c_str());
         PlayerActivityStore activity(path);assert(activity.Load());
         DomEngine::PlayerInfo player;player.characterGuid="hero";player.skills={{"SKILL_Attack",33}};player.hasHealth=true;player.health=10;player.isDead=false;player.location="Ashenfall";
@@ -51,7 +51,7 @@ int main() {
         auto regressedRecipe=recipe;regressedRecipe.unlockedIds={"r1"};assert(!activity.Sync({},{regressedRecipe},{},{},220));assert(!activity.Sync({},{recipe},{},{},221));
         auto regressedDiscovery=discovery;regressedDiscovery.regionBitmap=1;regressedDiscovery.materials.resize(1);assert(!activity.Sync({},{},{},{regressedDiscovery},230));assert(!activity.Sync({},{},{},{discovery},231));
         quest.quests[0].objective.clear();assert(!activity.Sync({},{},{quest},{},290));quest.quests[0].objective="Defeat the dragon";assert(activity.Sync({player},{recipe},{quest},{discovery},300));quest.quests[0].status="completed";assert(activity.Sync({player},{recipe},{quest},{discovery},400));
-        page=activity.Page("hero",3);assert(page.events.size()==3&&page.hasMore&&page.events[0].type=="quest_completed"&&page.events[0].icon=="/assets/quests/main-quest.svg");auto older=activity.Page("hero",50,page.nextBefore);assert(!older.events.empty());
+        page=activity.Page("hero",3);assert(page.events.size()==3&&page.hasMore&&page.events[0].type=="quest_completed"&&page.events[0].icon=="/assets/quests/main-quest.png");auto older=activity.Page("hero",50,page.nextBefore);assert(!older.events.empty());
         const auto beforeCatalogChange=activity.Diagnostics().events;recipe.catalogFingerprint="recipes-b";recipe.unlockedIds={"r1"};quest.catalogFingerprint="quests-b";quest.quests[0]={"q1","not_started","",0};assert(activity.Sync({},{recipe},{quest},{},450));assert(activity.Diagnostics().events==beforeCatalogChange);
         const std::string json=activity.PageJson("hero",8);assert(json.find("characterGuid")==std::string::npos&&json.find("hero")==std::string::npos&&json.find("quest_completed")!=std::string::npos&&json.find("Dragon \\\"Slayer\\\"")!=std::string::npos);
         struct stat activityMode{};assert(stat(path.c_str(),&activityMode)==0&&(activityMode.st_mode&0777)==0600);

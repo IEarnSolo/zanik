@@ -67,14 +67,15 @@ try:
         assert len(quest_catalog["quests"]) >= 20
         assert len(quest_catalog["fingerprint"]) == 64
 
-    with urllib.request.urlopen(base + "/assets/quests/main-quest.svg", timeout=3) as response:
-        assert response.headers.get_content_type() == "image/svg+xml"
+    with urllib.request.urlopen(base + "/assets/quests/main-quest.png", timeout=3) as response:
+        assert response.headers.get_content_type() == "image/png"
         assert len(response.read()) > 100
 
     with urllib.request.urlopen(base + "/api/quest-tracker-diagnostics", timeout=3) as response:
         quest_diagnostics = json.loads(response.read())
         assert "catalogCompatibility" in quest_diagnostics
         assert "trackedQuestCompatibility" in quest_diagnostics
+        assert "trackedQuestCaptures" in quest_diagnostics
         assert "maximumQueryMicroseconds" in quest_diagnostics
 
     with urllib.request.urlopen(base + "/assets/skills/attack.png", timeout=3) as response:
