@@ -48,7 +48,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
     }
     recipe_path = web_root / "recipe-unlocks.json"
     recipe_path.write_text(json.dumps(recipe_catalog, separators=(",", ":")), encoding="utf-8")
-    spell_and_perk_dir = web_root / "spells and perks"
+    spell_and_perk_dir = web_root / "spells-and-perks"
     spell_and_perk_dir.mkdir()
     (spell_and_perk_dir / "PerkV2_Attack_TempestShield.png").write_bytes(b"perk-icon")
     data_file = temporary_root / "players.db"
@@ -146,7 +146,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert b"<svg" in response.read()
         with get(base, "/assets/skills/attack.png") as response:
             assert response.headers.get_content_type() == "image/svg+xml"
-        with get(base, "/assets/spells%20and%20perks/PerkV2_Attack_TempestShield.png") as response:
+        with get(base, "/assets/spells-and-perks/PerkV2_Attack_TempestShield.png") as response:
             assert response.headers.get_content_type() == "image/png"
             assert response.read() == b"perk-icon"
         expect_error(base, "/assets/skills/../attack.png", 404)

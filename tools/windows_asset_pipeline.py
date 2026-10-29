@@ -23,7 +23,7 @@ except ModuleNotFoundError:  # Imported as tools.* by repository tests.
     from tools.asset_filesystem import extended_path, read_json as read_json_file
 
 
-RECIPE_VERSION = 12
+RECIPE_VERSION = 13
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 EXPORT_CHECKPOINT = "export-checkpoint.json"
 INCREMENTAL_STATE = "incremental-state.json"
@@ -52,6 +52,7 @@ REVIEWED_LEGACY_GENERATION_RECIPES = {
     "b472ea5a3d7e02a4b0abbb5487188f5b310e7dc0a205e0377b020cb755551012",  # recipe 10
     "0b9898ed11bc9a8afc00c0c3e05370bbbd8e022af8dfff32e4510ef6e8610bad",  # recipe 11
     "ae31d34ea86b57ccad911eb872c5e4b92c0f475396e927715ede1778faf5874d",  # recipe 12
+    "a8a4ae9a1078cb5c505b32fa4c0821a8295a5d13b58d5dc57db73a3c3d645f22",  # recipe 13
 }
 RETIRED_FRAGMENT_CRYSTAL_TARGET = \
     "package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal"
@@ -69,7 +70,7 @@ GROUP_OUTPUTS = {
     "resources": ("resource-catalog.json", "resource-identities.tsv"),
     "quests": ("quest-catalog.json", "quest-runtime-catalog.tsv"),
     "item-artwork": ("items",), "npc-artwork": ("npcs",),
-    "resource-artwork": ("resources",), "spell-and-perk-artwork": ("spells and perks",), "skills": ("skills",),
+    "resource-artwork": ("resources",), "spell-and-perk-artwork": ("spells-and-perks",), "skills": ("skills",),
     "map-icons": ("lodestone-icon.png", "nodestone-icon.png", "gravestone-icon.png",
                   "quests/clipboard-icon.png", "quests/objective-arrow-icon.png"),
     "world-map": ("world-map.jpg",), "font": ("Jancient-Regular.ttf",),
@@ -307,11 +308,12 @@ def selective_generation_groups(previous_recipe: dict, recipe: dict, prior_state
         # exact reviewed migration affects only map-icons; accept the previous
         # validated bytes for every unrelated group and record the new hashes.
         dirty.intersection_update({"map-icons"})
+    prior_recipe_version = previous_recipe.get("schemaVersion")
     reviewed_spell_and_perk_migration = (
         legacy_reviewed
-        and current_sha == "ae31d34ea86b57ccad911eb872c5e4b92c0f475396e927715ede1778faf5874d"
-        and previous_recipe.get("schemaVersion") == 11
-        and recipe.get("schemaVersion") == 12
+        and current_sha == "a8a4ae9a1078cb5c505b32fa4c0821a8295a5d13b58d5dc57db73a3c3d645f22"
+        and prior_recipe_version in {11, 12}
+        and recipe.get("schemaVersion") == 13
         and old == new
         and old_required == new_required
         and not added_textures
@@ -337,11 +339,13 @@ def selective_generation_groups(previous_recipe: dict, recipe: dict, prior_state
         for group, parents in dependencies.items():
             if parents & dirty and group not in dirty: dirty.add(group); changed = True
     if reviewed_spell_and_perk_migration:
-        # Recipe 12 adds spell/perk artwork and changes only the private
-        # npc-identities.tsv schema. Shared generator code mechanically dirties
-        # other groups, but their public catalog/artwork inputs are unchanged.
-        dirty.intersection_update({"npc", "spell-and-perk-artwork"})
-        dirty.update({"npc", "spell-and-perk-artwork"})
+        # Recipe 13 uses the final hyphenated folder. Recipe 11 also needs the
+        # private NPC identity update that first appeared with recipe 12.
+        migration_groups = {"spell-and-perk-artwork"}
+        if prior_recipe_version == 11:
+            migration_groups.add("npc")
+        dirty.intersection_update(migration_groups)
+        dirty.update(migration_groups)
     return dirty
 
 
@@ -1072,9 +1076,10 @@ def extract(args: argparse.Namespace) -> int:
                 texture_delta["added"], texture_delta["removed"],
                 previous_sha in REVIEWED_LEGACY_GENERATION_RECIPES)
             remove_group_outputs(web, dirty)
-            legacy_unlocks = web / "unlocks"
-            if legacy_unlocks.is_dir():
-                remove_tree(legacy_unlocks)
+            for legacy_name in ("unlocks", "spells and perks"):
+                legacy_unlocks = web / legacy_name
+                if legacy_unlocks.is_dir():
+                    remove_tree(legacy_unlocks)
             reused = len(GENERATION_GROUPS) - len(dirty)
             emit_progress("Planning generated website update",
                           detail=f"Reusing {reused} validated output group(s); rebuilding {len(dirty)}",

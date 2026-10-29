@@ -4,6 +4,13 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.65] - 2026-10-29
+
+### Changed
+
+- Rename the generated spell and perk artwork directory from `spells and perks` to `spells-and-perks`, avoiding spaces and URL encoding in both asset bundles and web requests.
+- Advance Zanik Manager's website extraction contract to recipe 13 and migrate recipe-11 or recipe-12 retained caches with only the necessary incremental rebuild.
+
 ## [0.2.64] - 2026-10-29
 
 ### Changed
