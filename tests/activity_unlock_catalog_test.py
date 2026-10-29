@@ -48,12 +48,12 @@ class ActivityUnlockCatalogTest(unittest.TestCase):
             self.assertIn("count=2", lines[0])
             self.assertIn(
                 "PerkV2_Attack_TempestShield\tspell\tUSD_TempestShield\tTempest Shield\t"
-                "/assets/unlocks/PerkV2_Attack_TempestShield.png\tT_Skill_Attack_Spell_Tempestshield",
+                "/assets/spells%20and%20perks/PerkV2_Attack_TempestShield.png\tT_Skill_Attack_Spell_Tempestshield",
                 lines,
             )
             self.assertIn(
                 "PerkV2_Attack_Parry\tperk\tPerkV2_Attack_Parry\tPerfect Parry\t"
-                "/assets/unlocks/PerkV2_Attack_Parry.png\tT_Skill_Attack_Parry",
+                "/assets/spells%20and%20perks/PerkV2_Attack_Parry.png\tT_Skill_Attack_Parry",
                 lines,
             )
 

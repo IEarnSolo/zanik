@@ -72,7 +72,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-web-assets-") as temporary:
     assert (web / "items" / "ITEM_Ammo_Arrows_Bone_Bodkin.png").read_bytes() == b"fang-arrow"
     assert (web / "items" / "ITEM_Ammo_Arrows_Bone_Poison.png").read_bytes() == b"fang-arrow"
     assert (web / "resources" / "barrel-cactus.png").read_bytes() == b"cactus"
-    assert (web / "unlocks" / "PerkV2_Attack_TempestShield.png").read_bytes() == b"tempest-shield"
+    assert (web / "spells and perks" / "PerkV2_Attack_TempestShield.png").read_bytes() == b"tempest-shield"
     assert (web / "lodestone-icon.png").read_bytes() == b"correct-map-icon"
     assert (web / "nodestone-icon.png").read_bytes() == generator.NODESTONE_MAP_ICON.read_bytes()
     assert not (web / "quests/clipboard-icon.png").exists()
