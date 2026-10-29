@@ -144,7 +144,7 @@ bool ReadSkillAsset(const std::string& name,std::string& body) {
 bool ReadSpellAndPerkAsset(const std::string& name,std::string& body) {
     if(name.empty()||name.size()>160)return false;
     for(char c:name)if(!(std::isalnum(static_cast<unsigned char>(c))||c=='-'||c=='_'||c=='.'))return false;
-    std::ifstream input(WebRoot()+"/spells and perks/"+name,std::ios::binary);if(!input)return false;
+    std::ifstream input(WebRoot()+"/spells-and-perks/"+name,std::ios::binary);if(!input)return false;
     body.assign(std::istreambuf_iterator<char>(input),{});return body.size()<=2*1024*1024;
 }
 
@@ -605,9 +605,9 @@ void Handle(int fd) {
         std::string asset;
         if(ReadSkillAsset(path.substr(15),asset))Respond(fd,200,"image/png",asset);
         else Respond(fd,200,"image/svg+xml",PlaceholderImage());
-    } else if (path.rfind("/assets/spells%20and%20perks/",0)==0) {
+    } else if (path.rfind("/assets/spells-and-perks/",0)==0) {
         std::string asset;
-        if(ReadSpellAndPerkAsset(path.substr(29),asset))Respond(fd,200,"image/png",asset);
+        if(ReadSpellAndPerkAsset(path.substr(25),asset))Respond(fd,200,"image/png",asset);
         else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path.rfind("/assets/buildings/",0)==0) {
         std::string asset;

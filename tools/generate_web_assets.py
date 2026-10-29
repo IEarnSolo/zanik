@@ -188,7 +188,7 @@ def main() -> int:
             if previous != icon:
                 raise RuntimeError(f"conflicting unlock artwork for {key}: {previous}, {icon}")
         missing_unlocks = [key for key, icon in sorted(unlocks.items())
-                           if not copy(images, icon, web / "spells and perks" / f"{key}.png")]
+                           if not copy(images, icon, web / "spells-and-perks" / f"{key}.png")]
         if missing_unlocks:
             raise RuntimeError("required perk/spell artwork is unavailable: " + ", ".join(missing_unlocks))
     npc_path = web / "npc-catalog.json"

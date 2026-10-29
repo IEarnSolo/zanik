@@ -59,7 +59,7 @@ OPTIONAL_GROUPS = (
     "npcs/*.png",
     "resources/*.png",
     "buildings/*.png",
-    "spells and perks/*.png",
+    "spells-and-perks/*.png",
 )
 CATALOG_MINIMUMS = {
     "buildings/catalog.json": {"pieces": 100},
@@ -70,7 +70,7 @@ CATALOG_MINIMUMS = {
     "resource-catalog.json": {"types": 5, "nodes": 10},
 }
 ALLOWED_TOP_LEVEL = {
-    "asset-manifest.json", "buildings", "items", "npcs", "quests", "recipe-icons", "spells and perks",
+    "asset-manifest.json", "buildings", "items", "npcs", "quests", "recipe-icons", "spells-and-perks",
     "resources", "skills", "world-map.jpg", "lodestone-icon.png", "nodestone-icon.png",
     "gravestone-icon.png", "Jancient-Regular.ttf", "npc-catalog.json", "plan-items.tsv",
     "quest-catalog.json", "quest-runtime-catalog.tsv", "quest-step-locations.json",

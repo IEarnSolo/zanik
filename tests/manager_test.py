@@ -870,21 +870,21 @@ class ManagerTests(unittest.TestCase):
         contract = expected_asset_contract(ROOT / "asset-tools")
         recipe = json.loads((ROOT / "asset-tools/extraction-recipes.json").read_text())
         history = json.loads((ROOT / "asset-tools/extraction-recipe-history.json").read_text())
-        recipe11 = next(entry for entry in history["recipes"]
-                        if entry["recipe"]["schemaVersion"] == 11)
+        recipe12 = next(entry for entry in history["recipes"]
+                        if entry["recipe"]["schemaVersion"] == 12)
         self.assertEqual(contract["extractionRecipeVersion"], recipe["schemaVersion"])
         self.assertEqual(contract["compatibilityProfileVersion"], recipe["catalogProfile"]["version"])
         self.assertEqual(contract["extractionRecipeSha256"], hashlib.sha256(
             (ROOT / "asset-tools/extraction-recipes.json").read_bytes()).hexdigest())
-        self.assertEqual(contract["extractionRecipeVersion"], 12)
-        self.assertNotEqual(contract["extractionRecipeSha256"], recipe11["sha256"])
+        self.assertEqual(contract["extractionRecipeVersion"], 13)
+        self.assertNotEqual(contract["extractionRecipeSha256"], recipe12["sha256"])
         stale = asset_contract_presentation({
             "installed": True,
             "valid": False,
-            "extractionRecipeVersion": 11,
-            "compatibilityProfileVersion": recipe11["recipe"]["catalogProfile"]["version"],
-            "extractionRecipeSha256": recipe11["sha256"],
-        }, "0.2.64")
+            "extractionRecipeVersion": 12,
+            "compatibilityProfileVersion": recipe12["recipe"]["catalogProfile"]["version"],
+            "extractionRecipeSha256": recipe12["sha256"],
+        }, "0.2.65")
         self.assertEqual(stale["state"], "available")
         self.assertIn("Refresh available", stale["text"])
         self.assertIn("world-map.jpg", contract["criticalFiles"])

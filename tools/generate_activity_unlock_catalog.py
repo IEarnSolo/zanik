@@ -68,7 +68,7 @@ def generate(source: Path) -> list[tuple[str, str, str, str, str, str]]:
             spell = spell_links.get(key)
             kind = "spell" if spell else "perk"
             canonical = spell or key
-            icon = f"/assets/spells%20and%20perks/{key}.png"
+            icon = f"/assets/spells-and-perks/{key}.png"
             row = (key, kind, canonical, name, icon, texture)
             prior = entries.get(key)
             if prior is not None and prior != row:
