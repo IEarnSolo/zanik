@@ -105,7 +105,8 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert 'id="manageSidebarGroup" class="player-sidebar-group" hidden' in page
             assert '.player-sidebar [hidden]{display:none!important}' in page
             assert 'class="overview-grid"' in page
-            assert 'id="activityList"' in page and 'id="activityMore"' in page
+            assert 'id="activityList"' in page and 'id="activityPrevious"' in page and 'id="activityNext"' in page
+            assert 'id="activeQuestContent"' in page
             assert "/api/player-activity?id=" in page
         with get(base, "/map") as response:
             page = response.read().decode()

@@ -58,7 +58,8 @@ try:
         assert "selectPlayerView" in page
         assert 'class="overview-grid"' in page
         assert 'id="activityList"' in page
-        assert 'id="activityMore"' in page
+        assert 'id="activityPrevious"' in page and 'id="activityNext"' in page
+        assert 'id="activeQuestContent"' in page
         assert "/api/player-activity?id=" in page
 
     with urllib.request.urlopen(base + "/api/quests/catalog", timeout=3) as response:
@@ -73,6 +74,7 @@ try:
     with urllib.request.urlopen(base + "/api/quest-tracker-diagnostics", timeout=3) as response:
         quest_diagnostics = json.loads(response.read())
         assert "catalogCompatibility" in quest_diagnostics
+        assert "trackedQuestCompatibility" in quest_diagnostics
         assert "maximumQueryMicroseconds" in quest_diagnostics
 
     with urllib.request.urlopen(base + "/assets/skills/attack.png", timeout=3) as response:

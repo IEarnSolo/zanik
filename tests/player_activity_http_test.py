@@ -75,8 +75,8 @@ with tempfile.TemporaryDirectory(prefix="zanik-player-activity-http-") as tempor
                 return json.loads(response.read())
 
         page = fetch("/api/player-activity?id=public-hero")
-        assert [event["id"] for event in page["events"]] == list(range(55, 47, -1))
-        assert page["hasMore"] is True and page["nextBefore"] == 48
+        assert [event["id"] for event in page["events"]] == list(range(55, 45, -1))
+        assert page["hasMore"] is True and page["nextBefore"] == 46
         assert set(page["events"][0]) == {"id", "type", "timestamp", "title", "detail", "icon"}
         encoded = json.dumps(page)
         assert "characterGuid" not in encoded and "character:hero" not in encoded and '"hero"' not in encoded

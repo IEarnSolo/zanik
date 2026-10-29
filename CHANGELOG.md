@@ -4,6 +4,26 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.68] - 2026-10-29
+
+### Added
+
+- Add an Active quest card to each player Overview, showing the quest currently tracked in the in-game journal, its current objective, primary or secondary quest artwork, location, and the same objective mini-map used by the full quest view.
+- Persist the tracked quest selection with saved quest progress so offline player pages retain the last verified selection across server restarts.
+- Report tracked-quest compatibility and rejected samples in diagnostics, with bounded validation of the live Unreal quest map and a fallback for older game layouts.
+
+### Changed
+
+- Ship the tracked-quest, player Overview, and Recent activity updates through Zanik Manager 0.2.68.
+- Replace Recent activity's expanding “Show more” list with Previous and Next pagination showing ten entries at a time.
+- Use the existing gold primary-quest and blue secondary-quest artwork for quest-started, quest-progressed, and quest-completed activity entries.
+- Document how development agents should inspect Windows attachments through mounted drive paths when working from WSL.
+
+### Fixed
+
+- Retain the previous verified tracked quest when a live engine sample is incomplete or incompatible instead of replacing it with uncertain data.
+- Keep activity pagination stable while moving between pages and expose ten entries by default from the player-activity endpoint.
+
 ## [0.2.67] - 2026-10-29
 
 ### Changed
