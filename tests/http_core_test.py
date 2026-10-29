@@ -177,6 +177,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
         with get(base, "/api/quest-tracker-diagnostics") as response:
             diagnostics = json.loads(response.read())
             assert "catalogCompatibility" in diagnostics
+            assert "trackedQuestCaptures" in diagnostics
             assert "maximumQueryMicroseconds" in diagnostics
         with get(base, "/api/diagnostics/npcs") as response:
             diagnostics = json.loads(response.read())

@@ -878,11 +878,13 @@ class ManagerTests(unittest.TestCase):
         history = json.loads((ROOT / "asset-tools/extraction-recipe-history.json").read_text())
         recipe12 = next(entry for entry in history["recipes"]
                         if entry["recipe"]["schemaVersion"] == 12)
+        recipe14 = next(entry for entry in history["recipes"]
+                        if entry["recipe"]["schemaVersion"] == 14)
         self.assertEqual(contract["extractionRecipeVersion"], recipe["schemaVersion"])
         self.assertEqual(contract["compatibilityProfileVersion"], recipe["catalogProfile"]["version"])
         self.assertEqual(contract["extractionRecipeSha256"], hashlib.sha256(
             (ROOT / "asset-tools/extraction-recipes.json").read_bytes()).hexdigest())
-        self.assertEqual(contract["extractionRecipeVersion"], 14)
+        self.assertEqual(contract["extractionRecipeVersion"], 15)
         self.assertNotEqual(contract["extractionRecipeSha256"], recipe12["sha256"])
         stale = asset_contract_presentation({
             "installed": True,
@@ -893,6 +895,16 @@ class ManagerTests(unittest.TestCase):
         }, "0.2.65")
         self.assertEqual(stale["state"], "available")
         self.assertIn("Refresh available", stale["text"])
+        self.assertNotEqual(recipe14["sha256"], contract["extractionRecipeSha256"])
+        prior = asset_contract_presentation({
+            "installed": True,
+            "valid": False,
+            "extractionRecipeVersion": 14,
+            "compatibilityProfileVersion": recipe14["recipe"]["catalogProfile"]["version"],
+            "extractionRecipeSha256": recipe14["sha256"],
+        }, "0.2.68")
+        self.assertEqual(prior["state"], "available")
+        self.assertIn("Refresh available", prior["text"])
         self.assertIn("world-map.jpg", contract["criticalFiles"])
 
     def test_journal_persistence_and_incomplete_filter(self):

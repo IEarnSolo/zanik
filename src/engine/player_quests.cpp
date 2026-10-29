@@ -11,7 +11,10 @@
 #include <memory>
 #include <pthread.h>
 #include <sstream>
+#include <sys/mman.h>
 #include <unordered_map>
+#include <unordered_set>
+#include <unistd.h>
 
 namespace DomEngine { namespace {
 struct Entry{std::string id,name,key;uintptr_t object=0;};
@@ -22,9 +25,10 @@ std::vector<Entry> catalog;std::vector<Target> targets;std::unordered_map<std::s
 pthread_mutex_t targetMutex=PTHREAD_MUTEX_INITIALIZER,snapshotMutex=PTHREAD_MUTEX_INITIALIZER;
 struct Lock{pthread_mutex_t*p;explicit Lock(pthread_mutex_t&v):p(&v){pthread_mutex_lock(p);}~Lock(){pthread_mutex_unlock(p);}};
 using GetDisplayStringFn=const FString*(*)(const void*);using FTextDestructorFn=void(*)(void*);
-std::unique_ptr<Scan> active;ProcessEventFn processEvent=nullptr;uintptr_t getState=0,getCurrentObjective=0;GetDisplayStringFn displayText=nullptr;FTextDestructorFn destroyText=nullptr;std::size_t questParamOffset=0,stateReturnOffset=8,objectiveQuestOffset=0,objectiveReturnOffset=8;std::string fingerprint;
+std::unique_ptr<Scan> active;ProcessEventFn processEvent=nullptr,originalProcessEvent=nullptr;uintptr_t getState=0,getCurrentObjective=0,serverNotifyTracked=0,clientNotifyTracked=0;GetDisplayStringFn displayText=nullptr;FTextDestructorFn destroyText=nullptr;std::size_t questParamOffset=0,stateReturnOffset=8,objectiveQuestOffset=0,objectiveReturnOffset=8,trackedNotifyQuestOffset=0;std::string fingerprint;
 std::atomic<int> enabled{0},compatibility{0},catalogCompat{0},componentCompat{0},queryCompat{0},objectiveCompat{0},trackedQuestCompat{0};
-std::atomic<std::uint64_t> resolved{0},completed{0},failures{0},changes{0},persistenceFailures{0},cacheHits{0},cacheMisses{0},invalidIdentities{0},trackedQuestFailures{0},lastQueryUs{0},maxQueryUs{0},slowQueries{0};std::atomic<std::int64_t> lastScan{0};
+std::atomic<std::uint64_t> resolved{0},completed{0},failures{0},changes{0},persistenceFailures{0},cacheHits{0},cacheMisses{0},invalidIdentities{0},trackedQuestFailures{0},trackedQuestCaptures{0},lastQueryUs{0},maxQueryUs{0},slowQueries{0};std::atomic<std::int64_t> lastScan{0};
+std::unordered_map<uintptr_t,uintptr_t> trackedQuestByComponent;std::unordered_set<uintptr_t> knownQuestComponents;pthread_mutex_t trackedQuestMutex=PTHREAD_MUTEX_INITIALIZER;
 std::chrono::steady_clock::time_point nextCycle{},nextResolve{},nextQuery{};constexpr int QueryIntervalMs=20;
 std::int64_t Now(){return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();}
 std::vector<std::string> Split(const std::string&v,char s){std::vector<std::string>o;size_t p=0;for(;;){size_t a=v.find(s,p);o.push_back(v.substr(p,a==std::string::npos?a:a-p));if(a==std::string::npos)return o;p=a+1;}}
@@ -61,8 +65,72 @@ bool TrackedId(uintptr_t object,std::string&id){
     const auto found=std::find_if(catalog.begin(),catalog.end(),[&](const Entry&e){return e.object==object;});
     if(found==catalog.end())return false;id=found->id;return true;
 }
+void WriteAbsoluteJump(unsigned char*destination,uintptr_t target){destination[0]=0x48;destination[1]=0xB8;std::memcpy(destination+2,&target,sizeof(target));destination[10]=0xFF;destination[11]=0xE0;}
+void HookProcessEvent(void*object,void*function,void*params){
+    const auto functionAddress=reinterpret_cast<uintptr_t>(function);bool trackedNotify=functionAddress==serverNotifyTracked||functionAddress==clientNotifyTracked;
+    if(!trackedNotify&&object&&function&&g_Engine){
+        bool known=false;{Lock lock(trackedQuestMutex);known=knownQuestComponents.count(reinterpret_cast<uintptr_t>(object))!=0;}
+        if(known){const std::string name=g_Engine->GetObjectName(functionAddress);if(name=="Server_NotifyQuestTracked"){serverNotifyTracked=functionAddress;trackedNotify=true;}else if(name=="Client_NotifyTrackedQuestLoaded"){clientNotifyTracked=functionAddress;trackedNotify=true;}}
+    }
+    if(object&&params&&trackedNotify&&g_Engine&&
+       g_Engine->IsObjectLive(reinterpret_cast<uintptr_t>(object))&&g_Engine->IsA(reinterpret_cast<uintptr_t>(object),"QuestProgressComponent")){
+        const uintptr_t quest=Mem::ReadPtr(reinterpret_cast<uintptr_t>(params)+trackedNotifyQuestOffset);
+        if(!quest||(g_Engine->IsObjectLive(quest)&&g_Engine->IsA(quest,"QuestData"))){
+            Lock lock(trackedQuestMutex);trackedQuestByComponent[reinterpret_cast<uintptr_t>(object)]=quest;++trackedQuestCaptures;
+        }else ++trackedQuestFailures;
+    }
+    originalProcessEvent(object,function,params);
+}
+bool ValidateTrackedNotify(uintptr_t function){
+    auto fields=g_Engine->GetStructPropertyOffsets(function);if(fields.empty())return true;
+    for(const auto&field:fields)if((field.first=="QuestData"||field.first=="Quest"||field.first=="InQuestData")&&field.second>=0&&field.second+int32_t(sizeof(uintptr_t))<=32){trackedNotifyQuestOffset=size_t(field.second);return true;}
+    // The pinned Linux server build retains the RPC and its one-pointer ABI,
+    // but strips/renames the parameter field metadata. Windows reflection for
+    // the same game build confirms QuestData is the first parameter. The hook
+    // still rejects anything that is not a live QuestData object.
+    trackedNotifyQuestOffset=0;return true;
+}
+uintptr_t FindUniqueFunctionByName(const char* name){
+    uintptr_t match=0;
+    for(int32_t i=0;i<g_Engine->GetObjectCount();++i){
+        const uintptr_t object=g_Engine->GetObjectByIndex(i);
+        if(!object||g_Engine->GetObjectClassName(object)!="Function"||g_Engine->GetObjectName(object)!=name)continue;
+        if(match&&match!=object)return 0;
+        match=object;
+    }
+    return match;
+}
+bool InstallTrackedQuestCapture(uintptr_t moduleBase,uintptr_t moduleEnd,uintptr_t processOffset){
+    serverNotifyTracked=g_Engine->FindFunction("QuestProgressComponent","Server_NotifyQuestTracked");
+    clientNotifyTracked=g_Engine->FindFunction("QuestProgressComponent","Client_NotifyTrackedQuestLoaded");
+    // Linux retains the RPC UFunctions but can strip their owning class from
+    // the UObject outer chain. Exact function names remain authoritative and
+    // unique, so fall back to a bounded unique-name lookup.
+    if(!serverNotifyTracked)serverNotifyTracked=FindUniqueFunctionByName("Server_NotifyQuestTracked");
+    if(!clientNotifyTracked)clientNotifyTracked=FindUniqueFunctionByName("Client_NotifyTrackedQuestLoaded");
+    if((serverNotifyTracked&&!ValidateTrackedNotify(serverNotifyTracked))||
+       (clientNotifyTracked&&!ValidateTrackedNotify(clientNotifyTracked))){trackedQuestCompat=-2;return false;}
+    constexpr size_t PrologueOffset=14,HookBytes=13;const unsigned char expected[HookBytes]={0x55,0x48,0x89,0xE5,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53};
+    if(moduleBase+processOffset+PrologueOffset+HookBytes>moduleEnd)return false;auto*target=reinterpret_cast<unsigned char*>(moduleBase+processOffset+PrologueOffset);
+    if(std::memcmp(target,expected,sizeof(expected))!=0){trackedQuestCompat=-3;return false;}
+    auto*trampoline=static_cast<unsigned char*>(mmap(nullptr,64,PROT_READ|PROT_WRITE|PROT_EXEC,MAP_PRIVATE|MAP_ANONYMOUS,-1,0));
+    if(trampoline==MAP_FAILED){trackedQuestCompat=-4;return false;}std::memcpy(trampoline,target,HookBytes);WriteAbsoluteJump(trampoline+HookBytes,reinterpret_cast<uintptr_t>(target+HookBytes));originalProcessEvent=reinterpret_cast<ProcessEventFn>(trampoline);
+    const long pageSize=sysconf(_SC_PAGESIZE);const uintptr_t page=reinterpret_cast<uintptr_t>(target)&~(uintptr_t(pageSize)-1);
+    if(pageSize<=0||mprotect(reinterpret_cast<void*>(page),size_t(pageSize),PROT_READ|PROT_WRITE|PROT_EXEC)!=0){originalProcessEvent=nullptr;munmap(trampoline,64);trackedQuestCompat=-4;return false;}
+    unsigned char patch[HookBytes];std::memset(patch,0x90,sizeof(patch));WriteAbsoluteJump(patch,reinterpret_cast<uintptr_t>(&HookProcessEvent));std::memcpy(target,patch,sizeof(patch));__builtin___clear_cache(reinterpret_cast<char*>(target),reinterpret_cast<char*>(target+HookBytes));mprotect(reinterpret_cast<void*>(page),size_t(pageSize),PROT_READ|PROT_EXEC);
+    trackedQuestCompat=0;LogMessage("Tracked quest capture installed for server and login notifications"+(serverNotifyTracked||clientNotifyTracked?std::string{}:"; notification functions will resolve when the component becomes live"));return true;
+}
 bool ReadTrackedQuest(uintptr_t component,std::string&id){
-    id.clear();int32_t offset=g_Engine->FindPropertyOffset(component,"TrackedQuestMap");
+    id.clear();
+    {
+        Lock lock(trackedQuestMutex);auto captured=trackedQuestByComponent.find(component);
+        if(captured!=trackedQuestByComponent.end()){
+            if(!captured->second){trackedQuestCompat=1;return true;}
+            if(!TrackedId(captured->second,id)){++trackedQuestFailures;return false;}
+            trackedQuestCompat=1;return true;
+        }
+    }
+    int32_t offset=g_Engine->FindPropertyOffset(component,"TrackedQuestMap");
     if(offset>=0&&offset<=0x1000){
         // UE5 TMap<EQuestType,UQuestData*>: the sparse element is an aligned
         // byte enum key, an object pointer at +8, then two 32-bit set links.
@@ -80,7 +148,7 @@ bool ReadTrackedQuest(uintptr_t component,std::string&id){
         trackedQuestCompat=1;return true;
     }
     offset=g_Engine->FindPropertyOffset(component,"TrackedSecondaryQuest");
-    if(offset<0||offset>0x1000){trackedQuestCompat=-1;++trackedQuestFailures;return false;}
+    if(offset<0||offset>0x1000){if(!originalProcessEvent)trackedQuestCompat=-1;++trackedQuestFailures;return false;}
     const uintptr_t first=Mem::ReadPtr(component+uintptr_t(offset)),second=Mem::ReadPtr(component+uintptr_t(offset));
     if(first!=second){++trackedQuestFailures;return false;}
     if(!first){trackedQuestCompat=1;return true;}
@@ -88,8 +156,8 @@ bool ReadTrackedQuest(uintptr_t component,std::string&id){
     trackedQuestCompat=1;return true;
 }
 }
-bool InitializePlayerQuestTracking(const std::string&path,uintptr_t moduleBase,uintptr_t moduleEnd){const char*toggle=std::getenv("DW_QUEST_TRACKING_ENABLED");if(toggle&&(std::string(toggle)=="0"||std::string(toggle)=="false")){enabled=0;compatibility=-8;return false;}enabled=1;compatibility=-7;std::ifstream in(path);if(!in){catalogCompat=-1;compatibility=-1;return false;}std::string line;size_t expected=0;while(std::getline(in,line)){if(!line.empty()&&line.back()=='\r')line.pop_back();if(line.rfind("#",0)==0){auto a=line.find("fingerprint=");if(a!=std::string::npos)fingerprint=line.substr(a+12,64);a=line.find("count=");if(a!=std::string::npos)try{expected=std::stoull(line.substr(a+6));}catch(...){}continue;}auto f=Split(line,'\t');if(f.size()!=3||f[0].empty()||f[1].empty()||f[2].empty())continue;catalog.push_back({f[0],f[1],Key(f[2]),0});}if(catalog.empty()||catalog.size()!=expected||fingerprint.size()!=64){catalogCompat=-1;compatibility=-2;return false;}uintptr_t a=0,b=0,pe=0,c=0,d=0;if(!GetAdminTeleportOffsets(a,b,pe,c,d)||moduleBase+pe>=moduleEnd){queryCompat=-1;compatibility=-3;return false;}processEvent=reinterpret_cast<ProcessEventFn>(moduleBase+pe);getState=g_Engine->FindFunction("QuestProgressComponent","GetQuestState");if(!getState){queryCompat=-1;compatibility=-4;return false;}auto fields=g_Engine->GetStructPropertyOffsets(getState);if(!fields.empty()){bool input=false,result=false;for(const auto&f:fields){if(f.first=="ReturnValue"&&f.second<32){stateReturnOffset=f.second;result=true;}else if((f.first=="Quest"||f.first=="QuestData"||f.first=="InQuest"||f.first=="InQuestData")&&f.second+sizeof(uintptr_t)<=32){questParamOffset=f.second;input=true;}}if((input||result)&&(!input||!result||questParamOffset==stateReturnOffset)){queryCompat=-1;compatibility=-5;return false;}if(!input&&!result)LogMessage("Quest GetQuestState fields stripped; using fingerprint-bound ABI and behavioral state validation");}queryCompat=1;if(!InitializeObjectiveQuery(moduleBase,moduleEnd)){objectiveCompat=-1;LogMessage("Quest current-objective decoding compatibility unavailable; status tracking remains enabled");}nextResolve=std::chrono::steady_clock::now();ResolveObjects();return compatibility.load()==1;}
-void UpdatePlayerQuestTargets(const std::vector<PlayerInfo>&players){std::vector<Target> fresh;for(const auto&p:players){if(p.characterGuid.empty()||!p.controllerPtr){if(!p.characterGuid.empty())++invalidIdentities;continue;}Target t{p.characterGuid,p.controllerPtr,p.pawnPtr,p.playerStatePtr,0};t.component=FindComponent(t);fresh.push_back(t);}Lock l(targetMutex);targets=std::move(fresh);}
+bool InitializePlayerQuestTracking(const std::string&path,uintptr_t moduleBase,uintptr_t moduleEnd){const char*toggle=std::getenv("DW_QUEST_TRACKING_ENABLED");if(toggle&&(std::string(toggle)=="0"||std::string(toggle)=="false")){enabled=0;compatibility=-8;return false;}enabled=1;compatibility=-7;std::ifstream in(path);if(!in){catalogCompat=-1;compatibility=-1;return false;}std::string line;size_t expected=0;while(std::getline(in,line)){if(!line.empty()&&line.back()=='\r')line.pop_back();if(line.rfind("#",0)==0){auto a=line.find("fingerprint=");if(a!=std::string::npos)fingerprint=line.substr(a+12,64);a=line.find("count=");if(a!=std::string::npos)try{expected=std::stoull(line.substr(a+6));}catch(...){}continue;}auto f=Split(line,'\t');if(f.size()!=3||f[0].empty()||f[1].empty()||f[2].empty())continue;catalog.push_back({f[0],f[1],Key(f[2]),0});}if(catalog.empty()||catalog.size()!=expected||fingerprint.size()!=64){catalogCompat=-1;compatibility=-2;return false;}uintptr_t a=0,b=0,pe=0,c=0,d=0;if(!GetAdminTeleportOffsets(a,b,pe,c,d)||moduleBase+pe>=moduleEnd){queryCompat=-1;compatibility=-3;return false;}processEvent=reinterpret_cast<ProcessEventFn>(moduleBase+pe);getState=g_Engine->FindFunction("QuestProgressComponent","GetQuestState");if(!getState){queryCompat=-1;compatibility=-4;return false;}auto fields=g_Engine->GetStructPropertyOffsets(getState);if(!fields.empty()){bool input=false,result=false;for(const auto&f:fields){if(f.first=="ReturnValue"&&f.second<32){stateReturnOffset=f.second;result=true;}else if((f.first=="Quest"||f.first=="QuestData"||f.first=="InQuest"||f.first=="InQuestData")&&f.second+sizeof(uintptr_t)<=32){questParamOffset=f.second;input=true;}}if((input||result)&&(!input||!result||questParamOffset==stateReturnOffset)){queryCompat=-1;compatibility=-5;return false;}if(!input&&!result)LogMessage("Quest GetQuestState fields stripped; using fingerprint-bound ABI and behavioral state validation");}queryCompat=1;if(!InitializeObjectiveQuery(moduleBase,moduleEnd)){objectiveCompat=-1;LogMessage("Quest current-objective decoding compatibility unavailable; status tracking remains enabled");}if(!InstallTrackedQuestCapture(moduleBase,moduleEnd,pe))LogMessage("Tracked quest notification capture compatibility unavailable; reflected-property fallback remains enabled");nextResolve=std::chrono::steady_clock::now();ResolveObjects();return compatibility.load()==1;}
+void UpdatePlayerQuestTargets(const std::vector<PlayerInfo>&players){std::vector<Target> fresh;std::unordered_set<uintptr_t> components;for(const auto&p:players){if(p.characterGuid.empty()||!p.controllerPtr){if(!p.characterGuid.empty())++invalidIdentities;continue;}Target t{p.characterGuid,p.controllerPtr,p.pawnPtr,p.playerStatePtr,0};t.component=FindComponent(t);if(t.component)components.insert(t.component);fresh.push_back(t);}{Lock l(trackedQuestMutex);knownQuestComponents=std::move(components);}{Lock l(targetMutex);targets=std::move(fresh);}}
 void RefreshPlayerQuestTrackingCompatibility(){if(!enabled||!g_Engine||compatibility.load()<0||compatibility.load()==1)return;auto now=std::chrono::steady_clock::now();if(now<nextResolve)return;ResolveObjects();nextResolve=now+std::chrono::seconds(10);}
 void ProcessPlayerQuestTracking(){
     if(!enabled||!g_Engine||compatibility.load()!=1)return;
@@ -117,7 +185,7 @@ void ProcessPlayerQuestTracking(){
     }
 }
 std::vector<PlayerQuestSnapshot> ReadPlayerQuestSnapshots(){Lock l(snapshotMutex);std::vector<PlayerQuestSnapshot>o;for(const auto&p:snapshots)o.push_back(p.second);return o;}
-PlayerQuestDiagnostics GetPlayerQuestDiagnostics(){PlayerQuestDiagnostics d;d.enabled=enabled;d.compatibility=compatibility;d.catalogCompatibility=catalogCompat;d.componentCompatibility=componentCompat;d.queryCompatibility=queryCompat;d.objectiveCompatibility=objectiveCompat;d.trackedQuestCompatibility=trackedQuestCompat;d.catalogEntries=catalog.size();d.resolvedEntries=resolved;{Lock l(snapshotMutex);d.snapshots=snapshots.size();}d.scansCompleted=completed;d.queryFailures=failures;d.snapshotChanges=changes;d.persistenceFailures=persistenceFailures;d.cacheHits=cacheHits;d.cacheMisses=cacheMisses;d.invalidIdentities=invalidIdentities;d.trackedQuestFailures=trackedQuestFailures;d.lastScan=lastScan;d.lastQueryMicroseconds=lastQueryUs;d.maximumQueryMicroseconds=maxQueryUs;d.slowQueries=slowQueries;return d;}
+PlayerQuestDiagnostics GetPlayerQuestDiagnostics(){PlayerQuestDiagnostics d;d.enabled=enabled;d.compatibility=compatibility;d.catalogCompatibility=catalogCompat;d.componentCompatibility=componentCompat;d.queryCompatibility=queryCompat;d.objectiveCompatibility=objectiveCompat;d.trackedQuestCompatibility=trackedQuestCompat;d.catalogEntries=catalog.size();d.resolvedEntries=resolved;{Lock l(snapshotMutex);d.snapshots=snapshots.size();}d.scansCompleted=completed;d.queryFailures=failures;d.snapshotChanges=changes;d.persistenceFailures=persistenceFailures;d.cacheHits=cacheHits;d.cacheMisses=cacheMisses;d.invalidIdentities=invalidIdentities;d.trackedQuestFailures=trackedQuestFailures;d.trackedQuestCaptures=trackedQuestCaptures;d.lastScan=lastScan;d.lastQueryMicroseconds=lastQueryUs;d.maximumQueryMicroseconds=maxQueryUs;d.slowQueries=slowQueries;return d;}
 std::string GetPlayerQuestCatalogFingerprint(){return compatibility.load()==1?fingerprint:std::string();}
 void RecordPlayerQuestPersistenceFailure(){++persistenceFailures;}
 }

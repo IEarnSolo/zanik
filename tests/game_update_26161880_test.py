@@ -52,6 +52,17 @@ for offset in (
 teleport = (root / "src" / "engine" / "admin_teleport.cpp").read_text()
 assert "{0xA7631E0,0xA576C80,0xA577260,17" in teleport
 
+quests = (root / "src" / "engine" / "player_quests.cpp").read_text()
+assert 'FindFunction("QuestProgressComponent","Server_NotifyQuestTracked")' in quests
+assert 'FindFunction("QuestProgressComponent","Client_NotifyTrackedQuestLoaded")' in quests
+assert 'FindUniqueFunctionByName("Server_NotifyQuestTracked")' in quests
+assert 'FindUniqueFunctionByName("Client_NotifyTrackedQuestLoaded")' in quests
+assert "knownQuestComponents" in quests
+assert 'name=="Server_NotifyQuestTracked"' in quests
+assert "trackedNotifyQuestOffset=0;return true" in quests
+assert "PrologueOffset=14,HookBytes=13" in quests
+assert "0x55,0x48,0x89,0xE5,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53" in quests
+
 analyzer = (root / "tools" / "compat_analyzer.cpp").read_text()
 assert server_sha in analyzer
 

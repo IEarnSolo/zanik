@@ -26,7 +26,7 @@ REQUIRED_FILES = (
     "web/lodestone-icon.png",
     "web/Jancient-Regular.ttf",
     "web/skills/attack.png",
-    "web/quests/main-quest.svg",
+    "web/quests/main-quest.png",
 )
 REQUIRED_DIRECTORIES = (
     "web/buildings",

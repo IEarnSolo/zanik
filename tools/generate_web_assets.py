@@ -27,6 +27,8 @@ MAP_SIZE = 4096
 MAP_OCEAN_RGB = (79, 107, 110)
 LODESTONE_MAP_ICON_PACKAGE = "RSDragonwilds/Content/Art/UI/Icons/T_LodestoneMapIcon"
 NODESTONE_MAP_ICON = Path(__file__).resolve().parents[1] / "asset-tools/artwork/nodestone-icon-map.png"
+PRIMARY_QUEST_ICON_PACKAGE = "RSDragonwilds/Content/Art/UI/Map/QuestList/T_Icon_Quest_Primary"
+SECONDARY_QUEST_ICON_PACKAGE = "RSDragonwilds/Content/Art/UI/Map/QuestList/T_Icon_Quest_Secondary"
 
 
 def progress(message: str, current: int | None = None, total: int | None = None) -> None:
@@ -242,8 +244,11 @@ def main() -> int:
         progress("Extracting the website font", ordered_groups.index("font") + 1, len(ordered_groups))
         extract_font(args.font_root, web / "Jancient-Regular.ttf")
     if "quest-badges" in groups:
-        progress("Writing quest badges", ordered_groups.index("quest-badges") + 1, len(ordered_groups))
-        svg(web / "quests" / "main-quest.svg", True); svg(web / "quests" / "side-quest.svg", False)
+        progress("Resolving quest badges", ordered_groups.index("quest-badges") + 1, len(ordered_groups))
+        if not copy_package(args.texture_root, PRIMARY_QUEST_ICON_PACKAGE, web / "quests" / "main-quest.png"):
+            raise RuntimeError("the required primary quest icon texture was not exported")
+        if not copy_package(args.texture_root, SECONDARY_QUEST_ICON_PACKAGE, web / "quests" / "side-quest.png"):
+            raise RuntimeError("the required secondary quest icon texture was not exported")
     print(json.dumps({"itemIcons": copied, "fallbacks": sorted(missing), "textureFiles": len(images)}, sort_keys=True))
     return 0
 

@@ -714,7 +714,7 @@ PlayerRecipeDiagnostics GetPlayerRecipeDiagnostics();
 std::string GetPlayerRecipeCatalogFingerprint();
 struct QuestProgressInfo { std::string id,status,objective;std::int64_t completedObservedAt=0; };
 struct PlayerQuestSnapshot { std::string characterGuid;std::vector<QuestProgressInfo> quests;std::string catalogFingerprint,trackedQuestId;std::int64_t capturedAt=0;bool complete=false,trackedQuestAvailable=false; };
-struct PlayerQuestDiagnostics { int enabled=0,compatibility=0,catalogCompatibility=0,componentCompatibility=0,queryCompatibility=0,objectiveCompatibility=0,trackedQuestCompatibility=0;std::uint64_t catalogEntries=0,resolvedEntries=0,snapshots=0,scansCompleted=0,queryFailures=0,snapshotChanges=0,persistenceFailures=0,cacheHits=0,cacheMisses=0,invalidIdentities=0,trackedQuestFailures=0;std::int64_t lastScan=0;std::uint64_t lastQueryMicroseconds=0,maximumQueryMicroseconds=0,slowQueries=0; };
+struct PlayerQuestDiagnostics { int enabled=0,compatibility=0,catalogCompatibility=0,componentCompatibility=0,queryCompatibility=0,objectiveCompatibility=0,trackedQuestCompatibility=0;std::uint64_t catalogEntries=0,resolvedEntries=0,snapshots=0,scansCompleted=0,queryFailures=0,snapshotChanges=0,persistenceFailures=0,cacheHits=0,cacheMisses=0,invalidIdentities=0,trackedQuestFailures=0,trackedQuestCaptures=0;std::int64_t lastScan=0;std::uint64_t lastQueryMicroseconds=0,maximumQueryMicroseconds=0,slowQueries=0; };
 bool InitializePlayerQuestTracking(const std::string&,uintptr_t,uintptr_t);
 void RefreshPlayerQuestTrackingCompatibility();
 void UpdatePlayerQuestTargets(const std::vector<PlayerInfo>&);
