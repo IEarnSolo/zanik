@@ -4,6 +4,23 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.70] - 2026-10-29
+
+### Added
+
+- Show the viewed player's live map marker and name on the Active quest mini-map, updating from the same two-second position feed as the world map.
+- Add an Active quest map control that centers the mini-map on the player whenever a valid live position is available.
+
+### Changed
+
+- Ship the live Active quest player marker and map-centering control through Zanik Manager 0.2.70.
+- Size the player marker and name label for the mini-map's zoom level so they remain readable without obscuring the quest destination.
+
+### Fixed
+
+- Hide the Active quest player marker and centering control when the character is offline or has no valid live map coordinates instead of displaying stale or invented positioning.
+- Keep the Active quest player marker non-interactive so it does not introduce the world map's player tooltip into the compact Overview card.
+
 ## [0.2.69] - 2026-10-29
 
 ### Added
