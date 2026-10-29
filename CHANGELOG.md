@@ -4,6 +4,18 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.67] - 2026-10-29
+
+### Changed
+
+- Enlarge Recent activity artwork and timeline markers so discovered materials, recipes, perks, and spells are easier to recognize.
+- Advance Zanik Manager's Windows website-asset extraction contract to recipe 14, incrementally regenerating only the recipe catalog for recipe-13 caches while preserving the reviewed recipe-11 and recipe-12 migrations.
+
+### Fixed
+
+- Present Bronze, Silver, and Gold Medal unlock requirements as one clean all-course condition instead of repeating raw `ALL BRONZE`, `ALL SILVER`, or `ALL GOLD` backend expressions.
+- Resolve the six agility courses to their authored in-game names—Chasm Dash, Thunder Assault, Grave Run, Tower Climb, Lava Fields, and Fractured Ruins—and show a concise medal requirement beneath each course on the Recipe Unlocks page.
+
 ## [0.2.66] - 2026-10-29
 
 ### Fixed

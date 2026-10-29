@@ -858,6 +858,8 @@ def render_web_catalog(
         props = record.get("Properties") or {}
         name = str(record.get("Name", ""))
         label = text(props.get("Name")) or text(props.get("DisplayName"))
+        if record.get("Type") == "AgilityCourseDataAsset":
+            label = label or text((props.get("TimeTrialData") or {}).get("DisplayName"))
         if name and label:
             labels[name] = label
         actor = ref_name(props.get("BuildableActor"))
@@ -931,9 +933,15 @@ def render_web_catalog(
                 targets.append({"name": target_label(target), "icon": public_icon(internal),
                                 "recipes": sorted(set(dependencies))})
             names = [target["name"] for target in targets]
-            if kind == "obtain_item" and not names:
+            target_text = ""
+            minimum_medal = str(operand_value.get("minimumMedal", ""))
+            if kind == "skill_or_perk" and minimum_medal and names:
+                medal = humanize_identifier(minimum_medal).removesuffix(" Medal")
+                description = f"Earn a {medal} medal in every agility course"
+                target_text = f"Earn {medal}"
+            elif kind == "obtain_item" and not names:
                 continue
-            if kind == "obtain_item" and names:
+            elif kind == "obtain_item" and names:
                 if condition == "AnyMatch" and len(names) > 1:
                     description = "Obtain any one of " + ", ".join(names[:-1]) + " or " + names[-1]
                 else:
@@ -951,12 +959,15 @@ def render_web_catalog(
                 targets = []
             else:
                 description = friendly_action(path)
-            steps.append({
+            step = {
                 "kind": kind or str(path.get("type", "action")),
                 "mode": "any" if condition == "AnyMatch" else "all",
                 "text": description.rstrip("."),
                 "targets": targets,
-            })
+            }
+            if target_text:
+                step["targetText"] = target_text
+            steps.append(step)
         if not steps:
             action = friendly_action(path)
             if path.get("type") == "unknown_trigger":
