@@ -208,7 +208,8 @@ for (const file of files(cellsRoot)) {
     if (!stateKey) reason ||= 'missing-persistent-identity';
     if (reason) { exclusions.push({stateKey, spawnType, reason, sourceFile: relative}); continue; }
     const typeId = slug(meta.name);
-    const stable = actor?.Properties?.Guid || actor?.ActorInstanceGuid?.ActorGuid || stateKey;
+    const nativeGuid = actor?.Properties?.Guid || actor?.ActorInstanceGuid?.ActorGuid || '';
+    const stable = nativeGuid || stateKey;
     const id = crypto.createHash('sha256').update(`${relative}:${stable}`).digest('hex').slice(0, 20);
     // World-partition actors may override both values from the spawn-point CDO.
     // In particular, optional ambient placements commonly set bShouldRespawn=false;
@@ -223,7 +224,7 @@ for (const file of files(cellsRoot)) {
     if (placementRespawn > 0) node.respawnGameSeconds = placementRespawn;
     nodes.push(node);
     identities.push({stateKey, id, typeId, spawnType, aiClass: meta.aiClass, respawnGameSeconds: placementRespawn,
-      worldX: location.X, worldY: location.Y, worldZ: location.Z, sourceFile: relative});
+      worldX: location.X, worldY: location.Y, worldZ: location.Z, nativeGuid, sourceFile: relative});
     if (!types.has(typeId)) {
       const type = {id: typeId, name: meta.name, category: meta.category, hostile: meta.hostile, count: 0};
       if (meta.iconAsset) type.icon = `/assets/npcs/${meta.iconAsset}.png`;
@@ -242,8 +243,8 @@ const catalog = {version:`npcs-${fingerprint.slice(0,12)}`,contentFingerprint:fi
   diagnostics:{files:scannedFiles,nodes:nodes.length,types:typeList.length,rejected,excluded:exclusions.length}};
 fs.mkdirSync(path.dirname(publicOutput),{recursive:true});
 fs.writeFileSync(publicOutput, JSON.stringify(catalog));
-const identityHeader = `# zanik-npc-identities\t1\t${identities.length}\t${fingerprint}\tstateKey\topaqueId\ttypeId\tspawnType\taiClass\trespawnGameSeconds\tworldX\tworldY\tworldZ\tsourceFile`;
+const identityHeader = `# zanik-npc-identities\t2\t${identities.length}\t${fingerprint}\tstateKey\topaqueId\ttypeId\tspawnType\taiClass\trespawnGameSeconds\tworldX\tworldY\tworldZ\tnativeGuid\tsourceFile`;
 fs.mkdirSync(path.dirname(privateOutput),{recursive:true});
-fs.writeFileSync(privateOutput, identityHeader+'\n'+identities.map(x => [x.stateKey,x.id,x.typeId,x.spawnType,x.aiClass,x.respawnGameSeconds,x.worldX,x.worldY,x.worldZ,x.sourceFile].join('\t')).join('\n')+'\n');
+fs.writeFileSync(privateOutput, identityHeader+'\n'+identities.map(x => [x.stateKey,x.id,x.typeId,x.spawnType,x.aiClass,x.respawnGameSeconds,x.worldX,x.worldY,x.worldZ,x.nativeGuid,x.sourceFile].join('\t')).join('\n')+'\n');
 fs.writeFileSync(exclusionsOutput, '# stateKey\tspawnType\treason\tsourceFile\n'+exclusions.map(x => [x.stateKey,x.spawnType,x.reason,x.sourceFile].join('\t')).join('\n')+'\n');
 console.log(JSON.stringify(catalog.diagnostics));

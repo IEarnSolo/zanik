@@ -174,6 +174,9 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
         with get(base, "/api/diagnostics/npcs") as response:
             diagnostics = json.loads(response.read())
             assert "catalogCompatibility" in diagnostics
+            assert "readyNodes" in diagnostics
+            assert "authoritativeTimerCompatibility" in diagnostics
+            assert "authoritativeRespawnTimers" in diagnostics
             assert "maximumSliceMicroseconds" in diagnostics
             assert "slowSliceCount" in diagnostics
             assert not any("pointer" in key.lower() or "address" in key.lower() for key in diagnostics)

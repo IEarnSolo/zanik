@@ -12,7 +12,38 @@ Dungeon/instance/test packages, dungeon ancestry, invalid transforms, and out-of
 
 Compatibility is split across catalog, registry scanning, identity matching, transforms, lifecycle capture, respawn timing, and dungeon exclusion. Static catalog markers remain usable when live state is unavailable. `/api/diagnostics/npcs` contains counts and gates but no addresses or pointers.
 
-Object discovery is incremental and resumable: a worker-loop slice is limited to 512 object slots and two milliseconds, and completed generations are separated by a 500 ms idle interval so the server is not under perpetual discovery load. Object slots must be live and retain the same Unreal index/serial identity before relevant actor data is consumed. Runtime class ancestry is cached by class object, and dungeon exclusion reuses a validated gameplay-registry object instead of nesting another full object-array scan inside discovery. Previously matched live actors use a separate bounded transform-only refresh every two seconds, so movement remains current while background discovery progresses without starving HTTP requests.
+## Unloaded respawns
+
+Current-build native analysis confirms that NPC respawn eligibility is owned by
+the global `AAiDirector`, rather than by the streamed NPC actor. On death the
+director associates the spawn-point `FGuid` with an `FAIRespawnTimer` whose
+only reflected field is the absolute `InGameTimeOfRespawn`, while the same GUID
+is retained in `ExhaustedSpawnPointIds`. `HandleInGameTimeChanged` delegates to
+`RefreshRespawnTimers`; an overdue entry calls `ReplenishSpawnPoint`, removes
+the timer and exhausted state, and makes the placement eligible again. This
+also handles an authoritative game-time jump after an idle period or restart.
+
+Eligibility and actor existence are deliberately separate. The director's
+`TrySpawningAIForSpawnPoints` path evaluates spawn requests around players, and
+World Partition may leave a distant spawn point and its AI actor unloaded.
+Consequently the map reports an elapsed but unloaded death as `ready`, not
+`live`: the game has replenished or is due to replenish the placement, but the
+actor is only confirmed after the area streams and a live AI is observed.
+Ordinary server logs do not emit successful AI replenishment entries, so this
+state comes from the authoritative game-time lifecycle and live-object scan,
+not from an assumed log message.
+
+Identity-catalog schema 2 retains each spawn point's native `FGuid`. When that
+catalog is available, Zanik reconciles the director's bounded, reflected
+`RespawnTimerSpawnPointIds` map on every completed scan. This restores an
+in-progress death countdown after a Zanik or server restart and recovers a
+death that occurred while the kill hook was unavailable. The container is
+accepted only when its header is stable across the read, its limits are sane,
+and every consumed GUID maps uniquely to a reviewed catalog placement. A
+schema-1 catalog or an incompatible runtime layout fails closed and leaves the
+existing observed-death lifecycle as the fallback.
+
+Object discovery is incremental and resumable: a worker-loop slice is limited to 128 object slots and 400 microseconds, and completed generations are separated by a 500 ms idle interval so the server is not under perpetual discovery load. Object slots must be live and retain the same Unreal index/serial identity before relevant actor data is consumed. Runtime class ancestry is cached by class object, and dungeon exclusion reuses a validated gameplay-registry object instead of nesting another full object-array scan inside discovery. Previously matched live actors use a separate bounded transform-only refresh every two seconds, so movement remains current while background discovery progresses without starving HTTP requests.
 
 NPC diagnostics report scan progress, generation wall time, accumulated scanner work, slice and finalization time, transform-refresh time, scanner duty cycle, class-cache effectiveness, rejected stale slots, identity changes, and the configured inter-generation idle interval. These metrics deliberately expose counts and durations only; they never publish native pointers or addresses.
 

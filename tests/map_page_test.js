@@ -29,6 +29,9 @@ for(const script of scripts)new Function(script);
 for(const token of ['id="questPanel"','id="questSteps"','id="questTip"','/api/quests/steps','renderQuestMarkers','focusQuestMarker','dragonwilds.map.questSteps']){
   if(!page[1].includes(token))throw new Error('missing quest-map token: '+token);
 }
+for(const token of ["state.state==='ready'","Respawn ready · area currently unloaded","Dead · game clock paused",'npcClockAdvancing']){
+  if(!page[1].includes(token))throw new Error('missing authoritative NPC respawn token: '+token);
+}
 for(const token of ['id="lodestoneTip"','showLodestoneTip','Coordinates: X ','pointer-events:auto;cursor:pointer']){
   if(!page[1].includes(token))throw new Error('missing public lodestone-tooltip token: '+token);
 }

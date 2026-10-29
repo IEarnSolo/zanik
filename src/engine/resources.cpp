@@ -29,7 +29,8 @@ std::atomic<int> compatibility{0},catalogNodes{0},loadedComponents{0},matchedNod
 std::atomic<int> actionableCatalogNodes{0},foliageCatalogNodes{0},matchedActionableNodes{0},matchedFoliageNodes{0};
 std::atomic<std::uint64_t> rejected{0},collections{0},respawns{0},rawHookCalls{0},unresolvedHookCalls{0};
 std::atomic<std::int64_t> lastSuccess{0};
-double tickRate=0;
+std::atomic<double> tickRate{0};
+std::atomic<std::int64_t> latestGameTicks{0};
 std::int64_t sampleTicks=0,updatedAt=0;
 std::chrono::steady_clock::time_point sampleWall{};
 uintptr_t getGameTimeOffset=0;
@@ -236,6 +237,14 @@ bool InstallRespawnElapsedHook(uintptr_t moduleBase,uintptr_t moduleEnd){
 
 }
 
+double UpdateMeasuredGameClockRate(double priorRate,std::int64_t elapsedGameTicks,double elapsedRealSeconds){
+    if(elapsedGameTicks<0||!std::isfinite(elapsedRealSeconds)||elapsedRealSeconds<=0)return priorRate;
+    const double measured=elapsedGameTicks/10000000.0/elapsedRealSeconds;
+    if(!std::isfinite(measured)||measured>=10000.0)return priorRate;
+    if(measured<0.001)return 0;
+    return priorRate>0?priorRate*0.85+measured*0.15:measured;
+}
+
 bool InitializeResourceTracking(uintptr_t moduleBase,uintptr_t moduleEnd){
     if(!LoadIdentities()){compatibility=-1;return false;}
     // This entry is accepted only for the exact analyzed executable. The
@@ -284,14 +293,13 @@ void RefreshResourceStates(){
     auto getTime=reinterpret_cast<GetGameTimeFn>(g_Engine->GetModuleBase()+getGameTimeOffset);
     std::int64_t nowTicks=getTime(g_Engine->GetWorld());
     auto wall=std::chrono::steady_clock::now();
+    latestGameTicks=nowTicks;
     if(!sampleTicks){sampleTicks=nowTicks;sampleWall=wall;}
     else if(nowTicks>=sampleTicks){
         double seconds=std::chrono::duration<double>(wall-sampleWall).count();
-        double minimum=tickRate>0?30.0:4.0;
+        double priorRate=tickRate.load();constexpr double minimum=4.0;
         if(seconds>=minimum){
-            double measured=(nowTicks-sampleTicks)/10000000.0/seconds;
-            if(std::isfinite(measured)&&measured>0.001&&measured<10000.0)
-                tickRate=tickRate>0?tickRate*0.85+measured*0.15:measured;
+            tickRate=UpdateMeasuredGameClockRate(priorRate,nowTicks-sampleTicks,seconds);
             sampleTicks=nowTicks;sampleWall=wall;
         }
     }else{sampleTicks=nowTicks;sampleWall=wall;tickRate=0;}
@@ -300,7 +308,7 @@ void RefreshResourceStates(){
     for(const auto& saved:persisted){
         auto meta=std::find_if(identities.begin(),identities.end(),[&](const auto& x){return x.second.id==saved.first;});
         if(meta==identities.end())continue;double remaining=0;double hours=ProfileHours(meta->second.profile);
-        if(saved.second.second>0&&nowTicks>=saved.second.second){double game=hours*3600.0-(nowTicks-saved.second.second)/10000000.0;remaining=tickRate>0?std::max(0.0,game/tickRate):0;}
+        const double rate=tickRate.load();if(saved.second.second>0&&nowTicks>=saved.second.second){double game=hours*3600.0-(nowTicks-saved.second.second)/10000000.0;remaining=rate>0?std::max(0.0,game/rate):0;}
         next[saved.first]={saved.first,false,remaining,"persisted"};
     }
     pthread_mutex_lock(&stateMutex);
@@ -308,7 +316,7 @@ void RefreshResourceStates(){
     pthread_mutex_unlock(&stateMutex);
     for(const auto& event:captured){
         auto meta=std::find_if(identities.begin(),identities.end(),[&](const auto& x){return x.second.id==event.first;});if(meta==identities.end())continue;
-        double remaining=0;if(event.second.deadline>0){double game=(event.second.deadline-nowTicks)/10000000.0;remaining=tickRate>0?std::max(0.0,game/tickRate):0;}
+        const double rate=tickRate.load();double remaining=0;if(event.second.deadline>0){double game=(event.second.deadline-nowTicks)/10000000.0;remaining=rate>0?std::max(0.0,game/rate):0;}
         next[event.first]={event.first,false,remaining,"live-event"};
     }
     int loaded=0,matched=0,matchedActionable=0,matchedFoliage=0,unresolved=0;
@@ -348,7 +356,7 @@ void RefreshResourceStates(){
             using IntervalFn=std::int64_t(*)(uintptr_t,uintptr_t);
             uintptr_t base=g_Engine->GetModuleBase();uintptr_t provider=ResolveTimeProvider(c);
             std::int64_t interval=provider?reinterpret_cast<IntervalFn>(base+getRespawnIntervalOffset)(c,provider):0;
-            if(interval>0){double game=(changed+interval-nowTicks)/10000000.0;next[meta->second.id]={meta->second.id,false,tickRate>0?std::max(0.0,game/tickRate):0,"live-component"};}
+            if(interval>0){double game=(changed+interval-nowTicks)/10000000.0;const double rate=tickRate.load();next[meta->second.id]={meta->second.id,false,rate>0?std::max(0.0,game/rate):0,"live-component"};}
             else next[meta->second.id]={meta->second.id,false,0,"live-component"};
         }else{
             next.erase(meta->second.id);
@@ -366,8 +374,13 @@ void RefreshResourceStates(){
 bool ReadResourceStates(std::vector<ResourceStateInfo>& out,double& rate,std::int64_t& timestamp){
     if(compatibility.load()!=1)return false;
     pthread_mutex_lock(&stateMutex);
-    out.clear();for(const auto& item:states)out.push_back(item.second);rate=tickRate;timestamp=updatedAt;
+    out.clear();for(const auto& item:states)out.push_back(item.second);rate=tickRate.load();timestamp=updatedAt;
     pthread_mutex_unlock(&stateMutex);return true;
+}
+
+bool ReadAuthoritativeGameTime(std::int64_t& gameTicks,double& gameSecondsPerRealSecond){
+    gameTicks=latestGameTicks.load();gameSecondsPerRealSecond=tickRate.load();
+    return compatibility.load()==1&&gameTicks>0;
 }
 
 ResourceDiagnostics GetResourceDiagnostics(){return {compatibility.load(),catalogNodes.load(),actionableCatalogNodes.load(),foliageCatalogNodes.load(),loadedComponents.load(),matchedNodes.load(),matchedActionableNodes.load(),matchedFoliageNodes.load(),persistedNodes.load(),unresolvedNodes.load(),rejected.load(),collections.load(),respawns.load(),rawHookCalls.load(),unresolvedHookCalls.load(),lastSuccess.load()};}

@@ -159,12 +159,12 @@ def main() -> int:
     parser.add_argument("--font-root", type=Path, required=True)
     parser.add_argument("--web-root", type=Path, required=True)
     parser.add_argument("--group", action="append", choices=(
-        "items", "npc", "resources", "skills", "map-icons", "world-map", "font", "quest-badges"),
+        "items", "unlocks", "npc", "resources", "skills", "map-icons", "world-map", "font", "quest-badges"),
         help="Generate only this independently cacheable output group; repeat as needed")
     args = parser.parse_args(); web = args.web_root; images = index_pngs(args.texture_root)
-    groups = set(args.group or ("items", "npc", "resources", "skills", "map-icons",
+    groups = set(args.group or ("items", "unlocks", "npc", "resources", "skills", "map-icons",
                                 "world-map", "font", "quest-badges"))
-    ordered_groups = [group for group in ("items", "npc", "resources", "skills", "map-icons",
+    ordered_groups = [group for group in ("items", "unlocks", "npc", "resources", "skills", "map-icons",
                                            "world-map", "font", "quest-badges") if group in groups]
     missing: list[str] = []; copied = 0
     progress("Indexing exported textures", 0, len(ordered_groups))
@@ -175,6 +175,22 @@ def main() -> int:
             p = record.get("Properties") or {}; key = str(record.get("Name", "")); icon = asset_base(p.get("Icon") or p.get("DisplayIcon"))
             if key and icon and (record.get("Type") in {"ItemData", "EquippableItemData", "ConsumableItemData"} or key.startswith(("ITEM_", "DA_Consumable_", "SM_"))):
                 copied += int(copy(images, icon, item_dir / f"{key}.png"))
+    if "unlocks" in groups:
+        progress("Resolving perk and spell artwork", ordered_groups.index("unlocks") + 1, len(ordered_groups))
+        unlocks: dict[str, str] = {}
+        for record in records(args.json_root):
+            if record.get("Type") != "SkillPerkData":
+                continue
+            key = str(record.get("Name", "")); icon = asset_base((record.get("Properties") or {}).get("SkillPerkImage"))
+            if not key or key.startswith("Default__") or not icon:
+                continue
+            previous = unlocks.setdefault(key, icon)
+            if previous != icon:
+                raise RuntimeError(f"conflicting unlock artwork for {key}: {previous}, {icon}")
+        missing_unlocks = [key for key, icon in sorted(unlocks.items())
+                           if not copy(images, icon, web / "unlocks" / f"{key}.png")]
+        if missing_unlocks:
+            raise RuntimeError("required perk/spell artwork is unavailable: " + ", ".join(missing_unlocks))
     npc_path = web / "npc-catalog.json"
     if "npc" in groups and npc_path.is_file():
         progress("Resolving NPC artwork", ordered_groups.index("npc") + 1, len(ordered_groups))

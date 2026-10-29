@@ -71,6 +71,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(PYTHON) tests/generate_web_assets_test.py
 	$(PYTHON) tests/recipe_icon_resolution_test.py
 	$(PYTHON) tests/windows_asset_pipeline_test.py
+	$(PYTHON) tests/npc_identity_catalog_v2_test.py
 	$(PYTHON) tests/windows_mapping_test.py
 	$(PYTHON) tests/manager_test.py
 	$(PYTHON) tests/game_update_safety_test.py
@@ -83,6 +84,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(PYTHON) tests/http_core_test.py
 	$(PYTHON) tests/player_activity_http_test.py
 	$(PYTHON) tests/material_activity_catalog_test.py
+	$(PYTHON) tests/activity_unlock_catalog_test.py
 	$(PYTHON) tests/maintenance_http_test.py
 	$(PYTHON) tests/feature_gate_http_test.py
 	sh tests/updater_test.sh

@@ -4,6 +4,24 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.62] - 2026-10-29
+
+### Added
+
+- Add a generated 161-entry perk and spell activity catalog with canonical in-game display names, shared unlock identities, and extracted skill-menu/spellbook icons.
+- Reconcile NPC deaths with the game director's authoritative spawn-GUID respawn timers, including bounded compatibility diagnostics and schema-2 private NPC identities.
+
+### Changed
+
+- Display expired distant NPC deaths as “Respawn ready · area currently unloaded” until a streamed live actor confirms the physical spawn.
+- Measure the authoritative game clock every four seconds and pause browser-side NPC countdowns when that clock is not advancing.
+
+### Fixed
+
+- Deduplicate alternate perk/spell records such as Tempest Shield, replacing backend identifiers with their in-game display name and icon in Recent activity.
+- Prevent dragon and other NPC markers from remaining dead after actor reuse, distant replenishment, a missed death hook, or a Zanik/server restart during the respawn timer.
+- Validate the authoritative NPC timer map's reflected bounds, sparse allocation bitmap, stable header, and reviewed GUID mapping before using it.
+
 ## [0.2.61] - 2026-10-28
 
 ### Added

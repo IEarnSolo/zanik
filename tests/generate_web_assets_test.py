@@ -30,6 +30,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-web-assets-") as temporary:
     lodestone_map_icon.write_bytes(b"correct-map-icon")
     (textures / "T_Arrows_Bone.png").write_bytes(b"fang-arrow")
     (textures / "T_Icon_Cactus_Steak_Raw.png").write_bytes(b"cactus")
+    (textures / "T_Skill_Attack_Spell_Tempestshield.png").write_bytes(b"tempest-shield")
     (json_root / "ammo.json").write_text(json.dumps([
         {
             "Name": "ITEM_Ammo_Arrows_Bone_Bodkin", "Type": "RangedAmmoData",
@@ -40,6 +41,12 @@ with tempfile.TemporaryDirectory(prefix="zanik-web-assets-") as temporary:
             "Properties": {"Icon": {"AssetPathName": "/Game/UI/T_Arrows_Bone.T_Arrows_Bone"}},
         },
     ]), encoding="utf-8")
+    (json_root / "tempest.json").write_text(json.dumps([{
+        "Name": "PerkV2_Attack_TempestShield", "Type": "SkillPerkData",
+        "Properties": {"SkillPerkImage": {
+            "AssetPathName": "/Game/UI/T_Skill_Attack_Spell_Tempestshield.T_Skill_Attack_Spell_Tempestshield",
+        }},
+    }]), encoding="utf-8")
     (web / "resource-catalog.json").parent.mkdir(parents=True, exist_ok=True)
     (web / "resource-catalog.json").write_text(json.dumps({
         "types": [{"id": "barrel-cactus", "name": "Barrel Cactus"}],
@@ -65,6 +72,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-web-assets-") as temporary:
     assert (web / "items" / "ITEM_Ammo_Arrows_Bone_Bodkin.png").read_bytes() == b"fang-arrow"
     assert (web / "items" / "ITEM_Ammo_Arrows_Bone_Poison.png").read_bytes() == b"fang-arrow"
     assert (web / "resources" / "barrel-cactus.png").read_bytes() == b"cactus"
+    assert (web / "unlocks" / "PerkV2_Attack_TempestShield.png").read_bytes() == b"tempest-shield"
     assert (web / "lodestone-icon.png").read_bytes() == b"correct-map-icon"
     assert (web / "nodestone-icon.png").read_bytes() == generator.NODESTONE_MAP_ICON.read_bytes()
     assert not (web / "quests/clipboard-icon.png").exists()
