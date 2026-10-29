@@ -25,7 +25,7 @@ std::string Json(const std::string&v){std::ostringstream o;for(unsigned char c:v
 std::string CleanInternal(std::string v){for(char&c:v)if(c=='_')c=' ';for(const char*p:{"RECIPE ","BUILDPIECE ","DA "})if(v.rfind(p,0)==0)v.erase(0,std::char_traits<char>::length(p));return v;}
 std::string SkillIcon(const std::string& name){std::string key;for(unsigned char c:name)if(std::isalpha(c))key+=char(std::tolower(c));if(key=="crafting")key="artisan";return key.empty()?std::string{}:"/assets/skills/"+key+".png";}
 bool JsonStringAt(const std::string&json,size_t start,std::string&out,size_t&after){out.clear();bool escaped=false;for(size_t i=start;i<json.size();++i){char c=json[i];if(escaped){switch(c){case 'n':out+='\n';break;case 'r':out+='\r';break;case 't':out+='\t';break;default:out+=c;}escaped=false;continue;}if(c=='\\'){escaped=true;continue;}if(c=='"'){after=i+1;return true;}out+=c;}return false;}
-bool JsonFieldAfter(const std::string&json,const char*field,size_t start,std::string&out,size_t&after){std::string needle=std::string("\"")+field+"\":\"";size_t at=json.find(needle,start);return at!=std::string::npos&&JsonStringAt(json,at+needle.size(),out,after);}
+bool JsonFieldAfter(const std::string&json,const char*field,size_t start,std::string&out,size_t&after){std::string needle=std::string("\"")+field+"\"";size_t at=json.find(needle,start);if(at==std::string::npos)return false;at=json.find(':',at+needle.size());if(at==std::string::npos)return false;do ++at;while(at<json.size()&&std::isspace(static_cast<unsigned char>(json[at])));return at<json.size()&&json[at]=='\"'&&JsonStringAt(json,at+1,out,after);}
 int QuestRank(const std::string&status){return status=="not_started"?0:status=="in_progress"?1:status=="completed"?2:-1;}
 }
 
@@ -34,14 +34,16 @@ PlayerActivityStore::PlayerActivityStore(std::string path):path_(std::move(path)
 bool PlayerActivityStore::LoadCatalogs(){
     const char* web=std::getenv("DW_WEB_ROOT");std::string webRoot=web&&*web?web:"/home/container/zanik/web";
     std::ifstream quests(webRoot+"/quest-runtime-catalog.tsv");std::string line;
-    while(std::getline(quests,line)){if(line.empty()||line[0]=='#')continue;auto f=Split(line,'\t');if(f.size()>=2)questNames_[f[0]]=f[1];}
+    while(std::getline(quests,line)){if(line.empty()||line[0]=='#')continue;auto f=Split(line,'\t');if(f.size()>=2)quests_[f[0]].name=f[1];}
+    std::ifstream questCatalog(webRoot+"/quest-catalog.json");if(questCatalog){std::ostringstream raw;raw<<questCatalog.rdbuf();const std::string json=raw.str();size_t at=json.find("\"quests\"");if(at!=std::string::npos){for(;;){at=json.find("\"id\"",at+1);if(at==std::string::npos)break;std::string id,name,type,icon;size_t next=0;if(!JsonFieldAfter(json,"id",at,id,next)||!JsonFieldAfter(json,"name",next,name,next)||!JsonFieldAfter(json,"type",next,type,next)||!JsonFieldAfter(json,"icon",next,icon,next))continue;if(type!="main"&&type!="side")continue;auto&meta=quests_[id];meta.name=name;meta.icon=icon.empty()?(type=="main"?"/assets/quests/main-quest.svg":"/assets/quests/side-quest.svg"):icon;at=next;}}}
     std::ifstream recipes(webRoot+"/recipe-runtime-catalog.tsv");
     while(std::getline(recipes,line)){if(line.empty()||line[0]=='#')continue;auto f=Split(line,'\t');if(f.size()<3)continue;RecipeMeta m;m.name=f.size()>=4&&!f[3].empty()?f[3]:CleanInternal(f[2]);m.icon=f.size()>=5?f[4]:std::string{};m.group=f[1]+"\x1f"+m.name+"\x1f"+m.icon;recipes_[f[0]]=std::move(m);}
     std::ifstream publicCatalog(webRoot+"/recipe-unlocks.json");if(publicCatalog){std::ostringstream raw;raw<<publicCatalog.rdbuf();const std::string json=raw.str();size_t at=json.find("\"entries\":[");if(at!=std::string::npos){for(;;){at=json.find("{\"id\":\"",at+1);if(at==std::string::npos)break;std::string id,name,kind,icon;size_t next=0;if(!JsonFieldAfter(json,"id",at,id,next)||!JsonFieldAfter(json,"name",next,name,next)||!JsonFieldAfter(json,"kind",next,kind,next)||!JsonFieldAfter(json,"icon",next,icon,next))continue;auto found=recipes_.find(id);if(found==recipes_.end())continue;found->second.name=name;found->second.icon=icon;found->second.group=kind+"\x1f"+name+"\x1f"+icon;at=next;}}}
     return true;
 }
 
-std::string PlayerActivityStore::QuestName(const std::string&id)const{auto i=questNames_.find(id);return i==questNames_.end()?"Quest":i->second;}
+std::string PlayerActivityStore::QuestName(const std::string&id)const{auto i=quests_.find(id);return i==quests_.end()||i->second.name.empty()?"Quest":i->second.name;}
+std::string PlayerActivityStore::QuestIcon(const std::string&id)const{auto i=quests_.find(id);return i==quests_.end()?std::string{}:i->second.icon;}
 std::string PlayerActivityStore::RecipeGroup(const std::string&id)const{auto i=recipes_.find(id);return i==recipes_.end()?id:i->second.group;}
 std::string PlayerActivityStore::RecipeName(const std::string&id)const{auto i=recipes_.find(id);return i==recipes_.end()?"New recipe":i->second.name;}
 std::string PlayerActivityStore::RecipeIcon(const std::string&id)const{auto i=recipes_.find(id);return i==recipes_.end()?std::string{}:i->second.icon;}
@@ -87,9 +89,10 @@ bool PlayerActivityStore::Sync(const std::vector<DomEngine::PlayerInfo>& players
         for(const auto&old:b.quests){auto now=current.find(old.first);if(now==current.end()||QuestRank(now->second.status)<QuestRank(old.second.status)){valid=false;break;}}
         if(!valid){++droppedSamples_;continue;}
         for(const auto&q:current){auto old=b.quests.find(q.first);if(old==b.quests.end())continue;const auto&before=old->second;const auto&after=q.second;const std::string name=QuestName(q.first);
-            if(before.status!="completed"&&after.status=="completed")Add(s.characterGuid,timestamp,"quest_completed","Completed "+name);
-            else if(before.status=="not_started"&&after.status=="in_progress")Add(s.characterGuid,timestamp,"quest_started","Started "+name,after.objective);
-            else if(before.status=="in_progress"&&after.status=="in_progress"&&!before.objective.empty()&&!after.objective.empty()&&before.objective!=after.objective)Add(s.characterGuid,timestamp,"quest_progressed","Progressed "+name,after.objective);
+            const std::string icon=QuestIcon(q.first);
+            if(before.status!="completed"&&after.status=="completed")Add(s.characterGuid,timestamp,"quest_completed","Completed "+name,{},icon);
+            else if(before.status=="not_started"&&after.status=="in_progress")Add(s.characterGuid,timestamp,"quest_started","Started "+name,after.objective,icon);
+            else if(before.status=="in_progress"&&after.status=="in_progress"&&!before.objective.empty()&&!after.objective.empty()&&before.objective!=after.objective)Add(s.characterGuid,timestamp,"quest_progressed","Progressed "+name,after.objective,icon);
         }
         for(auto&q:current){auto old=b.quests.find(q.first);if(q.second.status=="in_progress"&&q.second.objective.empty()&&old!=b.quests.end()&&old->second.status=="in_progress")q.second.objective=old->second.objective;}
         if(current!=b.quests){b.quests=std::move(current);changed=true;}

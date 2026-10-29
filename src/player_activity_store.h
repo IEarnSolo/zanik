@@ -84,6 +84,7 @@ private:
              const std::string& icon = {});
     bool LoadCatalogs();
     std::string QuestName(const std::string& id) const;
+    std::string QuestIcon(const std::string& id) const;
     std::string RecipeGroup(const std::string& id) const;
     std::string RecipeName(const std::string& id) const;
     std::string RecipeIcon(const std::string& id) const;
@@ -92,7 +93,8 @@ private:
     std::uint64_t nextId_ = 1;
     std::map<std::string, Baseline> baselines_;
     std::vector<PlayerActivityEvent> events_;
-    std::map<std::string, std::string> questNames_;
+    struct QuestMeta { std::string name, icon; };
+    std::map<std::string, QuestMeta> quests_;
     struct RecipeMeta { std::string group, name, icon; };
     std::map<std::string, RecipeMeta> recipes_;
     mutable std::uint64_t persistenceFailures_ = 0;
