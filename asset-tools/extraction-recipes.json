@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 11,
+  "schemaVersion": 12,
   "engine": "GAME_UE5_6",
   "jsonFilter": "(?:/Maps/World/L_World(?:/|\\.(?:uasset|umap)$)|/Gameplay/(?:AI|BaseBuilding|BaseBuilding_New|Character/Player|Items|NPCs|Progress|Quests|Recipes|World)|/UI/JournalData/|/GameFeatures/[^/]+/Content/(?:Gameplay|World)/|DA_BuildPieceCatalogue_Default|DT_CraftingStationsDataTable|DT_ProcessingStationDataTable)",
   "textureFilter": "(?:/Art/UI/Map/T_WorldMap_Landmass\\.uasset$|/UI/(?:Icons|JournalData)/|/Art/UI/Icons/|T_Icon_(?:SkillTree_|Tag_Skill_|Lodestone|Gravestone|Plans))",

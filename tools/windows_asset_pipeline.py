@@ -23,7 +23,7 @@ except ModuleNotFoundError:  # Imported as tools.* by repository tests.
     from tools.asset_filesystem import extended_path, read_json as read_json_file
 
 
-RECIPE_VERSION = 11
+RECIPE_VERSION = 12
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 EXPORT_CHECKPOINT = "export-checkpoint.json"
 INCREMENTAL_STATE = "incremental-state.json"
@@ -41,7 +41,7 @@ MAP_ICON_TARGETS = {
 }
 GENERATION_GROUPS = (
     "buildings", "plan-items", "npc", "resources", "quests", "item-artwork",
-    "npc-artwork", "resource-artwork", "unlock-artwork", "skills", "map-icons", "world-map", "font",
+    "npc-artwork", "resource-artwork", "spell-and-perk-artwork", "skills", "map-icons", "world-map", "font",
     "quest-badges", "recipes", "quest-destinations",
 )
 REVIEWED_LEGACY_GENERATION_RECIPES = {
@@ -51,6 +51,7 @@ REVIEWED_LEGACY_GENERATION_RECIPES = {
     "7a36e2a1feeab1530b5235f814167722c11bce85f39f37c1c0050aa2828b78b5",  # recipe 9
     "b472ea5a3d7e02a4b0abbb5487188f5b310e7dc0a205e0377b020cb755551012",  # recipe 10
     "0b9898ed11bc9a8afc00c0c3e05370bbbd8e022af8dfff32e4510ef6e8610bad",  # recipe 11
+    "ae31d34ea86b57ccad911eb872c5e4b92c0f475396e927715ede1778faf5874d",  # recipe 12
 }
 RETIRED_FRAGMENT_CRYSTAL_TARGET = \
     "package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal"
@@ -68,7 +69,7 @@ GROUP_OUTPUTS = {
     "resources": ("resource-catalog.json", "resource-identities.tsv"),
     "quests": ("quest-catalog.json", "quest-runtime-catalog.tsv"),
     "item-artwork": ("items",), "npc-artwork": ("npcs",),
-    "resource-artwork": ("resources",), "unlock-artwork": ("unlocks",), "skills": ("skills",),
+    "resource-artwork": ("resources",), "spell-and-perk-artwork": ("spells and perks",), "skills": ("skills",),
     "map-icons": ("lodestone-icon.png", "nodestone-icon.png", "gravestone-icon.png",
                   "quests/clipboard-icon.png", "quests/objective-arrow-icon.png"),
     "world-map": ("world-map.jpg",), "font": ("Jancient-Regular.ttf",),
@@ -232,7 +233,7 @@ def generation_contracts(scripts: Path, repo: Path, recipe: dict) -> dict[str, s
         "resources": [scripts / "generate_world_catalogs.py"],
         "quests": [scripts / "generate_quest_catalog.py", repo / "deploy/quest-overrides.json"],
         "item-artwork": [shared], "npc-artwork": [shared], "resource-artwork": [shared],
-        "unlock-artwork": [shared, scripts / "generate_activity_unlock_catalog.py"],
+        "spell-and-perk-artwork": [shared, scripts / "generate_activity_unlock_catalog.py"],
         "skills": [shared],
         "map-icons": [shared, repo / "asset-tools/artwork/nodestone-icon-map.png"],
         "world-map": [shared], "font": [shared],
@@ -306,16 +307,26 @@ def selective_generation_groups(previous_recipe: dict, recipe: dict, prior_state
         # exact reviewed migration affects only map-icons; accept the previous
         # validated bytes for every unrelated group and record the new hashes.
         dirty.intersection_update({"map-icons"})
+    reviewed_spell_and_perk_migration = (
+        legacy_reviewed
+        and current_sha == "ae31d34ea86b57ccad911eb872c5e4b92c0f475396e927715ede1778faf5874d"
+        and previous_recipe.get("schemaVersion") == 11
+        and recipe.get("schemaVersion") == 12
+        and old == new
+        and old_required == new_required
+        and not added_textures
+        and not removed_textures
+    )
     if old != new:
         dirty.update({"buildings", "plan-items", "npc", "resources", "quests", "recipes",
-                      "quest-destinations", "item-artwork", "npc-artwork", "resource-artwork", "unlock-artwork"})
+                      "quest-destinations", "item-artwork", "npc-artwork", "resource-artwork", "spell-and-perk-artwork"})
     texture_changes = set(added_textures) | set(removed_textures) | (old_required ^ new_required)
     if texture_changes:
         if texture_changes <= MAP_ICON_TARGETS:
             dirty.add("map-icons")
         else:
             dirty.update({"buildings", "plan-items", "item-artwork", "npc-artwork",
-                          "resource-artwork", "unlock-artwork", "skills", "map-icons", "world-map"})
+                          "resource-artwork", "spell-and-perk-artwork", "skills", "map-icons", "world-map"})
     dependencies = {"item-artwork": {"plan-items"}, "npc-artwork": {"npc"},
                     "resource-artwork": {"resources"},
                     "recipes": {"buildings", "plan-items", "item-artwork"},
@@ -325,6 +336,12 @@ def selective_generation_groups(previous_recipe: dict, recipe: dict, prior_state
         changed = False
         for group, parents in dependencies.items():
             if parents & dirty and group not in dirty: dirty.add(group); changed = True
+    if reviewed_spell_and_perk_migration:
+        # Recipe 12 adds spell/perk artwork and changes only the private
+        # npc-identities.tsv schema. Shared generator code mechanically dirties
+        # other groups, but their public catalog/artwork inputs are unchanged.
+        dirty.intersection_update({"npc", "spell-and-perk-artwork"})
+        dirty.update({"npc", "spell-and-perk-artwork"})
     return dirty
 
 
@@ -1055,6 +1072,9 @@ def extract(args: argparse.Namespace) -> int:
                 texture_delta["added"], texture_delta["removed"],
                 previous_sha in REVIEWED_LEGACY_GENERATION_RECIPES)
             remove_group_outputs(web, dirty)
+            legacy_unlocks = web / "unlocks"
+            if legacy_unlocks.is_dir():
+                remove_tree(legacy_unlocks)
             reused = len(GENERATION_GROUPS) - len(dirty)
             emit_progress("Planning generated website update",
                           detail=f"Reusing {reused} validated output group(s); rebuilding {len(dirty)}",
@@ -1074,7 +1094,7 @@ def extract(args: argparse.Namespace) -> int:
         if "quests" in dirty:
             run([py, str(scripts / "generate_quest_catalog.py"), "--source", str(json_root), "--public", str(web / "quest-catalog.json"), "--runtime", str(web / "quest-runtime-catalog.tsv"), "--overrides", str(deploy / "quest-overrides.json")], "Generating quest catalog")
         artwork_groups = {"item-artwork": "items", "npc-artwork": "npc", "resource-artwork": "resources",
-                          "unlock-artwork": "unlocks", "skills": "skills", "map-icons": "map-icons", "world-map": "world-map",
+                          "spell-and-perk-artwork": "spells-and-perks", "skills": "skills", "map-icons": "map-icons", "world-map": "world-map",
                           "font": "font", "quest-badges": "quest-badges"}
         selected_artwork = [value for group, value in artwork_groups.items() if group in dirty]
         if selected_artwork:

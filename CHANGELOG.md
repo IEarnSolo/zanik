@@ -4,6 +4,22 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.64] - 2026-10-29
+
+### Changed
+
+- Advance Zanik Manager's website extraction contract to recipe 12 so installations with a recipe-11 asset bundle are correctly offered an incremental refresh for the new spell and perk icons.
+- Store generated spell and perk artwork in the descriptive `spells and perks` folder, retiring the former `unlocks` output during incremental generation.
+
+### Fixed
+
+- Serve encoded `/assets/spells%20and%20perks/...` icon URLs from the literal asset folder so Recent activity can display the extracted artwork.
+- Limit the recipe-11-to-12 migration to spell/perk artwork and the updated NPC identity catalog while reusing every other validated output group.
+
+### Development
+
+- Require every generated website-asset change to advance and test the extraction recipe contract before a release is tagged.
+
 ## [0.2.63] - 2026-10-29
 
 ### Added
