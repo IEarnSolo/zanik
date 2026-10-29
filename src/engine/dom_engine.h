@@ -423,7 +423,7 @@ struct ResourceDiagnostics {
 
 struct NpcStateInfo {
     std::string id;
-    std::string state; // live, dead, inactive, unloaded
+    std::string state; // live, dead, ready, inactive, unloaded
     bool hasMapLocation = false;
     double mapX = 0, mapY = 0;
     double remainingSeconds = 0;
@@ -441,9 +441,12 @@ struct NpcDiagnostics {
     int loadedActors = 0;
     int matchedLiveNodes = 0;
     int deadNodes = 0;
+    int readyNodes = 0;
     int inactiveNodes = 0;
     int unloadedNodes = 0;
     int loadedSpawnPoints = 0;
+    int authoritativeTimerCompatibility = 0;
+    int authoritativeRespawnTimers = 0;
     std::uint64_t ambiguousMatches = 0;
     std::uint64_t rejectedActors = 0;
     std::int64_t lastSample = 0;
@@ -635,6 +638,9 @@ bool InitializeResourceTracking(uintptr_t moduleBase, uintptr_t moduleEnd);
 void RefreshResourceStates();
 bool ReadResourceStates(std::vector<ResourceStateInfo>& out, double& gameSecondsPerRealSecond,
                         std::int64_t& updatedAt);
+double UpdateMeasuredGameClockRate(double priorRate, std::int64_t elapsedGameTicks,
+                                   double elapsedRealSeconds);
+bool ReadAuthoritativeGameTime(std::int64_t& gameTicks, double& gameSecondsPerRealSecond);
 ResourceDiagnostics GetResourceDiagnostics();
 bool InitializeNpcTracking(uintptr_t moduleBase, uintptr_t moduleEnd);
 void RefreshNpcStates();
@@ -642,6 +648,7 @@ bool NpcScanInProgress();
 bool ReadNpcStates(std::vector<NpcStateInfo>& out, double& gameSecondsPerRealSecond,
                    std::int64_t& updatedAt);
 void RecordNpcDeath(uintptr_t actor);
+const char* ResolveNpcTrackedDeath(bool actorAssigned, bool replacementActor, bool timerElapsed);
 NpcDiagnostics GetNpcDiagnostics();
 
 bool InstallNativeKillHook(uintptr_t moduleBase, uintptr_t moduleEnd);
@@ -734,13 +741,13 @@ struct PlayerActivityDiscoverySnapshot {
 };
 struct PlayerActivityDiscoveryDiagnostics {
     int regionCompatibility=0,materialCompatibility=0,unlockCompatibility=0;
-    std::uint64_t materialCatalogEntries=0,resolvedMaterialEntries=0,perkCatalogEntries=0,spellCatalogEntries=0;
+    std::uint64_t materialCatalogEntries=0,resolvedMaterialEntries=0,perkCatalogEntries=0,spellCatalogEntries=0,resolvedUnlockEntries=0;
     std::uint64_t snapshots=0,droppedSamples=0;
 };
 int PlayerActivitySourceCompatibility(bool queryFound,bool queryValid,bool catalogReady);
 bool PlayerActivityDiscoveryReady(int materialStatus,int unlockStatus);
 bool PlayerActivityQueryLayoutValid(const std::vector<std::pair<std::string,int32_t>>& fields,const std::vector<std::string>& inputNames);
-bool InitializePlayerActivityDiscovery(const std::string& materialCatalogPath,uintptr_t moduleBase,uintptr_t moduleEnd);
+bool InitializePlayerActivityDiscovery(const std::string& materialCatalogPath,const std::string& unlockCatalogPath,uintptr_t moduleBase,uintptr_t moduleEnd);
 void RefreshPlayerActivityDiscoveryCompatibility();
 void UpdatePlayerActivityDiscoveryTargets(const std::vector<PlayerInfo>& players);
 void ProcessPlayerActivityDiscoveryTracking();

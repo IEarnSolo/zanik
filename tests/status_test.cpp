@@ -6,6 +6,7 @@
 #include "player_activity_store.h"
 
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <filesystem>
@@ -14,6 +15,13 @@
 #include <vector>
 
 int main() {
+    assert(DomEngine::UpdateMeasuredGameClockRate(60.0,0,4.0)==0.0);
+    assert(std::abs(DomEngine::UpdateMeasuredGameClockRate(0.0,2400000000LL,4.0)-60.0)<0.001);
+    assert(std::string(DomEngine::ResolveNpcTrackedDeath(false,false,false))=="dead");
+    assert(std::string(DomEngine::ResolveNpcTrackedDeath(false,false,true))=="ready");
+    assert(std::string(DomEngine::ResolveNpcTrackedDeath(true,false,true))=="clear");
+    assert(std::string(DomEngine::ResolveNpcTrackedDeath(true,true,false))=="clear");
+    {const std::string ready=Status::MapNpcStatesJson({{"dragon","ready",false,0,0,0}},0,123);assert(ready.find("\"state\":\"ready\"")!=std::string::npos&&ready.find("remainingSeconds")==std::string::npos);}
     assert(DomEngine::PlayerActivitySourceCompatibility(false,false,false)==-2);
     assert(DomEngine::PlayerActivitySourceCompatibility(true,false,true)==-3);
     assert(DomEngine::PlayerActivitySourceCompatibility(true,true,false)==-4);
@@ -35,8 +43,8 @@ int main() {
         DomEngine::PlayerActivityDiscoverySnapshot discovery;discovery.characterGuid="hero";discovery.regionsComplete=true;discovery.regionBitmap=1;discovery.regions={{0,"Ashenfall"},{1,"Dowdun Reach"}};discovery.materialsComplete=true;discovery.materialFingerprint="materials-a";discovery.materials={{"wood","Wood","/assets/items/wood.png"}};discovery.unlocksComplete=true;discovery.unlockFingerprint="unlocks-a";discovery.unlocks={{"perk","perk-one","Stone Sense","/assets/skills/mining.png"},{"spell","spell-one","Wind Step",""}};
         assert(activity.Sync({player},{recipe},{quest},{discovery},100));assert(activity.Page("hero",8).events.empty());
         player.skills[0].currentXP=463;player.health=0;player.isDead=true;
-        recipe.unlockedIds.push_back("r1-alt");recipe.unlockedIds.push_back("r2");quest.quests[0]={"q1","in_progress","Find the dragon",0};discovery.regionBitmap=3;discovery.materials.push_back({"iron","Iron ore","/assets/items/iron.png"});discovery.unlocks.push_back({"perk","perk-two","Sacred Geometry","/assets/skills/construction.png"});discovery.unlocks.push_back({"spell","spell-two","Rock Blast",""});
-        assert(activity.Sync({player},{recipe},{quest},{discovery},200));auto page=activity.Page("hero",10);assert(page.events.size()==8&&!page.hasMore);assert(page.events[0].type=="spell_unlocked"&&page.events[1].type=="perk_unlocked");const auto count=activity.Diagnostics().events;
+        recipe.unlockedIds.push_back("r1-alt");recipe.unlockedIds.push_back("r2");quest.quests[0]={"q1","in_progress","Find the dragon",0};discovery.regionBitmap=3;discovery.materials.push_back({"iron","Iron ore","/assets/items/iron.png"});discovery.unlocks.push_back({"perk","perk-two","Sacred Geometry","/assets/skills/construction.png"});discovery.unlocks.push_back({"spell","USD_TempestShield","Tempest Shield","/assets/unlocks/PerkV2_Attack_TempestShield.png"});
+        assert(activity.Sync({player},{recipe},{quest},{discovery},200));auto page=activity.Page("hero",10);assert(page.events.size()==8&&!page.hasMore);assert(page.events[0].type=="spell_unlocked"&&page.events[0].title=="Unlocked Tempest Shield"&&page.events[0].icon=="/assets/unlocks/PerkV2_Attack_TempestShield.png"&&page.events[1].type=="perk_unlocked");const auto count=activity.Diagnostics().events;
         assert(!activity.Sync({player},{recipe},{quest},{discovery},201));assert(activity.Diagnostics().events==count);
         auto regressedPlayer=player;regressedPlayer.skills[0].currentXP=33;assert(!activity.Sync({regressedPlayer},{},{},{},210));assert(!activity.Sync({player},{},{},{},211));
         auto regressedRecipe=recipe;regressedRecipe.unlockedIds={"r1"};assert(!activity.Sync({},{regressedRecipe},{},{},220));assert(!activity.Sync({},{recipe},{},{},221));

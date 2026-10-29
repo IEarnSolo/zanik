@@ -21,6 +21,7 @@ install -m 0644 "$ROOT/scripts/lib/zanik-common.sh" "$WORK/server/lib/zanik-comm
 install -m 0644 "$ROOT/config/zanik.conf.example" "$WORK/server/config/zanik.conf.example"
 install -m 0644 "$ROOT/config/zanik-config.schema.json" "$WORK/server/config/zanik-config.schema.json"
 install -m 0644 "$ROOT/config/material-first-pickup-catalog.tsv" "$WORK/server/config/material-first-pickup-catalog.tsv"
+install -m 0644 "$ROOT/config/player-activity-unlock-catalog.tsv" "$WORK/server/config/player-activity-unlock-catalog.tsv"
 install -m 0644 "$ROOT/deploy/compatibility.tsv" "$WORK/server/compatibility/compatibility.tsv"
 for file in install update uninstall doctor init-assets compat-launcher verify-assets check-game-update check-compatible-release update-game apply-asset-delta; do install -m 0755 "$ROOT/scripts/$file.sh" "$WORK/server/scripts/$file.sh"; done
 install -m 0644 "$ROOT/tools/zanik_assets.py" "$WORK/server/tools/zanik_assets.py"
@@ -66,7 +67,7 @@ unzip -q "$WORK/ue4ss-windows-x86_64.zip" -d "$WORK/asset-windows/third_party/ue
 printf '../tools\n' >> "$WORK/asset-windows/runtime/python312._pth"
 install -m 0644 "$ROOT/tools/zanik_assets.py" "$WORK/asset-linux/tools/zanik_assets.py"
 install -m 0644 "$ROOT/tools/asset_filesystem.py" "$WORK/asset-linux/tools/asset_filesystem.py"
-for file in zanik_assets windows_mapping windows_asset_pipeline generate_building_catalog generate_plan_item_catalog generate_world_catalogs generate_quest_catalog generate_web_assets generate_recipe_unlock_catalog analyze_quest_steps asset_filesystem quest_schema; do
+for file in zanik_assets windows_mapping windows_asset_pipeline generate_building_catalog generate_plan_item_catalog generate_world_catalogs generate_quest_catalog generate_web_assets generate_activity_unlock_catalog generate_recipe_unlock_catalog analyze_quest_steps asset_filesystem quest_schema; do
   install -m 0644 "$ROOT/tools/$file.py" "$WORK/asset-windows/tools/$file.py"
 done
 install -m 0644 "$ROOT/asset-tools/tools.lock.json" "$ROOT/asset-tools/extraction-recipes.json" "$ROOT/asset-tools/extraction-recipe-history.json" "$ROOT/asset-tools/catalog-rules.json" "$WORK/asset-windows/asset-tools/"

@@ -308,8 +308,10 @@ def npc_catalog(args: argparse.Namespace) -> int:
                     "worldX": round(location["X"], 3), "worldY": round(location["Y"], 3), "worldZ": round(location["Z"], 3)}
             if respawn > 0: node["respawnGameSeconds"] = respawn
             nodes.append(node)
+            native_guid = str(props(actor).get("Guid") or (actor.get("ActorInstanceGuid") or {}).get("ActorGuid") or "")
             identities.append({"stateKey": state, "id": opaque, "typeId": type_id, "spawnType": spawn_type,
-                               "aiClass": meta["ai"], "respawn": respawn, "location": location, "source": relative})
+                               "aiClass": meta["ai"], "respawn": respawn, "location": location,
+                               "nativeGuid": native_guid, "source": relative})
             if type_id not in types:
                 types[type_id] = {"id": type_id, "name": meta["name"], "category": meta["category"], "hostile": meta["hostile"], "count": 0}
                 if meta["iconAsset"]: types[type_id]["icon"] = f"/assets/npcs/{meta['iconAsset']}.png"
@@ -324,8 +326,8 @@ def npc_catalog(args: argparse.Namespace) -> int:
     args.identities_output.parent.mkdir(parents=True, exist_ok=True)
     args.exclusions_output.parent.mkdir(parents=True, exist_ok=True)
     args.public_output.write_text(json.dumps(catalog, separators=(",", ":")) + "\n", encoding="utf-8")
-    header = f"# zanik-npc-identities\t1\t{len(identities)}\t{fingerprint}\tstateKey\topaqueId\ttypeId\tspawnType\taiClass\trespawnGameSeconds\tworldX\tworldY\tworldZ\tsourceFile"
-    rows = ["\t".join(map(str, (item["stateKey"], item["id"], item["typeId"], item["spawnType"], item["aiClass"], item["respawn"], item["location"]["X"], item["location"]["Y"], item["location"]["Z"], item["source"]))) for item in identities]
+    header = f"# zanik-npc-identities\t2\t{len(identities)}\t{fingerprint}\tstateKey\topaqueId\ttypeId\tspawnType\taiClass\trespawnGameSeconds\tworldX\tworldY\tworldZ\tnativeGuid\tsourceFile"
+    rows = ["\t".join(map(str, (item["stateKey"], item["id"], item["typeId"], item["spawnType"], item["aiClass"], item["respawn"], item["location"]["X"], item["location"]["Y"], item["location"]["Z"], item["nativeGuid"], item["source"]))) for item in identities]
     args.identities_output.write_text(header + "\n" + "\n".join(rows) + "\n", encoding="utf-8")
     args.exclusions_output.write_text("# stateKey\tspawnType\treason\tsourceFile\n" + "\n".join("\t".join(row) for row in sorted(exclusions)) + "\n", encoding="utf-8")
     print(json.dumps(catalog["diagnostics"], sort_keys=True)); return 0

@@ -121,6 +121,9 @@ try:
         assert "catalogCompatibility" in npc_diagnostics
         assert "inactiveNodes" in npc_diagnostics
         assert "loadedSpawnPoints" in npc_diagnostics
+        assert "readyNodes" in npc_diagnostics
+        assert "authoritativeTimerCompatibility" in npc_diagnostics
+        assert "authoritativeRespawnTimers" in npc_diagnostics
         assert "lastGenerationWorkMicroseconds" in npc_diagnostics
         assert "lastFinalizationMicroseconds" in npc_diagnostics
         assert "classCacheHits" in npc_diagnostics

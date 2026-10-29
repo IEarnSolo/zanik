@@ -41,7 +41,7 @@ MAP_ICON_TARGETS = {
 }
 GENERATION_GROUPS = (
     "buildings", "plan-items", "npc", "resources", "quests", "item-artwork",
-    "npc-artwork", "resource-artwork", "skills", "map-icons", "world-map", "font",
+    "npc-artwork", "resource-artwork", "unlock-artwork", "skills", "map-icons", "world-map", "font",
     "quest-badges", "recipes", "quest-destinations",
 )
 REVIEWED_LEGACY_GENERATION_RECIPES = {
@@ -68,7 +68,7 @@ GROUP_OUTPUTS = {
     "resources": ("resource-catalog.json", "resource-identities.tsv"),
     "quests": ("quest-catalog.json", "quest-runtime-catalog.tsv"),
     "item-artwork": ("items",), "npc-artwork": ("npcs",),
-    "resource-artwork": ("resources",), "skills": ("skills",),
+    "resource-artwork": ("resources",), "unlock-artwork": ("unlocks",), "skills": ("skills",),
     "map-icons": ("lodestone-icon.png", "nodestone-icon.png", "gravestone-icon.png",
                   "quests/clipboard-icon.png", "quests/objective-arrow-icon.png"),
     "world-map": ("world-map.jpg",), "font": ("Jancient-Regular.ttf",),
@@ -232,6 +232,7 @@ def generation_contracts(scripts: Path, repo: Path, recipe: dict) -> dict[str, s
         "resources": [scripts / "generate_world_catalogs.py"],
         "quests": [scripts / "generate_quest_catalog.py", repo / "deploy/quest-overrides.json"],
         "item-artwork": [shared], "npc-artwork": [shared], "resource-artwork": [shared],
+        "unlock-artwork": [shared, scripts / "generate_activity_unlock_catalog.py"],
         "skills": [shared],
         "map-icons": [shared, repo / "asset-tools/artwork/nodestone-icon-map.png"],
         "world-map": [shared], "font": [shared],
@@ -307,14 +308,14 @@ def selective_generation_groups(previous_recipe: dict, recipe: dict, prior_state
         dirty.intersection_update({"map-icons"})
     if old != new:
         dirty.update({"buildings", "plan-items", "npc", "resources", "quests", "recipes",
-                      "quest-destinations", "item-artwork", "npc-artwork", "resource-artwork"})
+                      "quest-destinations", "item-artwork", "npc-artwork", "resource-artwork", "unlock-artwork"})
     texture_changes = set(added_textures) | set(removed_textures) | (old_required ^ new_required)
     if texture_changes:
         if texture_changes <= MAP_ICON_TARGETS:
             dirty.add("map-icons")
         else:
             dirty.update({"buildings", "plan-items", "item-artwork", "npc-artwork",
-                          "resource-artwork", "skills", "map-icons", "world-map"})
+                          "resource-artwork", "unlock-artwork", "skills", "map-icons", "world-map"})
     dependencies = {"item-artwork": {"plan-items"}, "npc-artwork": {"npc"},
                     "resource-artwork": {"resources"},
                     "recipes": {"buildings", "plan-items", "item-artwork"},
@@ -1073,7 +1074,7 @@ def extract(args: argparse.Namespace) -> int:
         if "quests" in dirty:
             run([py, str(scripts / "generate_quest_catalog.py"), "--source", str(json_root), "--public", str(web / "quest-catalog.json"), "--runtime", str(web / "quest-runtime-catalog.tsv"), "--overrides", str(deploy / "quest-overrides.json")], "Generating quest catalog")
         artwork_groups = {"item-artwork": "items", "npc-artwork": "npc", "resource-artwork": "resources",
-                          "skills": "skills", "map-icons": "map-icons", "world-map": "world-map",
+                          "unlock-artwork": "unlocks", "skills": "skills", "map-icons": "map-icons", "world-map": "world-map",
                           "font": "font", "quest-badges": "quest-badges"}
         selected_artwork = [value for group, value in artwork_groups.items() if group in dirty]
         if selected_artwork:
