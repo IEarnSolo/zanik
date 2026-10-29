@@ -882,7 +882,7 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(contract["compatibilityProfileVersion"], recipe["catalogProfile"]["version"])
         self.assertEqual(contract["extractionRecipeSha256"], hashlib.sha256(
             (ROOT / "asset-tools/extraction-recipes.json").read_bytes()).hexdigest())
-        self.assertEqual(contract["extractionRecipeVersion"], 13)
+        self.assertEqual(contract["extractionRecipeVersion"], 14)
         self.assertNotEqual(contract["extractionRecipeSha256"], recipe12["sha256"])
         stale = asset_contract_presentation({
             "installed": True,

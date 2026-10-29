@@ -307,8 +307,8 @@ with tempfile.TemporaryDirectory() as name:
 
     history = json.loads((ROOT / "asset-tools/extraction-recipe-history.json").read_text(encoding="utf-8"))
     by_version = {entry["recipe"]["schemaVersion"]: entry for entry in history["recipes"]}
-    recipe6, recipe7, recipe8, recipe9, recipe10, recipe11, recipe12, recipe13 = (
-        by_version[index] for index in (6, 7, 8, 9, 10, 11, 12, 13))
+    recipe6, recipe7, recipe8, recipe9, recipe10, recipe11, recipe12, recipe13, recipe14 = (
+        by_version[index] for index in (6, 7, 8, 9, 10, 11, 12, 13, 14))
     recipe6["recipe"]["jsonTargets"] = recipe6["jsonTargets"]
     recipe7["recipe"]["jsonTargets"] = recipe7["jsonTargets"]
     recipe7["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
@@ -354,23 +354,31 @@ with tempfile.TemporaryDirectory() as name:
          "contracts": {group: "b" * 64 for group in pipeline.GENERATION_GROUPS}},
         contracts, [], ["basename:T_Icon_Clipboard", "basename:T_Icon_ObjectiveArrow"], True)
     assert dirty == {"map-icons"}, f"recipe-11 test-icon removal rebuilt unrelated groups: {dirty}"
-    recipe13["recipe"]["jsonTargets"] = recipe13["jsonTargets"]
-    recipe13["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
+    recipe14["recipe"]["jsonTargets"] = recipe14["jsonTargets"]
+    recipe14["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
     dirty = pipeline.selective_generation_groups(
-        recipe11["recipe"], recipe13["recipe"],
+        recipe11["recipe"], recipe14["recipe"],
         {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,
          "contracts": {group: "b" * 64 for group in pipeline.GENERATION_GROUPS}},
         contracts, [], [], True)
-    assert dirty == {"npc", "spell-and-perk-artwork"}, (
-        f"recipe-11 to recipe-13 migration rebuilt unrelated groups: {dirty}")
+    assert dirty == {"npc", "spell-and-perk-artwork", "recipes"}, (
+        f"recipe-11 to recipe-14 migration rebuilt unrelated groups: {dirty}")
     recipe12["recipe"]["jsonTargets"] = recipe12["jsonTargets"]
     dirty = pipeline.selective_generation_groups(
-        recipe12["recipe"], recipe13["recipe"],
+        recipe12["recipe"], recipe14["recipe"],
         {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,
          "contracts": {group: "b" * 64 for group in pipeline.GENERATION_GROUPS}},
         contracts, [], [], True)
-    assert dirty == {"spell-and-perk-artwork"}, (
-        f"recipe-12 folder rename rebuilt unrelated groups: {dirty}")
+    assert dirty == {"spell-and-perk-artwork", "recipes"}, (
+        f"recipe-12 to recipe-14 migration rebuilt unrelated groups: {dirty}")
+    recipe13["recipe"]["jsonTargets"] = recipe13["jsonTargets"]
+    dirty = pipeline.selective_generation_groups(
+        recipe13["recipe"], recipe14["recipe"],
+        {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,
+         "contracts": {group: "b" * 64 for group in pipeline.GENERATION_GROUPS}},
+        contracts, [], [], True)
+    assert dirty == {"recipes"}, (
+        f"recipe-13 agility display migration rebuilt unrelated groups: {dirty}")
     dirty = pipeline.selective_generation_groups(
         recipe7["recipe"], recipe7["recipe"],
         {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,

@@ -23,7 +23,7 @@ except ModuleNotFoundError:  # Imported as tools.* by repository tests.
     from tools.asset_filesystem import extended_path, read_json as read_json_file
 
 
-RECIPE_VERSION = 13
+RECIPE_VERSION = 14
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 EXPORT_CHECKPOINT = "export-checkpoint.json"
 INCREMENTAL_STATE = "incremental-state.json"
@@ -53,6 +53,7 @@ REVIEWED_LEGACY_GENERATION_RECIPES = {
     "0b9898ed11bc9a8afc00c0c3e05370bbbd8e022af8dfff32e4510ef6e8610bad",  # recipe 11
     "ae31d34ea86b57ccad911eb872c5e4b92c0f475396e927715ede1778faf5874d",  # recipe 12
     "a8a4ae9a1078cb5c505b32fa4c0821a8295a5d13b58d5dc57db73a3c3d645f22",  # recipe 13
+    "3b60bfa9d705491b9eca6378d12cc42eabfd3dbf17fc82d650e7ee621bed0058",  # recipe 14
 }
 RETIRED_FRAGMENT_CRYSTAL_TARGET = \
     "package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal"
@@ -309,11 +310,11 @@ def selective_generation_groups(previous_recipe: dict, recipe: dict, prior_state
         # validated bytes for every unrelated group and record the new hashes.
         dirty.intersection_update({"map-icons"})
     prior_recipe_version = previous_recipe.get("schemaVersion")
-    reviewed_spell_and_perk_migration = (
+    reviewed_recipe_14_migration = (
         legacy_reviewed
-        and current_sha == "a8a4ae9a1078cb5c505b32fa4c0821a8295a5d13b58d5dc57db73a3c3d645f22"
-        and prior_recipe_version in {11, 12}
-        and recipe.get("schemaVersion") == 13
+        and current_sha == "3b60bfa9d705491b9eca6378d12cc42eabfd3dbf17fc82d650e7ee621bed0058"
+        and prior_recipe_version in {11, 12, 13}
+        and recipe.get("schemaVersion") == 14
         and old == new
         and old_required == new_required
         and not added_textures
@@ -338,10 +339,13 @@ def selective_generation_groups(previous_recipe: dict, recipe: dict, prior_state
         changed = False
         for group, parents in dependencies.items():
             if parents & dirty and group not in dirty: dirty.add(group); changed = True
-    if reviewed_spell_and_perk_migration:
-        # Recipe 13 uses the final hyphenated folder. Recipe 11 also needs the
-        # private NPC identity update that first appeared with recipe 12.
-        migration_groups = {"spell-and-perk-artwork"}
+    if reviewed_recipe_14_migration:
+        # Recipe 14 cleans up agility medal requirements. Older workspaces may
+        # also need the recipe-12 NPC identity update and recipe-13 final
+        # hyphenated spell-and-perk artwork folder.
+        migration_groups = {"recipes"}
+        if prior_recipe_version in {11, 12}:
+            migration_groups.add("spell-and-perk-artwork")
         if prior_recipe_version == 11:
             migration_groups.add("npc")
         dirty.intersection_update(migration_groups)

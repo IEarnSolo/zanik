@@ -13,5 +13,8 @@ assert 'id="recipeCompletion"' in page
 assert "recipes unlocked';recipeCounts.textContent" in page
 assert "snapshot.compatibility==='changed'" in page
 assert "Catalog changed; matching unlocks are shown until the next scan" in page
+assert "step.targetText||step.text" in page
+assert "grid-template-columns:2.35rem minmax(0,1fr)" in page
+assert ".activity-marker img{width:1.75rem;height:1.75rem" in page
 
 print("player recipe card links and direct tooltips: ok")

@@ -70,6 +70,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(PYTHON) tests/asset_delta_test.py
 	$(PYTHON) tests/generate_web_assets_test.py
 	$(PYTHON) tests/recipe_icon_resolution_test.py
+	$(PYTHON) tests/recipe_agility_display_test.py
 	$(PYTHON) tests/windows_asset_pipeline_test.py
 	$(PYTHON) tests/npc_identity_catalog_v2_test.py
 	$(PYTHON) tests/windows_mapping_test.py
