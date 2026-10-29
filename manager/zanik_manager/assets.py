@@ -394,6 +394,23 @@ class AssetExtractor:
             return None
         return None
 
+    def extraction_requires_mapping(self, game_root: Path, work_root: Path | None,
+                                    usmap: Path | None = None, resume: bool = False,
+                                    incremental: bool = False) -> bool:
+        """Fail closed unless a verified retained mapping covers this extraction."""
+        if usmap:
+            return False
+        if not resume and not incremental:
+            return True
+        if work_root is None:
+            return True
+        status = self.resume_compatibility(work_root, game_root)
+        if not status or not status.get("compatible"):
+            return True
+        if incremental:
+            return bool(status.get("mappingRequired"))
+        return status.get("stage") == "created"
+
     def extract(self, game_root: Path, output: Path, event=lambda event: None,
                 usmap: Path | None = None, keep_work: bool = False,
                 preserve_existing_loader: bool = False,
@@ -402,7 +419,9 @@ class AssetExtractor:
         script = self.tool_root / "init-assets.ps1"
         if not script.exists():
             raise FileNotFoundError("The bundled Windows asset extractor is missing")
-        if not resume and not usmap and dragonwilds_is_running():
+        mapping_required = self.extraction_requires_mapping(
+            game_root, work_root, usmap=usmap, resume=resume, incremental=incremental)
+        if mapping_required and dragonwilds_is_running():
             raise RuntimeError(
                 "Dragonwilds is already running. Close the game before extraction, then try again. "
                 "Zanik Manager will launch and close it automatically while generating mappings."

@@ -4,6 +4,13 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.66] - 2026-10-29
+
+### Fixed
+
+- Allow Zanik Manager to update a verified retained website-asset cache while Dragonwilds is running when the game executable and reusable mapping are unchanged.
+- Continue requiring Dragonwilds to close for fresh extraction, a changed game executable, a missing or incompatible cache, or any other run that genuinely needs mapping generation.
+
 ## [0.2.65] - 2026-10-29
 
 ### Changed

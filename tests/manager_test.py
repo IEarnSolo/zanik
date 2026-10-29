@@ -686,6 +686,7 @@ class ManagerTests(unittest.TestCase):
             self.assertTrue(status["compatible"])
             self.assertTrue(status["incremental"])
             self.assertTrue(status["mappingRequired"])
+            self.assertTrue(extractor.extraction_requires_mapping(game, work, incremental=True))
 
             contract = {"extractionRecipeVersion": 5,
                         "compatibilityProfileVersion": "reviewed-5",
@@ -696,6 +697,11 @@ class ManagerTests(unittest.TestCase):
             with zipfile.ZipFile(bundle, "w") as archive:
                 archive.writestr("asset-manifest.json", json.dumps(manifest))
             executable.write_bytes(b"game-v1")
+            self.assertFalse(extractor.extraction_requires_mapping(game, work, incremental=True))
+            self.assertTrue(extractor.extraction_requires_mapping(game, None, incremental=True))
+            self.assertTrue(extractor.extraction_requires_mapping(game, work))
+            self.assertFalse(extractor.extraction_requires_mapping(
+                game, work, usmap=root / "supplied.usmap"))
             self.assertTrue(extractor.bundle_compatible_with_game(bundle, game, contract=contract))
             self.assertFalse(extractor.bundle_compatible_with_game(
                 bundle, game, contract={**contract, "extractionRecipeVersion": 6}))
