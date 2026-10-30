@@ -15,6 +15,13 @@ assert "preparedActorIdentity" in teleport
 assert "GetObjectIdentity(chestActor)!=request.preparedActorIdentity" in teleport
 assert 'request.action="storage"' in teleport
 assert 'request.action="gravestone"' in teleport
+assert 'request.action="quest"' in teleport
+assert "QueueAdminQuestTeleport" in header
+assert 'request.action=="storage"||request.action=="gravestone"||request.action=="quest"' in teleport
+assert "ResolveQuestTeleportDestination" in main
+assert 'active->status!="in_progress"' in main
+assert 'active->objective!=objective' in main
+assert '"/api/admin/quest/teleport"' in main
 
 # The game thread performs one ground trace and one authoritative native
 # scheduling call, rather than broad object scans or multi-candidate loops.

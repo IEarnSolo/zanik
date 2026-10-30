@@ -4,6 +4,25 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.71] - 2026-10-29
+
+### Added
+
+- Add an admin-only teleport button beneath the Active quest mini-map on player Overview pages.
+- Add the same admin teleport control beneath every current quest-step mini-map in the player Quests section, including marker selection for objectives with multiple destinations.
+
+### Changed
+
+- Ship admin quest-destination teleports and their player-page controls through Zanik Manager 0.2.71.
+- Reuse the validated native delayed-teleport, ground-checking, loading-transition, rate-limit, and compatibility pipeline already used by storage and gravestone teleports.
+- Resolve quest destinations from the server's activated quest-step catalog instead of accepting world coordinates from the browser.
+
+### Fixed
+
+- Hide quest teleport controls from non-admin sessions and disable them when the linked admin character is offline or the displayed step lacks a valid world destination.
+- Reject quest teleport requests when the player, quest catalog fingerprint, current quest state, objective text, or selected marker no longer matches the server's persisted snapshot.
+- Keep every quest-section teleport control synchronized with changing admin capability and online state, including maps rendered before the admin session finishes loading.
+
 ## [0.2.70] - 2026-10-29
 
 ### Added

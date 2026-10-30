@@ -327,6 +327,7 @@ struct AdminTeleportDiagnostics {
     std::uint64_t rejectedRequests = 0;
     std::uint64_t maximumExecutionMicroseconds = 0;
     std::uint64_t acceptedStorageTeleports = 0;
+    std::uint64_t acceptedQuestTeleports = 0;
     std::uint64_t staleStorageDestinations = 0;
     std::uint64_t unsafeStorageDestinations = 0;
     std::uint64_t tickCalls = 0;
@@ -487,6 +488,9 @@ bool QueueAdminPlayerTeleport(const std::string& movingCharacterGuid, const std:
 bool QueueAdminStorageTeleport(const std::string& characterGuid, const std::string& publicId,
                                const std::string& targetCharacterGuid, const std::string& targetPublicId,
                                const std::string& chestId, const std::string& sessionPrefix);
+bool QueueAdminQuestTeleport(const std::string& characterGuid, const std::string& publicId,
+                             const std::string& destinationId, const FVector3d& location,
+                             const std::string& sessionPrefix);
 AdminTeleportDiagnostics GetAdminTeleportDiagnostics();
 struct AdminStorageDiagnostics {
     int compatibility = 0;

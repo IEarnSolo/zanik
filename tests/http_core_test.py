@@ -212,6 +212,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
         expect_error(base, "/api/player?id=abc123", 404)
         expect_error(base, "/api/kick", 404)
         expect_error(base, "/api/players", 405, method="POST")
+        expect_error(base, "/api/admin/quest/teleport", 401, "Authentication required", method="POST")
     finally:
         process.terminate()
         try:

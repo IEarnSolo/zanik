@@ -17,6 +17,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -301,6 +302,37 @@ bool JsonNonNegativeInteger(const std::string&body,const std::string&key,int&val
 std::vector<std::string> JsonStringArray(const std::string&body,const std::string&key){std::vector<std::string> out;std::string mark="\""+key+"\"";auto p=body.find(mark);if(p==std::string::npos||(p=body.find('[',p+mark.size()))==std::string::npos)return out;++p;while(p<body.size()){while(p<body.size()&&(std::isspace(static_cast<unsigned char>(body[p]))||body[p]==','))++p;if(p>=body.size()||body[p]==']')return out;if(body[p++]!='\"')return {};std::string value;while(p<body.size()&&body[p]!='\"'){if(body[p]=='\\'&&p+1<body.size()){char c=body[++p];if(c!='\"'&&c!='\\')return {};}value+=body[p++];if(value.size()>64)return {};}if(p>=body.size()||body[p++]!='\"')return {};out.push_back(std::move(value));if(out.size()>128)return {};};return {};}
 std::string JsonEscape(const std::string&s){std::string o;for(unsigned char c:s){if(c=='"'||c=='\\'){o+='\\';o+=char(c);}else if(c>=32)o+=char(c);}return o;}
 
+bool JsonContainer(const std::string&json,const std::string&key,char open,char close,std::string&value){
+    const std::string mark="\""+key+"\"";auto p=json.find(mark);if(p==std::string::npos)return false;
+    p=json.find(':',p+mark.size());if(p==std::string::npos)return false;++p;
+    while(p<json.size()&&std::isspace(static_cast<unsigned char>(json[p])))++p;if(p>=json.size()||json[p]!=open)return false;
+    const auto begin=p;int depth=0;bool quoted=false,escaped=false;
+    for(;p<json.size();++p){const char c=json[p];if(quoted){if(escaped)escaped=false;else if(c=='\\')escaped=true;else if(c=='"')quoted=false;continue;}if(c=='"'){quoted=true;continue;}if(c==open)++depth;else if(c==close&&!--depth){value=json.substr(begin,p-begin+1);return true;}}
+    return false;
+}
+std::vector<std::string> JsonObjects(const std::string&array){
+    std::vector<std::string> result;if(array.size()<2||array.front()!='['||array.back()!=']')return result;
+    for(std::size_t p=1;p+1<array.size();){while(p+1<array.size()&&(std::isspace(static_cast<unsigned char>(array[p]))||array[p]==','))++p;if(array[p]==']')break;if(array[p]!='{')return {};
+        const auto begin=p;int depth=0;bool quoted=false,escaped=false;for(;p<array.size();++p){const char c=array[p];if(quoted){if(escaped)escaped=false;else if(c=='\\')escaped=true;else if(c=='"')quoted=false;continue;}if(c=='"'){quoted=true;continue;}if(c=='{')++depth;else if(c=='}'&&!--depth){result.push_back(array.substr(begin,p-begin+1));++p;break;}}if(depth||result.size()>8192)return {};
+    }return result;
+}
+bool JsonFiniteDouble(const std::string&json,const std::string&key,double&value){
+    const std::string mark="\""+key+"\"";auto p=json.find(mark);if(p==std::string::npos||(p=json.find(':',p+mark.size()))==std::string::npos)return false;++p;
+    while(p<json.size()&&std::isspace(static_cast<unsigned char>(json[p])))++p;char* end=nullptr;value=std::strtod(json.c_str()+p,&end);
+    return end!=json.c_str()+p&&std::isfinite(value)&&std::abs(value)<=10000000.0;
+}
+bool ResolveQuestTeleportDestination(const std::string&questId,const std::string&objective,int markerIndex,
+                                     FVector3d&location,std::string&markerName){
+    if(questId.empty()||questId.size()>128||objective.empty()||objective.size()>1024||markerIndex<0||markerIndex>511)return false;
+    std::string catalog,quests;if(!ReadWebAsset("quest-step-locations.json",catalog)||!JsonContainer(catalog,"quests",'[',']',quests))return false;
+    for(const auto&quest:JsonObjects(quests)){if(JsonValue(quest,"id")!=questId)continue;std::string steps;if(!JsonContainer(quest,"steps",'[',']',steps))return false;
+        for(const auto&step:JsonObjects(steps)){if(JsonValue(step,"text")!=objective)continue;std::string markers;if(!JsonContainer(step,"markers",'[',']',markers))return false;const auto entries=JsonObjects(markers);if(std::size_t(markerIndex)>=entries.size())return false;
+            std::string world;if(!JsonContainer(entries[markerIndex],"world",'{','}',world)||!JsonFiniteDouble(world,"x",location.X)||!JsonFiniteDouble(world,"y",location.Y)||!JsonFiniteDouble(world,"z",location.Z))return false;
+            markerName=JsonValue(entries[markerIndex],"name");return true;
+        }return false;
+    }return false;
+}
+
 bool MaintenanceMode(){const char* raw=std::getenv("ZANIK_MAINTENANCE_MODE");return raw&&std::strcmp(raw,"1")==0;}
 std::string MaintenanceReleaseJson(){
     const char* raw=std::getenv("DW_MAINTENANCE_RELEASE_STATE");
@@ -408,7 +440,8 @@ void Handle(int fd) {
         "/api/admin/claim","/api/admin/console-claim","/api/admin/recipe-unlock-settings",
         "/api/admin/logout","/api/admin/teleport","/api/admin/player-teleport",
         "/api/admin/storage/teleport","/api/admin/storage/mutate",
-        "/api/admin/gravestone/mutate","/api/admin/gravestone/teleport"
+        "/api/admin/gravestone/mutate","/api/admin/gravestone/teleport",
+        "/api/admin/quest/teleport"
     };
     if(request.method=="POST"&&!postRoutes.count(path)){
         Respond(fd,405,"application/json; charset=utf-8","{\"error\":\"Method not allowed\"}");return;
@@ -453,12 +486,14 @@ void Handle(int fd) {
         DomEngine::RefreshAdminNodestoneTeleportCompatibility();
         const auto storage=DomEngine::GetAdminStorageDiagnostics();const auto graves=DomEngine::GetAdminGravestoneDiagnostics();const auto teleport=DomEngine::GetAdminTeleportDiagnostics();
         const bool engineReadable=DomEngine::g_Engine&&DomEngine::g_Engine->IsInitialized();
+        const bool locationTeleport=ZanikConfig::AdminTeleport()&&teleport.compatibility==1&&teleport.groundTraceCompatibility==1&&teleport.storagePipelineCompatibility==1&&teleport.nativeCaptureCompatibility==1&&teleport.nativeTemplateAvailable==1&&teleport.storageTransportCompatibility==1;
         const std::string capabilities="{\"storageRead\":"+std::string(engineReadable?"true":"false")+
             ",\"gravestoneRead\":"+(graves.compatibility==1?"true":"false")+
             ",\"storageMutation\":"+(ZanikConfig::AdminStorageMutation()&&storage.compatibility==1?"true":"false")+
             ",\"storageRename\":"+(ZanikConfig::AdminStorageMutation()&&storage.renameCompatibility==1?"true":"false")+
             ",\"gravestoneMutation\":"+(ZanikConfig::AdminGravestoneMutation()&&graves.compatibility==1?"true":"false")+
             ",\"teleport\":"+(ZanikConfig::AdminTeleport()&&teleport.compatibility==1?"true":"false")+
+            ",\"locationTeleport\":"+(locationTeleport?"true":"false")+
             ",\"nodestoneTeleport\":"+(ZanikConfig::AdminTeleport()&&teleport.nodestoneCompatibility==1?"true":"false")+"}";
         Respond(fd,200,"application/json; charset=utf-8","{\"authenticated\":true,\"characterId\":\""+JsonEscape(s.publicId)+"\",\"characterName\":\""+JsonEscape(s.characterName)+"\",\"online\":"+(online?"true":"false")+",\"csrf\":\""+s.csrf+"\",\"features\":"+ZanikConfig::Json()+",\"capabilities\":"+capabilities+"}",PersistentAdminCookie(raw));
     } else if(path=="/api/recipe-unlock-settings"){
@@ -573,6 +608,19 @@ void Handle(int fd) {
         const std::string rateKey=adminStore->SessionHashPrefix(raw);auto now=std::chrono::steady_clock::now();auto rate=adminGravestoneRate.find(rateKey);if(rate!=adminGravestoneRate.end()&&now-rate->second<std::chrono::milliseconds(400)){Respond(fd,429,"application/json; charset=utf-8",Status::ErrorJson("Please wait before changing a gravestone again"));return;}adminGravestoneRate[rateKey]=now;std::string result;bool ok=DomEngine::SubmitAdminGravestoneMutation(operation,s.characterGuid,s.publicId,owner.identity.substr(10),ownerId,graveId,itemId,quantity,rateKey,result);adminStore->Audit(s,graveId,"gravestone:"+operation+":"+(itemId.empty()?"all":itemId)+":"+std::to_string(quantity)+":"+(ok?"accepted":"rejected")+":"+result);if(ok)Respond(fd,200,"application/json; charset=utf-8","{\"updated\":true,\"message\":\""+JsonEscape(result)+"\"}");else{auto d=DomEngine::GetAdminGravestoneDiagnostics();Respond(fd,d.compatibility==1?409:503,"application/json; charset=utf-8",Status::ErrorJson(result));}
     } else if(path=="/api/admin/gravestone/teleport"){
         if(!requirePost())return;AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(!ZanikConfig::AdminTeleport()){disabled();return;}if(JsonValue(request.body,"csrf")!=s.csrf){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Invalid CSRF token"));return;}const std::string ownerId=JsonValue(request.body,"playerId"),graveId=JsonValue(request.body,"graveId");StoredPlayer admin,owner;if(!playerStore->Find(s.publicId,admin)||!admin.online){Respond(fd,409,"application/json; charset=utf-8",Status::ErrorJson("Linked character is offline"));return;}if(!playerStore->Find(ownerId,owner)||owner.identity.rfind("character:",0)!=0){Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Player not found"));return;}uintptr_t actor=0;FVector3d where{};if(!DomEngine::ResolveAdminGravestoneLocation(owner.identity.substr(10),graveId,actor,where)){Respond(fd,409,"application/json; charset=utf-8",Status::ErrorJson("Gravestone is no longer available"));return;}const std::string rateKey=adminStore->SessionHashPrefix(raw);auto now=std::chrono::steady_clock::now();auto rate=adminTeleportRate.find(rateKey);if(rate!=adminTeleportRate.end()&&now-rate->second<std::chrono::seconds(3)){Respond(fd,429,"application/json; charset=utf-8",Status::ErrorJson("Please wait before teleporting again"));return;}adminTeleportRate[rateKey]=now;if(!DomEngine::QueueAdminGravestoneTeleport(s.characterGuid,s.publicId,owner.identity.substr(10),ownerId,graveId,rateKey)){auto diagnostics=DomEngine::GetAdminTeleportDiagnostics();const bool unavailable=diagnostics.compatibility!=1||diagnostics.groundTraceCompatibility!=1||diagnostics.storagePipelineCompatibility!=1||diagnostics.nativeCaptureCompatibility!=1||diagnostics.nativeTemplateAvailable!=1||diagnostics.storageTransportCompatibility!=1;Respond(fd,unavailable?503:409,"application/json; charset=utf-8",Status::ErrorJson(unavailable?"Gravestone teleport compatibility unavailable":"A teleport is already pending"));return;}adminStore->Audit(s,graveId,"gravestone-teleport-queued");Respond(fd,202,"application/json; charset=utf-8","{\"accepted\":true,\"status\":\"queued\"}");
+    } else if(path=="/api/admin/quest/teleport"){
+        if(!requirePost())return;AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(!ZanikConfig::AdminTeleport()){disabled();return;}
+        if(JsonValue(request.body,"csrf")!=s.csrf){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Invalid CSRF token"));return;}
+        const std::string targetId=JsonValue(request.body,"playerId"),questId=JsonValue(request.body,"questId"),objective=JsonValue(request.body,"objective");int markerIndex=-1;
+        if(targetId.empty()||targetId.size()>128||questId.empty()||questId.size()>128||objective.empty()||objective.size()>1024||!JsonNonNegativeInteger(request.body,"markerIndex",markerIndex)){adminStore->Audit(s,questId,"quest-teleport-invalid");Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Invalid quest teleport request"));return;}
+        StoredPlayer adminPlayer,targetPlayer;if(!playerStore->Find(s.publicId,adminPlayer)||!adminPlayer.online){adminStore->Audit(s,questId,"quest-teleport-offline");Respond(fd,409,"application/json; charset=utf-8",Status::ErrorJson("Linked character is offline"));return;}
+        if(!playerStore->Find(targetId,targetPlayer)||targetPlayer.identity.rfind("character:",0)!=0){Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Player not found"));return;}
+        StoredQuestSnapshot snapshot;const bool captured=questSnapshotStore&&questSnapshotStore->Find(targetPlayer.identity.substr(10),snapshot);const auto active=captured?std::find_if(snapshot.quests.begin(),snapshot.quests.end(),[&](const auto&q){return q.id==questId;}):snapshot.quests.end();
+        if(!captured||!snapshot.complete||snapshot.catalogFingerprint!=DomEngine::GetPlayerQuestCatalogFingerprint()||active==snapshot.quests.end()||active->status!="in_progress"||active->objective!=objective){adminStore->Audit(s,questId,"quest-teleport-stale");Respond(fd,409,"application/json; charset=utf-8",Status::ErrorJson("The quest objective changed; refresh the page and try again"));return;}
+        FVector3d location{};std::string markerName;if(!ResolveQuestTeleportDestination(questId,objective,markerIndex,location,markerName)){adminStore->Audit(s,questId,"quest-teleport-destination-unavailable");Respond(fd,409,"application/json; charset=utf-8",Status::ErrorJson("This quest objective does not have a teleport destination"));return;}
+        const std::string rateKey=adminStore->SessionHashPrefix(raw);const auto now=std::chrono::steady_clock::now();const auto rate=adminTeleportRate.find(rateKey);if(rate!=adminTeleportRate.end()&&now-rate->second<std::chrono::seconds(3)){adminStore->Audit(s,questId,"quest-teleport-rate-limited");Respond(fd,429,"application/json; charset=utf-8",Status::ErrorJson("Please wait before teleporting again"));return;}adminTeleportRate[rateKey]=now;
+        const std::string destinationId=questId+":"+std::to_string(markerIndex);if(!DomEngine::QueueAdminQuestTeleport(s.characterGuid,s.publicId,destinationId,location,rateKey)){const auto diagnostics=DomEngine::GetAdminTeleportDiagnostics();const bool unavailable=diagnostics.compatibility!=1||diagnostics.groundTraceCompatibility!=1||diagnostics.storagePipelineCompatibility!=1||diagnostics.nativeCaptureCompatibility!=1||diagnostics.nativeTemplateAvailable!=1||diagnostics.storageTransportCompatibility!=1;adminStore->Audit(s,destinationId,unavailable?"quest-teleport-unavailable":"quest-teleport-pending");Respond(fd,unavailable?503:409,"application/json; charset=utf-8",Status::ErrorJson(unavailable?"Quest teleport compatibility unavailable":"A teleport is already pending"));return;}
+        adminStore->Audit(s,destinationId,"quest-teleport-queued:"+markerName);Respond(fd,202,"application/json; charset=utf-8","{\"accepted\":true,\"status\":\"queued\"}");
     } else if (path == "/assets/world-map.jpg") {
         std::string asset;
         if(ReadWebAsset("world-map.jpg",asset))Respond(fd,200,"image/jpeg",asset);
