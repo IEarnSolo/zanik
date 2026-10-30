@@ -45,7 +45,7 @@ assert f'CurrentSha="{server_sha}"' in graves
 for offset in (
     "0x0A655DA0", "0x0A657880", "0x0A654570", "0x0A655230",
     "0x0A655E00", "0x0A650680", "0x0A64F1D0", "0x0A64F800",
-    "0x0A64DFF0", "0x09E17E60", "0x09E0ED10", "0x09E17790",
+    "0x0A64DFF0", "0x0A64B930", "0x0A64BC10", "0x09E17E60", "0x09E0ED10", "0x09E17790",
 ):
     assert offset in graves
 
