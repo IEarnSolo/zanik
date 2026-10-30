@@ -407,6 +407,7 @@ class ManagerTests(unittest.TestCase):
         teleport_description = schema["properties"]["FEATURE_ADMIN_TELEPORT"]["description"]
         self.assertIn("player-built lodestone", teleport_description)
         self.assertIn("fixed nodestone", teleport_description)
+        self.assertIn("quest-step", teleport_description)
         self.assertIn("form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)", source)
         self.assertIn("form.setRowWrapPolicy(QFormLayout.WrapLongRows)", source)
         self.assertIn('field=QCheckBox(); field.setChecked(bool(spec["default"]))', source)

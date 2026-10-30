@@ -4,6 +4,21 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.72] - 2026-10-30
+
+### Changed
+
+- Rename the administrator quest action to “Teleport to quest step” on both Active quest and full quest-section maps.
+- Clarify that the Administrator teleport configuration toggle governs player, lodestone, nodestone, storage, gravestone, and quest-step teleports.
+- Ship automatic gravestone inventory snapshotting and persistence through Zanik Manager 0.2.72.
+
+### Fixed
+
+- Capture live gravestone inventories every 500 milliseconds on the bounded game-thread dispatcher instead of depending on an administrator page request occurring while the World Partition actor is loaded.
+- Keep gravestone contents available after a player teleports away and the grave actor unloads, even when the current SPUD cell exposes the registry marker but no independently readable inventory record.
+- Atomically persist captured gravestone contents in the existing permission-restricted `zanik-data/gravestone-snapshots.v1` store and load them after server restarts.
+- Associate live snapshots with the authoritative registry marker and remove their persisted records when the gravestone is deleted or emptied.
+
 ## [0.2.71] - 2026-10-29
 
 ### Added

@@ -4,6 +4,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 teleport = (root / "src" / "engine" / "admin_teleport.cpp").read_text()
+gravestones = (root / "src" / "engine" / "admin_gravestone.cpp").read_text()
 main = (root / "src" / "main.cpp").read_text()
 header = (root / "src" / "engine" / "dom_engine.h").read_text()
 
@@ -18,6 +19,16 @@ assert 'request.action="gravestone"' in teleport
 assert 'request.action="quest"' in teleport
 assert "QueueAdminQuestTeleport" in header
 assert 'request.action=="storage"||request.action=="gravestone"||request.action=="quest"' in teleport
+
+# Gravestone contents are captured by the bounded game-thread dispatcher, not
+# only by an admin page request. The atomic snapshot survives World Partition
+# unloading and a server restart while the registry remains authoritative.
+assert 'void ProcessAdminGravestoneRequests(){CaptureLiveGraveSnapshots();' in gravestones
+assert 'constexpr const char* SavedSnapshotsPath="/home/container/zanik-data/gravestone-snapshots.v1"' in gravestones
+assert 'pthread_once(&savedSnapshotsOnce,&LoadSavedSnapshots)' in gravestones
+assert 'fsync(fd)==0' in gravestones
+assert 'rename(temporary.c_str(),SavedSnapshotsPath)' in gravestones
+assert 'CacheLiveSnapshot(owner,location,std::move(liveSnapshot))' in gravestones
 assert "ResolveQuestTeleportDestination" in main
 assert 'active->status!="in_progress"' in main
 assert 'active->objective!=objective' in main
