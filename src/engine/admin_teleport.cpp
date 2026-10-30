@@ -57,7 +57,7 @@ std::atomic<int> compatibility{0};
 std::atomic<int> nodestoneTeleportCompatibility{0};
 std::atomic<int> groundTraceCompatibility{0},storagePipelineCompatibility{0},nativeCaptureCompatibility{0};
 std::atomic<std::uint64_t> queued{0},accepted{0},rejected{0},maximumMicros{0};
-std::atomic<std::uint64_t> acceptedStorage{0},staleStorage{0},unsafeStorage{0};
+std::atomic<std::uint64_t> acceptedStorage{0},acceptedQuest{0},staleStorage{0},unsafeStorage{0};
 std::atomic<std::uint64_t> tickCalls{0},maximumTickMicros{0},slowTickCalls{0};
 std::atomic<std::uint64_t> maximumStorageTeleportMicros{0},slowStorageTeleportCalls{0};
 std::atomic<bool> storageTeleportCircuitBroken{false};
@@ -572,19 +572,20 @@ void RunOne(void* tickingPawn){
                    " destination="+request.destinationId+" nativeMicros="+std::to_string(nativeMicros));
         return;
     }
-    if(request.action=="storage"||request.action=="gravestone"){
+    if(request.action=="storage"||request.action=="gravestone"||request.action=="quest"){
+        const bool quest=request.action=="quest";
         FVector3d chest{};uintptr_t chestActor=0;
         if(!bpTriggerDelayedTeleport||!storageTeleportTemplateValid.load()||!getActorBoundsFunction||
            !std::isfinite(request.preparedLocation.X)||!std::isfinite(request.preparedLocation.Y)||!std::isfinite(request.preparedLocation.Z)){
-            ++rejected;++staleStorage;LogMessage("Admin storage teleport rejected: stale chest="+request.destinationId);return;
+            ++rejected;++staleStorage;LogMessage("Admin location teleport rejected: stale destination="+request.destinationId);return;
         }
         chest=request.preparedLocation;chestActor=request.preparedActor;
         if(chestActor&&(!g_Engine->IsObjectLive(chestActor)||g_Engine->GetObjectIdentity(chestActor)!=request.preparedActorIdentity)){
-            ++rejected;++staleStorage;LogMessage("Admin storage teleport rejected: changed destination="+request.destinationId);return;
+            ++rejected;++staleStorage;LogMessage("Admin location teleport rejected: changed destination="+request.destinationId);return;
         }
         FVector3d origin=chest,extent{55.0,55.0,80.0};if(chestActor){alignas(16) unsigned char bounds[64]{};bounds[0]=1;processEvent(reinterpret_cast<void*>(chestActor),reinterpret_cast<void*>(getActorBoundsFunction),bounds);std::memcpy(&origin,bounds+0x8,sizeof(origin));std::memcpy(&extent,bounds+0x20,sizeof(extent));}
         if(!std::isfinite(origin.X)||!std::isfinite(origin.Y)||!std::isfinite(origin.Z)||!std::isfinite(extent.X)||!std::isfinite(extent.Y)||!std::isfinite(extent.Z)||
-           extent.X<1.0||extent.Y<1.0||extent.Z<1.0||extent.X>3000.0||extent.Y>3000.0||extent.Z>3000.0){++rejected;++unsafeStorage;LogMessage("Admin storage teleport rejected: invalid authoritative bounds chest="+request.destinationId);return;}
+           extent.X<1.0||extent.Y<1.0||extent.Z<1.0||extent.X>3000.0||extent.Y>3000.0||extent.Z>3000.0){++rejected;++unsafeStorage;LogMessage("Admin location teleport rejected: invalid authoritative bounds destination="+request.destinationId);return;}
         constexpr double Pi=3.14159265358979323846;
         double toward=std::atan2(player.y-origin.Y,player.x-origin.X);if(!std::isfinite(toward))toward=player.yaw*Pi/180.0+Pi;
         const double chosenRadius=std::hypot(extent.X,extent.Y)+120.0;
@@ -611,11 +612,11 @@ void RunOne(void* tickingPawn){
         if(nativeMicros>=1000){++slowStorageTeleportCalls;storageTeleportCircuitBroken=true;}
         if(!scheduled){
             ++rejected;++unsafeStorage;
-            LogMessage("Admin native storage teleport rejected by game location validation chest="+request.destinationId);
+            LogMessage("Admin native location teleport rejected by game location validation destination="+request.destinationId);
             return;
         }
-        ++accepted;++acceptedStorage;
-        LogMessage("Admin native delayed storage teleport scheduled character="+request.publicId+" owner="+request.targetPublicId+" chest="+request.destinationId+
+        ++accepted;if(quest)++acceptedQuest;else ++acceptedStorage;
+        LogMessage("Admin native delayed "+request.action+" teleport scheduled character="+request.publicId+" owner="+request.targetPublicId+" destination="+request.destinationId+
                    " loaded="+(alreadyLoaded?"true":"false")+" distance="+std::to_string(playerDistance)+" ring="+std::to_string(chosenRadius)+
                    " nativeMicros="+std::to_string(nativeMicros)+" target="+std::to_string(target.X)+","+
                    std::to_string(target.Y)+","+std::to_string(target.Z)+" session="+request.sessionPrefix);
@@ -803,6 +804,17 @@ bool QueueAdminStorageTeleport(const std::string& characterGuid,const std::strin
     requests.push_back(std::move(request));++queued;return true;
 }
 
+bool QueueAdminQuestTeleport(const std::string& characterGuid,const std::string& publicId,
+                             const std::string& destinationId,const FVector3d& location,
+                             const std::string& sessionPrefix){
+    if(!bpTriggerDelayedTeleport||!storageTeleportTemplateValid.load()||compatibility.load()!=1||groundTraceCompatibility.load()!=1||storagePipelineCompatibility.load()!=1||nativeCaptureCompatibility.load()!=1||storageTeleportCircuitBroken.load()||characterGuid.empty()||destinationId.empty()||!std::isfinite(location.X)||!std::isfinite(location.Y)||!std::isfinite(location.Z))return false;
+    QueueLock lock;
+    if(requests.size()>=QueueCapacity||std::any_of(requests.begin(),requests.end(),[&](const Request&r){return r.characterGuid==characterGuid;})||
+       std::any_of(pendingTeleports.begin(),pendingTeleports.end(),[&](const PendingTeleport&p){return p.characterGuid==characterGuid;}))return false;
+    Request request;request.characterGuid=characterGuid;request.publicId=publicId;request.destinationId=destinationId;request.sessionPrefix=sessionPrefix;request.action="quest";request.preparedLocation=location;
+    requests.push_back(std::move(request));++queued;return true;
+}
+
 bool QueueAdminGravestoneTeleport(const std::string& characterGuid,const std::string& publicId,
                                   const std::string& ownerCharacterGuid,const std::string& ownerPublicId,
                                   const std::string& graveId,const std::string& sessionPrefix){
@@ -823,7 +835,7 @@ AdminTeleportDiagnostics GetAdminTeleportDiagnostics(){
     d.nativeCaptureCompatibility=nativeCaptureCompatibility.load();d.nativeTemplateAvailable=storageTeleportTemplateValid.load()?1:0;
     d.storageTransportCompatibility=storageTeleportCircuitBroken.load()?-1:(d.nativeCaptureCompatibility==1&&d.nativeTemplateAvailable==1?1:0);d.queuedRequests=queued.load();
     d.acceptedTeleports=accepted.load();d.rejectedRequests=rejected.load();d.maximumExecutionMicroseconds=maximumMicros.load();
-    d.acceptedStorageTeleports=acceptedStorage.load();d.staleStorageDestinations=staleStorage.load();d.unsafeStorageDestinations=unsafeStorage.load();
+    d.acceptedStorageTeleports=acceptedStorage.load();d.acceptedQuestTeleports=acceptedQuest.load();d.staleStorageDestinations=staleStorage.load();d.unsafeStorageDestinations=unsafeStorage.load();
     d.tickCalls=tickCalls.load();d.maximumTickMicroseconds=maximumTickMicros.load();d.slowTickCalls=slowTickCalls.load();
     d.maximumStorageTransportMicroseconds=maximumStorageTeleportMicros.load();d.slowStorageTransportCalls=slowStorageTeleportCalls.load();
     d.queuedNodestoneTeleports=nodestoneQueued.load();d.acceptedNodestoneTeleports=nodestoneAccepted.load();
