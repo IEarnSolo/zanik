@@ -70,7 +70,11 @@ boundaries independently:
   building-removal tracking;
 - gravestone ownership, inventory, registry layout and record size, native
   transfer and removal, World Partition streaming, SPUD restoration, and the
-  passive respawn capture hook used for restart-persistent remote operations.
+  passive respawn capture hook used for restart-persistent remote operations;
+  registry-triggered inventory capture is time-budgeted and incrementally
+  finalized, durable snapshot writes run only on the website worker, and
+  persisted cards are retired only by the authoritative registry-unregister
+  event rather than transient actor or registry visibility.
 
 `/api/update-status` and `/api/admin-diagnostics` expose these results instead
 of reducing the admin panel to one build fingerprint. A failed subfeature must

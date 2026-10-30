@@ -4,6 +4,31 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.73] - 2026-10-30
+
+### Added
+
+- Capture authoritative gravestone registration and removal events directly from the gameplay-object registry, with bounded queues and compatibility diagnostics for calls, matches, applications, drops, and hook duration.
+- Recover missing gravestone item names, icons, and stack limits by validating persisted item IDs against reflected live `ItemData` metadata, then retain the healed metadata across unloads and restarts.
+
+### Changed
+
+- Ship the authoritative gravestone lifecycle, remote synchronization, and metadata recovery fixes through Zanik Manager 0.2.73.
+- Replace periodic whole-object gravestone inventory scans with registry-triggered, time-budgeted discovery and incremental slot capture; durable snapshot serialization now runs only on the website worker.
+- Preserve verified active-grave provenance across restarts while keeping unverified legacy snapshots hidden, so old retained records cannot reappear as live gravestones.
+- Resolve remote gravestone operations from live actors, authoritative registry rows, or owner-bound verified snapshots, restoring saved actors from `L_World` with the geographic SPUD cell as a compatibility fallback.
+
+### Fixed
+
+- Keep remote gravestone claiming, deletion, and teleportation working while the owner is offline, after server restarts, and while the gravestone's World Partition area is unloaded.
+- Prevent bounded remote gravestone restoration and capture from freezing the game thread or causing extremely slow player login.
+- Retire snapshots only from authoritative unregister events or a verified empty inventory instead of transient registry, actor, or inventory visibility.
+- Preserve item display names and icons when a loaded gravestone unloads instead of replacing them with opaque persistence identifiers, including self-healing snapshots already degraded by an older build.
+- Make the latest verified live inventory win over an older SPUD copy so individual items taken in game or through the website remain removed after the area unloads.
+- Recapture and persist remaining slots after partial website claims, hide confirmed empty SPUD inventories, and remove a confirmed empty native gravestone from both the game and website.
+- Make website claim-all verify the native inventory is empty and invoke the game's own gravestone removal lifecycle so the physical gravestone does not remain behind.
+- Capture newly created graves from the authoritative register call even when their actor unloads before the next registry poll.
+
 ## [0.2.72] - 2026-10-30
 
 ### Changed

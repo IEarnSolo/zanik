@@ -16,6 +16,13 @@
 - Never treat Dragonwilds saves, Pterodactyl backups, live `zanik-data`, active assets, release uploads, incoming user assets, pinned bundles, or unrecognized paths as disposable development artifacts.
 - Do not manually remove Zanik Manager-managed backups or recovery data solely because they look old. Inspect ownership metadata and use the Manager's retention or reviewed-cleanup workflow unless the user explicitly requests otherwise.
 
+## Development deployment workflow
+
+- For iterative development and live testing, prefer building and validating the current candidate locally, then deploy it directly to the designated development server through Zanik Manager's managed install/update lifecycle.
+- Verify the exact deployed payload and relevant runtime diagnostics after each development deployment. Use the Manager-created recovery point as the rollback boundary and follow the remote cleanup rules above.
+- Do not create a public release tag merely to move each test candidate onto a development server, and do not require the user to update Zanik Manager manually for every development iteration.
+- Treat commit, push, stable tag, and public release publication as an explicit promotion step. Perform them only when the user requests a push or release, after the accumulated candidate has passed the repository's release validation.
+
 ## Website asset release contracts
 
 - Any change that adds, removes, renames, relocates, or changes the generated contents of website assets must advance the extraction recipe schema version before release, even when the game build and extraction selectors are unchanged.

@@ -234,6 +234,79 @@ property. Build 25991736 currently fails that functional check, so its rename
 control is hidden and rename requests fail closed while all independently
 validated storage operations remain available to the development candidate.
 
+Remote gravestone inventory capture is initiated directly by the authoritative
+`AGameplayObjectRegistry::RegisterGravestone(FGravestoneData const&)` lifecycle
+event, with bounded registry polling retained as a recovery path. This prevents
+a newly created grave from being missed when its actor unloads before the next
+poll, without continuously scanning the Unreal object array. The hook copies
+only the fixed owner and location fields into an SPSC queue; all discovery and
+snapshot work happens afterward. Registry and actor discovery run in reverse,
+bounded slices with both a 32-object ceiling and a shared 200-microsecond
+deadline. Inventory finalization copies at most two slots per tick, uses
+try-lock publication, and performs atomic serialization, `fsync`, and rename
+only on the website worker. Registration calls, matches, queue applications,
+drops, hook duration, capture calls, active calls, pending work, completed
+snapshots, object inspections, deferrals, persistence failures, and the
+independent circuit-breaker state are published through `/api/update-status`.
+A one-millisecond capture call disables only remote gravestone capture and
+mutation instead of allowing repeated game-thread stalls or disabling unrelated
+read-only features.
+
+Gravestone retirement follows the registry's authoritative
+`AGameplayObjectRegistry::UnregisterGravestone(FGuid const&)` lifecycle event.
+The hook copies only the matching bounded registry record into a fixed SPSC
+queue; the website worker invalidates and persists the snapshot afterward.
+Transient registry absence during death, respawn, or World Partition streaming,
+and a single empty live-inventory observation, are not removal evidence. A
+persisted card therefore remains visible through those transitions. If the
+exact unregister symbol or 14-byte prologue is incompatible, snapshot-only
+cards fail closed rather than becoming permanently stale.
+
+Legacy v1 snapshot records do not by themselves prove that a grave still
+exists, because older builds could miss its removal. Snapshot-only fallback is
+therefore provenance gated: the server must observe that identity as a live
+gravestone actor or authoritative registry record. That verification is then
+persisted as an `A` record, while unverified legacy `G` records remain preserved
+but hidden. This hides obsolete retained records without deleting persistent
+data and keeps a newly verified grave visible through later transient unloads
+and server restarts.
+
+Distant mutation and teleport resolution use the same provenance boundary. A
+live actor is preferred, then a live registry row, then an `A` snapshot with an
+exact owner and grave-ID match; a legacy `G` record can never authorize either
+operation. If the actor is unloaded, the mutation path asks the game's native
+SPUD subsystem to restore runtime-spawned actors from `L_World`, where current
+saves serialize both the persistent registry and runtime gravestones. The
+geographic `RSACell12800` level is retained only as a bounded older-save
+fallback. Actor discovery during a pending request is reverse sliced to 128
+objects per tick, and the restored actor must match the verified owner and be
+within the measured 30-metre registry/actor displacement before any inventory
+or removal function is called. This preserves remote claim and deletion across
+restarts and while the owner is offline without reintroducing a continuous
+game-thread object scan or forced World Partition streaming.
+
+When an active grave unloads, SPUD remains authoritative for its saved slots,
+quantities, and removals. Its persisted item identifiers are not necessarily
+display metadata, however, so reconciliation retains the last verified live
+name, icon, stack limit, and item key for the same slot. This prevents an
+unloaded grave from regressing to opaque persistence IDs and blank icons while
+still allowing SPUD inventory changes to replace the cached inventory state.
+If an older build already persisted degraded display metadata, the reader
+decodes the 16-byte SPUD persistence ID and performs one bounded lookup among
+currently loaded, live `ItemData` objects using the reflected `PersistenceID`
+offset. A verified match heals the runtime metadata catalogue and durable
+snapshot; unresolved assets remain fail-closed as their opaque persistence ID.
+
+The most recent verified live inventory is authoritative for the remainder of
+the process, preventing an older SPUD cell from restoring items after either an
+in-game or website claim. Successful partial website mutations immediately
+recapture and persist the remaining slots. A successful claim-all verifies the
+inventory is empty and then calls `AGravestone::Remove()` on the game thread,
+so the actor and gameplay registry retire together. Live graves observed empty
+twice at least 500 milliseconds apart are hidden immediately and queued for the
+same identity-checked game-thread removal; this covers in-game claims while
+avoiding a transient empty inventory during grave creation.
+
 The update validator also exercises the non-native authorization boundary. It
 creates a five-minute claim through the loopback console secret, redeems the
 claim into a temporary cookie, verifies the session, proves an invalid CSRF

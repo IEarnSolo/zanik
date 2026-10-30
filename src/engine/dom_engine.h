@@ -595,6 +595,7 @@ struct AdminGravestoneDiagnostics {
     int registryCompatibility = 0;
     int streamingCompatibility = 0;
     int respawnCaptureCompatibility = 0;
+    int removalCaptureCompatibility = 0;
     int persistenceCompatibility = 0;
     std::uint64_t discovered = 0;
     std::uint64_t unresolved = 0;
@@ -603,9 +604,31 @@ struct AdminGravestoneDiagnostics {
     std::uint64_t rejectedRequests = 0;
     std::uint64_t staleRequests = 0;
     std::uint64_t maximumExecutionMicroseconds = 0;
+    std::uint64_t captureCalls = 0;
+    std::uint64_t captureActiveCalls = 0;
+    std::uint64_t captureCompleted = 0;
+    std::uint64_t capturePending = 0;
+    std::uint64_t captureObjectInspections = 0;
+    std::uint64_t captureDeferred = 0;
+    std::uint64_t captureDrops = 0;
+    std::uint64_t captureMaximumMicroseconds = 0;
+    std::uint64_t captureSlowCalls = 0;
+    bool captureCircuitBroken = false;
+    std::uint64_t persistenceFailures = 0;
+    std::uint64_t registerCalls = 0;
+    std::uint64_t registerMatched = 0;
+    std::uint64_t registerApplied = 0;
+    std::uint64_t registerDrops = 0;
+    std::uint64_t registerMaximumMicroseconds = 0;
+    std::uint64_t unregisterCalls = 0;
+    std::uint64_t unregisterMatched = 0;
+    std::uint64_t unregisterApplied = 0;
+    std::uint64_t unregisterDrops = 0;
+    std::uint64_t unregisterMaximumMicroseconds = 0;
 };
 bool InitializeAdminGravestones(uintptr_t moduleBase, uintptr_t moduleEnd);
 void ProcessAdminGravestoneRequests();
+void FlushAdminGravestoneSnapshots();
 std::string GetPlayerGravestonesJson(const std::string& characterGuid, const std::string& ownerName);
 bool SubmitAdminGravestoneMutation(const std::string& operation,
                                    const std::string& adminCharacterGuid,
