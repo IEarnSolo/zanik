@@ -92,6 +92,8 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert page.index('class="site-header"') < page.index("<main>")
             assert '>Server</a>' not in page and '>Highscores</a>' in page
             assert 'href="/diagnostics"' in page
+            assert 'class="site-admin-link" href="/admin/sessions" hidden>Admin</a>' in page
+            assert '.site-nav a[hidden]{display:none!important}' in page
         with get(base, "/players") as response:
             page = response.read().decode()
             assert "Known players" in page and 'class="site-header"' in page

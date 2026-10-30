@@ -4,6 +4,16 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.75] - 2026-10-30
+
+### Fixed
+
+- Keep the global Admin navigation link hidden for visitors without a valid admin session, even though the shared navigation layout renders visible links with flexbox.
+
+### Changed
+
+- Ship the anonymous admin-link visibility fix through Zanik Manager 0.2.75.
+
 ## [0.2.74] - 2026-10-30
 
 ### Added
