@@ -49,6 +49,11 @@ start_game(){
   trap 'kill "$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; rm -f "$fifo"' INT TERM EXIT
   while kill -0 "$child" 2>/dev/null && IFS= read -r command; do
       case "$command" in
+        zanik-player-id|zanik-player-id\ *)
+          requested=${command#zanik-player-id}; requested=${requested# }
+          response=$(curl -fsS --max-time 5 -X POST -H "X-Zanik-Console-Key: $DW_CONSOLE_SECRET" --data-binary "$requested" "http://127.0.0.1:$STATUS_PORT/api/admin/console-player-ids" 2>/dev/null || true)
+          if [ -n "$response" ]; then printf '%s\n' "$response" | while IFS= read -r line; do printf '[Zanik] %s\n' "$line"; done; else printf '[Zanik] Could not read known player IDs.\n'; fi
+          ;;
         zanik-admin|zanik-admin\ *)
           requested=${command#zanik-admin}; requested=${requested# }
           response=$(curl -fsS --max-time 5 -X POST -H "X-Zanik-Console-Key: $DW_CONSOLE_SECRET" --data-binary "$requested" "http://127.0.0.1:$STATUS_PORT/api/admin/console-claim" 2>/dev/null || true)

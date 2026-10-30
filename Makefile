@@ -83,6 +83,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	sh tests/server_game_update_test.sh
 	$(NODE) tests/map_page_test.js
 	$(PYTHON) tests/http_core_test.py
+	$(PYTHON) tests/admin_http_test.py
 	$(PYTHON) tests/player_activity_http_test.py
 	$(PYTHON) tests/material_activity_catalog_test.py
 	$(PYTHON) tests/activity_unlock_catalog_test.py

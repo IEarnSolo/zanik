@@ -212,6 +212,11 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
         expect_error(base, "/api/player?id=abc123", 404)
         expect_error(base, "/api/kick", 404)
         expect_error(base, "/api/players", 405, method="POST")
+        expect_error(base, "/admin/sessions", 401, "Authentication required")
+        expect_error(base, "/api/admin/link-manager", 401, "Authentication required")
+        expect_error(base, "/api/admin/create-link", 401, "Authentication required", method="POST")
+        expect_error(base, "/api/admin/revoke-session", 401, "Authentication required", method="POST")
+        expect_error(base, "/api/admin/console-player-ids", 403, "Console authorization required", method="POST")
         expect_error(base, "/api/admin/quest/teleport", 401, "Authentication required", method="POST")
     finally:
         process.terminate()

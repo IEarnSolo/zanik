@@ -16,6 +16,7 @@ namespace Status {
 std::string PlayersJson(const std::vector<std::string>& names);
 std::string PlayerJson(const DomEngine::PlayerInfo& player);
 std::string PlayersJson(const std::vector<StoredPlayer>& players);
+std::string PlayerIdsText(const std::vector<StoredPlayer>& players, const std::string& query);
 std::string PlayerJson(const StoredPlayer& player);
 std::string KillSummaryJson(const std::vector<StoredPlayer>& players);
 std::string KillLeaderboardJson(const std::vector<StoredPlayer>& players,
