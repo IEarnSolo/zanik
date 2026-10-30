@@ -4,6 +4,21 @@ All notable changes to Zanik are documented here.
 
 ## Unreleased
 
+## [0.2.74] - 2026-10-30
+
+### Added
+
+- Add `zanik-player-id [name]` to list or search known character public IDs from the server console, with last-seen UTC timestamps when names are duplicated.
+- Add the authenticated `/admin/sessions` page for creating single-use login links, authorizing known players in `admins.txt`, viewing valid sessions, and revoking individual sessions.
+
+### Security
+
+- Require a valid allowlisted admin session for the session manager and its APIs, require CSRF validation for authorization, link creation, and revocation, and audit each privilege or session change.
+
+### Changed
+
+- Ship player-ID lookup and administrator session management through Zanik Manager 0.2.74.
+
 ## [0.2.73] - 2026-10-30
 
 ### Added

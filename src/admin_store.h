@@ -25,6 +25,13 @@ struct AdminStoreDiagnostics {
     std::size_t malformedSessionRecords = 0;
 };
 
+struct ActiveAdminSession {
+    std::string hashPrefix;
+    std::string publicId;
+    std::string characterName;
+    std::int64_t created = 0;
+};
+
 class AdminStore {
 public:
     AdminStore(std::string allowlistPath, std::string sessionPath);
@@ -35,7 +42,10 @@ public:
     bool Authenticate(const std::string& sessionToken, AdminSession& session, bool* removed=nullptr);
     bool Logout(const std::string& sessionToken);
     std::size_t RevokeCharacter(const std::string& publicId);
+    std::vector<ActiveAdminSession> ActiveSessions();
+    bool RevokeSession(const std::string& hashPrefix);
     bool IsAllowed(const std::string& publicId);
+    bool Authorize(const std::string& publicId, const std::string& characterName);
     std::vector<std::string> AllowedIds();
     void Audit(const AdminSession& session, const std::string& destination, const std::string& result);
     std::string SessionHashPrefix(const std::string& sessionToken) const;

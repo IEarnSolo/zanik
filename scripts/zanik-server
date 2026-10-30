@@ -170,6 +170,11 @@ cleanup(){
 trap cleanup INT TERM EXIT
 while kill -0 "$game_pid" 2>/dev/null && IFS= read -r command; do
   case "$command" in
+    zanik-player-id|zanik-player-id\ *)
+      requested=${command#zanik-player-id}; requested=${requested# }
+      response=$(curl -fsS --max-time 5 -X POST -H "X-Zanik-Console-Key: $DW_CONSOLE_SECRET" --data-binary "$requested" "http://127.0.0.1:$CFG_STATUS_PORT/api/admin/console-player-ids" 2>/dev/null || true)
+      if [ -n "$response" ]; then printf '%s\n' "$response" | while IFS= read -r line; do zanik_log "$line"; done; else zanik_log 'Could not read known player IDs.'; fi
+      ;;
     zanik-admin\ *)
       requested=${command#zanik-admin }
       response=$(curl -fsS --max-time 5 -X POST -H "X-Zanik-Console-Key: $DW_CONSOLE_SECRET" --data-binary "$requested" "http://127.0.0.1:$CFG_STATUS_PORT/api/admin/console-claim" 2>/dev/null || true)

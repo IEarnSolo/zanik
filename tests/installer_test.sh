@@ -57,14 +57,17 @@ exec /usr/bin/env "$@"
 EOF
 cat > "$FAKEBIN/curl" <<'EOF'
 #!/bin/sh
+case "$*" in *console-player-ids*) printf '%s\n' 'Tester: public-character-id'; exit 0;; esac
 printf '%s\n' '{"url":"http://example.invalid/admin/claim#token=test-token","expiresIn":300,"characterName":"Tester"}'
 EOF
 chmod +x "$FAKEBIN/env" "$FAKEBIN/curl"
 printf '#!/bin/sh\nIFS= read -r line; printf "%%s\\n" "$line" > "$0.console"\n' > "$GAME"; chmod +x "$GAME"
-printf 'zanik-admin public-character-id\nstatus\n' | PATH="$FAKEBIN:$PATH" "$SERVER/zanik/bin/zanik-server" --server-root "$SERVER" -- > "$TMP/proxy.out" 2>&1
+printf 'zanik-player-id Tester\nzanik-admin public-character-id\nstatus\n' | PATH="$FAKEBIN:$PATH" "$SERVER/zanik/bin/zanik-server" --server-root "$SERVER" -- > "$TMP/proxy.out" 2>&1
+grep -q 'Tester: public-character-id' "$TMP/proxy.out"
 grep -q 'expires in 5 minutes' "$TMP/proxy.out"
 grep -q '^status$' "$GAME.console"
 ! grep -q 'zanik-admin' "$GAME.console"
+! grep -q 'zanik-player-id' "$GAME.console"
 grep -q '"schemaVersion":1' "$SERVER/zanik/state/runtime-game.json"
 grep -q '"gameBuild":"unknown"' "$SERVER/zanik/state/runtime-game.json"
 

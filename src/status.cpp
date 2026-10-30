@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <map>
 #include <sstream>
+#include <ctime>
 
 namespace Status {
 namespace {
@@ -203,6 +204,17 @@ std::string PlayersJson(const std::vector<StoredPlayer>& players) {
     }
     json << "]}";
     return json.str();
+}
+
+std::string PlayerIdsText(const std::vector<StoredPlayer>& players, const std::string& query) {
+    auto lower=[](std::string value){for(char&c:value)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));return value;};
+    const std::string wanted=lower(query);std::vector<StoredPlayer> matches;
+    for(const auto&player:players)if(wanted.empty()||lower(player.name).find(wanted)!=std::string::npos)matches.push_back(player);
+    if(matches.empty())return query.empty()?"No known players.\n":"No known player matches \""+query+"\".\n";
+    std::map<std::string,std::size_t> counts;for(const auto&player:matches)++counts[lower(player.name)];
+    std::ostringstream out;
+    for(const auto&player:matches){out<<player.name<<": "<<player.id;if(counts[lower(player.name)]>1){std::time_t value=static_cast<std::time_t>(player.lastSeen);std::tm utc{};if(player.lastSeen>0&&gmtime_r(&value,&utc)){char stamp[32];std::strftime(stamp,sizeof(stamp),"%Y-%m-%d %H:%M UTC",&utc);out<<" (last seen "<<stamp<<')';}else out<<" (last seen unavailable)";}out<<'\n';}
+    return out.str();
 }
 
 std::string MapPlayersJson(const std::vector<StoredPlayer>& players,

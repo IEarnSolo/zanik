@@ -99,6 +99,10 @@ int main() {
            R"({"id":"abc123","name":"Ada <Admin>","online":false,"onlineSince":0,"lastSeen":123456,"location":"Temple <Woods>","skills":[{"name":"Attack","level":2,"xp":33},{"name":"Woodcutting","level":10,"xp":463}],"totalKills":5,"kills":[{"enemy":"Goblin","count":3,"firstKill":100,"lastKill":300},{"enemy":"Wolf","count":2,"firstKill":200,"lastKill":250}],"recentKills":[{"enemy":"Goblin","time":300},{"enemy":"Wolf","time":250}]})");
     assert(Status::PlayersJson(std::vector<StoredPlayer>{stored}) ==
            R"({"count":1,"players":[{"id":"abc123","name":"Ada <Admin>","online":false,"lastSeen":123456}]})");
+    StoredPlayer duplicateA=stored,duplicateB=stored;duplicateA.id="first";duplicateA.name="Same Name";duplicateA.lastSeen=1704067200;duplicateB.id="second";duplicateB.name="same name";duplicateB.lastSeen=0;
+    assert(Status::PlayerIdsText({duplicateA,duplicateB},"")=="Same Name: first (last seen 2024-01-01 00:00 UTC)\nsame name: second (last seen unavailable)\n");
+    assert(Status::PlayerIdsText({stored,duplicateA},"ada")=="Ada <Admin>: abc123\n");
+    assert(Status::PlayerIdsText({stored},"missing")=="No known player matches \"missing\".\n");
     stored.online = true;
     assert(Status::PlayerJson(stored).find("\"onlineSince\":120000") != std::string::npos);
     stored.hasMapLocation = true;

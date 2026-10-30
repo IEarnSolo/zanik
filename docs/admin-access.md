@@ -30,11 +30,24 @@ and map controls are implemented.
 
 ## Creating a browser session
 
+Enter `zanik-player-id` in the server's Pterodactyl console to list every known
+character and its public ID, or `zanik-player-id NAME` to filter the list.
+Name matching is case-insensitive. When matching characters have the same
+name, the output includes each character's last-seen UTC timestamp.
+
 Enter `zanik-admin` in the development server's Pterodactyl console. The
 persistent Zanik bootstrap intercepts that console line and prints a private,
 single-use login URL. The URL expires after five minutes. When exactly one
 character is allowlisted, no ID is required. If several characters are
 allowlisted, use `zanik-admin PUBLIC_ID`.
+
+An authenticated administrator can also open `/admin/sessions`. This page is
+not served without a currently valid admin session. It lists all known players,
+creates five-minute single-use links, and shows every valid browser session.
+Creating a link for a player who is not already authorized appends that
+character to `admins.txt`; duplicate names include last-seen timestamps in the
+selector. Each session can be revoked independently, including the current
+browser session. Link creation, authorization, and revocation are audited.
 
 The bootstrap authenticates to a loopback-only claim endpoint with a random
 secret stored at `/home/container/zanik-data/console-admin.key`. Requests to
