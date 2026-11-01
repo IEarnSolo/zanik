@@ -317,6 +317,8 @@ struct AdminTeleportDiagnostics {
     int lodestoneCompatibility = 0;
     int nodestoneCompatibility = 0;
     int playerCompatibility = 0;
+    int homeLocationCompatibility = 0;
+    std::uint64_t cachedHomeLocations = 0;
     int groundTraceCompatibility = 0;
     int storagePipelineCompatibility = 0;
     int nativeCaptureCompatibility = 0;
@@ -491,6 +493,11 @@ bool QueueAdminStorageTeleport(const std::string& characterGuid, const std::stri
 bool QueueAdminQuestTeleport(const std::string& characterGuid, const std::string& publicId,
                              const std::string& destinationId, const FVector3d& location,
                              const std::string& sessionPrefix);
+bool ResolvePlayerHomeLocation(const std::string& characterGuid, FVector3d& location,
+                               std::int64_t* capturedAt = nullptr);
+bool QueueAdminHomeTeleport(const std::string& characterGuid, const std::string& publicId,
+                            const std::string& ownerCharacterGuid, const std::string& ownerPublicId,
+                            const FVector3d& location, const std::string& sessionPrefix);
 AdminTeleportDiagnostics GetAdminTeleportDiagnostics();
 struct AdminStorageDiagnostics {
     int compatibility = 0;

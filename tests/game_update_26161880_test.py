@@ -65,6 +65,15 @@ assert "0x55,0x48,0x89,0xE5,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53" in que
 
 analyzer = (root / "tools" / "compat_analyzer.cpp").read_text()
 assert server_sha in analyzer
+assert "ADominionPlayerController::Server_SetObjectCustomName_Implementation" in analyzer
+assert "serverCallsRename" in analyzer
+assert "serverArgumentOrder" in analyzer
+assert "GetPlayerBedRespawnLocationAndRotation" in analyzer
+assert "home teleport bed-respawn ABI changed" in analyzer
+
+update_safety = (root / "docs" / "game-update-safety.md").read_text()
+assert "Named-storage compatibility is a required game-update gate" in update_safety
+assert "temporary name" in update_safety and "original name" in update_safety
 
 updater = (root / "scripts" / "update-game.sh").read_text()
 assert 'while [ "$attempt" -le 2 ]' in updater

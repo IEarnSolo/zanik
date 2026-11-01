@@ -51,7 +51,7 @@ assert "std::reverse" not in tick_action
 # request preparation on the HTTP worker.
 assert "GetObjectCount()" in snapshot
 assert "GetObjectIdentity" in snapshot
-assert "ReadCustomNameDirect" in snapshot
+assert "ReadCustomNameCached" in snapshot
 assert "FindCatalogData" in planner
 assert "ResolveRecipe" in planner
 assert "canAddItemByData" in planner
@@ -97,9 +97,17 @@ assert status_route.index("authenticate(s,raw)") < status_route.index("GetAdminS
 assert "found->second->session!=session" in storage
 assert "Another storage operation is already pending" in storage
 
-# Rename is independently fail-closed on the current build after the live
-# setter returned success without an authoritative CustomName readback.
-assert "renameCompatibility=(hash==PreviousSha||hash==CurrentSha)?-1:1" in storage
+# Rename is statically ABI-gated, follows the authoritative player-controller
+# server path, and circuit-breaks immediately if interface readback is not preserved.
+assert "serverSetObjectCustomName" in storage
+assert "0x0A593D70" in storage
+assert "cachedDisplayTextOffset.store" in storage
+assert "ProcessOneCustomName();" in engine_tick
+assert "ActionKind::RenameVerify" in planner
+assert "actual==r.renameValue.data()" in storage
+assert "This storage type did not preserve the requested name" in storage
+assert "renameCompatibility=-1" not in tick_action
+assert "Storage rename ABI validation failed" in storage
 assert 'if(renameCompatibility.load()!=1){error="Storage naming is unavailable for this game build"' in planner
 assert '\\"storageRename\\"' in main
 assert "storageRenameAvailable=Boolean(capabilities.storageRename)" in web

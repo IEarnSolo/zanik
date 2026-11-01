@@ -12,6 +12,7 @@
 #include <deque>
 #include <fstream>
 #include <iomanip>
+#include <unordered_map>
 #include <sstream>
 #include <pthread.h>
 #include <sys/mman.h>
@@ -40,6 +41,7 @@ TryTeleportFn nativeTryTeleport=nullptr;CanTeleportFn originalCanTeleport=nullpt
 uintptr_t lineTraceObject=0,lineTraceFunction=0;
 uintptr_t teleportSubsystem=0,teleportWithParamsFunction=0,getActorBoundsFunction=0;
 uintptr_t nodestoneNamedFunction=0;
+uintptr_t playerBedObject=0,playerBedFunction=0;
 BPTriggerDelayedTeleportFn bpTriggerDelayedTeleport=nullptr;
 struct LineTraceLayout{int world=-1,start=-1,end=-1,channel=-1,complex=-1,ignore=-1,debug=-1,outHit=-1,ignoreSelf=-1,result=-1;};
 LineTraceLayout lineTraceLayout;
@@ -58,6 +60,10 @@ std::atomic<int> nodestoneTeleportCompatibility{0};
 std::atomic<int> groundTraceCompatibility{0},storagePipelineCompatibility{0},nativeCaptureCompatibility{0};
 std::atomic<std::uint64_t> queued{0},accepted{0},rejected{0},maximumMicros{0};
 std::atomic<std::uint64_t> acceptedStorage{0},acceptedQuest{0},staleStorage{0},unsafeStorage{0};
+struct HomeLocation{FVector3d location{};std::int64_t capturedAt=0;};
+std::unordered_map<std::string,HomeLocation> homeLocations;
+std::unordered_map<uintptr_t,std::chrono::steady_clock::time_point> nextHomeRefresh;
+std::atomic<int> homeLocationCompatibility{0};
 std::atomic<std::uint64_t> tickCalls{0},maximumTickMicros{0},slowTickCalls{0};
 std::atomic<std::uint64_t> maximumStorageTeleportMicros{0},slowStorageTeleportCalls{0};
 std::atomic<bool> storageTeleportCircuitBroken{false};
@@ -335,6 +341,36 @@ bool InitializeStorageTeleportPipeline(){
     return true;
 }
 
+bool InitializeHomeLocationPipeline(){
+    playerBedFunction=g_Engine->FindFunction("DominionRuntimeBlueprintLibrary","GetPlayerBedRespawnLocationAndRotation");
+    playerBedObject=g_Engine->FindObject("DominionRuntimeBlueprintLibrary",true);
+    if(!playerBedFunction||!playerBedObject)return false;
+    const auto fields=ReflectedFields(playerBedFunction);
+    const auto has=[&](const char* name,int offset){return std::any_of(fields.begin(),fields.end(),[&](const auto& field){return field.first==name&&field.second==offset;});};
+    const bool valid=has("PlayerController",0x0)&&has("OutLocation",0x8)&&has("OutRotation",0x20)&&has("ReturnValue",0x38);
+    if(!valid){
+        std::string message="Home location disabled: reflected bed-respawn layout";
+        for(const auto& field:fields)message+=" "+field.first+"=0x"+[] (int value){char text[24]{};std::snprintf(text,sizeof(text),"%x",value);return std::string(text);}(field.second);
+        LogMessage(message);
+    }
+    return valid;
+}
+
+void RefreshHomeLocation(uintptr_t pawn){
+    if(homeLocationCompatibility.load()!=1||!playerBedObject||!playerBedFunction)return;
+    const auto now=std::chrono::steady_clock::now();
+    {QueueLock lock;auto& due=nextHomeRefresh[pawn];if(due>now)return;due=now+std::chrono::seconds(2);}
+    PlayerInfo player;bool found=false;for(const auto& candidate:g_Engine->GetAllPlayers())if(candidate.pawnPtr==pawn){player=candidate;found=true;break;}
+    if(!found||player.characterGuid.empty()||!player.controllerPtr)return;
+    alignas(16) unsigned char params[0x40]{};std::memcpy(params,&player.controllerPtr,sizeof(player.controllerPtr));
+    processEvent(reinterpret_cast<void*>(playerBedObject),reinterpret_cast<void*>(playerBedFunction),params);
+    FVector3d location{};std::memcpy(&location,params+0x8,sizeof(location));
+    const bool available=params[0x38]&&std::isfinite(location.X)&&std::isfinite(location.Y)&&std::isfinite(location.Z);
+    QueueLock lock;
+    if(available)homeLocations[player.characterGuid]={location,std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count()};
+    else homeLocations.erase(player.characterGuid);
+}
+
 bool InitializeNodestoneTeleportPipeline(){
     nodestoneNamedFunction=g_Engine->FindFunction("TeleportationSubsystem","TeleportToNamedLocation");
     if(!nodestoneNamedFunction)return false;
@@ -572,7 +608,7 @@ void RunOne(void* tickingPawn){
                    " destination="+request.destinationId+" nativeMicros="+std::to_string(nativeMicros));
         return;
     }
-    if(request.action=="storage"||request.action=="gravestone"||request.action=="quest"){
+    if(request.action=="storage"||request.action=="gravestone"||request.action=="quest"||request.action=="home"){
         const bool quest=request.action=="quest";
         FVector3d chest{};uintptr_t chestActor=0;
         if(!bpTriggerDelayedTeleport||!storageTeleportTemplateValid.load()||!getActorBoundsFunction||
@@ -676,6 +712,7 @@ void RunOne(void* tickingPawn){
 void HookTick(void* pawn,float delta,int levelTick,void* tickFunction){
     originalTick(pawn,delta,levelTick,tickFunction);
     const auto started=std::chrono::steady_clock::now();++tickCalls;
+    RefreshHomeLocation(reinterpret_cast<uintptr_t>(pawn));
     FlushNativeTeleportCapture();
     ReconcilePending(pawn);
     bool pending=false;{QueueLock lock;pending=!requests.empty();}
@@ -711,6 +748,9 @@ bool InitializeAdminTeleport(uintptr_t moduleBase,uintptr_t moduleEnd){
     if(groundTraceCompatibility.load()!=1)LogMessage("Admin storage teleport ground-trace compatibility unavailable; storage teleports will fail closed");
     storagePipelineCompatibility=InitializeStorageTeleportPipeline()?1:-1;
     if(storagePipelineCompatibility.load()!=1)LogMessage("Admin storage single-stage teleport compatibility unavailable; storage teleports will fail closed");
+    homeLocationCompatibility=InitializeHomeLocationPipeline()?1:-1;
+    if(homeLocationCompatibility.load()!=1)LogMessage("Home teleport bed destination compatibility unavailable; home cards will fail closed");
+    else LogMessage("Home teleport bed destination compatibility verified");
     long pageSize=sysconf(_SC_PAGESIZE);uintptr_t page=reinterpret_cast<uintptr_t>(target)&~(uintptr_t(pageSize)-1);
     if(mprotect(reinterpret_cast<void*>(page),size_t(pageSize),PROT_READ|PROT_WRITE|PROT_EXEC)!=0){originalTick=nullptr;munmap(trampoline,64);compatibility=-5;return false;}
     unsigned char patch[HookBytes];std::memset(patch,0x90,sizeof(patch));WriteJump(patch,reinterpret_cast<uintptr_t>(&HookTick));
@@ -815,6 +855,22 @@ bool QueueAdminQuestTeleport(const std::string& characterGuid,const std::string&
     requests.push_back(std::move(request));++queued;return true;
 }
 
+bool ResolvePlayerHomeLocation(const std::string& characterGuid,FVector3d& location,std::int64_t* capturedAt){
+    if(homeLocationCompatibility.load()!=1||characterGuid.empty())return false;
+    QueueLock lock;const auto found=homeLocations.find(characterGuid);if(found==homeLocations.end())return false;
+    location=found->second.location;if(capturedAt)*capturedAt=found->second.capturedAt;return true;
+}
+
+bool QueueAdminHomeTeleport(const std::string& characterGuid,const std::string& publicId,
+                            const std::string& ownerCharacterGuid,const std::string& ownerPublicId,
+                            const FVector3d& location,const std::string& sessionPrefix){
+    if(!bpTriggerDelayedTeleport||!storageTeleportTemplateValid.load()||compatibility.load()!=1||groundTraceCompatibility.load()!=1||storagePipelineCompatibility.load()!=1||nativeCaptureCompatibility.load()!=1||homeLocationCompatibility.load()!=1||storageTeleportCircuitBroken.load()||characterGuid.empty()||ownerCharacterGuid.empty()||!std::isfinite(location.X)||!std::isfinite(location.Y)||!std::isfinite(location.Z))return false;
+    QueueLock lock;
+    if(requests.size()>=QueueCapacity||std::any_of(requests.begin(),requests.end(),[&](const Request&r){return r.characterGuid==characterGuid;})||std::any_of(pendingTeleports.begin(),pendingTeleports.end(),[&](const PendingTeleport&p){return p.characterGuid==characterGuid;}))return false;
+    Request request;request.characterGuid=characterGuid;request.publicId=publicId;request.destinationId="home:"+ownerPublicId;request.sessionPrefix=sessionPrefix;request.targetCharacterGuid=ownerCharacterGuid;request.targetPublicId=ownerPublicId;request.action="home";request.preparedLocation=location;
+    requests.push_back(std::move(request));++queued;return true;
+}
+
 bool QueueAdminGravestoneTeleport(const std::string& characterGuid,const std::string& publicId,
                                   const std::string& ownerCharacterGuid,const std::string& ownerPublicId,
                                   const std::string& graveId,const std::string& sessionPrefix){
@@ -831,6 +887,7 @@ bool QueueAdminGravestoneTeleport(const std::string& characterGuid,const std::st
 AdminTeleportDiagnostics GetAdminTeleportDiagnostics(){
     AdminTeleportDiagnostics d;d.compatibility=compatibility.load();d.lodestoneCompatibility=d.compatibility;
     d.nodestoneCompatibility=nodestoneTeleportCompatibility.load();d.playerCompatibility=d.compatibility;
+    d.homeLocationCompatibility=homeLocationCompatibility.load();{QueueLock lock;d.cachedHomeLocations=homeLocations.size();}
     d.groundTraceCompatibility=groundTraceCompatibility.load();d.storagePipelineCompatibility=storagePipelineCompatibility.load();
     d.nativeCaptureCompatibility=nativeCaptureCompatibility.load();d.nativeTemplateAvailable=storageTeleportTemplateValid.load()?1:0;
     d.storageTransportCompatibility=storageTeleportCircuitBroken.load()?-1:(d.nativeCaptureCompatibility==1&&d.nativeTemplateAvailable==1?1:0);d.queuedRequests=queued.load();

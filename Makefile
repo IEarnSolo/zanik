@@ -29,7 +29,7 @@ $(OUT): $(OBJ)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) $(DEP) $(OUT) dist/zanik-compat-analyzer dist/status_test dist/admin_store_test
+	rm -f $(OBJ) $(DEP) $(OUT) dist/zanik-compat-analyzer dist/status_test dist/admin_store_test dist/memory_safe_read_test
 	$(MAKE) -C qol clean
 
 -include $(DEP)
@@ -49,6 +49,8 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	./dist/status_test
 	$(CXX) $(CXXFLAGS) tests/admin_store_test.cpp src/admin_store.o -o dist/admin_store_test -pthread
 	./dist/admin_store_test
+	$(CXX) $(CXXFLAGS) tests/memory_safe_read_test.cpp src/utils/memory.o -o dist/memory_safe_read_test -pthread
+	./dist/memory_safe_read_test
 	$(CXX) $(CXXFLAGS) tests/server_performance_store_test.cpp src/server_performance_store.o -o dist/server_performance_store_test -pthread
 	./dist/server_performance_store_test
 	$(MAKE) -C qol test
@@ -63,6 +65,9 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(PYTHON) tests/game_update_25991736_test.py
 	$(PYTHON) tests/game_update_26161880_test.py
 	$(PYTHON) tests/storage_teleport_compatibility_test.py
+	$(PYTHON) tests/home_teleport_test.py
+	$(PYTHON) tests/player_page_polling_test.py
+	$(PYTHON) tests/player_discovery_performance_test.py
 	$(PYTHON) tests/storage_mutation_pipeline_test.py
 	$(PYTHON) tests/quest_schema_test.py
 	sh tests/config_test.sh

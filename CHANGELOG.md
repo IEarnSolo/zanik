@@ -2,7 +2,24 @@
 
 All notable changes to Zanik are documented here.
 
-## Unreleased
+## [0.2.76] - 2026-10-31
+
+### Added
+
+- Add a Home teleport card to player Overview pages with the authoritative bed destination, a mini-map using the existing Home Teleport artwork, and an admin-only rune-free teleport control.
+- Validate the exact native bed-respawn accessor and its reflected web-runtime contract during game-update analysis so Home teleport fails closed after incompatible game updates.
+- Split player gravestones into Active and Retired tabs. Preserve claimed and deleted gravestone snapshots with their retirement reason and time; pre-retirement legacy snapshots are intentionally hidden.
+- Allow administrators to restore a copy of one item or every item from a retired gravestone into the owner or linked administrator inventory without removing the retired record.
+- Add named-storage interface-gate, server-caller, and argument-order validation to the compatibility analyzer, plus a mandatory reversible live check to the game-update procedure.
+
+### Fixed
+
+- Keep Zanik Manager's managed install and recovery lifecycle compatible with this server payload; the release changes no generated website asset paths or extraction recipes, so retained asset bundles do not require a rebuild.
+- Stop the two-second player-status synchronizer from walking the entire Unreal object registry twice per cycle; steady-state players now use the authoritative PlayerState pawn link and identity-checked component snapshots, retaining broad discovery only for login, respawn, and world-transition recovery.
+- Stop hidden player-page Storage, Gravestones, Recipes, Quests, Activity, and map sections from polling in the background; expensive live-world requests are now scoped to the visible section, cannot overlap, and reuse generation-invalidated native snapshots for 30 seconds instead of repeatedly scanning the live object registry.
+- Prevent the NPC background scanner from crashing a long-running server when an AI actor is unloaded between its pointer validation and location copy; volatile transform reads now fail closed through the kernel and revalidate the root component.
+- Restore chest names and website rename controls through the authoritative player-controller server path and bounded name cache, verify every interface readback before reporting success, and keep unsupported inventory types from disabling naming for compatible chests.
+- Refresh the Retired gravestone tab immediately after website mutations, poll authoritative in-game retirement while the section is open, and preserve both stable persistence and object identities so retired item copies remain resolvable across game updates.
 
 ## [0.2.75] - 2026-10-30
 

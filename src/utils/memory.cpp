@@ -6,10 +6,12 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <fcntl.h>
 #include <mutex>
 #include <shared_mutex>
 #include <vector>
 #include <link.h>
+#include <unistd.h>
 
 namespace Mem {
 
@@ -129,6 +131,19 @@ bool Readable(const void* addr, size_t size) {
 
     LoadRegionsLocked();
     return ContainsLocked(value, size);
+}
+
+bool SafeCopy(uintptr_t addr, void* out, size_t size) {
+    if (!addr || !out || !size || addr < 0x10000 ||
+        addr >= 0x0000800000000000ULL || addr + size < addr) return false;
+    // Reading our own memory through procfs keeps the fault in the kernel:
+    // an actor that is unmapped concurrently yields EIO/short read rather
+    // than a SIGSEGV in this process. This also works under the dedicated
+    // server's restricted syscall policy, where process_vm_readv is denied.
+    static const int memory = open("/proc/self/mem", O_RDONLY | O_CLOEXEC);
+    if (memory < 0) return false;
+    const ssize_t copied = pread(memory, out, size, static_cast<off_t>(addr));
+    return copied == static_cast<ssize_t>(size);
 }
 
 bool InImage(const void* addr) {

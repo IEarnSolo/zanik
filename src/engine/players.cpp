@@ -4,6 +4,8 @@
 
 #include <cstring>
 #include <atomic>
+#include <chrono>
+#include <pthread.h>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -27,6 +29,20 @@ std::atomic<int> discoveryPlayersProduced{0};
 struct PawnComponents {
     uintptr_t sustenance = 0;
     uintptr_t hydration = 0;
+};
+
+struct CachedPawnComponents {
+    std::uint64_t pawnIdentity = 0;
+    PawnComponents components;
+    std::chrono::steady_clock::time_point refreshedAt{};
+};
+
+pthread_mutex_t pawnComponentCacheMutex = PTHREAD_MUTEX_INITIALIZER;
+std::unordered_map<uintptr_t, CachedPawnComponents> pawnComponentCache;
+struct PawnCacheLock {
+    explicit PawnCacheLock(pthread_mutex_t& mutex) : mutex_(&mutex) { pthread_mutex_lock(mutex_); }
+    ~PawnCacheLock() { pthread_mutex_unlock(mutex_); }
+    pthread_mutex_t* mutex_;
 };
 
 void ReadDoubleTriple(uintptr_t address, double& a, double& b, double& c) {
@@ -225,43 +241,51 @@ std::vector<PlayerInfo> Engine::GetAllPlayers() const {
     uintptr_t* states = (uintptr_t*)playerArray.Data;
     std::vector<uintptr_t> stateList(states, states + playerArray.Num);
 
-    // During login/world streaming, GWorld can expose a transitional
-    // PlayerState array even though the authoritative pawn and controller are
-    // already live. Recover only states proven by a two-way live actor
-    // relationship; this avoids publishing stale disconnected PlayerStates.
+    // PlayerState::PawnPrivate is authoritative in the ordinary steady state.
+    // Only pay for the broad recovery scan during the short login/world-
+    // streaming window where none of the listed states has a valid pawn.
     std::unordered_set<uintptr_t> actorBackedStates;
     int32_t objectCount = GetObjectCount();
-    for (int32_t i = 0; i < objectCount; ++i) {
-        uintptr_t object = GetObjectByIndex(i);
-        if (!object) continue;
-        if (IsA(object, "DominionPlayerCharacter")) {
-            uintptr_t state = Mem::ReadPtr(object + Offsets::Pawn_PlayerState);
-            uintptr_t controller = Mem::ReadPtr(object + Offsets::Pawn_Controller);
-            if (state && IsA(state, "DominionPlayerState") &&
-                (!controller || Mem::ReadPtr(controller + Offsets::Controller_PlayerState) == state)) {
-                actorBackedStates.insert(state);
-            }
-        } else if (IsA(object, "DominionPlayerControllerBase")) {
-            uintptr_t state = Mem::ReadPtr(object + Offsets::Controller_PlayerState);
-            uintptr_t pawn = Mem::ReadPtr(object + Offsets::Controller_Pawn);
-            if (state && pawn && IsA(state, "DominionPlayerState") &&
-                IsA(pawn, "DominionPlayerCharacter") &&
-                Mem::ReadPtr(pawn + Offsets::Pawn_Controller) == object) {
-                actorBackedStates.insert(state);
-            }
-        }
-    }
     bool listedStateIsLive = false;
     for (uintptr_t state : stateList) {
-        if (actorBackedStates.count(state)) { listedStateIsLive = true; break; }
+        if (!state) continue;
+        uintptr_t pawn = Mem::ReadPtr(state + Offsets::PlayerState_PawnPrivate);
+        if (pawn && Mem::Readable(reinterpret_cast<void*>(pawn), 0x400) &&
+            IsA(pawn, "DominionPlayerCharacter") &&
+            Mem::ReadPtr(pawn + Offsets::Pawn_PlayerState) == state) {
+            listedStateIsLive = true;
+            break;
+        }
     }
-    if (!listedStateIsLive && !actorBackedStates.empty()) {
-        stateList.assign(actorBackedStates.begin(), actorBackedStates.end());
-        // A recovered state may belong to another live GameState during the
-        // transition, so merge every authoritative character-name table.
+    if (!listedStateIsLive) {
         for (int32_t i = 0; i < objectCount; ++i) {
             uintptr_t object = GetObjectByIndex(i);
-            if (object && IsA(object, "DominionGameStateBase")) collectCharacterNames(object);
+            if (!object) continue;
+            if (IsA(object, "DominionPlayerCharacter")) {
+                uintptr_t state = Mem::ReadPtr(object + Offsets::Pawn_PlayerState);
+                uintptr_t controller = Mem::ReadPtr(object + Offsets::Pawn_Controller);
+                if (state && IsA(state, "DominionPlayerState") &&
+                    (!controller || Mem::ReadPtr(controller + Offsets::Controller_PlayerState) == state)) {
+                    actorBackedStates.insert(state);
+                }
+            } else if (IsA(object, "DominionPlayerControllerBase")) {
+                uintptr_t state = Mem::ReadPtr(object + Offsets::Controller_PlayerState);
+                uintptr_t pawn = Mem::ReadPtr(object + Offsets::Controller_Pawn);
+                if (state && pawn && IsA(state, "DominionPlayerState") &&
+                    IsA(pawn, "DominionPlayerCharacter") &&
+                    Mem::ReadPtr(pawn + Offsets::Pawn_Controller) == object) {
+                    actorBackedStates.insert(state);
+                }
+            }
+        }
+        if (!actorBackedStates.empty()) {
+            stateList.assign(actorBackedStates.begin(), actorBackedStates.end());
+            // A recovered state may belong to another live GameState during
+            // the transition, so merge authoritative character-name tables.
+            for (int32_t i = 0; i < objectCount; ++i) {
+                uintptr_t object = GetObjectByIndex(i);
+                if (object && IsA(object, "DominionGameStateBase")) collectCharacterNames(object);
+            }
         }
     }
     std::unordered_set<uintptr_t> pawnSet;
@@ -367,19 +391,46 @@ std::vector<PlayerInfo> Engine::GetAllPlayers() const {
     if (pawnSet.empty()) return players;
 
     std::unordered_map<uintptr_t, PawnComponents> byPawn;
-    for (int32_t i = 0; i < objectCount; i++) {
-        uintptr_t object = GetObjectByIndex(i);
-        if (!object) continue;
-
-        uintptr_t outer = Mem::ReadPtr(object + Offsets::UObject_Outer);
-        if (!outer || pawnSet.find(outer) == pawnSet.end()) continue;
-
-        PawnComponents& slots = byPawn[outer];
-        if (!slots.sustenance && IsA(object, "SustenanceComponent")) {
-            slots.sustenance = object;
-        } else if (!slots.hydration && IsA(object, "HydrationComponent")) {
-            slots.hydration = object;
+    std::unordered_set<uintptr_t> componentMisses;
+    const auto componentNow = std::chrono::steady_clock::now();
+    {
+        PawnCacheLock lock(pawnComponentCacheMutex);
+        for (uintptr_t pawn : pawnSet) {
+            auto cached = pawnComponentCache.find(pawn);
+            const std::uint64_t identity = GetObjectIdentity(pawn);
+            bool valid = cached != pawnComponentCache.end() && identity &&
+                         cached->second.pawnIdentity == identity &&
+                         componentNow - cached->second.refreshedAt < std::chrono::seconds(30);
+            if (valid) {
+                const auto& components = cached->second.components;
+                for (uintptr_t component : {components.sustenance, components.hydration}) {
+                    if (component && (!IsObjectLive(component) ||
+                        Mem::ReadPtr(component + Offsets::UObject_Outer) != pawn)) valid = false;
+                }
+            }
+            if (valid) byPawn[pawn] = cached->second.components;
+            else componentMisses.insert(pawn);
         }
+    }
+    if (!componentMisses.empty()) {
+        for (uintptr_t pawn : componentMisses) byPawn[pawn] = {};
+        for (int32_t i = 0; i < objectCount; i++) {
+            uintptr_t object = GetObjectByIndex(i);
+            if (!object) continue;
+            uintptr_t outer = Mem::ReadPtr(object + Offsets::UObject_Outer);
+            if (!outer || componentMisses.find(outer) == componentMisses.end()) continue;
+            PawnComponents& slots = byPawn[outer];
+            if (!slots.sustenance && IsA(object, "SustenanceComponent")) {
+                slots.sustenance = object;
+            } else if (!slots.hydration && IsA(object, "HydrationComponent")) {
+                slots.hydration = object;
+            }
+        }
+        PawnCacheLock lock(pawnComponentCacheMutex);
+        for (uintptr_t pawn : componentMisses) {
+            pawnComponentCache[pawn] = {GetObjectIdentity(pawn), byPawn[pawn], componentNow};
+        }
+        if (pawnComponentCache.size() > 512) pawnComponentCache.clear();
     }
 
     for (PlayerInfo& info : players) {

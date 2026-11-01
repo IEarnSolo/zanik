@@ -7,6 +7,7 @@ namespace Mem {
 
 void Init();
 bool Readable(const void* addr, size_t size);
+bool SafeCopy(uintptr_t addr, void* out, size_t size);
 void Refresh();
 
 bool InImage(const void* addr);
@@ -16,6 +17,14 @@ inline bool Read(uintptr_t addr, T& out) {
     if (!addr || !Readable((const void*)addr, sizeof(T))) return false;
     std::memcpy(&out, (const void*)addr, sizeof(T));
     return true;
+}
+
+// Use this for pointers owned by the game that may be released by another
+// thread between validation and the actual copy. The kernel performs the
+// transfer and reports a failed read instead of delivering SIGSEGV here.
+template <typename T>
+inline bool SafeRead(uintptr_t addr, T& out) {
+    return SafeCopy(addr, &out, sizeof(T));
 }
 
 inline uintptr_t ReadPtr(uintptr_t addr) {

@@ -14,6 +14,9 @@ assert '# zanik-npc-identities' in npcs
 assert 'catalog.size()==expected' in npcs
 assert 'ValidateTransformLayout()' in npcs
 assert 'Offsets::Actor_RootComponent' in npcs and 'Offsets::SceneComp_RelativeLocation' in npcs
+assert 'Mem::SafeRead(actor+Offsets::Actor_RootComponent,root)' in npcs
+assert 'Mem::SafeRead(root+Offsets::SceneComp_RelativeLocation,location)' in npcs
+assert 'confirmedRoot!=root' in npcs
 assert 'value.schema==1&&fingerprintValid' in storage
 assert '$DATA/player-recipe-snapshots.db' in bootstrap
 for check in ('adminBuildingExpectedPieces -eq 827', 'adminBuildingResolvedPieces -eq 827',

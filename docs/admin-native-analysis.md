@@ -228,11 +228,18 @@ registry, streaming, respawn capture, and persistence paths. The web API uses
 the relevant substatus when returning `503`, so a broken collision pipeline
 does not misreport an ordinary lodestone request as incompatible and a broken
 rename ABI does not need to disable read-only storage contents. Compatibility
-metadata for the ABI is necessary but not sufficient: each reviewed game build
-also requires a live setter/readback check against the reflected `CustomName`
-property. Build 25991736 currently fails that functional check, so its rename
-control is hidden and rename requests fail closed while all independently
-validated storage operations remain available to the development candidate.
+metadata for the ABI is necessary but not sufficient. The analyzer also proves
+that the authoritative player-controller server implementation still loads the
+`URenameable` class, checks the target through `DoesImplementInterface`, and calls
+`IRenameable::Execute_SetCustomName` with the object, `FText`, and setter
+identity in the expected order. Website renames invoke that same server
+implementation and read back `Execute_GetCustomName` before reporting success;
+a target type that does not retain names fails only its request. Displayed names use a bounded
+one-per-tick cache of that same authoritative getter so in-game and website
+changes agree. The `FText` display helper offset is resolved during
+initialization, never lazily fingerprinted on the game thread. Each reviewed
+game build must also pass a reversible live rename-and-restore check on a chest
+type already known to support in-game naming on the development server.
 
 Remote gravestone inventory capture is initiated directly by the authoritative
 `AGameplayObjectRegistry::RegisterGravestone(FGravestoneData const&)` lifecycle

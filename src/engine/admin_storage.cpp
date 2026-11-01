@@ -67,7 +67,8 @@ StorageOffsets OffsetsFor(const std::string& hash){
     else if(hash==CurrentSha)value={0x0A653CD0,0x0A654570,0x0A655DA0,0x0A657880,0x0A655230,0x0A660090,0x0A3DA9D0,0x04A89480,0x07ABFE00,0x0A0EF090,0x0A0EF300,0x0A0EF6E0,0x04ACFAE0,0x079D0710,0x04A1F9F0,0x0A3B58D0};
     return value;
 }
-uintptr_t DisplayTextOffset(){static const std::string hash=FileSha256("/proc/self/exe");static const uintptr_t value=(hash==PreviousSha||hash==CurrentSha)?0x04ACAA80:0x04AA1A80;return value;}
+std::atomic<uintptr_t> cachedDisplayTextOffset{0};
+uintptr_t DisplayTextOffset(){auto value=cachedDisplayTextOffset.load();if(value)return value;const std::string hash=FileSha256("/proc/self/exe");value=(hash==PreviousSha||hash==CurrentSha)?0x04ACAA80:0x04AA1A80;cachedDisplayTextOffset.store(value);return value;}
 
 using AddItemByDataFn=bool(*)(void*,void*,int,float,const void*);
 using CanAddItemByDataFn=bool(*)(void*,void*,int);
@@ -82,6 +83,7 @@ using EngineTickFn=void(*)(void*,float,int,void*);
 using ExecuteGetCustomNameFn=void*(*)(void*,void*);
 using ExecuteGetSetterIdFn=void*(*)(void*,void*);
 using ExecuteSetCustomNameFn=void(*)(void*,const void*,const void*);
+using ServerSetObjectCustomNameFn=void(*)(void*,void*,const void*,const void*);
 using FTextFromStringFn=void*(*)(void*,const char*);
 using UniqueNetIdDestructorFn=void(*)(void*);
 using FTextDestructorFn=void(*)(void*);
@@ -97,12 +99,13 @@ EngineTickFn originalEngineTick=nullptr;
 ExecuteGetCustomNameFn executeGetCustomName=nullptr;
 ExecuteGetSetterIdFn executeGetSetterId=nullptr;
 ExecuteSetCustomNameFn executeSetCustomName=nullptr;
+ServerSetObjectCustomNameFn serverSetObjectCustomName=nullptr;
 FTextFromStringFn fTextFromString=nullptr;
 UniqueNetIdDestructorFn destroyUniqueNetId=nullptr;
 FTextDestructorFn destroyFText=nullptr;
 
 enum class JobState : std::uint8_t { Queued,Running,RollingBack,Completed,Failed };
-enum class ActionKind : std::uint8_t { Add,Remove,Move,RenameConstruct,RenameSetterIdentity,RenameSet,RenameDestroyIdentity,RenameDestroyText };
+enum class ActionKind : std::uint8_t { Add,Remove,Move,RenameConstruct,RenameSetterIdentity,RenameSet,RenameVerify,RenameDestroyIdentity,RenameDestroyText };
 enum class OperationFamily : std::uint8_t { SingleItem,SlotMovement,BatchAddition,BatchMovement,Deletion,Rename,Rollback,Count };
 struct NativeAction {
     ActionKind kind=ActionKind::Add;
@@ -301,9 +304,50 @@ std::string ReadCustomNameDirect(uintptr_t actor){
     const FString* shown=display(reinterpret_cast<const void*>(actor+uintptr_t(offset)));
     return shown&&Mem::Readable(shown,sizeof(FString))?g_Engine->ReadFString(reinterpret_cast<uintptr_t>(shown)):std::string{};
 }
+
+std::string ReadCustomNameOnGameThread(uintptr_t actor){
+    if(!g_Engine||!actor||!executeGetCustomName||!destroyFText)return {};
+    alignas(16) unsigned char text[16]{};
+    executeGetCustomName(text,reinterpret_cast<void*>(actor));
+    using DisplayFn=const FString*(*)(const void*);
+    auto display=reinterpret_cast<DisplayFn>(g_Engine->GetModuleBase()+DisplayTextOffset());
+    const FString* shown=display(text);
+    std::string value=shown&&Mem::Readable(shown,sizeof(FString))?g_Engine->ReadFString(reinterpret_cast<uintptr_t>(shown)):std::string();
+    destroyFText(text);
+    return value;
+}
+
+void PublishCustomName(std::uint64_t identity,const std::string& value){
+    if(!identity||pthread_mutex_trylock(&customNameMutex)!=0)return;
+    customNames[identity]={value,std::chrono::steady_clock::now()};pendingCustomNames.erase(identity);
+    if(customNames.size()>4096)customNames.erase(customNames.begin());
+    pthread_mutex_unlock(&customNameMutex);
+}
+
+std::string ReadCustomNameCached(uintptr_t actor){
+    if(!g_Engine||!actor)return {};
+    const auto identity=g_Engine->GetObjectIdentity(actor);if(!identity)return ReadCustomNameDirect(actor);
+    const auto now=std::chrono::steady_clock::now();std::string value;bool current=false;
+    pthread_mutex_lock(&customNameMutex);auto found=customNames.find(identity);
+    if(found!=customNames.end()){value=found->second.value;current=now-found->second.refreshed<std::chrono::seconds(4);}
+    if(!current)pendingCustomNames[identity]=actor;pthread_mutex_unlock(&customNameMutex);
+    if(current)return value;const auto reflected=ReadCustomNameDirect(actor);return value.empty()?reflected:value;
+}
+
+void ProcessOneCustomName(){
+    if(!executeGetCustomName||pthread_mutex_trylock(&customNameMutex)!=0)return;
+    std::uint64_t identity=0;uintptr_t actor=0;if(!pendingCustomNames.empty()){auto it=pendingCustomNames.begin();identity=it->first;actor=it->second;pendingCustomNames.erase(it);}pthread_mutex_unlock(&customNameMutex);
+    if(!identity||!actor||!g_Engine||g_Engine->GetObjectIdentity(actor)!=identity)return;
+    PublishCustomName(identity,ReadCustomNameOnGameThread(actor));
+}
+
 std::shared_ptr<const StorageSnapshot> BuildStorageSnapshot(const std::string&targetGuid,const std::string&adminGuid,bool allowCache){
     const auto started=std::chrono::steady_clock::now();const std::string cacheKey=targetGuid+'\n'+adminGuid;
-    if(allowCache){std::shared_lock<std::shared_mutex> lock(snapshotMutex);auto found=snapshotCache.find(cacheKey);if(found!=snapshotCache.end()&&found->second&&std::chrono::steady_clock::now()-found->second->createdAt<std::chrono::seconds(2)&&found->second->generation==storageGeneration.load()&&found->second->world==g_Engine->GetWorld()&&found->second->worldIdentity==g_Engine->GetObjectIdentity(found->second->world)&&found->second->removalGeneration==buildingRemovalEvents.load()){++snapshotHits;return found->second;}}
+    // Native mutations and building-removal hooks advance the generations
+    // below, so ordinary page refreshes can reuse this snapshot. The timeout
+    // is only a fallback for inventory changes made directly in-game that do
+    // not pass through Zanik's mutation pipeline.
+    if(allowCache){std::shared_lock<std::shared_mutex> lock(snapshotMutex);auto found=snapshotCache.find(cacheKey);if(found!=snapshotCache.end()&&found->second&&std::chrono::steady_clock::now()-found->second->createdAt<std::chrono::seconds(30)&&found->second->generation==storageGeneration.load()&&found->second->world==g_Engine->GetWorld()&&found->second->worldIdentity==g_Engine->GetObjectIdentity(found->second->world)&&found->second->removalGeneration==buildingRemovalEvents.load()){++snapshotHits;return found->second;}}
     ++snapshotMisses;auto snapshot=std::make_shared<StorageSnapshot>();snapshot->createdAt=std::chrono::steady_clock::now();snapshot->generation=storageGeneration.load();snapshot->removalGeneration=buildingRemovalEvents.load();snapshot->targetGuid=targetGuid;snapshot->adminGuid=adminGuid;snapshot->world=g_Engine?g_Engine->GetWorld():0;snapshot->worldIdentity=g_Engine&&snapshot->world?g_Engine->GetObjectIdentity(snapshot->world):0;
     if(!g_Engine||!snapshot->world||!snapshot->worldIdentity)return {};
     std::unordered_map<uintptr_t,uintptr_t> owners,linked,inventories;const int32_t count=g_Engine->GetObjectCount();
@@ -313,7 +357,7 @@ std::shared_ptr<const StorageSnapshot> BuildStorageSnapshot(const std::string&ta
         if(snapshot->adminFound&&!snapshot->adminInventory&&(actor==snapshot->adminController||actor==snapshot->adminPawn)){const std::string name=g_Engine->GetObjectName(inventory);if(!g_Engine->IsA(inventory,"LinkedInventoryComponent")&&!g_Engine->IsA(inventory,"PersonalInventoryComponent")&&!g_Engine->IsA(inventory,"LoadoutComponent")&&name.find("Inventory")!=std::string::npos){snapshot->adminInventory=inventory;snapshot->adminInventoryIdentity=g_Engine->GetObjectIdentity(inventory);}}
         if(own==owners.end())continue;
         if(link==linked.end()||g_Engine->ReadGuid(own->second+0x158)!=targetGuid||!g_Engine->IsObjectLive(actor)||!g_Engine->IsObjectLive(inventory))continue;bool destroying=false;if(g_Engine->ReadBoolProperty(actor,"bActorIsBeingDestroyed",destroying)&&destroying)continue;
-        SnapshotChest chest;chest.actor=actor;chest.inventory=inventory;chest.actorIdentity=g_Engine->GetObjectIdentity(actor);chest.inventoryIdentity=g_Engine->GetObjectIdentity(inventory);if(!chest.actorIdentity||!chest.inventoryIdentity)continue;chest.type=CleanType(g_Engine->GetObjectClassName(actor));chest.id=ChestId(actor,chest.type,targetGuid);chest.customName=ReadCustomNameDirect(actor);chest.linked=Mem::ReadU8(link->second+0xF8)!=0;chest.privateStorage=Mem::ReadU8(own->second+0x169)!=0;
+        SnapshotChest chest;chest.actor=actor;chest.inventory=inventory;chest.actorIdentity=g_Engine->GetObjectIdentity(actor);chest.inventoryIdentity=g_Engine->GetObjectIdentity(inventory);if(!chest.actorIdentity||!chest.inventoryIdentity)continue;chest.type=CleanType(g_Engine->GetObjectClassName(actor));chest.id=ChestId(actor,chest.type,targetGuid);chest.customName=ReadCustomNameCached(actor);chest.linked=Mem::ReadU8(link->second+0xF8)!=0;chest.privateStorage=Mem::ReadU8(own->second+0x169)!=0;
         uintptr_t root=Mem::ReadPtr(actor+Offsets::Actor_RootComponent);if(root&&Mem::Readable(reinterpret_cast<void*>(root+Offsets::SceneComp_RelativeLocation),sizeof(chest.location)))std::memcpy(&chest.location,reinterpret_cast<void*>(root+Offsets::SceneComp_RelativeLocation),sizeof(chest.location));chest.mapValid=g_Engine->ProjectWorldToMap(chest.location,chest.mapX,chest.mapY)&&std::isfinite(chest.mapX)&&std::isfinite(chest.mapY)&&chest.mapX>=0&&chest.mapX<=1&&chest.mapY>=0&&chest.mapY<=1;
         uintptr_t slots=0;int32_t num=0;if(!ReadSlots(inventory,slots,num))continue;chest.totalSlots=num;for(int32_t slot=0;slot<num;++slot){uintptr_t item=Mem::ReadPtr(slots+uintptr_t(slot)*8);if(!item||!g_Engine->IsA(item,"Item"))continue;uintptr_t data=Mem::ReadPtr(item+0xB0);int quantity=Mem::ReadI32(item+0x58);if(!data||quantity<=0||quantity>1000000)continue;SnapshotItem value;value.slot=slot;value.quantity=quantity;value.object=item;value.data=data;value.objectIdentity=g_Engine->GetObjectIdentity(item);value.dataIdentity=g_Engine->GetObjectIdentity(data);value.key=g_Engine->GetObjectName(data);value.id=ItemId(chest.id,slot,value.key,quantity);value.name=ItemDisplayName(data);value.icon="/assets/items/"+value.key+".png";value.maxStack=MaxStackSize(data);chest.items.push_back(std::move(value));}snapshot->chests.push_back(std::move(chest));}
     std::sort(snapshot->chests.begin(),snapshot->chests.end(),[](const auto&a,const auto&b){return a.id<b.id;});{std::unique_lock<std::shared_mutex> lock(snapshotMutex);snapshotCache[cacheKey]=snapshot;}++snapshotGenerations;const auto micros=std::uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-started).count());if(micros>maximumSnapshotMicros.load())maximumSnapshotMicros.store(micros);return snapshot;
@@ -375,7 +419,8 @@ bool RunNativeAction(Request&r,const NativeAction&a){
         case ActionKind::Move:ok=moveItem(reinterpret_cast<void*>(a.source),a.sourceSlot,reinterpret_cast<void*>(a.destination),a.destinationSlot,reinterpret_cast<void*>(a.controller),a.quantity);break;
         case ActionKind::RenameConstruct:fTextFromString(r.renameText,r.renameValue.data());r.renameTextConstructed=true;break;
         case ActionKind::RenameSetterIdentity:executeGetSetterId(r.renameSetter,reinterpret_cast<void*>(a.actor));r.renameSetterConstructed=true;break;
-        case ActionKind::RenameSet:executeSetCustomName(reinterpret_cast<void*>(a.actor),r.renameText,r.renameSetter);break;
+        case ActionKind::RenameSet:if(serverSetObjectCustomName)serverSetObjectCustomName(reinterpret_cast<void*>(a.controller),reinterpret_cast<void*>(a.actor),r.renameText,r.renameSetter);else executeSetCustomName(reinterpret_cast<void*>(a.actor),r.renameText,r.renameSetter);break;
+        case ActionKind::RenameVerify:{const auto actual=ReadCustomNameOnGameThread(a.actor);ok=actual==r.renameValue.data();if(ok)PublishCustomName(a.actorIdentity,actual);else r.resultCode=-6;}break;
         case ActionKind::RenameDestroyIdentity:break;
         case ActionKind::RenameDestroyText:break;
     }return ok;
@@ -386,7 +431,7 @@ void ProcessOneStorageAction(){
     const NativeAction action=rolling?r.rollback[r.rollbackIndex.load()-1]:r.actions[r.actionIndex.load()];const auto started=std::chrono::steady_clock::now();const bool ok=RunNativeAction(r,action);const auto micros=std::uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-started).count());auto& maximum=familyMaximum[size_t(action.family)];if(micros>maximum.load())maximum.store(micros);if(micros>maximumMicros.load())maximumMicros.store(micros);
     if(micros>=1000){familyCircuitBroken[size_t(action.family)]=true;if(r.resultCode.load()==0)r.resultCode=2;}
     if(ok){if(rolling)r.rollbackIndex.fetch_sub(1);else{r.actionIndex.fetch_add(1);if(action.kind==ActionKind::Move){NativeAction reverse=action;std::swap(reverse.source,reverse.destination);std::swap(reverse.sourceIdentity,reverse.destinationIdentity);std::swap(reverse.sourceSlot,reverse.destinationSlot);uintptr_t slots=0;int32_t count=0;if(ReadSlots(reverse.source,slots,count)&&reverse.sourceSlot>=0&&reverse.sourceSlot<count){reverse.item=Mem::ReadPtr(slots+uintptr_t(reverse.sourceSlot)*8);reverse.itemIdentity=g_Engine->GetObjectIdentity(reverse.item);reverse.itemData=reverse.item?Mem::ReadPtr(reverse.item+0xB0):0;reverse.itemDataIdentity=g_Engine->GetObjectIdentity(reverse.itemData);reverse.expectedQuantity=reverse.item?Mem::ReadI32(reverse.item+0x58):0;}reverse.family=OperationFamily::Rollback;r.rollback.push_back(reverse);}}return;}
-    if(!rolling&&(r.renameTextConstructed||r.renameSetterConstructed)){r.finishAsFailure=true;r.actionIndex=r.renameSetterConstructed?3:4;return;}
+    if(!rolling&&(r.renameTextConstructed||r.renameSetterConstructed)){r.finishAsFailure=true;r.actionIndex=r.renameSetterConstructed?r.actions.size()-2:r.actions.size()-1;return;}
     if(!rolling&&!r.rollback.empty()){++rollbackAttempts;r.rollbackIndex=r.rollback.size();r.state=JobState::RollingBack;return;}
     if(rolling)++rollbackFailures;if(action.kind==ActionKind::Remove&&r.actionIndex.load()>0){r.partialDelete=true;r.resultCode=-5;}FinishJob(r,false,r.resultCode.load()?r.resultCode.load():-2);runningJobs.fetch_sub(1);activeRequest=nullptr;
 }
@@ -417,6 +462,7 @@ void HookEngineTick(void* actor,float delta,int levelTick,void* tickFunction){
     ProcessPlayerQuestTracking();
     ProcessPlayerActivityDiscoveryTracking();
     measure(sectionStarted,maximumRecipeTickMicros);sectionStarted=std::chrono::steady_clock::now();
+    ProcessOneCustomName();
     measure(sectionStarted,maximumCustomNameTickMicros);sectionStarted=std::chrono::steady_clock::now();
     if(pendingCount.load(std::memory_order_acquire)&&std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-tickStarted).count()<250)ProcessOneStorageAction();
     measure(sectionStarted,maximumStorageTickMicros);sectionStarted=std::chrono::steady_clock::now();
@@ -461,7 +507,7 @@ bool ReadAdminStorageLocations(const std::string& characterGuid,std::vector<FVec
     }
     return true;
 }
-std::string GetAdminStorageCustomName(uintptr_t actor){return ReadCustomNameDirect(actor);}
+std::string GetAdminStorageCustomName(uintptr_t actor){return ReadCustomNameCached(actor);}
 
 int ExecutableBounds(struct dl_phdr_info* info,size_t,void* data){
     if(info->dlpi_name&&info->dlpi_name[0])return 0;
@@ -473,8 +519,11 @@ int ExecutableBounds(struct dl_phdr_info* info,size_t,void* data){
 
 bool InitializeAdminStorage(uintptr_t moduleBase,uintptr_t moduleEnd){
     const std::string hash=FileSha256("/proc/self/exe");if(!ExpectedSha(hash)){compatibility=-1;return false;}const auto offsets=OffsetsFor(hash);
+    cachedDisplayTextOffset.store((hash==PreviousSha||hash==CurrentSha)?0x04ACAA80:0x04AA1A80);
+    const uintptr_t serverRenameOffset=hash==CurrentSha?0x0A593D70:0;
     if(!earlyHookInstalled.load()||!originalEngineTick){compatibility=-6;return false;}
     for(uintptr_t o:{offsets.addItemByData,offsets.canAddItemByData,offsets.moveItem,offsets.removeFromSlot,offsets.canAddItemsByData,offsets.addItemsByData,offsets.buildingRequirements,offsets.memoryFree,offsets.engineTick,offsets.renameGet,offsets.renameSetter,offsets.renameSet,offsets.textFromString,offsets.uniqueIdDestructor,offsets.textDestructor,offsets.buildingEndPlay})if(moduleBase+o<moduleBase||moduleBase+o+EngineTickHookBytes>moduleEnd){compatibility=-2;return false;}
+    if(serverRenameOffset&&(moduleBase+serverRenameOffset<moduleBase||moduleBase+serverRenameOffset+EngineTickHookBytes>moduleEnd)){compatibility=-2;return false;}
     const unsigned char addSig[]={0x55,0x41,0x57,0x41,0x56,0x41,0x54,0x53,0x48,0x83,0xEC,0x30};
     const unsigned char moveSig[]={0x55,0x53,0x50,0x4C,0x89,0xC0,0x48,0x89,0xFB};
     const unsigned char removeSig[]={0x55,0x41,0x57,0x41,0x56,0x53,0x48,0x83,0xEC,0x28};
@@ -482,12 +531,14 @@ bool InitializeAdminStorage(uintptr_t moduleBase,uintptr_t moduleEnd){
     const unsigned char batchSig[]={0x55,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54};const unsigned char buildSig[]={0x41,0x57,0x41,0x56,0x41,0x54,0x53};batchCompatibility=(!std::memcmp(reinterpret_cast<void*>(moduleBase+offsets.addItemsByData),batchSig,sizeof(batchSig))&&!std::memcmp(reinterpret_cast<void*>(moduleBase+offsets.buildingRequirements),buildSig,sizeof(buildSig)))?1:-1;
     planCatalogCompatibility=PlanItemCatalog().valid?1:-1;
     if(planCatalogCompatibility.load()!=1)LogMessage("Plan item catalog assets unavailable; plan items remain visible in storage but cannot be added through catalog mode");
-    addItemByData=reinterpret_cast<AddItemByDataFn>(moduleBase+offsets.addItemByData);canAddItemByData=reinterpret_cast<CanAddItemByDataFn>(moduleBase+offsets.canAddItemByData);moveItem=reinterpret_cast<MoveItemFn>(moduleBase+offsets.moveItem);removeFromSlot=reinterpret_cast<RemoveFromSlotFn>(moduleBase+offsets.removeFromSlot);canAddItemsByData=reinterpret_cast<CanAddItemsByDataFn>(moduleBase+offsets.canAddItemsByData);addItemsByData=reinterpret_cast<AddItemsByDataFn>(moduleBase+offsets.addItemsByData);buildingScaledRequirements=reinterpret_cast<BuildingScaledRequirementsFn>(moduleBase+offsets.buildingRequirements);memoryFree=reinterpret_cast<FMemoryFreeFn>(moduleBase+offsets.memoryFree);executeGetCustomName=reinterpret_cast<ExecuteGetCustomNameFn>(moduleBase+offsets.renameGet);executeGetSetterId=reinterpret_cast<ExecuteGetSetterIdFn>(moduleBase+offsets.renameSetter);executeSetCustomName=reinterpret_cast<ExecuteSetCustomNameFn>(moduleBase+offsets.renameSet);fTextFromString=reinterpret_cast<FTextFromStringFn>(moduleBase+offsets.textFromString);destroyUniqueNetId=reinterpret_cast<UniqueNetIdDestructorFn>(moduleBase+offsets.uniqueIdDestructor);destroyFText=reinterpret_cast<FTextDestructorFn>(moduleBase+offsets.textDestructor);
-    // The current build's setter returned successfully during live validation, but the
-    // authoritative CustomName property did not reflect the requested value. Keep only
-    // this independently breakable capability closed until setter/readback is re-proven.
-    renameCompatibility=(hash==PreviousSha||hash==CurrentSha)?-1:1;
-    if(renameCompatibility.load()!=1)LogMessage("Storage rename setter/readback validation failed for this game build; rename remains disabled");
+    addItemByData=reinterpret_cast<AddItemByDataFn>(moduleBase+offsets.addItemByData);canAddItemByData=reinterpret_cast<CanAddItemByDataFn>(moduleBase+offsets.canAddItemByData);moveItem=reinterpret_cast<MoveItemFn>(moduleBase+offsets.moveItem);removeFromSlot=reinterpret_cast<RemoveFromSlotFn>(moduleBase+offsets.removeFromSlot);canAddItemsByData=reinterpret_cast<CanAddItemsByDataFn>(moduleBase+offsets.canAddItemsByData);addItemsByData=reinterpret_cast<AddItemsByDataFn>(moduleBase+offsets.addItemsByData);buildingScaledRequirements=reinterpret_cast<BuildingScaledRequirementsFn>(moduleBase+offsets.buildingRequirements);memoryFree=reinterpret_cast<FMemoryFreeFn>(moduleBase+offsets.memoryFree);executeGetCustomName=reinterpret_cast<ExecuteGetCustomNameFn>(moduleBase+offsets.renameGet);executeGetSetterId=reinterpret_cast<ExecuteGetSetterIdFn>(moduleBase+offsets.renameSetter);executeSetCustomName=reinterpret_cast<ExecuteSetCustomNameFn>(moduleBase+offsets.renameSet);serverSetObjectCustomName=serverRenameOffset?reinterpret_cast<ServerSetObjectCustomNameFn>(moduleBase+serverRenameOffset):nullptr;fTextFromString=reinterpret_cast<FTextFromStringFn>(moduleBase+offsets.textFromString);destroyUniqueNetId=reinterpret_cast<UniqueNetIdDestructorFn>(moduleBase+offsets.uniqueIdDestructor);destroyFText=reinterpret_cast<FTextDestructorFn>(moduleBase+offsets.textDestructor);
+    const unsigned char renameGetSig[]={0x41,0x56,0x53,0x48,0x83,0xec,0x28};
+    const unsigned char renameSetterSig[]={0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53,0x48,0x81,0xec,0xa0,0x00,0x00,0x00};
+    const unsigned char renameSetSig[]={0x55,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53,0x48,0x83,0xec,0x78};
+    const unsigned char serverRenameSig[]={0x41,0x57,0x41,0x56,0x53,0x48,0x83,0xec,0x10};
+    const bool serverRenameValid=!serverRenameOffset||!std::memcmp(reinterpret_cast<void*>(moduleBase+serverRenameOffset),serverRenameSig,sizeof(serverRenameSig));
+    renameCompatibility=(!std::memcmp(reinterpret_cast<void*>(moduleBase+offsets.renameGet),renameGetSig,sizeof(renameGetSig))&&!std::memcmp(reinterpret_cast<void*>(moduleBase+offsets.renameSetter),renameSetterSig,sizeof(renameSetterSig))&&!std::memcmp(reinterpret_cast<void*>(moduleBase+offsets.renameSet),renameSetSig,sizeof(renameSetSig))&&serverRenameValid)?1:-1;
+    if(renameCompatibility.load()!=1)LogMessage("Storage rename ABI validation failed for this game build; rename remains disabled");
     catalogCompatibility=1;unlockCatalogCompatibility=UnlockCatalogAssetsValid()?1:-1;const auto& buildCatalog=AuthoritativeBuildingCatalog();buildingTaxonomyCompatibility=buildCatalog.valid?1:-1;buildingIconsCompatibility=buildCatalog.iconsValid?1:-1;buildingRequirementsCompatibility=batchCompatibility.load()==1?1:-1;craftingRecipeCompatibility=batchCompatibility.load()==1?1:-1;if(unlockCatalogCompatibility.load()!=1)LogMessage("Vestige and mount unlock catalog assets unavailable; ordinary item catalog remains enabled");if(buildingTaxonomyCompatibility.load()!=1)LogMessage("Authoritative building catalogue is invalid; crafting recipes remain enabled");if(buildingIconsCompatibility.load()!=1)LogMessage("One or more authoritative building catalogue icons are unavailable");removalTrackingCompatibility=InstallBuildingEndPlayHook(moduleBase,moduleEnd,offsets.buildingEndPlay)?1:-1;if(removalTrackingCompatibility.load()!=1)LogMessage("Immediate storage removal tracking unavailable; storage editing remains enabled with ordinary actor reconciliation");dispatcherCompatibility=1;compatibility=1;return true;
 }
 bool InitializeAdminStorageHookEarly(){
@@ -520,7 +571,7 @@ bool AddMovePlan(Request&r,const StorageSnapshot&s,const SnapshotChest&destinati
 }
 bool BuildMutationPlan(const std::string&operation,const std::string&adminGuid,const std::string&targetGuid,const std::string&chestId,const std::string&itemId,const std::string&catalogId,int quantity,const std::string&destinationChestId,int destinationSlot,const std::vector<std::string>&itemIds,const std::string&customName,Request&r,std::string&error){
     auto snapshot=BuildStorageSnapshot(targetGuid,adminGuid,true);if(!snapshot){error="Storage snapshot preparation failed";return false;}r.expectedWorld=snapshot->world;r.expectedWorldIdentity=snapshot->worldIdentity;const SnapshotChest* chest=SnapshotFindChest(*snapshot,chestId);if(!chest){error="Storage container is no longer available";return false;}const SnapshotChest* destination=destinationChestId.empty()?nullptr:SnapshotFindChest(*snapshot,destinationChestId);auto selected=[&](){std::vector<const SnapshotItem*> out;std::unordered_set<std::string> unique;for(const auto&id:itemIds){if(!unique.insert(id).second)return std::vector<const SnapshotItem*>{};auto* value=SnapshotFindItem(*chest,id);if(!value)return std::vector<const SnapshotItem*>{};out.push_back(value);}return out;};
-    if(operation=="rename"){if(renameCompatibility.load()!=1){error="Storage naming is unavailable for this game build";return false;}if(familyCircuitBroken[size_t(OperationFamily::Rename)]){error="Storage naming was disabled after a slow native call";return false;}std::memcpy(r.renameValue.data(),customName.data(),customName.size());NativeAction a=BaseAction(*snapshot,*chest,OperationFamily::Rename);for(ActionKind kind:{ActionKind::RenameConstruct,ActionKind::RenameSetterIdentity,ActionKind::RenameSet,ActionKind::RenameDestroyIdentity,ActionKind::RenameDestroyText}){a.kind=kind;r.actions.push_back(a);}r.successMessage="Storage renamed";return true;}
+    if(operation=="rename"){if(renameCompatibility.load()!=1){error="Storage naming is unavailable for this game build";return false;}if(familyCircuitBroken[size_t(OperationFamily::Rename)]){error="Storage naming was disabled after a failed or slow native call";return false;}std::memcpy(r.renameValue.data(),customName.data(),customName.size());NativeAction a=BaseAction(*snapshot,*chest,OperationFamily::Rename);for(ActionKind kind:{ActionKind::RenameConstruct,ActionKind::RenameSetterIdentity,ActionKind::RenameSet,ActionKind::RenameVerify,ActionKind::RenameDestroyIdentity,ActionKind::RenameDestroyText}){a.kind=kind;r.actions.push_back(a);}r.successMessage="Storage renamed";return true;}
     if(operation=="add"){std::string key;uintptr_t data=FindCatalogData(catalogId,&key);if(!data){error="Selected item is no longer available";return false;}if(!canAddItemByData(reinterpret_cast<void*>(chest->inventory),reinterpret_cast<void*>(data),quantity)){error="The storage does not have enough space";return false;}NativeAction a=BaseAction(*snapshot,*chest,OperationFamily::SingleItem);a.kind=ActionKind::Add;a.destination=chest->inventory;a.destinationIdentity=chest->inventoryIdentity;a.itemData=data;a.itemDataIdentity=g_Engine->GetObjectIdentity(data);a.quantity=quantity;r.actions.push_back(a);}
     else if(operation=="add_recipe"){RecipeRecord recipe;if(!ResolveRecipe(catalogId,recipe)){error="Selected recipe is no longer available";return false;}std::vector<unsigned char> capacity(recipe.ingredients.size()*16);for(size_t i=0;i<recipe.ingredients.size();++i){long long amount=1LL*recipe.ingredients[i].quantity*quantity;if(amount<1||amount>1000000){error="Recipe quantity is too large";return false;}void* data=reinterpret_cast<void*>(recipe.ingredients[i].data);int q=int(amount);std::memcpy(capacity.data()+i*16,&data,8);std::memcpy(capacity.data()+i*16+8,&q,4);}FUEArray values{capacity.data(),int32_t(recipe.ingredients.size()),int32_t(recipe.ingredients.size())};if(!canAddItemsByData(reinterpret_cast<void*>(chest->inventory),&values)){error="The storage does not have enough space for the complete recipe";return false;}for(const auto&ingredient:recipe.ingredients){NativeAction a=BaseAction(*snapshot,*chest,OperationFamily::BatchAddition);a.kind=ActionKind::Add;a.destination=chest->inventory;a.destinationIdentity=chest->inventoryIdentity;a.itemData=ingredient.data;a.itemDataIdentity=g_Engine->GetObjectIdentity(ingredient.data);a.quantity=ingredient.quantity*quantity;r.actions.push_back(a);}}
     else if(operation=="slot_move"){auto* item=SnapshotFindItem(*chest,itemId);if(!item||!destination||destinationSlot<0||destinationSlot>=destination->totalSlots){error="The item or destination changed before the request was queued";return false;}if(chest->id==destination->id&&item->slot==destinationSlot){r.successMessage="Storage unchanged";return true;}NativeAction a=BaseAction(*snapshot,*chest,OperationFamily::SlotMovement);a.kind=ActionKind::Move;a.source=chest->inventory;a.sourceIdentity=chest->inventoryIdentity;a.destination=destination->inventory;a.destinationIdentity=destination->inventoryIdentity;a.item=item->object;a.itemIdentity=item->objectIdentity;a.itemData=item->data;a.itemDataIdentity=item->dataIdentity;a.sourceSlot=item->slot;a.destinationSlot=destinationSlot;a.quantity=item->quantity;a.expectedQuantity=item->quantity;r.actions.push_back(a);}
@@ -546,7 +597,7 @@ std::string GetAdminStorageMutationStatus(const std::string&id,const std::string
         if((state==JobState::Completed||state==JobState::Failed)&&UnixNow()>found->second->updatedUnix.load()+300){jobs.erase(found);return {};}
         r=found->second;
     }
-    const auto state=r->state.load();const char*name=state==JobState::Queued?"queued":state==JobState::Running?"running":state==JobState::RollingBack?"rolling-back":state==JobState::Completed?"completed":"failed";std::string message;if(state==JobState::Completed)message=r->resultCode.load()==2?r->successMessage+"; this operation was disabled for later requests after exceeding the game-thread limit":r->successMessage;else if(state==JobState::Failed){switch(r->resultCode.load()){case -1:message="A storage object changed before the operation completed";break;case -3:message="The game world changed before the operation completed";break;case -4:message="This storage operation is disabled after exceeding the game-thread limit";break;case -5:message="A delete partially completed; refresh storage immediately";break;default:message="The game rejected the storage operation";}}
+    const auto state=r->state.load();const char*name=state==JobState::Queued?"queued":state==JobState::Running?"running":state==JobState::RollingBack?"rolling-back":state==JobState::Completed?"completed":"failed";std::string message;if(state==JobState::Completed)message=r->resultCode.load()==2?r->successMessage+"; this operation was disabled for later requests after exceeding the game-thread limit":r->successMessage;else if(state==JobState::Failed){switch(r->resultCode.load()){case -1:message="A storage object changed before the operation completed";break;case -3:message="The game world changed before the operation completed";break;case -4:message="This storage operation is disabled after exceeding the game-thread limit";break;case -5:message="A delete partially completed; refresh storage immediately";break;case -6:message="This storage type did not preserve the requested name";break;default:message="The game rejected the storage operation";}}
     const auto progress=state==JobState::RollingBack?r->rollback.size()-r->rollbackIndex.load():r->actionIndex.load();const auto total=state==JobState::RollingBack?r->rollback.size():r->actions.size();
     std::ostringstream out;out<<"{\"id\":\""<<Escape(id)<<"\",\"status\":\""<<name<<"\",\"operation\":\""<<Escape(r->operation)<<"\",\"progress\":"<<progress<<",\"total\":"<<total<<",\"message\":"<<(message.empty()?"null":"\""+Escape(message)+"\"")<<'}';return out.str();
 }

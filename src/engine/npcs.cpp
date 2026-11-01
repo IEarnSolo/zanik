@@ -69,11 +69,14 @@ std::string NormalizeGuid(std::string value){
     return value;
 }
 bool ReadLocation(uintptr_t actor,FVector3d& out){
-    if(!actor||!Mem::Readable(reinterpret_cast<void*>(actor+Offsets::Actor_RootComponent),sizeof(uintptr_t)))return false;
-    uintptr_t root=Mem::ReadPtr(actor+Offsets::Actor_RootComponent);
-    if(!root||!Mem::Readable(reinterpret_cast<void*>(root+Offsets::SceneComp_RelativeLocation),sizeof(out)))return false;
-    std::memcpy(&out,reinterpret_cast<void*>(root+Offsets::SceneComp_RelativeLocation),sizeof(out));
-    return std::isfinite(out.X)&&std::isfinite(out.Y)&&std::isfinite(out.Z)&&std::abs(out.X)<1e8&&std::abs(out.Y)<1e8;
+    if(!actor)return false;
+    uintptr_t root=0,confirmedRoot=0;FVector3d location{};
+    if(!Mem::SafeRead(actor+Offsets::Actor_RootComponent,root)||!root||
+       !Mem::SafeRead(root+Offsets::SceneComp_RelativeLocation,location)||
+       !Mem::SafeRead(actor+Offsets::Actor_RootComponent,confirmedRoot)||confirmedRoot!=root)return false;
+    if(!std::isfinite(location.X)||!std::isfinite(location.Y)||!std::isfinite(location.Z)||
+       std::abs(location.X)>=1e8||std::abs(location.Y)>=1e8)return false;
+    out=location;return true;
 }
 std::uint8_t Classify(uintptr_t object){
     if(!object||!Mem::Readable(reinterpret_cast<void*>(object+Offsets::UObject_Class),sizeof(uintptr_t)))return ClassNone;

@@ -8,6 +8,7 @@ gravestones = (root / "src" / "engine" / "admin_gravestone.cpp").read_text()
 main = (root / "src" / "main.cpp").read_text()
 analyzer = (root / "tools" / "compat_analyzer.cpp").read_text()
 header = (root / "src" / "engine" / "dom_engine.h").read_text()
+web = (root / "src" / "web_page.h").read_text()
 
 # Storage and gravestone teleport share one exact native transport profile,
 # but independently prepare and identity-bind their destinations off-thread.
@@ -55,8 +56,38 @@ assert 'const bool newlyVerified=verifiedActiveGraves.insert(id).second;saved=sa
 assert 'verifiedActiveGraves.count(entry.first)' in gravestones
 assert 'verifiedActiveGraves.erase(id)' in gravestones
 assert 'verifiedActiveGraves.count(entry.first)?"A ":"G "' in gravestones
-assert "const bool authoritative=kind=='A'" in gravestones
-assert 'if(authoritative)verifiedActiveGraves.insert(id)' in gravestones
+assert "kind!='G'&&kind!='A'&&kind!='R'" in gravestones
+assert "if(kind=='G'||(kind=='R'&&retiredAt<=0)){++discardedLegacy;continue;}" in gravestones
+assert 'out<<"T "<<item.slot' in gravestones
+assert 'EncodePersistenceId(data)' in gravestones
+assert 'DecodePersistenceId(item.persistence,persistence)' in gravestones
+assert 'objectName=item.icon.substr(0,item.icon.size()-4)' in gravestones
+assert 'g_Engine->GetObjectName(data)==objectName' in gravestones
+assert 'item.guid=objectName' in gravestones
+assert 'known.second.icon==item.icon' in gravestones
+assert 'void BackfillSavedItemPersistence()' in gravestones
+assert 'Normalized durable asset keys for ' in gravestones
+assert 'nextBackfill=now+std::chrono::seconds(2);BackfillSavedItemPersistence();' in gravestones
+assert 'if(!unresolved)savedItemPersistenceBackfillComplete=true' in gravestones
+assert "if(kind=='A'){savedGraveSnapshots[id]" in gravestones
+assert 'retiredGraveSnapshots[id]=std::move(grave)' in gravestones
+assert 'retiredSnapshotMeta[id]={retiredAt,reason}' in gravestones
+assert 'retiredGraveSnapshots[id]=snapshot->second' in gravestones
+assert 'retiredSnapshotMeta[id]={static_cast<std::int64_t>(std::time(nullptr)),reason}' in gravestones
+assert 'retiredSnapshotMeta[id]={0,"active archive"}' in gravestones
+assert 'if(!retiredGraveSnapshots.count(id)){retiredGraveSnapshots[id]=snapshot->second' in gravestones
+assert 'const bool retiredRestore=r->operation.rfind("restore_",0)==0' in gravestones
+assert 'addItemByData(reinterpret_cast<void*>(target)' in gravestones
+assert '"restore_all_owner","restore_all_self","restore_item_owner","restore_item_self"' in gravestones
+assert 'id="activeGraveTab"' in web
+assert 'id="retiredGraveTab"' in web
+assert "graveView==='retired'?Boolean(grave.retired):!grave.retired" in web
+assert "grave.retired?'restore_all_owner':'claim_all_owner'" in web
+assert "grave.retired?'restore_item_self':'claim_item_self'" in web
+assert "finally{graveBusy=false}if(updated)await refreshGravestones(true)" in web
+assert "activePlayerView==='gravestones')refreshGravestones()" in web
+assert 'graveLoading' in web
+assert 'operation=="restore_item_owner"||operation=="restore_item_self"' in main
 assert 'if(newlyVerified&&saved)savedSnapshotsDirty=true' in gravestones
 assert 'ResolveKnownGraveLocation(r->ownerGuid,r->graveId,location)' in gravestones
 assert 'return ResolveRegistryGrave(owner,id,location)||ResolveVerifiedSnapshotGrave(owner,id,location)' in gravestones
