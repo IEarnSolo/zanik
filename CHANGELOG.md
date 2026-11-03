@@ -2,6 +2,56 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.77] - 2026-11-03
+
+### Changed
+
+- Bind Zanik Manager replacement-mode Dragonwilds updates to one verified operation ID across the expected build, Manager journal, recovery manifest, launcher hash, request, result, and transient cleanup; make wrapper update permissions conditional on whether `AUTO_UPDATE` must change.
+- Bound optional backup-manifest probes to one request so Wings' missing-file HTTP 500 response cannot trap Manager retention cleanup in an endless retry loop.
+- Retire the obsolete automatic deep-analysis bootstrap so end-user game updates can only use the Manager-owned maintenance-first lifecycle, and document game, Manager, server-payload, and website-asset freshness as independent contracts.
+- Derive native runtime, persistence, generated-asset, save, logging, and research paths from the selected server root so self-hosted installations are no longer coupled to Pterodactyl's `/home/container` layout.
+- Update the public distribution contract for Manager's Windows role, root-relative lifecycle paths, shared read-only diagnostics infrastructure, independently validated embedded payloads, and candidate-specific ignored evidence.
+- Persist learned gravestone item metadata under `zanik-data` with restrictive permissions instead of mutating the atomically activated website-asset tree, while retaining the generated catalog as its migration seed.
+- Unified Pterodactyl panel and node retry handling for temporary connection failures and HTTP 500, 502, 503, 504, and 522 responses while retaining bounded missing-directory detection and explicit cancellation.
+- Locked the reserved automatic-compost feature off in configuration parsing, the Manager UI, and the native runtime until its implementation and safety evidence are complete.
+- Attribute slow Zanik game-thread work to its feature, exact operation, origin, and initiating player when the authoritative event or website request supplies one, with bounded dropped-trace accounting and explicit attribution gaps instead of guesses.
+- Attribute in-game item moves and removals to the initiating player by timing Dragonwilds' native inventory calls, deferring player and storage/gravestone resolution through a fixed non-blocking queue, and measuring Zanik's capture overhead separately.
+- Keep gravestone compatibility available after the native inventory observer arms by sharing its already-validated original move/remove trampolines instead of revalidating Zanik's patched entry points as if they were a game update.
+- Diagnose network latency with per-player ping and jitter histories, a ten-second login grace period, three-sample sustained-alert confirmation, and correlated Linux interface traffic, drop, and error counters collected off the game thread.
+- Split new-gravestone persistence into a fixed-size, one-raw-slot-per-tick capture and service-thread metadata enrichment, keeping item names, localized text, stack-size calls, icon construction, and snapshot allocation off the game thread.
+- Harden releases around immutable annotated tags contained in GitLab `main`, exact validated pipeline artifacts, seven-day development artifact retention, synchronized GitLab/GitHub release-note corrections, explicit reserved-version recovery, and independent Manager, server, asset, and game compatibility contracts.
+- Use the game’s selected gold Knowledge → Places journal icon for region-discovery activity, including existing saved discoveries, and advance the website extraction recipe with a map-icon-only incremental migration.
+- Coordinate recipe, quest, activity, storage, gravestone, and custom-name work through one rotating game-thread dispatcher, and defer kill, resource, quest, logging, teleport-capture, and gravestone metadata processing to bounded worker queues.
+- Maintain a machine-readable per-capability compatibility inventory and generate fail-closed JSON plus derived Markdown reports with exact game, payload, and asset provenance.
+- Separate Manager preservation and migration coverage from native, payload, and website-asset compatibility instead of copying untouched persistent secrets into every routine update backup.
+
+### Fixed
+
+- Hardened the master runtime gate so persisted master-off configuration cannot be overridden back on, inherited preloads are removed from the official-server bypass, direct library preloads remain inert while disabled, and wrapper plus replacement lifecycle tests prove preservation and reversible re-enabling.
+- Distinguish Zanik-added game-thread timings from original Dragonwilds/native operations throughout Spike Analysis, apply Zanik's critical thresholds only to Zanik work, and measure gravestone observer overhead separately from the game's own registration and removal functions.
+- Replace ambiguous “uncaptured route” web spikes with explicit receive-timeout, client-disconnect, malformed-request, receive-error, or non-blocking attribution-contention reasons; preserve the matching slow route when performance history is compacted and explain when a slow asset is more consistent with the client/network path without claiming certainty.
+- Stop normal connection warm-up ping values from appearing as network incidents immediately after a player joins.
+- Count every successfully finalized gravestone capture in diagnostics, including captures whose durable snapshot is unchanged.
+- Show a retired gravestone as soon as retirement is recorded, without waiting for its already-removed Unreal actor to disappear from the object registry; the stale actor remains excluded from Active results.
+- Persist and display whether a newly retired gravestone was claimed in game, claimed from the website, or deleted from the website; older records retain their original historical reason.
+- Queue a post-mutation gravestone refresh behind any already-running two-second poll, so an immediate Active-to-Retired transition cannot be discarded by an overlapping stale request.
+- Stage claim-all, populated-grave deletion, and retired-item copies as one native inventory mutation per eligible game tick; prepare item resolution and capacity batches on the service worker, and rebuild detailed grave snapshots outside the game thread.
+- Fix individual website gravestone claims targeting a duplicate restored runtime actor: bounded grave resolution now completes before any restore fallback, duplicate live representations collapse to one registry identity, player/grave inventory discovery is prepared off the game thread, and successful moves verify that the source stack actually changed.
+- Prevent the first newly created gravestone after restart from hashing the full game executable on the game thread, remove obsolete native gravestone research dumps, and keep authoritative registration/removal capture fixed-size and non-blocking.
+- Preserve gravestone claim, delete, retirement, and retired-item copy behavior while changing its request and empty-grave queues to safe deferred retries instead of blocking the game thread.
+- Refresh the global header's online-player count through the shared two-second polling scheduler so joins and disconnects appear without a full page refresh.
+- Restore authoritative region-discovery activity by following only newly appended dedicated-server `LogMapRegions` reveal records, matching the logged controller to a live player, and persisting each region immediately without retroactive backfill or repeated whole-object registry scans.
+- Persist captured Home teleport destinations in the protected server data store so player home cards and rune-free admin teleports survive restarts.
+- Make the Home teleport card respond to its own width, preserving readable text in narrow layouts and placing the teleport button directly beneath the map in wide layouts.
+- Show the gravestone map marker on death entries in Recent Activity.
+- Restore near-live website updates through one shared two-second browser scheduler that pauses hidden tabs, prevents overlapping requests, and staggers work instead of letting each feature maintain an unrelated timer.
+- Refresh already-discovered storage inventories and gravestones directly every two seconds without walking the global Unreal object registry; retain lifecycle hooks and an infrequent 30-second discovery fallback for newly created or missed objects.
+- Keep the Overview active-quest map destination synchronized through the shared polling scheduler instead of limiting destination refreshes to the Quests tab.
+- Keep the player online-session duration advancing on one wall-clock-aligned local timer instead of letting two-second server refreshes compete with and visually bunch its updates.
+- Stop unchanged Recent Activity refreshes from rebuilding their DOM or temporarily disabling pagination controls, eliminating two-second button and icon flicker while still updating relative times.
+- Validate the exact complete `UObject::ProcessEvent` instruction range used by tracked-quest capture in both static analysis and runtime installation, with real altered-byte and truncated-signature negative tests.
+- Report home-location persistence, quest objective/tracked-state, native inventory attribution, and player-ping compatibility independently through update status and detailed diagnostics; reject malformed home records and expose durable-write or permission failures.
+
 ## [0.2.76] - 2026-10-31
 
 ### Added

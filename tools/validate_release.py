@@ -3,12 +3,11 @@ import argparse, hashlib, io, json, re, sys, tarfile, tempfile, zipfile
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from manager.zanik_manager.payload_contract import validate_contract
+from tools.release_archive_policy import prohibited_archive_path
 
-BANNED_NAMES={'.env','.env.gitlab','admins.txt','console-admin.key','pterodactyl_api_key.txt','AGENTS.MD'}
-BANNED_SUFFIXES={'.pak','.utoc','.ucas','.usmap','.sav','.db','.pem','.p12','.pfx'}
 BANNED_CONTENT=(b'PTERODACTYL_API_KEY=',b'GITLAB_TOKEN=',b'-----BEGIN PRIVATE KEY-----')
-REQUIRED={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','scripts/verify-assets.sh','scripts/check-game-update.sh','scripts/check-compatible-release.sh','scripts/update-game.sh','scripts/apply-asset-delta.sh','config/zanik.conf.example','config/zanik-config.schema.json','compatibility/compatibility.tsv','payload-contract.json','LICENSE','README.md','CHANGELOG.md','docs/releasing.md','tools/asset_filesystem.py'}
-EXECUTABLE={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','scripts/verify-assets.sh','scripts/check-game-update.sh','scripts/check-compatible-release.sh','scripts/update-game.sh','scripts/apply-asset-delta.sh'}
+REQUIRED={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','scripts/verify-assets.sh','scripts/check-game-update.sh','scripts/check-compatible-release.sh','scripts/update-game.sh','scripts/apply-asset-delta.sh','config/zanik.conf.example','config/zanik-config.schema.json','compatibility/compatibility.tsv','compatibility/capabilities.json','payload-contract.json','LICENSE','README.md','CHANGELOG.md','docs/releasing.md','tools/asset_filesystem.py','tools/generate_compatibility_report.py'}
+EXECUTABLE={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','scripts/verify-assets.sh','scripts/check-game-update.sh','scripts/check-compatible-release.sh','scripts/update-game.sh','scripts/apply-asset-delta.sh','tools/generate_compatibility_report.py'}
 WINDOWS_ASSET_REQUIRED={'init-assets.ps1','runtime/python.exe','runtime/LICENSE.txt','third_party/uas/uas.exe',
     'third_party/uas/LICENSE.txt','third_party/ue4ss/dwmapi.dll','third_party/ue4ss/ue4ss/UE4SS.dll',
     'third_party/ue4ss/ue4ss/LICENSE','asset-tools/extraction-recipes.json','asset-tools/extraction-recipe-history.json','asset-tools/artwork/nodestone-icon-map.png','tools/zanik_assets.py',
@@ -53,8 +52,7 @@ def asset_contract_from_zip(path):
 def inspect(path):
     entries=names(path)
     for name in entries:
-        parts=Path(name).parts
-        if '..' in parts or any(part in BANNED_NAMES for part in parts) or Path(name).suffix.lower() in BANNED_SUFFIXES:
+        if prohibited_archive_path(name):
             raise SystemExit(f'prohibited archive entry in {path.name}: {name}')
     if path.name.startswith('zanik-server-'):
         missing=REQUIRED-entries

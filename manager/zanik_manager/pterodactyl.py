@@ -31,6 +31,7 @@ class Response:
 Transport = Callable[[str, str, dict[str, str], bytes | None, float], Response]
 CONTAINER_ROOT = "/home/container"
 USER_AGENT = "Zanik-Manager/0.2.15"
+TRANSIENT_STATUSES = frozenset({500, 502, 503, 504, 522})
 
 
 def api_file_path(path: str) -> str:
@@ -84,8 +85,33 @@ class PterodactylClient:
         self.cancelled = cancelled
         self.status = status
 
+    def _transport_with_retry(self, method: str, url: str, headers: dict[str, str],
+                              body: bytes | None, timeout: float,
+                              retry_statuses: frozenset[int] = TRANSIENT_STATUSES) -> Response:
+        while True:
+            try:
+                response = self.transport(method, url, headers, body, timeout)
+            except PterodactylError as error:
+                if error.status is not None and error.status not in retry_statuses:
+                    raise
+                if self.cancelled():
+                    raise PterodactylError("Operation cancelled while waiting for the panel") from error
+                self.status("The panel is temporarily unreachable. Retrying in 60 seconds…")
+                time.sleep(self.retry_seconds)
+                continue
+            if response.status not in retry_statuses:
+                return response
+            if self.cancelled():
+                raise PterodactylError("Operation cancelled while waiting for the panel", response.status)
+            self.status(
+                f"The panel or server node is temporarily unavailable (HTTP {response.status}). "
+                "Retrying in 60 seconds…"
+            )
+            time.sleep(self.retry_seconds)
+
     def request(self, method: str, path: str, *, query: dict | None = None, data=None,
-                raw: bytes | None = None, timeout: float = 120.0, retry_522: bool = True) -> Response:
+                raw: bytes | None = None, timeout: float = 120.0,
+                retry_statuses: frozenset[int] = TRANSIENT_STATUSES) -> Response:
         url = self.origin + path
         if query:
             url += "?" + urllib.parse.urlencode(query)
@@ -97,14 +123,7 @@ class PterodactylClient:
             headers["Content-Type"] = "application/json"
         elif raw is not None:
             headers["Content-Type"] = "application/octet-stream"
-        while True:
-            response = self.transport(method, url, headers, body, timeout)
-            if response.status != 522 or not retry_522:
-                break
-            if self.cancelled():
-                raise PterodactylError("Operation cancelled while waiting for the panel", 522)
-            self.status("The panel is temporarily unavailable (HTTP 522). Retrying in 60 seconds…")
-            time.sleep(self.retry_seconds)
+        response = self._transport_with_retry(method, url, headers, body, timeout, retry_statuses)
         if response.status < 200 or response.status >= 300:
             detail = ""
             try:
@@ -172,7 +191,34 @@ class PterodactylClient:
     def power(self, server_id: str, signal: str) -> None:
         if signal not in {"start", "stop", "restart", "kill"}:
             raise ValueError("Invalid power signal")
-        self.request("POST", f"/api/client/servers/{server_id}/power", data={"signal": signal})
+        previous_uptime = None
+        if signal == "restart":
+            try:
+                previous_uptime = int(self.resources(server_id).get("resources", {}).get("uptime") or 0)
+            except Exception:
+                pass
+        while True:
+            try:
+                self.request("POST", f"/api/client/servers/{server_id}/power", data={"signal": signal},
+                             retry_statuses=frozenset())
+                return
+            except PterodactylError as error:
+                if error.status not in TRANSIENT_STATUSES:
+                    raise
+                state = self.resources(server_id)
+                current = str(state.get("current_state", ""))
+                uptime = int(state.get("resources", {}).get("uptime") or 0)
+                achieved = ((signal == "start" and current in {"starting", "running"})
+                            or (signal in {"stop", "kill"} and current in {"stopping", "offline"})
+                            or (signal == "restart" and (current != "running"
+                                or (previous_uptime is not None and uptime < previous_uptime))))
+                if achieved:
+                    self.status(f"The panel returned HTTP {error.status}, but the requested {signal} state was verified.")
+                    return
+                if self.cancelled():
+                    raise PterodactylError("Operation cancelled while waiting for the server state", error.status) from error
+                self.status(f"The server power request returned HTTP {error.status} without reaching the requested state. Retrying in 60 seconds…")
+                time.sleep(self.retry_seconds)
 
     def command(self, server_id: str, command: str) -> None:
         self.request("POST", f"/api/client/servers/{server_id}/command", data={"command": command})
@@ -181,15 +227,30 @@ class PterodactylClient:
         return [row.get("attributes", row) for row in self.request("GET", f"/api/client/servers/{server_id}/files/list",
                                                                     query={"directory": api_file_path(directory)}).json().get("data", [])]
 
+    def list_files_once(self, server_id: str, directory: str = "/") -> list[dict]:
+        """List once so lifecycle code can distinguish Wings' missing-directory HTTP 500."""
+        return [row.get("attributes", row) for row in self.request(
+            "GET", f"/api/client/servers/{server_id}/files/list",
+            query={"directory": api_file_path(directory)}, retry_statuses=frozenset()
+        ).json().get("data", [])]
+
     def read_file(self, server_id: str, path: str) -> bytes:
         try:
             return self.request("GET", f"/api/client/servers/{server_id}/files/contents",
-                                query={"file": api_file_path(path)}).body
+                                query={"file": api_file_path(path)},
+                                retry_statuses=frozenset({502, 503, 504, 522})).body
         except PterodactylError as error:
             editor_limit = "too large to view in the file editor" in str(error).lower()
             if error.status not in {500, 502, 503, 504} and not editor_limit:
                 raise
             return self.download_file(server_id, path)
+
+    def read_file_once(self, server_id: str, path: str) -> bytes:
+        """Read once when a missing optional file may be reported as HTTP 500 by Wings."""
+        return self.request(
+            "GET", f"/api/client/servers/{server_id}/files/contents",
+            query={"file": api_file_path(path)}, retry_statuses=frozenset()
+        ).body
 
     def download_file(self, server_id: str, path: str) -> bytes:
         details = self.request("GET", f"/api/client/servers/{server_id}/files/download",
@@ -197,8 +258,8 @@ class PterodactylClient:
         url = details.get("url")
         if not url:
             raise PterodactylError("Panel did not return a file download URL")
-        response = self.transport("GET", url, {"Accept": "application/octet-stream",
-                                                "User-Agent": USER_AGENT}, None, 300.0)
+        response = self._transport_with_retry("GET", url, {"Accept": "application/octet-stream",
+                                                             "User-Agent": USER_AGENT}, None, 300.0)
         if response.status < 200 or response.status >= 300:
             raise PterodactylError(f"File download failed with HTTP {response.status}", response.status)
         return response.body
@@ -236,9 +297,29 @@ class PterodactylClient:
         suffix = f"\r\n--{boundary}--\r\n".encode()
         separator = "&" if "?" in url else "?"
         upload_transport = direct_transport if self.transport is urllib_transport else self.transport
-        response = upload_transport("POST", url + separator + urllib.parse.urlencode({"directory": api_file_path(directory)}),
-                                    {"Accept": "*/*", "Content-Type": f"multipart/form-data; boundary={boundary}",
-                                     "User-Agent": USER_AGENT},
-                                    prefix + content + suffix, 300.0)
+        upload_url = url + separator + urllib.parse.urlencode({"directory": api_file_path(directory)})
+        upload_headers = {"Accept": "*/*", "Content-Type": f"multipart/form-data; boundary={boundary}",
+                          "User-Agent": USER_AGENT}
+        if upload_transport is self.transport:
+            response = self._transport_with_retry("POST", upload_url, upload_headers,
+                                                  prefix + content + suffix, 300.0)
+        else:
+            while True:
+                try:
+                    response = upload_transport("POST", upload_url, upload_headers, prefix + content + suffix, 300.0)
+                except PterodactylError as error:
+                    if error.status is not None and error.status not in TRANSIENT_STATUSES:
+                        raise
+                    if self.cancelled():
+                        raise PterodactylError("Operation cancelled while waiting for the server node", error.status) from error
+                    self.status("The server node is temporarily unreachable. Retrying in 60 seconds…")
+                    time.sleep(self.retry_seconds)
+                    continue
+                if response.status not in TRANSIENT_STATUSES:
+                    break
+                if self.cancelled():
+                    raise PterodactylError("Operation cancelled while waiting for the server node", response.status)
+                self.status(f"The server node is temporarily unavailable (HTTP {response.status}). Retrying in 60 seconds…")
+                time.sleep(self.retry_seconds)
         if response.status < 200 or response.status >= 300:
             raise PterodactylError(f"File upload failed with HTTP {response.status}", response.status)

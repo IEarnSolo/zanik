@@ -29,7 +29,8 @@ assert 'void ProcessAdminGravestoneRequests(){ProcessEmptyGraveRemoval();Capture
 assert 'constexpr int32_t ObjectInspectionBudget=32' in gravestones
 assert 'constexpr int32_t RegistryDiscoveryBudget=32' in gravestones
 assert 'started+std::chrono::microseconds(200)' in gravestones
-assert 'processed<2' in gravestones
+assert 'const int32_t slot=pending.nextSlot++' in gravestones
+assert 'captureOneRawSlot' in gravestones
 assert 'pthread_mutex_trylock(&savedSnapshotMutex)' in gravestones
 assert 'captureCircuitBroken=true;persistenceCompatibility=-2' in gravestones
 assert 'persistenceCompatibility=persistencePathHealthy?1:-1' in gravestones
@@ -41,6 +42,10 @@ assert 'authoritative gravestone register signature changed' in analyzer
 assert 'AGameplayObjectRegistry::UnregisterGravestone(FGuid const&)' in analyzer
 assert 'authoritative gravestone unregister signature changed' in analyzer
 assert 'Authoritative gravestone registration and removal capture armed' in gravestones
+assert 'ResolveAdminInventoryMutationCallables(moduleBase+offsets.moveItem,moduleBase+offsets.removeFromSlot' in gravestones
+assert 'sharedInventoryHooks?sharedMove:moduleBase+offsets.moveItem' in gravestones
+assert 'sharedInventoryHooks?sharedRemove:moduleBase+offsets.removeFromSlot' in gravestones
+assert 'ResolveAdminInventoryMutationCallables' in header
 assert 'GraveRegisterQueueCapacity=32' in gravestones
 assert 'write-read<GraveRegisterQueueCapacity' in gravestones
 assert 'DrainGraveRegisterEvents();if(captureCircuitBroken.load()' in gravestones
@@ -48,7 +53,13 @@ assert 'Queued newly registered gravestone capture id=' in gravestones
 assert 'GraveUnregisterQueueCapacity=32' in gravestones
 assert 'write-read<GraveUnregisterQueueCapacity' in gravestones
 assert 'DrainGraveUnregisterEvents();if(!savedSnapshotsDirty.exchange(false))return' in gravestones
-assert 'if(!filled){seenIds.insert(id);if(EmptyGraveConfirmed(id))' in gravestones
+assert 'if(!seenIds.insert(id).second)continue;' in gravestones
+assert 'if(IsGraveRemoved(id)||IsRemovedActorLocation(location))continue;' in gravestones
+assert 'if(IsGraveRemoved(id)||IsRemovedActorLocation(location)){seenIds.insert(id);continue;}' not in gravestones
+assert 'std::string reason="Claimed in game"' in gravestones
+assert 'reason="Claimed from website"' in gravestones
+assert 'reason="Deleted from website"' in gravestones
+assert 'if(!filled){if(EmptyGraveConfirmed(id))' in gravestones
 assert 'WasRecentlyLive(id)&&PlayerNearGrave(location)' not in gravestones
 assert 'removalCaptureCompatibility.load()==1' in gravestones
 assert 'std::unordered_set<std::string> verifiedActiveGraves' in gravestones
@@ -97,7 +108,7 @@ assert 'for(const std::string&level:{std::string("L_World"),cell})' in graveston
 assert 'Native saved gravestone restore id=' in gravestones
 assert 'bool ResolveGraveBounded' in gravestones
 assert 'constexpr int32_t ObjectInspectionBudget=128' in gravestones
-assert 'ResolveGraveBounded(r->ownerGuid,r->graveId,r->graveCursor,grave)' in gravestones
+assert 'ResolveGraveBounded(r->ownerGuid,r->graveId,r->graveCursor,grave,scanComplete)' in gravestones
 assert 'return ResolveKnownGraveLocation(owner,id,location);' in gravestones
 assert 'CaptureLiveGraveSnapshots' not in gravestones
 assert 'void FlushAdminGravestoneSnapshots()' in gravestones
@@ -106,10 +117,14 @@ assert 'adminGravestoneCaptureMaximumMicroseconds' in main
 assert 'adminGravestoneCaptureCircuitBroken' in main
 assert 'adminGravestoneRemovalCaptureCompatibility' in main
 assert 'adminGravestoneUnregisterMaximumMicroseconds' in main
-assert 'constexpr const char* SavedSnapshotsPath="/home/container/zanik-data/gravestone-snapshots.v1"' in gravestones
+assert 'std::string SavedSnapshotsPath(){return RuntimePaths::DataFile("gravestone-snapshots.v1");}' in gravestones
+assert 'std::string SeedGraveItemsPath(){return RuntimePaths::WebFile("grave-items.tsv");}' in gravestones
+assert 'std::string SavedGraveItemsPath(){return RuntimePaths::DataFile("grave-items.tsv");}' in gravestones
+assert 'PersistSavedItemMetaLocked()' in gravestones
+assert 'append.open(SeedGraveItemsPath()' not in gravestones
 assert 'pthread_once(&savedSnapshotsOnce,&LoadSavedSnapshots)' in gravestones
 assert 'fsync(fd)==0' in gravestones
-assert 'rename(temporary.c_str(),SavedSnapshotsPath)' in gravestones
+assert 'rename(temporary.c_str(),path.c_str())' in gravestones
 assert 'CacheLiveSnapshot(owner,location,std::move(liveSnapshot))' in gravestones
 assert 'void PreserveSnapshotMetadata(SavedGrave&fresh,const SavedGrave&known)' in gravestones
 assert 'if(cached!=savedGraveSnapshots.end())PreserveSnapshotMetadata(saved,cached->second)' in gravestones
@@ -128,7 +143,11 @@ assert 'std::unordered_set<std::string> liveInventorySnapshots' in gravestones
 assert 'if(liveInventorySnapshots.count(id)&&cached!=savedGraveSnapshots.end())' in gravestones
 assert 'bool ResolveUnloadedSnapshot' in gravestones
 assert 'bool SnapshotInventory(const Grave&grave,SavedGrave&snapshot)' in gravestones
-assert 'else CacheLiveSnapshot(r->ownerGuid,grave.location,std::move(refreshed))' in gravestones
+assert 'SnapshotInventory(grave,refreshed)' not in gravestones
+assert 'PrepareCapacityBatch(grave.inventory,*r)' in gravestones
+assert 'r->capacityValues.data()' in gravestones
+assert '++r->restoreIndex;RecordTime(start);return false' in gravestones
+assert 'gravestoneViewGeneration.fetch_add(1);RecordTime(start);return false' in gravestones
 assert 'if(r->operation!="delete_grave")removeGrave(reinterpret_cast<void*>(grave.actor))' in gravestones
 assert 'void ProcessEmptyGraveRemoval()' in gravestones
 assert 'ProcessAdminGravestoneRequests(){ProcessEmptyGraveRemoval();CapturePendingGraveSnapshot();' in gravestones

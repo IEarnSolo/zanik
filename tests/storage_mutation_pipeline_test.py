@@ -29,6 +29,27 @@ assert engine_tick.index("engineStarted=") < engine_tick.index("originalEngineTi
 assert "double(delta)*1000000.0" not in engine_tick
 assert "engineMicros>=50000" in engine_tick
 
+# Native in-game mutations time only the original engine call. The hook copies
+# fixed-size evidence into a bounded ring; player matching and diagnostics run
+# later on the service thread. Zanik's grave dispatcher is excluded so website
+# actions are not mislabeled as in-game actions.
+native_hooks = body("void PublishObservedMutation(", "void HookBuildingEndPlay(")
+assert "ObservedMutationCapacity=128" in storage
+assert "HookMoveItem" in native_hooks and "HookRemoveFromSlot" in native_hooks
+assert "originalObservedMoveItem(source" in native_hooks
+assert "originalObservedRemoveFromSlot(source" in native_hooks
+assert "WriteRegisterPreservingJump(trampoline+bytes" in native_hooks
+assert "std::array<ObservedMutationSlot,ObservedMutationCapacity>" in storage
+assert "UpdateAdminStorageMutationPlayers" in storage
+assert "DrainAdminStorageMutationTraces" in storage
+assert "suppressObservedMutation=true;ProcessAdminGravestoneRequests();suppressObservedMutation=false" in engine_tick
+for forbidden in ("GetAllPlayers", "LogMessage", "pthread_mutex", "std::string"):
+    assert forbidden not in native_hooks, forbidden
+assert "nativeMutationCaptureCompatibility" in header
+assert '"/api/diagnostics/native-inventory-mutations"' in main
+assert "observedMoveEntry.store(moduleBase+offsets.moveItem" in storage
+assert "ResolveAdminInventoryMutationCallables" in storage
+
 # The game-thread path consumes an already built action and never performs discovery.
 for forbidden in (
     "GetObjectCount(",
@@ -56,7 +77,7 @@ assert "FindCatalogData" in planner
 assert "ResolveRecipe" in planner
 assert "canAddItemByData" in planner
 assert "canAddItemsByData" in planner
-assert 'root&&*root?root:"/home/container/zanik/web"' in storage
+assert 'RuntimePaths::WebRoot()+"/items/"' in storage
 assert 'std::string icon=itemRoot+key+".png"' in storage
 
 # Every supported family is represented by a bounded action/state-machine path.

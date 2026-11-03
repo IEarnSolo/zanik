@@ -307,11 +307,11 @@ with tempfile.TemporaryDirectory() as name:
 
     history = json.loads((ROOT / "asset-tools/extraction-recipe-history.json").read_text(encoding="utf-8"))
     by_version = {entry["recipe"]["schemaVersion"]: entry for entry in history["recipes"]}
-    recipe6, recipe7, recipe8, recipe9, recipe10, recipe11, recipe12, recipe13, recipe14 = (
-        by_version[index] for index in (6, 7, 8, 9, 10, 11, 12, 13, 14))
-    recipe15 = {"recipe": json.loads((ROOT / "asset-tools/extraction-recipes.json").read_text(encoding="utf-8"))}
-    recipe15["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
-    recipe15["recipe"]["jsonTargets"] = pipeline.recipe_snapshot(recipe15["recipe"])["jsonTargets"]
+    recipe6, recipe7, recipe8, recipe9, recipe10, recipe11, recipe12, recipe13, recipe14, recipe15 = (
+        by_version[index] for index in (6, 7, 8, 9, 10, 11, 12, 13, 14, 15))
+    recipe16 = {"recipe": json.loads((ROOT / "asset-tools/extraction-recipes.json").read_text(encoding="utf-8"))}
+    recipe16["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
+    recipe16["recipe"]["jsonTargets"] = pipeline.recipe_snapshot(recipe16["recipe"])["jsonTargets"]
     recipe6["recipe"]["jsonTargets"] = recipe6["jsonTargets"]
     recipe7["recipe"]["jsonTargets"] = recipe7["jsonTargets"]
     recipe7["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
@@ -358,6 +358,8 @@ with tempfile.TemporaryDirectory() as name:
         contracts, [], ["basename:T_Icon_Clipboard", "basename:T_Icon_ObjectiveArrow"], True)
     assert dirty == {"map-icons"}, f"recipe-11 test-icon removal rebuilt unrelated groups: {dirty}"
     recipe14["recipe"]["jsonTargets"] = recipe14["jsonTargets"]
+    recipe15["recipe"]["jsonTargets"] = recipe15["jsonTargets"]
+    recipe15["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
     dirty = pipeline.selective_generation_groups(
         recipe11["recipe"], recipe15["recipe"],
         {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,
@@ -388,6 +390,13 @@ with tempfile.TemporaryDirectory() as name:
         contracts, sorted(pipeline.QUEST_BADGE_TARGETS), [], True)
     assert dirty == {"quests", "quest-badges", "quest-destinations"}, (
         f"recipe-15 quest icon migration rebuilt unrelated groups: {dirty}")
+    region_icon_target = "package:RSDragonwilds/Content/Art/UI/Icons/T_Icons_Journal_Cat_Knowledge_Places_Selected"
+    dirty = pipeline.selective_generation_groups(
+        recipe15["recipe"], recipe16["recipe"],
+        {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,
+         "contracts": {group: "b" * 64 for group in pipeline.GENERATION_GROUPS}},
+        contracts, [region_icon_target], [], True)
+    assert dirty == {"map-icons"}, f"recipe-16 region icon migration rebuilt unrelated groups: {dirty}"
     dirty = pipeline.selective_generation_groups(
         recipe7["recipe"], recipe7["recipe"],
         {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,

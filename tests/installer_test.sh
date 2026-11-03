@@ -11,7 +11,9 @@ cp "$ROOT/scripts/lib/zanik-common.sh" "$RELEASE/lib/zanik-common.sh"
 cp "$ROOT/config/zanik.conf.example" "$RELEASE/config/zanik.conf.example"
 cp "$ROOT/config/zanik-config.schema.json" "$RELEASE/config/zanik-config.schema.json"
 cp "$ROOT/deploy/compatibility.tsv" "$RELEASE/compatibility/compatibility.tsv"
+cp "$ROOT/deploy/compatibility-capabilities.json" "$RELEASE/compatibility/capabilities.json"
 cp "$ROOT/tools/zanik_assets.py" "$RELEASE/tools/zanik_assets.py"
+cp "$ROOT/tools/generate_compatibility_report.py" "$RELEASE/tools/generate_compatibility_report.py"
 cp "$ROOT/VERSION" "$RELEASE/VERSION"
 for f in install update uninstall doctor init-assets compat-launcher verify-assets check-game-update check-compatible-release update-game apply-asset-delta; do cp "$ROOT/scripts/$f.sh" "$RELEASE/scripts/$f.sh"; done
 python3 "$ROOT/manager/zanik_manager/payload_contract.py" --root "$RELEASE" --release-version "$(cat "$ROOT/VERSION")" --output "$RELEASE/payload-contract.json" >/dev/null
@@ -40,12 +42,23 @@ cp "$RELEASE/config/zanik.conf.example" "$SERVER/zanik/config/zanik.conf"
 
 # The master switch must bypass LD_PRELOAD and every Zanik runtime side effect
 # while preserving the installation and official-server startup.
+mkdir -p "$SERVER/zanik/assets/current"
+printf 'preserved-player-data\n' > "$SERVER/zanik-data/players.db"
+printf 'preserved-asset\n' > "$SERVER/zanik/assets/current/master-gate-test.asset"
+printf 'preserved-admin\n' > "$SERVER/zanik/admins.txt"
+PRESERVED_BEFORE=$(sha256sum "$SERVER/zanik-data/players.db" "$SERVER/zanik/assets/current/master-gate-test.asset" "$SERVER/zanik/admins.txt")
 sed -i 's/^ZANIK_ENABLED=true$/ZANIK_ENABLED=false/' "$SERVER/zanik/config/zanik.conf"
-"$SERVER/zanik/bin/zanik-server" --server-root "$SERVER" -- disabled > /dev/null 2> "$TMP/disabled.log"
+ZANIK_ENABLED=true LD_PRELOAD=/definitely/not/a/library.so \
+  "$SERVER/zanik/bin/zanik-server" --server-root "$SERVER" -- disabled > /dev/null 2> "$TMP/disabled.log"
 grep -q '^|disabled$' "$GAME.ran"
 grep -q 'disabled by configuration' "$TMP/disabled.log"
+[ "$PRESERVED_BEFORE" = "$(sha256sum "$SERVER/zanik-data/players.db" "$SERVER/zanik/assets/current/master-gate-test.asset" "$SERVER/zanik/admins.txt")" ]
+[ ! -e "$SERVER/zanik/state/runtime-game.json" ]
 "$SERVER/zanik/scripts/doctor.sh" --server-root "$SERVER" --json | grep -q '"zanikEnabled":false'
 sed -i 's/^ZANIK_ENABLED=false$/ZANIK_ENABLED=true/' "$SERVER/zanik/config/zanik.conf"
+"$SERVER/zanik/bin/zanik-server" --server-root "$SERVER" -- re-enabled > /dev/null 2> "$TMP/re-enabled.log"
+grep -q "^$SERVER/zanik/bin/libzanik.so|re-enabled$" "$GAME.ran"
+grep -q '"schemaVersion":1' "$SERVER/zanik/state/runtime-game.json"
 
 # The canonical launcher must retain Pterodactyl's console login proxy while
 # forwarding all ordinary commands unchanged to the official server process.
@@ -82,9 +95,15 @@ grep -q '"status":"valid"' "$REPORT"
 grep -q '^status$' "$GAME.console"
 ! grep -q 'zanik-doctor-assets' "$GAME.console"
 
+printf '#!/bin/sh\nprintf "%%s|%%s\\n" "${LD_PRELOAD-}" "$*" > "$0.ran"\n' > "$GAME"; chmod +x "$GAME"
 "$RELEASE/scripts/install.sh" --server-root "$SERVER" --mode replace-executable --acknowledge-core-file-replacement
 grep -q 'ZANIK_COMPAT_LAUNCHER=1' "$GAME"
 [ -x "$GAME.zanik-original" ]
+sed -i 's/^ZANIK_ENABLED=true$/ZANIK_ENABLED=false/' "$SERVER/zanik/config/zanik.conf"
+LD_PRELOAD=/definitely/not/a/library.so "$GAME" replacement-disabled > /dev/null 2> "$TMP/replacement-disabled.log"
+grep -q '^|replacement-disabled$' "$GAME.zanik-original.ran"
+grep -q 'disabled by configuration' "$TMP/replacement-disabled.log"
+sed -i 's/^ZANIK_ENABLED=false$/ZANIK_ENABLED=true/' "$SERVER/zanik/config/zanik.conf"
 printf '\177ELFsteam-new\n' > "$GAME"; chmod +x "$GAME"
 "$RELEASE/scripts/install.sh" --server-root "$SERVER" --mode replace-executable --acknowledge-core-file-replacement
 grep -q 'steam-new' "$GAME.zanik-original"

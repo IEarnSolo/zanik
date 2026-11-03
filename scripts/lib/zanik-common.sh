@@ -52,7 +52,9 @@ zanik_set_config(){
     FEATURE_ADMIN_TELEPORT) CFG_FEATURE_ADMIN_TELEPORT=$(zanik_bool "$value") || return 1;;
     FEATURE_ADMIN_STORAGE_MUTATION) CFG_FEATURE_ADMIN_STORAGE_MUTATION=$(zanik_bool "$value") || return 1;;
     FEATURE_ADMIN_GRAVESTONE_MUTATION) CFG_FEATURE_ADMIN_GRAVESTONE_MUTATION=$(zanik_bool "$value") || return 1;;
-    FEATURE_QOL_AUTO_COMPOST) CFG_FEATURE_QOL_AUTO_COMPOST=$(zanik_bool "$value") || return 1;;
+    FEATURE_QOL_AUTO_COMPOST)
+      CFG_FEATURE_QOL_AUTO_COMPOST=$(zanik_bool "$value") || return 1
+      [ "$CFG_FEATURE_QOL_AUTO_COMPOST" -eq 0 ] || return 1;;
     *) return 2;;
   esac
 }
@@ -77,6 +79,7 @@ zanik_load_config(){
 
 zanik_export_runtime(){
   server_root=$1 install_mode=$2
+  export DW_SERVER_ROOT=${DW_SERVER_ROOT:-$server_root}
   export DW_STATUS_PORT=$CFG_STATUS_PORT
   export DW_STATUS_DATA=${DW_STATUS_DATA:-$server_root/zanik-data/players.db}
   export DW_ZANIK_ROOT=${DW_ZANIK_ROOT:-$server_root/zanik}
@@ -91,6 +94,13 @@ zanik_export_runtime(){
   export DW_ASSET_MANIFEST=${DW_ASSET_MANIFEST:-$server_root/zanik/assets/current/asset-manifest.json}
   export DW_RESOURCE_IDENTITIES=${DW_RESOURCE_IDENTITIES:-$server_root/zanik/assets/current/resource-identities.tsv}
   export DW_NPC_IDENTITIES=${DW_NPC_IDENTITIES:-$server_root/zanik/assets/current/npc-identities.tsv}
+  export DW_GAME_LOG=${DW_GAME_LOG:-$server_root/RSDragonwilds/Saved/Logs/RSDragonwilds.log}
+  export DW_WORLD_SAVE=${DW_WORLD_SAVE:-$server_root/RSDragonwilds/Saved/SaveGames/Emberlands TEST.sav}
+  if [ "$install_mode" = replace-executable ]; then
+    export DW_ORIGINAL_EXE=${DW_ORIGINAL_EXE:-$server_root/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping.zanik-original}
+  else
+    export DW_ORIGINAL_EXE=${DW_ORIGINAL_EXE:-$server_root/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping}
+  fi
   export ZANIK_INSTALL_MODE=$install_mode
   export ZANIK_CONFIG_VALID=1
   export ZANIK_ENABLED=$CFG_ZANIK_ENABLED

@@ -1,7 +1,10 @@
 #include "dom_engine.h"
 #include "../utils/logger.h"
+#include "../utils/runtime_paths.h"
 #include "../utils/memory.h"
+#include "../performance_trace.h"
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cctype>
@@ -28,7 +31,12 @@ using GetDisplayStringFn=const FString*(*)(const void*);using FTextDestructorFn=
 std::unique_ptr<Scan> active;ProcessEventFn processEvent=nullptr,originalProcessEvent=nullptr;uintptr_t getState=0,getCurrentObjective=0,serverNotifyTracked=0,clientNotifyTracked=0;GetDisplayStringFn displayText=nullptr;FTextDestructorFn destroyText=nullptr;std::size_t questParamOffset=0,stateReturnOffset=8,objectiveQuestOffset=0,objectiveReturnOffset=8,trackedNotifyQuestOffset=0;std::string fingerprint;
 std::atomic<int> enabled{0},compatibility{0},catalogCompat{0},componentCompat{0},queryCompat{0},objectiveCompat{0},trackedQuestCompat{0};
 std::atomic<std::uint64_t> resolved{0},completed{0},failures{0},changes{0},persistenceFailures{0},cacheHits{0},cacheMisses{0},invalidIdentities{0},trackedQuestFailures{0},trackedQuestCaptures{0},lastQueryUs{0},maxQueryUs{0},slowQueries{0};std::atomic<std::int64_t> lastScan{0};
-std::unordered_map<uintptr_t,uintptr_t> trackedQuestByComponent;std::unordered_set<uintptr_t> knownQuestComponents;pthread_mutex_t trackedQuestMutex=PTHREAD_MUTEX_INITIALIZER;
+std::atomic<std::uint64_t> processEventHookCalls{0},processEventActiveCalls{0},processEventQueueDrops{0},processEventMaximumUs{0},processEventSlowCalls{0};
+std::unordered_map<uintptr_t,uintptr_t> trackedQuestByComponent;pthread_mutex_t trackedQuestMutex=PTHREAD_MUTEX_INITIALIZER;
+struct RawTrackedQuestEvent{uintptr_t component=0,quest=0;std::uint64_t componentIdentity=0,questIdentity=0;};
+constexpr std::size_t TrackedQuestQueueCapacity=64;
+std::array<RawTrackedQuestEvent,TrackedQuestQueueCapacity> trackedQuestQueue{};
+std::atomic<std::uint64_t> trackedQuestWrite{0},trackedQuestRead{0};
 std::chrono::steady_clock::time_point nextCycle{},nextResolve{},nextQuery{};constexpr int QueryIntervalMs=20;
 std::int64_t Now(){return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();}
 std::vector<std::string> Split(const std::string&v,char s){std::vector<std::string>o;size_t p=0;for(;;){size_t a=v.find(s,p);o.push_back(v.substr(p,a==std::string::npos?a:a-p));if(a==std::string::npos)return o;p=a+1;}}
@@ -57,7 +65,7 @@ std::string QueryObjective(uintptr_t component,uintptr_t quest){
     destroyText(reinterpret_cast<void*>(text));
     return value;
 }
-bool LoadTextRuntime(uintptr_t moduleBase,uintptr_t moduleEnd){const char*raw=std::getenv("DW_COMPATIBILITY_FILE");std::ifstream in(raw&&*raw?raw:"/home/container/zanik/compatibility.tsv");const std::string sha=FileSha256("/proc/self/exe");std::string line;while(std::getline(in,line)){if(line.empty()||line[0]=='#')continue;auto f=Split(line,'\t');if(f.size()<49||f[0]!=sha)continue;try{uintptr_t display=std::stoull(f[4],nullptr,0),destroy=std::stoull(f.back(),nullptr,0);if(moduleBase+display>=moduleEnd||moduleBase+destroy>=moduleEnd)return false;displayText=reinterpret_cast<GetDisplayStringFn>(moduleBase+display);destroyText=reinterpret_cast<FTextDestructorFn>(moduleBase+destroy);return true;}catch(...){return false;}}return false;}
+bool LoadTextRuntime(uintptr_t moduleBase,uintptr_t moduleEnd){const char*raw=std::getenv("DW_COMPATIBILITY_FILE");std::ifstream in(raw&&*raw?raw:RuntimePaths::ZanikRoot()+"/compatibility.tsv");const std::string sha=FileSha256("/proc/self/exe");std::string line;while(std::getline(in,line)){if(line.empty()||line[0]=='#')continue;auto f=Split(line,'\t');if(f.size()<49||f[0]!=sha)continue;try{uintptr_t display=std::stoull(f[4],nullptr,0),destroy=std::stoull(f.back(),nullptr,0);if(moduleBase+display>=moduleEnd||moduleBase+destroy>=moduleEnd)return false;displayText=reinterpret_cast<GetDisplayStringFn>(moduleBase+display);destroyText=reinterpret_cast<FTextDestructorFn>(moduleBase+destroy);return true;}catch(...){return false;}}return false;}
 bool InitializeObjectiveQuery(uintptr_t moduleBase,uintptr_t moduleEnd){getCurrentObjective=g_Engine->FindFunction("QuestProgressComponent","GetCurrentObjectiveText");if(!getCurrentObjective||!LoadTextRuntime(moduleBase,moduleEnd))return false;auto fields=g_Engine->GetStructPropertyOffsets(getCurrentObjective);bool input=false,result=false;for(const auto&f:fields){if(f.first=="ReturnValue"&&f.second+16<=48){objectiveReturnOffset=f.second;result=true;}else if((f.first=="Quest"||f.first=="QuestData"||f.first=="InQuest"||f.first=="InQuestData")&&f.second+sizeof(uintptr_t)<=48){objectiveQuestOffset=f.second;input=true;}}if((input||result)&&(!input||!result||objectiveQuestOffset==objectiveReturnOffset))return false;objectiveCompat=1;return true;}
 bool Online(const Target&t){Lock l(targetMutex);return std::any_of(targets.begin(),targets.end(),[&](const auto&v){return v.guid==t.guid&&v.controller==t.controller;});}
 bool TrackedId(uintptr_t object,std::string&id){
@@ -67,19 +75,28 @@ bool TrackedId(uintptr_t object,std::string&id){
 }
 void WriteAbsoluteJump(unsigned char*destination,uintptr_t target){destination[0]=0x48;destination[1]=0xB8;std::memcpy(destination+2,&target,sizeof(target));destination[10]=0xFF;destination[11]=0xE0;}
 void HookProcessEvent(void*object,void*function,void*params){
-    const auto functionAddress=reinterpret_cast<uintptr_t>(function);bool trackedNotify=functionAddress==serverNotifyTracked||functionAddress==clientNotifyTracked;
-    if(!trackedNotify&&object&&function&&g_Engine){
-        bool known=false;{Lock lock(trackedQuestMutex);known=knownQuestComponents.count(reinterpret_cast<uintptr_t>(object))!=0;}
-        if(known){const std::string name=g_Engine->GetObjectName(functionAddress);if(name=="Server_NotifyQuestTracked"){serverNotifyTracked=functionAddress;trackedNotify=true;}else if(name=="Client_NotifyTrackedQuestLoaded"){clientNotifyTracked=functionAddress;trackedNotify=true;}}
-    }
-    if(object&&params&&trackedNotify&&g_Engine&&
-       g_Engine->IsObjectLive(reinterpret_cast<uintptr_t>(object))&&g_Engine->IsA(reinterpret_cast<uintptr_t>(object),"QuestProgressComponent")){
+    ++processEventHookCalls;
+    ObservePlayerActivityProcessEvent(object,function,params);
+    const auto functionAddress=reinterpret_cast<uintptr_t>(function);const bool trackedNotify=functionAddress==serverNotifyTracked||functionAddress==clientNotifyTracked;
+    if(object&&params&&trackedNotify&&g_Engine){
+        const auto started=std::chrono::steady_clock::now();++processEventActiveCalls;
+        const uintptr_t component=reinterpret_cast<uintptr_t>(object);
         const uintptr_t quest=Mem::ReadPtr(reinterpret_cast<uintptr_t>(params)+trackedNotifyQuestOffset);
-        if(!quest||(g_Engine->IsObjectLive(quest)&&g_Engine->IsA(quest,"QuestData"))){
-            Lock lock(trackedQuestMutex);trackedQuestByComponent[reinterpret_cast<uintptr_t>(object)]=quest;++trackedQuestCaptures;
-        }else ++trackedQuestFailures;
+        const auto write=trackedQuestWrite.load(std::memory_order_relaxed);
+        if(write-trackedQuestRead.load(std::memory_order_acquire)>=TrackedQuestQueueCapacity)++processEventQueueDrops;
+        else{trackedQuestQueue[write%TrackedQuestQueueCapacity]={component,quest,g_Engine->GetObjectIdentity(component),quest?g_Engine->GetObjectIdentity(quest):0};trackedQuestWrite.store(write+1,std::memory_order_release);}
+        const auto elapsed=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-started).count());Max(processEventMaximumUs,elapsed);if(elapsed>=1000)++processEventSlowCalls;
     }
     originalProcessEvent(object,function,params);
+}
+void DrainTrackedQuestCaptures(){
+    auto read=trackedQuestRead.load(std::memory_order_relaxed);const auto write=trackedQuestWrite.load(std::memory_order_acquire);
+    while(read<write){const auto event=trackedQuestQueue[read%TrackedQuestQueueCapacity];++read;
+        if(!event.componentIdentity||!g_Engine||g_Engine->GetObjectIdentity(event.component)!=event.componentIdentity||!g_Engine->IsA(event.component,"QuestProgressComponent")||
+           (event.quest&&(!event.questIdentity||g_Engine->GetObjectIdentity(event.quest)!=event.questIdentity||!g_Engine->IsA(event.quest,"QuestData")))){++trackedQuestFailures;continue;}
+        {Lock lock(trackedQuestMutex);trackedQuestByComponent[event.component]=event.quest;}++trackedQuestCaptures;
+    }
+    trackedQuestRead.store(read,std::memory_order_release);
 }
 bool ValidateTrackedNotify(uintptr_t function){
     auto fields=g_Engine->GetStructPropertyOffsets(function);if(fields.empty())return true;
@@ -110,6 +127,7 @@ bool InstallTrackedQuestCapture(uintptr_t moduleBase,uintptr_t moduleEnd,uintptr
     if(!clientNotifyTracked)clientNotifyTracked=FindUniqueFunctionByName("Client_NotifyTrackedQuestLoaded");
     if((serverNotifyTracked&&!ValidateTrackedNotify(serverNotifyTracked))||
        (clientNotifyTracked&&!ValidateTrackedNotify(clientNotifyTracked))){trackedQuestCompat=-2;return false;}
+    if(originalProcessEvent)return true;
     constexpr size_t PrologueOffset=14,HookBytes=13;const unsigned char expected[HookBytes]={0x55,0x48,0x89,0xE5,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53};
     if(moduleBase+processOffset+PrologueOffset+HookBytes>moduleEnd)return false;auto*target=reinterpret_cast<unsigned char*>(moduleBase+processOffset+PrologueOffset);
     if(std::memcmp(target,expected,sizeof(expected))!=0){trackedQuestCompat=-3;return false;}
@@ -120,6 +138,7 @@ bool InstallTrackedQuestCapture(uintptr_t moduleBase,uintptr_t moduleEnd,uintptr
     unsigned char patch[HookBytes];std::memset(patch,0x90,sizeof(patch));WriteAbsoluteJump(patch,reinterpret_cast<uintptr_t>(&HookProcessEvent));std::memcpy(target,patch,sizeof(patch));__builtin___clear_cache(reinterpret_cast<char*>(target),reinterpret_cast<char*>(target+HookBytes));mprotect(reinterpret_cast<void*>(page),size_t(pageSize),PROT_READ|PROT_EXEC);
     trackedQuestCompat=0;LogMessage("Tracked quest capture installed for server and login notifications"+(serverNotifyTracked||clientNotifyTracked?std::string{}:"; notification functions will resolve when the component becomes live"));return true;
 }
+
 bool ReadTrackedQuest(uintptr_t component,std::string&id){
     id.clear();
     {
@@ -157,8 +176,8 @@ bool ReadTrackedQuest(uintptr_t component,std::string&id){
 }
 }
 bool InitializePlayerQuestTracking(const std::string&path,uintptr_t moduleBase,uintptr_t moduleEnd){const char*toggle=std::getenv("DW_QUEST_TRACKING_ENABLED");if(toggle&&(std::string(toggle)=="0"||std::string(toggle)=="false")){enabled=0;compatibility=-8;return false;}enabled=1;compatibility=-7;std::ifstream in(path);if(!in){catalogCompat=-1;compatibility=-1;return false;}std::string line;size_t expected=0;while(std::getline(in,line)){if(!line.empty()&&line.back()=='\r')line.pop_back();if(line.rfind("#",0)==0){auto a=line.find("fingerprint=");if(a!=std::string::npos)fingerprint=line.substr(a+12,64);a=line.find("count=");if(a!=std::string::npos)try{expected=std::stoull(line.substr(a+6));}catch(...){}continue;}auto f=Split(line,'\t');if(f.size()!=3||f[0].empty()||f[1].empty()||f[2].empty())continue;catalog.push_back({f[0],f[1],Key(f[2]),0});}if(catalog.empty()||catalog.size()!=expected||fingerprint.size()!=64){catalogCompat=-1;compatibility=-2;return false;}uintptr_t a=0,b=0,pe=0,c=0,d=0;if(!GetAdminTeleportOffsets(a,b,pe,c,d)||moduleBase+pe>=moduleEnd){queryCompat=-1;compatibility=-3;return false;}processEvent=reinterpret_cast<ProcessEventFn>(moduleBase+pe);getState=g_Engine->FindFunction("QuestProgressComponent","GetQuestState");if(!getState){queryCompat=-1;compatibility=-4;return false;}auto fields=g_Engine->GetStructPropertyOffsets(getState);if(!fields.empty()){bool input=false,result=false;for(const auto&f:fields){if(f.first=="ReturnValue"&&f.second<32){stateReturnOffset=f.second;result=true;}else if((f.first=="Quest"||f.first=="QuestData"||f.first=="InQuest"||f.first=="InQuestData")&&f.second+sizeof(uintptr_t)<=32){questParamOffset=f.second;input=true;}}if((input||result)&&(!input||!result||questParamOffset==stateReturnOffset)){queryCompat=-1;compatibility=-5;return false;}if(!input&&!result)LogMessage("Quest GetQuestState fields stripped; using fingerprint-bound ABI and behavioral state validation");}queryCompat=1;if(!InitializeObjectiveQuery(moduleBase,moduleEnd)){objectiveCompat=-1;LogMessage("Quest current-objective decoding compatibility unavailable; status tracking remains enabled");}if(!InstallTrackedQuestCapture(moduleBase,moduleEnd,pe))LogMessage("Tracked quest notification capture compatibility unavailable; reflected-property fallback remains enabled");nextResolve=std::chrono::steady_clock::now();ResolveObjects();return compatibility.load()==1;}
-void UpdatePlayerQuestTargets(const std::vector<PlayerInfo>&players){std::vector<Target> fresh;std::unordered_set<uintptr_t> components;for(const auto&p:players){if(p.characterGuid.empty()||!p.controllerPtr){if(!p.characterGuid.empty())++invalidIdentities;continue;}Target t{p.characterGuid,p.controllerPtr,p.pawnPtr,p.playerStatePtr,0};t.component=FindComponent(t);if(t.component)components.insert(t.component);fresh.push_back(t);}{Lock l(trackedQuestMutex);knownQuestComponents=std::move(components);}{Lock l(targetMutex);targets=std::move(fresh);}}
-void RefreshPlayerQuestTrackingCompatibility(){if(!enabled||!g_Engine||compatibility.load()<0||compatibility.load()==1)return;auto now=std::chrono::steady_clock::now();if(now<nextResolve)return;ResolveObjects();nextResolve=now+std::chrono::seconds(10);}
+void UpdatePlayerQuestTargets(const std::vector<PlayerInfo>&players){DrainTrackedQuestCaptures();std::vector<Target> fresh;for(const auto&p:players){if(p.characterGuid.empty()||!p.controllerPtr){if(!p.characterGuid.empty())++invalidIdentities;continue;}Target t{p.characterGuid,p.controllerPtr,p.pawnPtr,p.playerStatePtr,0};t.component=FindComponent(t);fresh.push_back(t);}{Lock l(targetMutex);targets=std::move(fresh);}}
+void RefreshPlayerQuestTrackingCompatibility(){if(!enabled||!g_Engine)return;DrainTrackedQuestCaptures();if(compatibility.load()<0||compatibility.load()==1)return;auto now=std::chrono::steady_clock::now();if(now<nextResolve)return;ResolveObjects();nextResolve=now+std::chrono::seconds(10);}
 void ProcessPlayerQuestTracking(){
     if(!enabled||!g_Engine||compatibility.load()!=1)return;
     auto now=std::chrono::steady_clock::now();
@@ -173,10 +192,10 @@ void ProcessPlayerQuestTracking(){
     if(active->cursor<catalog.size()){
         if(now<nextQuery)return;nextQuery=now+std::chrono::milliseconds(QueryIntervalMs);auto&e=catalog[active->cursor];
         if(!e.object||!g_Engine->IsObjectLive(e.object)){compatibility=-6;active.reset();++failures;return;}
-        auto started=std::chrono::steady_clock::now();
+        auto started=std::chrono::steady_clock::now();const bool objectiveQuery=active->objectivePending;
         if(active->objectivePending){active->quests.back().objective=QueryObjective(active->target.component,e.object);active->objectivePending=false;++active->cursor;}
         else {uint8_t state=Query(active->target.component,e.object);if(state>2){compatibility=-9;queryCompat=-1;active.reset();++failures;return;}active->quests.push_back({e.id,Status(state),"",0});if(state==1&&objectiveCompat.load()==1)active->objectivePending=true;else ++active->cursor;}
-        auto us=std::uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-started).count());lastQueryUs=us;Max(maxQueryUs,us);if(us>=1000)++slowQueries;
+        auto us=std::uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-started).count());lastQueryUs=us;Max(maxQueryUs,us);if(us>=1000)++slowQueries;PerformanceTrace::Record("quests",objectiveQuery?"objective query":"quest-state query",us,active->target.guid.c_str(),'g',"game");
     }
     if(active&&active->cursor==catalog.size()){
         PlayerQuestSnapshot s;s.characterGuid=active->target.guid;s.quests=active->quests;s.catalogFingerprint=fingerprint;s.capturedAt=Now();s.complete=true;s.trackedQuestAvailable=ReadTrackedQuest(active->target.component,s.trackedQuestId);
@@ -185,7 +204,12 @@ void ProcessPlayerQuestTracking(){
     }
 }
 std::vector<PlayerQuestSnapshot> ReadPlayerQuestSnapshots(){Lock l(snapshotMutex);std::vector<PlayerQuestSnapshot>o;for(const auto&p:snapshots)o.push_back(p.second);return o;}
-PlayerQuestDiagnostics GetPlayerQuestDiagnostics(){PlayerQuestDiagnostics d;d.enabled=enabled;d.compatibility=compatibility;d.catalogCompatibility=catalogCompat;d.componentCompatibility=componentCompat;d.queryCompatibility=queryCompat;d.objectiveCompatibility=objectiveCompat;d.trackedQuestCompatibility=trackedQuestCompat;d.catalogEntries=catalog.size();d.resolvedEntries=resolved;{Lock l(snapshotMutex);d.snapshots=snapshots.size();}d.scansCompleted=completed;d.queryFailures=failures;d.snapshotChanges=changes;d.persistenceFailures=persistenceFailures;d.cacheHits=cacheHits;d.cacheMisses=cacheMisses;d.invalidIdentities=invalidIdentities;d.trackedQuestFailures=trackedQuestFailures;d.trackedQuestCaptures=trackedQuestCaptures;d.lastScan=lastScan;d.lastQueryMicroseconds=lastQueryUs;d.maximumQueryMicroseconds=maxQueryUs;d.slowQueries=slowQueries;return d;}
+PlayerQuestDiagnostics GetPlayerQuestDiagnostics(){PlayerQuestDiagnostics d;d.enabled=enabled;d.compatibility=compatibility;d.catalogCompatibility=catalogCompat;d.componentCompatibility=componentCompat;d.queryCompatibility=queryCompat;d.objectiveCompatibility=objectiveCompat;d.trackedQuestCompatibility=trackedQuestCompat;d.catalogEntries=catalog.size();d.resolvedEntries=resolved;{Lock l(snapshotMutex);d.snapshots=snapshots.size();}d.scansCompleted=completed;d.queryFailures=failures;d.snapshotChanges=changes;d.persistenceFailures=persistenceFailures;d.cacheHits=cacheHits;d.cacheMisses=cacheMisses;d.invalidIdentities=invalidIdentities;d.trackedQuestFailures=trackedQuestFailures;d.trackedQuestCaptures=trackedQuestCaptures;d.processEventHookCalls=processEventHookCalls;d.processEventActiveCalls=processEventActiveCalls;d.processEventQueueDepth=trackedQuestWrite.load()-trackedQuestRead.load();d.processEventQueueDrops=processEventQueueDrops;d.processEventMaximumMicroseconds=processEventMaximumUs;d.processEventSlowCalls=processEventSlowCalls;d.lastScan=lastScan;d.lastQueryMicroseconds=lastQueryUs;d.maximumQueryMicroseconds=maxQueryUs;d.slowQueries=slowQueries;return d;}
 std::string GetPlayerQuestCatalogFingerprint(){return compatibility.load()==1?fingerprint:std::string();}
 void RecordPlayerQuestPersistenceFailure(){++persistenceFailures;}
+bool EnsurePlayerProcessEventCapture(uintptr_t moduleBase,uintptr_t moduleEnd){
+    uintptr_t a=0,b=0,processOffset=0,c=0,d=0;
+    return GetAdminTeleportOffsets(a,b,processOffset,c,d)&&moduleBase+processOffset<moduleEnd&&
+        InstallTrackedQuestCapture(moduleBase,moduleEnd,processOffset);
+}
 }

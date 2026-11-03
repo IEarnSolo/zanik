@@ -26,6 +26,7 @@ MAP_SIZE = 4096
 # seams. This color matches the ocean used by Zanik's original web map.
 MAP_OCEAN_RGB = (79, 107, 110)
 LODESTONE_MAP_ICON_PACKAGE = "RSDragonwilds/Content/Art/UI/Icons/T_LodestoneMapIcon"
+REGION_DISCOVERY_ICON_PACKAGE = "RSDragonwilds/Content/Art/UI/Icons/T_Icons_Journal_Cat_Knowledge_Places_Selected"
 NODESTONE_MAP_ICON = Path(__file__).resolve().parents[1] / "asset-tools/artwork/nodestone-icon-map.png"
 PRIMARY_QUEST_ICON_PACKAGE = "RSDragonwilds/Content/Art/UI/Map/QuestList/T_Icon_Quest_Primary"
 SECONDARY_QUEST_ICON_PACKAGE = "RSDragonwilds/Content/Art/UI/Map/QuestList/T_Icon_Quest_Secondary"
@@ -229,6 +230,8 @@ def main() -> int:
         progress("Resolving fixed map artwork", ordered_groups.index("map-icons") + 1, len(ordered_groups))
         if not copy_package(args.texture_root, LODESTONE_MAP_ICON_PACKAGE, web / "lodestone-icon.png"):
             placeholder(web / "lodestone-icon.png", (67, 155, 219, 255)); missing.append("lodestone-icon.png")
+        if not copy_package(args.texture_root, REGION_DISCOVERY_ICON_PACKAGE, web / "region-discovery-icon.png"):
+            raise RuntimeError("the required selected Places journal icon texture was not exported")
         copy_authored_nodestone_icon(web / "nodestone-icon.png")
         for target, candidates, color in (
             ("gravestone-icon.png", ("T_Icon_Gravestone",), (180, 180, 180, 255)),

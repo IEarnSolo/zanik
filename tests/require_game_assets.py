@@ -24,6 +24,7 @@ REQUIRED_FILES = (
     "web/recipe-runtime-catalog.tsv",
     "web/world-map.jpg",
     "web/lodestone-icon.png",
+    "web/region-discovery-icon.png",
     "web/Jancient-Regular.ttf",
     "web/skills/attack.png",
     "web/quests/main-quest.png",

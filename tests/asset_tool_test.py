@@ -9,7 +9,7 @@ REQUIRED = ("buildings/catalog.json", "buildings/catalog.tsv", "npc-catalog.json
             "quest-catalog.json", "quest-runtime-catalog.tsv", "quest-step-locations.json",
             "recipe-unlocks.json", "recipe-runtime-catalog.tsv", "resource-catalog.json",
             "resource-identities.tsv", "npc-identities.tsv", "world-map.jpg", "lodestone-icon.png",
-            "nodestone-icon.png", "gravestone-icon.png", "Jancient-Regular.ttf", "skills/attack.png",
+            "nodestone-icon.png", "gravestone-icon.png", "region-discovery-icon.png", "Jancient-Regular.ttf", "skills/attack.png",
             "quests/main-quest.png", "quests/side-quest.png")
 
 

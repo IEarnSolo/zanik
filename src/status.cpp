@@ -200,6 +200,7 @@ std::string PlayersJson(const std::vector<StoredPlayer>& players) {
         json << "{\"id\":\"" << Escape(players[i].id)
              << "\",\"name\":\"" << Escape(players[i].name)
              << "\",\"online\":" << (players[i].online ? "true" : "false")
+             << ",\"onlineSince\":" << (players[i].online ? players[i].onlineSince : 0)
              << ",\"lastSeen\":" << players[i].lastSeen << '}';
     }
     json << "]}";

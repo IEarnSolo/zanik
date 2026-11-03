@@ -1,6 +1,8 @@
 #include "dom_engine.h"
 #include "../utils/logger.h"
+#include "../utils/runtime_paths.h"
 #include "../utils/memory.h"
+#include "../performance_trace.h"
 
 #include <algorithm>
 #include <array>
@@ -10,7 +12,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <deque>
 #include <pthread.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -47,7 +48,7 @@ BuildCompatibility activeBuild;
 
 bool LoadCompatibility(const std::string& sha, BuildCompatibility& out) {
     const char* raw = std::getenv("DW_COMPATIBILITY_FILE");
-    std::ifstream input(raw && *raw ? raw : "/home/container/zanik/compatibility.tsv");
+    std::ifstream input(raw && *raw ? raw : RuntimePaths::ZanikRoot()+"/compatibility.tsv");
     std::string line;
     while (std::getline(input, line)) {
         if (line.empty() || line[0] == '#') continue;
@@ -116,9 +117,10 @@ bool LoadCompatibility(const std::string& sha, BuildCompatibility& out) {
 
 using OnAIKilledFn = void (*)(void*, uintptr_t, uintptr_t, const void*);
 OnAIKilledFn originalOnAIKilled = nullptr;
-pthread_mutex_t queueMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t playerCacheMutex = PTHREAD_MUTEX_INITIALIZER;
-std::deque<NativeKillEvent> eventQueue;
+struct RawKillEvent{uintptr_t enemy=0,killer=0;std::uint64_t enemyIdentity=0,killerIdentity=0,hookMicros=0;};
+std::array<RawKillEvent,QueueCapacity> rawKillQueue{};
+std::atomic<std::uint64_t> rawKillWrite{0},rawKillRead{0};
 std::unordered_map<uintptr_t,std::string> playerIdentityCache;
 std::unordered_map<uintptr_t, std::pair<std::uint64_t,
     std::chrono::steady_clock::time_point>> recentVictims;
@@ -143,10 +145,11 @@ uint32_t RotateRight(uint32_t value, unsigned bits) {
 
 struct HookDurationSample {
     std::chrono::steady_clock::time_point started=std::chrono::steady_clock::now();
+    std::uint64_t elapsed=0;
     bool finished=false;
     void Finish(){
         if(finished)return;finished=true;
-        auto elapsed=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        elapsed=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now()-started).count());
         auto maximum=maximumHookMicroseconds.load(std::memory_order_relaxed);
         while(elapsed>maximum&&!maximumHookMicroseconds.compare_exchange_weak(
@@ -233,42 +236,9 @@ void WriteAbsoluteJump(unsigned char* destination, uintptr_t target) {
 void HookOnAIKilled(void* subsystem, uintptr_t enemy, uintptr_t killer, const void* event) {
     HookDurationSample duration;
     ++rawFatalEvents;
-    RecordNpcDeath(enemy);
-    if (!g_Engine || !enemy || !g_Engine->IsA(enemy,"DominionAICharacter")) {
-        ++rejectedNonPlayerDeaths;
-        duration.Finish();
-        originalOnAIKilled(subsystem,enemy,killer,event);
-        return;
-    }
-    std::string guid;
-    if (killer) guid=ResolveCachedPlayer(killer);
-    if (guid.empty()) {
-        if (killer) ++unresolvedAttackers; else ++rejectedNonPlayerDeaths;
-        duration.Finish();
-        originalOnAIKilled(subsystem,enemy,killer,event);
-        return;
-    }
-    auto now=std::chrono::steady_clock::now();
-    std::string internalEnemy=g_Engine->GetObjectClassName(enemy);
-    if(internalEnemy.rfind("Default__",0)==0)internalEnemy.erase(0,9);
-    if(internalEnemy.size()>2&&internalEnemy.compare(internalEnemy.size()-2,2,"_C")==0)
-        internalEnemy.erase(internalEnemy.size()-2);
-    if(internalEnemy.rfind("BP_",0)==0)internalEnemy.erase(0,3);
-    std::replace(internalEnemy.begin(),internalEnemy.end(),'_',' ');
-    std::string enemyName=g_Engine->GetEnemyDisplayName(enemy);
-    pthread_mutex_lock(&queueMutex);
-    auto& prior=recentVictims[enemy];
-    if (prior.first && now-prior.second<DuplicateWindow) {
-        ++duplicateEvents;pthread_mutex_unlock(&queueMutex);
-        duration.Finish();
-        originalOnAIKilled(subsystem,enemy,killer,event);return;
-    }
-    ++prior.first;prior.second=now;
-    if(eventQueue.size()==QueueCapacity){eventQueue.pop_front();++droppedQueueEvents;}
-    eventQueue.push_back({enemy,prior.first,std::move(internalEnemy),std::move(enemyName),std::move(guid)});
-    ++acceptedKills;
-    pthread_mutex_unlock(&queueMutex);
+    RawKillEvent raw;if(g_Engine&&enemy)raw={enemy,killer,g_Engine->GetObjectIdentity(enemy),killer?g_Engine->GetObjectIdentity(killer):0,0};else ++rejectedNonPlayerDeaths;
     duration.Finish();
+    if(raw.enemy){raw.hookMicros=duration.elapsed;const auto write=rawKillWrite.load(std::memory_order_relaxed);if(write-rawKillRead.load(std::memory_order_acquire)>=QueueCapacity)++droppedQueueEvents;else{rawKillQueue[write%QueueCapacity]=raw;rawKillWrite.store(write+1,std::memory_order_release);}}
     originalOnAIKilled(subsystem,enemy,killer,event);
 }
 
@@ -328,9 +298,27 @@ void UpdateKillPlayerCache(const std::vector<PlayerInfo>& players){
 }
 
 std::vector<NativeKillEvent> DrainNativeKillEvents(){
-    pthread_mutex_lock(&queueMutex);
-    std::vector<NativeKillEvent> result(eventQueue.begin(),eventQueue.end());eventQueue.clear();
-    pthread_mutex_unlock(&queueMutex);return result;
+    std::vector<NativeKillEvent> result;auto read=rawKillRead.load(std::memory_order_relaxed);const auto write=rawKillWrite.load(std::memory_order_acquire);
+    result.reserve(static_cast<std::size_t>(std::min<std::uint64_t>(write-read,QueueCapacity)));
+    while(read<write){
+        const auto raw=rawKillQueue[read%QueueCapacity];++read;
+        if(!raw.enemy||!raw.enemyIdentity||!g_Engine||g_Engine->GetObjectIdentity(raw.enemy)!=raw.enemyIdentity){++rejectedNonPlayerDeaths;continue;}
+        RecordNpcDeath(raw.enemy);
+        if(!g_Engine->IsA(raw.enemy,"DominionAICharacter")){++rejectedNonPlayerDeaths;continue;}
+        std::string guid=raw.killer&&raw.killerIdentity&&g_Engine->GetObjectIdentity(raw.killer)==raw.killerIdentity?ResolveCachedPlayer(raw.killer):std::string{};
+        if(guid.empty()){if(raw.killer)++unresolvedAttackers;else ++rejectedNonPlayerDeaths;continue;}PerformanceTrace::Record("kills","kill event capture",raw.hookMicros,guid.c_str(),'g',"game");
+        const auto now=std::chrono::steady_clock::now();auto&prior=recentVictims[raw.enemy];
+        if(prior.first&&now-prior.second<DuplicateWindow){++duplicateEvents;continue;}
+        ++prior.first;prior.second=now;
+        std::string internalEnemy=g_Engine->GetObjectClassName(raw.enemy);
+        if(internalEnemy.rfind("Default__",0)==0)internalEnemy.erase(0,9);
+        if(internalEnemy.size()>2&&internalEnemy.compare(internalEnemy.size()-2,2,"_C")==0)internalEnemy.erase(internalEnemy.size()-2);
+        if(internalEnemy.rfind("BP_",0)==0)internalEnemy.erase(0,3);
+        std::replace(internalEnemy.begin(),internalEnemy.end(),'_',' ');
+        std::string enemyName=g_Engine->GetEnemyDisplayName(raw.enemy);
+        result.push_back({raw.enemy,prior.first,std::move(internalEnemy),std::move(enemyName),std::move(guid)});++acceptedKills;
+    }
+    rawKillRead.store(read,std::memory_order_release);return result;
 }
 
 int NativeKillHookState(){return hookState.load();}

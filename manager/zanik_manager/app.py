@@ -560,6 +560,9 @@ class MainWindow(QMainWindow):
                 form.addRow(heading)
             if spec["type"]=="boolean":
                 field=QCheckBox(); field.setChecked(bool(spec["default"])); field.setFixedWidth(20)
+                if "const" in spec:
+                    field.setChecked(bool(spec["const"])); field.setEnabled(False)
+                    field.setToolTip("Reserved setting; this cannot be enabled in the current release.")
                 field_layout=QHBoxLayout()
                 field_layout.setContentsMargins(0,0,0,0); field_layout.setSpacing(6)
                 description=config_description(spec["description"], bool(spec.get("dangerous")))

@@ -1,7 +1,7 @@
 # Local project/operator instructions
 # This file contains machine- and server-specific working context and can be
 # reconsidered later as a sanitized contributor guide.
-/AGENTS.MD
+/AGENTS.[mM][dD]
 
 # Credentials and local environment configuration
 /pterodactyl_api_key.txt

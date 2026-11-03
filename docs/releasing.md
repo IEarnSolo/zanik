@@ -26,7 +26,7 @@ Optional Windows signing uses protected, masked variables `WINDOWS_SIGNING_CERT_
 ## Release procedure
 
 1. Update `VERSION` and the matching `CHANGELOG.md` section.
-2. Run `python3 tools/release_contract.py --tag vVERSION` and the clean test/package validation suite.
+2. Run `python3 tools/release_contract.py --tag vVERSION` and the clean test/package validation suite. The final tag pipeline additionally proves that the tag is annotated and its immutable commit remains contained in GitLab `main`; the release evidence records that it was the exact `main` tip when created.
 3. Commit and push `main` to GitLab first. After that push succeeds, push the identical commit to GitHub, verify both remote branches resolve to the same SHA, and wait for the GitLab pipeline to pass:
 
    ```sh
@@ -48,9 +48,17 @@ Optional Windows signing uses protected, masked variables `WINDOWS_SIGNING_CERT_
 6. Download the release files afresh and verify `sha256sum --check SHA256SUMS`.
 7. Run the optional `publish-curseforge` manual job when the approved project and protected variables are ready.
 
-Branch artifacts expire after 30 days. Tagged GitLab packages and GitLab Releases are authoritative; GitHub is the public source and release mirror. Routine pushes must always go to `origin` first and `github` second. Do not use force push, `--all`, or `--mirror` for synchronization.
+Branch artifacts expire after 7 days. Tagged GitLab packages and GitLab Releases are authoritative; GitHub is the public source, release mirror, and Manager self-update channel. Routine pushes must always go to `origin` first and `github` second. Do not use force push, `--all`, or `--mirror` for synchronization.
+
+Use an untagged `main` pipeline only for controlled development testing. Record the exact commit, pipeline ID, and successful `package-manager` job, wait for the complete pipeline to pass, and install only that exact artifact through the transactional Manager updater. Do not create a stable tag merely to test a Manager candidate.
+
+A protected tag is immutable once pushed. If tag validation or publication fails, do not delete, move, recreate, or reuse it. Add an explicit reserved-version changelog entry, advance `VERSION`, and ship the corrected candidate under a new annotated tag. Reconcile partial publication forward without replacing same-name files whose digest differs.
+
+Release publication does not authorize deployment to a server. Development and production deployments remain separate, explicitly targeted operations.
 
 The automatic `publish-github-release` job applies only to new stable tags after this automation was introduced; it does not backfill older releases. It waits up to five minutes for the GitHub tag. A missing or mismatched tag fails the job without changing the completed GitLab release. Retrying is safe: matching GitHub asset digests are retained and same-name content conflicts fail instead of being overwritten. The retained `github-release.json` report contains only public identifiers and file hashes.
+
+When published notes need correction, update the canonical `CHANGELOG.md` section and run the protected note-correction workflow for that exact tag. It updates both the GitLab Release and GitHub mirror without changing release files. Review an already submitted CurseForge changelog separately.
 
 ## CurseForge recovery
 

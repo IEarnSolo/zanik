@@ -8,8 +8,10 @@
 #include "quest_snapshot_store.h"
 #include "player_activity_store.h"
 #include "server_performance_store.h"
+#include "performance_trace.h"
 #include "utils/logger.h"
 #include "utils/memory.h"
+#include "utils/runtime_paths.h"
 #include "web_page.h"
 
 #include <arpa/inet.h>
@@ -57,16 +59,16 @@ int Port() {
 
 std::string StorePath() {
     const char* raw = std::getenv("DW_STATUS_DATA");
-    return raw && *raw ? raw : "/home/container/zanik-data/players.db";
+    return raw && *raw ? raw : RuntimePaths::DataFile("players.db");
 }
 
-std::string ZanikRoot(){const char* raw=std::getenv("DW_ZANIK_ROOT");return raw&&*raw?raw:"/home/container/zanik";}
-std::string DataRoot(){const char* raw=std::getenv("DW_DATA_ROOT");return raw&&*raw?raw:"/home/container/zanik-data";}
+std::string ZanikRoot(){return RuntimePaths::ZanikRoot();}
+std::string DataRoot(){return RuntimePaths::DataRoot();}
+std::string GameLogPath(){return RuntimePaths::Environment("DW_GAME_LOG",RuntimePaths::GameSavedRoot()+"/Logs/RSDragonwilds.log");}
 std::string PerformancePath(){const char* raw=std::getenv("DW_PERFORMANCE_DATA");return raw&&*raw?raw:DataRoot()+"/server-performance.db";}
 
 std::string WebRoot() {
-    const char* raw = std::getenv("DW_WEB_ROOT");
-    return raw && *raw ? raw : "/home/container/zanik/web";
+    return RuntimePaths::WebRoot();
 }
 
 std::string ConsoleSecret(){const char* raw=std::getenv("DW_CONSOLE_SECRET");return raw?raw:"";}
@@ -212,7 +214,7 @@ RecipeCatalogHealth ReadRecipeCatalogHealth(std::string* body=nullptr) {
 
 std::string UpdateStateJson() {
     const char* raw = std::getenv("DW_UPDATE_STATE");
-    std::ifstream input(raw && *raw ? raw : "/home/container/zanik/state/update-status.json");
+    std::ifstream input(raw && *raw ? raw : ZanikRoot()+"/state/update-status.json");
     if (!input) return "null";
     std::ostringstream value;
     value << input.rdbuf();
@@ -223,7 +225,7 @@ std::string UpdateStateJson() {
 
 std::string GameUpdateStateJson() {
     const char* raw = std::getenv("DW_GAME_UPDATE_STATE");
-    std::ifstream input(raw && *raw ? raw : "/home/container/zanik/state/game-update-status.json");
+    std::ifstream input(raw && *raw ? raw : ZanikRoot()+"/state/game-update-status.json");
     if (!input) return "null";
     std::ostringstream value;
     value << input.rdbuf();
@@ -235,7 +237,7 @@ std::string GameUpdateStateJson() {
 
 std::string BackupRetentionStateJson() {
     const char* raw = std::getenv("DW_BACKUP_RETENTION_STATE");
-    std::ifstream input(raw && *raw ? raw : "/home/container/zanik/state/backup-retention-status.json");
+    std::ifstream input(raw && *raw ? raw : ZanikRoot()+"/state/backup-retention-status.json");
     if (!input) return "null";
     std::ostringstream value; value << input.rdbuf(); std::string json=value.str();
     while(!json.empty()&&std::isspace(static_cast<unsigned char>(json.back())))json.pop_back();
@@ -284,16 +286,22 @@ void Respond(int fd, int status, const char* type, const std::string& body,
 }
 
 struct HttpRequest { std::string method,target,path,query,body; std::unordered_map<std::string,std::string> headers; };
+enum class RequestReadResult { Complete, ReceiveTimeout, ClientDisconnected, Malformed, ReceiveError };
 std::string Lower(std::string s){for(char&c:s)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));return s;}
-bool ReadRequest(int fd,HttpRequest&r){
+RequestReadResult ReceiveResult(ssize_t received){
+    if(received==0)return RequestReadResult::ClientDisconnected;
+    if(errno==EAGAIN||errno==EWOULDBLOCK)return RequestReadResult::ReceiveTimeout;
+    return RequestReadResult::ReceiveError;
+}
+RequestReadResult ReadRequest(int fd,HttpRequest&r){
     std::string data;char b[4096];std::size_t headerEnd=std::string::npos,need=0;
-    while(data.size()<65536){ssize_t n=recv(fd,b,sizeof(b),0);if(n<=0)return false;data.append(b,n);headerEnd=data.find("\r\n\r\n");if(headerEnd!=std::string::npos)break;}
-    if(headerEnd==std::string::npos)return false;std::istringstream in(data.substr(0,headerEnd));std::string line,version;
-    if(!std::getline(in,line))return false;if(!line.empty()&&line.back()=='\r')line.pop_back();std::istringstream first(line);if(!(first>>r.method>>r.target>>version))return false;
+    while(data.size()<65536){ssize_t n=recv(fd,b,sizeof(b),0);if(n<=0)return ReceiveResult(n);data.append(b,n);headerEnd=data.find("\r\n\r\n");if(headerEnd!=std::string::npos)break;}
+    if(headerEnd==std::string::npos)return RequestReadResult::Malformed;std::istringstream in(data.substr(0,headerEnd));std::string line,version;
+    if(!std::getline(in,line))return RequestReadResult::Malformed;if(!line.empty()&&line.back()=='\r')line.pop_back();std::istringstream first(line);if(!(first>>r.method>>r.target>>version))return RequestReadResult::Malformed;
     while(std::getline(in,line)){if(!line.empty()&&line.back()=='\r')line.pop_back();auto colon=line.find(':');if(colon==std::string::npos)continue;std::string key=Lower(line.substr(0,colon)),value=line.substr(colon+1);auto p=value.find_first_not_of(" \t");r.headers[key]=p==std::string::npos?"":value.substr(p);}
-    if(auto it=r.headers.find("content-length");it!=r.headers.end()){try{need=std::stoul(it->second);}catch(...){return false;}if(need>32768)return false;}
-    std::size_t bodyAt=headerEnd+4;while(data.size()-bodyAt<need){ssize_t n=recv(fd,b,sizeof(b),0);if(n<=0)return false;data.append(b,n);}r.body=data.substr(bodyAt,need);
-    auto q=r.target.find('?');r.path=r.target.substr(0,q);r.query=q==std::string::npos?"":r.target.substr(q+1);return r.path.size()<2048;
+    if(auto it=r.headers.find("content-length");it!=r.headers.end()){try{need=std::stoul(it->second);}catch(...){return RequestReadResult::Malformed;}if(need>32768)return RequestReadResult::Malformed;}
+    std::size_t bodyAt=headerEnd+4;while(data.size()-bodyAt<need){ssize_t n=recv(fd,b,sizeof(b),0);if(n<=0)return ReceiveResult(n);data.append(b,n);}r.body=data.substr(bodyAt,need);
+    auto q=r.target.find('?');r.path=r.target.substr(0,q);r.query=q==std::string::npos?"":r.target.substr(q+1);return r.path.size()<2048?RequestReadResult::Complete:RequestReadResult::Malformed;
 }
 std::string Cookie(const HttpRequest&r,const std::string&name){auto it=r.headers.find("cookie");if(it==r.headers.end())return {};std::size_t p=0;while(p<=it->second.size()){auto e=it->second.find(';',p);std::string x=it->second.substr(p,e==std::string::npos?e:e-p);auto a=x.find_first_not_of(" \t"),eq=x.find('=',a);if(a!=std::string::npos&&eq!=std::string::npos&&x.substr(a,eq-a)==name)return x.substr(eq+1);if(e==std::string::npos)break;p=e+1;}return {};}
 std::string JsonValue(const std::string&body,const std::string&key){std::string mark="\""+key+"\"";auto p=body.find(mark);if(p==std::string::npos)return {};p=body.find(':',p+mark.size());if(p==std::string::npos)return {};p=body.find('"',p+1);if(p==std::string::npos)return {};std::string out;for(++p;p<body.size();++p){if(body[p]=='"')return out;if(body[p]=='\\'&&p+1<body.size()){char c=body[++p];if(c=='"'||c=='\\')out+=c;else return {};}else out+=body[p];if(out.size()>1024)return {};}return {};}
@@ -336,7 +344,7 @@ bool ResolveQuestTeleportDestination(const std::string&questId,const std::string
 bool MaintenanceMode(){const char* raw=std::getenv("ZANIK_MAINTENANCE_MODE");return raw&&std::strcmp(raw,"1")==0;}
 std::string MaintenanceReleaseJson(){
     const char* raw=std::getenv("DW_MAINTENANCE_RELEASE_STATE");
-    std::ifstream input(raw&&*raw?raw:"/home/container/zanik/state/maintenance-release.json");
+    std::ifstream input(raw&&*raw?raw:ZanikRoot()+"/state/maintenance-release.json");
     if(!input)return "null";std::ostringstream value;value<<input.rdbuf();std::string json=value.str();
     while(!json.empty()&&std::isspace(static_cast<unsigned char>(json.back())))json.pop_back();
     if(json.size()>16384||json.empty()||json.front()!='{'||json.back()!='}')return "null";return json;
@@ -412,11 +420,11 @@ bool ParseUnsigned(const std::string& value, std::uint64_t& result) {
     }
 }
 
-void Handle(int fd) {
+void Handle(int fd,std::string* performanceRoute=nullptr) {
     timeval timeout{2, 0};
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-    HttpRequest request;if(!ReadRequest(fd,request))return;
+    HttpRequest request;const auto readResult=ReadRequest(fd,request);if(readResult!=RequestReadResult::Complete){if(performanceRoute)*performanceRoute=readResult==RequestReadResult::ReceiveTimeout?"@request-receive-timeout":readResult==RequestReadResult::ClientDisconnected?"@client-disconnected":readResult==RequestReadResult::Malformed?"@malformed-request":"@request-receive-error";return;}if(performanceRoute){*performanceRoute=request.target;const auto queryAt=performanceRoute->find('?');if(queryAt!=std::string::npos)performanceRoute->erase(queryAt);if(performanceRoute->size()>128)performanceRoute->resize(128);}
     if (request.method != "GET" && request.method != "POST") {
         Respond(fd, 405, "application/json; charset=utf-8", "{\"error\":\"Method not allowed\"}");
         return;
@@ -659,6 +667,10 @@ void Handle(int fd) {
         std::string asset;
         if(ReadWebAsset("gravestone-icon.png",asset))Respond(fd,200,"image/png",asset);
         else Respond(fd,200,"image/svg+xml",PlaceholderImage());
+    } else if (path == "/assets/region-discovery-icon.png") {
+        std::string asset;
+        if(ReadWebAsset("region-discovery-icon.png",asset))Respond(fd,200,"image/png",asset);
+        else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path == "/assets/Jancient-Regular.ttf") {
         std::string asset;
         if(ReadWebAsset("Jancient-Regular.ttf",asset))Respond(fd,200,"font/ttf",asset);
@@ -788,7 +800,7 @@ void Handle(int fd) {
         if(!ZanikConfig::PlayerStatus()){unavailable();return;}const std::string id=QueryValue(query,"id");StoredPlayer player;
         if(id.empty())Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Player id required"));
         else if(!playerStore->Find(id,player)||player.identity.rfind("character:",0)!=0)Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Player not found"));
-        else{FVector3d location{};std::int64_t capturedAt=0;const bool available=DomEngine::ResolvePlayerHomeLocation(player.identity.substr(10),location,&capturedAt);const auto diagnostics=DomEngine::GetAdminTeleportDiagnostics();double mapX=0,mapY=0;const bool mapAvailable=available&&DomEngine::g_Engine&&DomEngine::g_Engine->ProjectWorldToMap(location,mapX,mapY)&&std::isfinite(mapX)&&std::isfinite(mapY)&&mapX>=0&&mapX<=1&&mapY>=0&&mapY<=1;std::ostringstream out;out<<"{\"compatibility\":"<<diagnostics.homeLocationCompatibility<<",\"available\":"<<(available?"true":"false")<<",\"online\":"<<(player.online?"true":"false")<<",\"mapAvailable\":"<<(mapAvailable?"true":"false")<<",\"capturedAt\":"<<capturedAt;if(mapAvailable)out<<",\"mapX\":"<<mapX<<",\"mapY\":"<<mapY;out<<'}';Respond(fd,200,"application/json; charset=utf-8",out.str());}
+        else{FVector3d location{};std::int64_t capturedAt=0;const bool available=DomEngine::ResolvePlayerHomeLocation(player.identity.substr(10),location,&capturedAt);const auto diagnostics=DomEngine::GetAdminTeleportDiagnostics();double mapX=0,mapY=0;const bool mapAvailable=available&&DomEngine::g_Engine&&DomEngine::g_Engine->ProjectWorldToMap(location,mapX,mapY)&&std::isfinite(mapX)&&std::isfinite(mapY)&&mapX>=0&&mapX<=1&&mapY>=0&&mapY<=1;std::ostringstream out;out<<"{\"compatibility\":"<<diagnostics.homeLocationCompatibility<<",\"persistenceCompatibility\":"<<diagnostics.homePersistenceCompatibility<<",\"persistenceFailures\":"<<diagnostics.homePersistenceFailures<<",\"malformedRecords\":"<<diagnostics.homeMalformedRecords<<",\"available\":"<<(available?"true":"false")<<",\"online\":"<<(player.online?"true":"false")<<",\"mapAvailable\":"<<(mapAvailable?"true":"false")<<",\"capturedAt\":"<<capturedAt;if(mapAvailable)out<<",\"mapX\":"<<mapX<<",\"mapY\":"<<mapY;out<<'}';Respond(fd,200,"application/json; charset=utf-8",out.str());}
     } else if(path=="/api/player-activity"){
         if(!ZanikConfig::PlayerStatus()){unavailable();return;}
         const std::string id=QueryValue(query,"id");StoredPlayer player;
@@ -796,9 +808,9 @@ void Handle(int fd) {
         else if(!playerStore->Find(id,player)||player.identity.rfind("character:",0)!=0)Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Player not found"));
         else {std::size_t limit=10;std::uint64_t before=0,parsed=0;const auto rawLimit=QueryValue(query,"limit"),rawBefore=QueryValue(query,"before");if((!rawLimit.empty()&&(!ParseUnsigned(rawLimit,parsed)||parsed==0))||(!rawBefore.empty()&&!ParseUnsigned(rawBefore,before))){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Invalid activity cursor"));return;}if(!rawLimit.empty())limit=static_cast<std::size_t>(std::min<std::uint64_t>(parsed,50));Respond(fd,200,"application/json; charset=utf-8",playerActivityStore?playerActivityStore->PageJson(player.identity.substr(10),limit,before):"{\"events\":[],\"hasMore\":false,\"nextBefore\":null}");}
     } else if(path=="/api/server-performance"){
-        std::uint64_t window=3600;const std::string raw=QueryValue(query,"window");if(!raw.empty()&&!ParseUnsigned(raw,window)){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Invalid performance window"));return;}static const std::unordered_set<std::uint64_t> allowed={0,3600,10800,18000,43200,86400};if(!allowed.count(window)){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Unsupported performance window"));return;}Respond(fd,200,"application/json; charset=utf-8",serverPerformanceStore?serverPerformanceStore->Json(window):"{\"error\":\"Performance history unavailable\"}");
+        std::uint64_t window=3600,page=0;const std::string raw=QueryValue(query,"window"),sort=QueryValue(query,"sort"),rawPage=QueryValue(query,"page");if(!raw.empty()&&!ParseUnsigned(raw,window)){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Invalid performance window"));return;}if(!rawPage.empty()&&!ParseUnsigned(rawPage,page)){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Invalid spike page"));return;}static const std::unordered_set<std::uint64_t> allowed={0,3600,10800,18000,43200,86400};if(!allowed.count(window)){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Unsupported performance window"));return;}if(!sort.empty()&&sort!="worst"&&sort!="recent"){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Unsupported spike sort"));return;}Respond(fd,200,"application/json; charset=utf-8",serverPerformanceStore?serverPerformanceStore->Json(window,sort=="recent",page):"{\"error\":\"Performance history unavailable\"}");
     } else if(path=="/api/player-activity-diagnostics"){
-        auto store=playerActivityStore?playerActivityStore->Diagnostics():PlayerActivityDiagnostics{};auto engine=DomEngine::GetPlayerActivityDiscoveryDiagnostics();std::ostringstream out;out<<"{\"compatibility\":"<<store.compatibility<<",\"regionCompatibility\":"<<engine.regionCompatibility<<",\"materialCompatibility\":"<<engine.materialCompatibility<<",\"unlockCompatibility\":"<<engine.unlockCompatibility<<",\"materialCatalogEntries\":"<<engine.materialCatalogEntries<<",\"resolvedMaterialEntries\":"<<engine.resolvedMaterialEntries<<",\"perkCatalogEntries\":"<<engine.perkCatalogEntries<<",\"spellCatalogEntries\":"<<engine.spellCatalogEntries<<",\"resolvedUnlockEntries\":"<<engine.resolvedUnlockEntries<<",\"events\":"<<store.events<<",\"players\":"<<store.players<<",\"snapshots\":"<<store.snapshots+engine.snapshots<<",\"droppedSamples\":"<<store.droppedSamples+engine.droppedSamples<<",\"persistenceFailures\":"<<store.persistenceFailures<<'}';Respond(fd,200,"application/json; charset=utf-8",out.str());
+        auto store=playerActivityStore?playerActivityStore->Diagnostics():PlayerActivityDiagnostics{};auto engine=DomEngine::GetPlayerActivityDiscoveryDiagnostics();std::ostringstream out;out<<"{\"compatibility\":"<<store.compatibility<<",\"regionCompatibility\":"<<engine.regionCompatibility<<",\"materialCompatibility\":"<<engine.materialCompatibility<<",\"unlockCompatibility\":"<<engine.unlockCompatibility<<",\"materialCatalogEntries\":"<<engine.materialCatalogEntries<<",\"resolvedMaterialEntries\":"<<engine.resolvedMaterialEntries<<",\"perkCatalogEntries\":"<<engine.perkCatalogEntries<<",\"spellCatalogEntries\":"<<engine.spellCatalogEntries<<",\"resolvedUnlockEntries\":"<<engine.resolvedUnlockEntries<<",\"events\":"<<store.events<<",\"players\":"<<store.players<<",\"snapshots\":"<<store.snapshots+engine.snapshots<<",\"droppedSamples\":"<<store.droppedSamples+engine.droppedSamples<<",\"queryCalls\":"<<engine.queryCalls<<",\"maximumQueryMicroseconds\":"<<engine.maximumQueryMicroseconds<<",\"slowQueries\":"<<engine.slowQueries<<",\"maximumBatchMicroseconds\":"<<engine.maximumBatchMicroseconds<<",\"regionHookCalls\":"<<engine.regionHookCalls<<",\"regionHookQueueDepth\":"<<engine.regionHookQueueDepth<<",\"regionHookQueueDrops\":"<<engine.regionHookQueueDrops<<",\"regionHookMaximumMicroseconds\":"<<engine.regionHookMaximumMicroseconds<<",\"regionHookSlowCalls\":"<<engine.regionHookSlowCalls<<",\"persistenceFailures\":"<<store.persistenceFailures<<'}';Respond(fd,200,"application/json; charset=utf-8",out.str());
     } else if (path == "/api/player-recipes") {
         if(!ZanikConfig::PlayerRecipeTracking()){unavailable();return;}
         const std::string id=QueryValue(query,"id");StoredPlayer player;
@@ -813,7 +825,7 @@ void Handle(int fd) {
         if(!ZanikConfig::PlayerQuestTracking()){unavailable();return;}
         const std::string id=QueryValue(query,"id");StoredPlayer player;if(id.empty())Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Player id required"));else if(!playerStore->Find(id,player)||player.identity.rfind("character:",0)!=0)Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Player not found"));else{auto d=DomEngine::GetPlayerQuestDiagnostics();auto dispatcher=DomEngine::GetAdminStorageDiagnostics().dispatcherCompatibility;StoredQuestSnapshot snapshot;bool found=questSnapshotStore&&questSnapshotStore->Find(player.identity.substr(10),snapshot);if(d.compatibility!=1||dispatcher!=1)Respond(fd,503,"application/json; charset=utf-8","{\"error\":\"Player quest tracking is unavailable for this game build\",\"captured\":false,\"online\":"+std::string(player.online?"true":"false")+"}");else if(!found||!snapshot.complete)Respond(fd,503,"application/json; charset=utf-8","{\"error\":\"Quest data has not been captured for this character yet\",\"captured\":false,\"online\":"+std::string(player.online?"true":"false")+"}");else if(snapshot.catalogFingerprint!=DomEngine::GetPlayerQuestCatalogFingerprint())Respond(fd,503,"application/json; charset=utf-8","{\"error\":\"This character's quest snapshot is incompatible with the current catalog\",\"captured\":false,\"online\":"+std::string(player.online?"true":"false")+"}");else{size_t done=0,activeCount=0;for(const auto&q:snapshot.quests){done+=q.status=="completed";activeCount+=q.status=="in_progress";}std::ostringstream out;out<<"{\"captured\":true,\"online\":"<<(player.online?"true":"false")<<",\"capturedAt\":"<<snapshot.capturedAt<<",\"catalogFingerprint\":\""<<JsonEscape(snapshot.catalogFingerprint)<<"\",\"trackedAvailable\":"<<(snapshot.trackedQuestAvailable?"true":"false")<<",\"activeQuest\":";if(snapshot.trackedQuestAvailable&&!snapshot.trackedQuestId.empty()){const auto active=std::find_if(snapshot.quests.begin(),snapshot.quests.end(),[&](const auto&q){return q.id==snapshot.trackedQuestId;});out<<"{\"id\":\""<<JsonEscape(snapshot.trackedQuestId)<<"\",\"objective\":\""<<JsonEscape(active==snapshot.quests.end()?std::string():active->objective)<<"\"}";}else out<<"null";out<<",\"counts\":{\"total\":"<<snapshot.quests.size()<<",\"completed\":"<<done<<",\"inProgress\":"<<activeCount<<",\"notStarted\":"<<(snapshot.quests.size()-done-activeCount)<<"},\"quests\":[";for(size_t i=0;i<snapshot.quests.size();++i){if(i)out<<',';const auto&q=snapshot.quests[i];out<<"{\"id\":\""<<JsonEscape(q.id)<<"\",\"status\":\""<<JsonEscape(q.status)<<"\",\"objective\":\""<<JsonEscape(q.objective)<<"\",\"completedObservedAt\":"<<q.completedObservedAt<<'}';}out<<"]}";Respond(fd,200,"application/json; charset=utf-8",out.str());}}
     } else if (path == "/api/quest-tracker-diagnostics") {
-        auto d=DomEngine::GetPlayerQuestDiagnostics();auto dispatcher=DomEngine::GetAdminStorageDiagnostics().dispatcherCompatibility;std::ostringstream out;out<<"{\"enabled\":"<<d.enabled<<",\"compatibility\":"<<d.compatibility<<",\"dispatcherCompatibility\":"<<dispatcher<<",\"catalogCompatibility\":"<<d.catalogCompatibility<<",\"componentCompatibility\":"<<d.componentCompatibility<<",\"queryCompatibility\":"<<d.queryCompatibility<<",\"objectiveCompatibility\":"<<d.objectiveCompatibility<<",\"trackedQuestCompatibility\":"<<d.trackedQuestCompatibility<<",\"catalogEntries\":"<<d.catalogEntries<<",\"resolvedEntries\":"<<d.resolvedEntries<<",\"snapshots\":"<<d.snapshots<<",\"scansCompleted\":"<<d.scansCompleted<<",\"queryFailures\":"<<d.queryFailures<<",\"trackedQuestFailures\":"<<d.trackedQuestFailures<<",\"trackedQuestCaptures\":"<<d.trackedQuestCaptures<<",\"snapshotChanges\":"<<d.snapshotChanges<<",\"persistenceFailures\":"<<d.persistenceFailures<<",\"cacheHits\":"<<d.cacheHits<<",\"cacheMisses\":"<<d.cacheMisses<<",\"invalidIdentities\":"<<d.invalidIdentities<<",\"lastScan\":"<<d.lastScan<<",\"lastQueryMicroseconds\":"<<d.lastQueryMicroseconds<<",\"maximumQueryMicroseconds\":"<<d.maximumQueryMicroseconds<<",\"slowQueries\":"<<d.slowQueries<<'}';Respond(fd,200,"application/json; charset=utf-8",out.str());
+        auto d=DomEngine::GetPlayerQuestDiagnostics();auto dispatcher=DomEngine::GetAdminStorageDiagnostics().dispatcherCompatibility;std::ostringstream out;out<<"{\"enabled\":"<<d.enabled<<",\"compatibility\":"<<d.compatibility<<",\"dispatcherCompatibility\":"<<dispatcher<<",\"catalogCompatibility\":"<<d.catalogCompatibility<<",\"componentCompatibility\":"<<d.componentCompatibility<<",\"queryCompatibility\":"<<d.queryCompatibility<<",\"objectiveCompatibility\":"<<d.objectiveCompatibility<<",\"trackedQuestCompatibility\":"<<d.trackedQuestCompatibility<<",\"catalogEntries\":"<<d.catalogEntries<<",\"resolvedEntries\":"<<d.resolvedEntries<<",\"snapshots\":"<<d.snapshots<<",\"scansCompleted\":"<<d.scansCompleted<<",\"queryFailures\":"<<d.queryFailures<<",\"trackedQuestFailures\":"<<d.trackedQuestFailures<<",\"trackedQuestCaptures\":"<<d.trackedQuestCaptures<<",\"processEventHookCalls\":"<<d.processEventHookCalls<<",\"processEventActiveCalls\":"<<d.processEventActiveCalls<<",\"processEventQueueDepth\":"<<d.processEventQueueDepth<<",\"processEventQueueDrops\":"<<d.processEventQueueDrops<<",\"processEventMaximumMicroseconds\":"<<d.processEventMaximumMicroseconds<<",\"processEventSlowCalls\":"<<d.processEventSlowCalls<<",\"snapshotChanges\":"<<d.snapshotChanges<<",\"persistenceFailures\":"<<d.persistenceFailures<<",\"cacheHits\":"<<d.cacheHits<<",\"cacheMisses\":"<<d.cacheMisses<<",\"invalidIdentities\":"<<d.invalidIdentities<<",\"lastScan\":"<<d.lastScan<<",\"lastQueryMicroseconds\":"<<d.lastQueryMicroseconds<<",\"maximumQueryMicroseconds\":"<<d.maximumQueryMicroseconds<<",\"slowQueries\":"<<d.slowQueries<<'}';Respond(fd,200,"application/json; charset=utf-8",out.str());
     } else if (path == "/api/kills") {
         if(!ZanikConfig::KillTracking()){unavailable();return;}Respond(fd, 200, "application/json; charset=utf-8",
                 Status::KillSummaryJson(playerStore->All()));
@@ -852,7 +864,10 @@ void Handle(int fd) {
             ",\"spawnedPawns\":" + std::to_string(d.spawnedPawns) +
             ",\"worldLocations\":" + std::to_string(d.worldLocations) +
             ",\"regionLookupAttempts\":" + std::to_string(d.regionLookupAttempts) +
-            ",\"playersProduced\":" + std::to_string(d.playersProduced) + "}");
+            ",\"playersProduced\":" + std::to_string(d.playersProduced) +
+            ",\"pingCompatibility\":" + std::to_string(d.pingCompatibility) +
+            ",\"readablePingSamples\":" + std::to_string(d.readablePingSamples) +
+            ",\"unavailablePingSamples\":" + std::to_string(d.unavailablePingSamples) + "}");
     } else if (path == "/api/lodestone-diagnostics") {
         auto d=DomEngine::GetLodestoneDiagnostics();
         Respond(fd,200,"application/json; charset=utf-8",
@@ -896,6 +911,15 @@ void Handle(int fd) {
             ",\"respawnEvents\":"+std::to_string(d.respawnEvents)+
             ",\"rawSetAmountCalls\":"+std::to_string(d.rawSetAmountCalls)+
             ",\"unresolvedHookCalls\":"+std::to_string(d.unresolvedHookCalls)+
+            ",\"hookQueueDepth\":"+std::to_string(d.hookQueueDepth)+
+            ",\"hookQueueDrops\":"+std::to_string(d.hookQueueDrops)+
+            ",\"maximumHookMicroseconds\":"+std::to_string(d.maximumHookMicroseconds)+
+            ",\"slowHookCalls\":"+std::to_string(d.slowHookCalls)+
+            ",\"scanInProgress\":"+std::string(d.scanInProgress?"true":"false")+
+            ",\"scanSlices\":"+std::to_string(d.scanSlices)+
+            ",\"scanObjects\":"+std::to_string(d.scanObjects)+
+            ",\"maximumScanMicroseconds\":"+std::to_string(d.maximumScanMicroseconds)+
+            ",\"slowScanSlices\":"+std::to_string(d.slowScanSlices)+
             ",\"lastSuccessfulReconciliation\":"+std::to_string(d.lastSuccessfulReconciliation)+"}");
     } else if (path == "/api/diagnostics/npcs") {
         auto d=DomEngine::GetNpcDiagnostics();
@@ -929,6 +953,9 @@ void Handle(int fd) {
     } else if (path == "/api/diagnostics/storage-plans") {
         auto storage=DomEngine::GetAdminStorageDiagnostics();
         Respond(fd,200,"application/json; charset=utf-8","{\"compatibility\":"+std::to_string(storage.planCatalogCompatibility)+",\"items\":"+std::to_string(storage.planCatalogItems)+"}");
+    } else if (path == "/api/diagnostics/native-inventory-mutations") {
+        auto storage=DomEngine::GetAdminStorageDiagnostics();
+        Respond(fd,200,"application/json; charset=utf-8","{\"compatibility\":"+std::to_string(storage.nativeMutationCaptureCompatibility)+",\"calls\":"+std::to_string(storage.nativeMutationCalls)+",\"attributed\":"+std::to_string(storage.nativeMutationAttributed)+",\"unattributed\":"+std::to_string(storage.nativeMutationUnattributed)+",\"drops\":"+std::to_string(storage.nativeMutationDrops)+",\"maximumNativeMicroseconds\":"+std::to_string(storage.nativeMutationMaximumMicroseconds)+",\"maximumCaptureMicroseconds\":"+std::to_string(storage.nativeMutationCaptureMaximumMicroseconds)+"}");
     } else if (path == "/api/update-status") {
         DomEngine::RefreshAdminNodestoneTeleportCompatibility();
         auto d = DomEngine::GetKillDiagnostics();
@@ -984,6 +1011,16 @@ void Handle(int fd) {
             ",\"nodestoneTeleportSlowCalls\":" + std::to_string(adminTeleport.slowNodestoneCalls) +
             ",\"resourceCompatibility\":" + std::to_string(resources.compatibility) +
             ",\"resourceCatalogNodes\":" + std::to_string(resources.catalogNodes) +
+            ",\"resourceHookQueueDepth\":" + std::to_string(resources.hookQueueDepth) +
+            ",\"resourceHookQueueDrops\":" + std::to_string(resources.hookQueueDrops) +
+            ",\"resourceMaximumHookMicroseconds\":" + std::to_string(resources.maximumHookMicroseconds) +
+            ",\"resourceSlowHookCalls\":" + std::to_string(resources.slowHookCalls) +
+            ",\"resourceScanInProgress\":" + std::string(resources.scanInProgress?"true":"false") +
+            ",\"resourceScanSlices\":" + std::to_string(resources.scanSlices) +
+            ",\"resourceScanObjects\":" + std::to_string(resources.scanObjects) +
+            ",\"resourceMaximumScanMicroseconds\":" + std::to_string(resources.maximumScanMicroseconds) +
+            ",\"resourceSlowScanSlices\":" + std::to_string(resources.slowScanSlices) +
+            ",\"deferredLogDrops\":" + std::to_string(DroppedLogMessages()) +
             ",\"npcCatalogCompatibility\":" + std::to_string(npcs.catalogCompatibility) +
             ",\"npcRegistryCompatibility\":" + std::to_string(npcs.registryCompatibility) +
             ",\"npcIdentityCompatibility\":" + std::to_string(npcs.identityCompatibility) +
@@ -1028,8 +1065,19 @@ void Handle(int fd) {
             ",\"playerRecipeMaximumSingleQueryMicroseconds\":"+std::to_string(playerRecipes.maximumSingleQueryMicroseconds)+
             ",\"playerRecipeSlowQueries\":"+std::to_string(playerRecipes.slowQueries)+
             ",\"playerRecipeQueryIntervalMilliseconds\":"+std::to_string(playerRecipes.queryIntervalMilliseconds)+
-            ",\"playerQuestEnabled\":"+std::to_string(playerQuests.enabled)+",\"playerQuestCompatibility\":"+std::to_string(playerQuests.compatibility)+",\"playerQuestDispatcherCompatibility\":"+std::to_string(adminStorage.dispatcherCompatibility)+",\"playerQuestCatalogCompatibility\":"+std::to_string(playerQuests.catalogCompatibility)+",\"playerQuestComponentCompatibility\":"+std::to_string(playerQuests.componentCompatibility)+",\"playerQuestQueryCompatibility\":"+std::to_string(playerQuests.queryCompatibility)+",\"playerQuestCatalogEntries\":"+std::to_string(playerQuests.catalogEntries)+",\"playerQuestResolvedEntries\":"+std::to_string(playerQuests.resolvedEntries)+",\"playerQuestSnapshots\":"+std::to_string(questSnapshotStore?questSnapshotStore->Count():0)+",\"playerQuestScansCompleted\":"+std::to_string(playerQuests.scansCompleted)+",\"playerQuestQueryFailures\":"+std::to_string(playerQuests.queryFailures)+",\"playerQuestMaximumQueryMicroseconds\":"+std::to_string(playerQuests.maximumQueryMicroseconds)+",\"playerQuestSlowQueries\":"+std::to_string(playerQuests.slowQueries)+
-            ",\"playerActivityCompatibility\":"+std::to_string(activity.compatibility)+",\"playerActivityRegionCompatibility\":"+std::to_string(activityDiscovery.regionCompatibility)+",\"playerActivityMaterialCompatibility\":"+std::to_string(activityDiscovery.materialCompatibility)+",\"playerActivityUnlockCompatibility\":"+std::to_string(activityDiscovery.unlockCompatibility)+",\"playerActivityMaterialCatalogEntries\":"+std::to_string(activityDiscovery.materialCatalogEntries)+",\"playerActivityResolvedMaterialEntries\":"+std::to_string(activityDiscovery.resolvedMaterialEntries)+",\"playerActivityPerkCatalogEntries\":"+std::to_string(activityDiscovery.perkCatalogEntries)+",\"playerActivitySpellCatalogEntries\":"+std::to_string(activityDiscovery.spellCatalogEntries)+",\"playerActivityResolvedUnlockEntries\":"+std::to_string(activityDiscovery.resolvedUnlockEntries)+",\"playerActivityEvents\":"+std::to_string(activity.events)+",\"playerActivitySnapshots\":"+std::to_string(activity.snapshots+activityDiscovery.snapshots)+",\"playerActivityDroppedSamples\":"+std::to_string(activity.droppedSamples+activityDiscovery.droppedSamples)+",\"playerActivityPersistenceFailures\":"+std::to_string(activity.persistenceFailures)+
+            ",\"playerQuestEnabled\":"+std::to_string(playerQuests.enabled)+",\"playerQuestCompatibility\":"+std::to_string(playerQuests.compatibility)+",\"playerQuestDispatcherCompatibility\":"+std::to_string(adminStorage.dispatcherCompatibility)+",\"playerQuestCatalogCompatibility\":"+std::to_string(playerQuests.catalogCompatibility)+",\"playerQuestComponentCompatibility\":"+std::to_string(playerQuests.componentCompatibility)+",\"playerQuestQueryCompatibility\":"+std::to_string(playerQuests.queryCompatibility)+",\"playerQuestCatalogEntries\":"+std::to_string(playerQuests.catalogEntries)+",\"playerQuestResolvedEntries\":"+std::to_string(playerQuests.resolvedEntries)+",\"playerQuestSnapshots\":"+std::to_string(questSnapshotStore?questSnapshotStore->Count():0)+",\"playerQuestScansCompleted\":"+std::to_string(playerQuests.scansCompleted)+",\"playerQuestQueryFailures\":"+std::to_string(playerQuests.queryFailures)+",\"playerQuestMaximumQueryMicroseconds\":"+std::to_string(playerQuests.maximumQueryMicroseconds)+",\"playerQuestSlowQueries\":"+std::to_string(playerQuests.slowQueries)+",\"playerQuestProcessEventHookCalls\":"+std::to_string(playerQuests.processEventHookCalls)+",\"playerQuestProcessEventActiveCalls\":"+std::to_string(playerQuests.processEventActiveCalls)+",\"playerQuestProcessEventQueueDepth\":"+std::to_string(playerQuests.processEventQueueDepth)+",\"playerQuestProcessEventQueueDrops\":"+std::to_string(playerQuests.processEventQueueDrops)+",\"playerQuestProcessEventMaximumMicroseconds\":"+std::to_string(playerQuests.processEventMaximumMicroseconds)+",\"playerQuestProcessEventSlowCalls\":"+std::to_string(playerQuests.processEventSlowCalls)+
+            ",\"playerActivityCompatibility\":"+std::to_string(activity.compatibility)+",\"playerActivityRegionCompatibility\":"+std::to_string(activityDiscovery.regionCompatibility)+",\"playerActivityMaterialCompatibility\":"+std::to_string(activityDiscovery.materialCompatibility)+",\"playerActivityUnlockCompatibility\":"+std::to_string(activityDiscovery.unlockCompatibility)+",\"playerActivityMaterialCatalogEntries\":"+std::to_string(activityDiscovery.materialCatalogEntries)+",\"playerActivityResolvedMaterialEntries\":"+std::to_string(activityDiscovery.resolvedMaterialEntries)+",\"playerActivityPerkCatalogEntries\":"+std::to_string(activityDiscovery.perkCatalogEntries)+",\"playerActivitySpellCatalogEntries\":"+std::to_string(activityDiscovery.spellCatalogEntries)+",\"playerActivityResolvedUnlockEntries\":"+std::to_string(activityDiscovery.resolvedUnlockEntries)+",\"playerActivityEvents\":"+std::to_string(activity.events)+",\"playerActivitySnapshots\":"+std::to_string(activity.snapshots+activityDiscovery.snapshots)+",\"playerActivityDroppedSamples\":"+std::to_string(activity.droppedSamples+activityDiscovery.droppedSamples)+",\"playerActivityQueryCalls\":"+std::to_string(activityDiscovery.queryCalls)+",\"playerActivityMaximumQueryMicroseconds\":"+std::to_string(activityDiscovery.maximumQueryMicroseconds)+",\"playerActivitySlowQueries\":"+std::to_string(activityDiscovery.slowQueries)+",\"playerActivityMaximumBatchMicroseconds\":"+std::to_string(activityDiscovery.maximumBatchMicroseconds)+",\"playerActivityRegionHookCalls\":"+std::to_string(activityDiscovery.regionHookCalls)+",\"playerActivityRegionHookQueueDepth\":"+std::to_string(activityDiscovery.regionHookQueueDepth)+",\"playerActivityRegionHookQueueDrops\":"+std::to_string(activityDiscovery.regionHookQueueDrops)+",\"playerActivityRegionHookMaximumMicroseconds\":"+std::to_string(activityDiscovery.regionHookMaximumMicroseconds)+",\"playerActivityRegionHookSlowCalls\":"+std::to_string(activityDiscovery.regionHookSlowCalls)+",\"playerActivityPersistenceFailures\":"+std::to_string(activity.persistenceFailures)+
+            ",\"playerQuestObjectiveCompatibility\":"+std::to_string(playerQuests.objectiveCompatibility)+
+            ",\"playerQuestTrackedQuestCompatibility\":"+std::to_string(playerQuests.trackedQuestCompatibility)+
+            ",\"playerQuestPersistenceFailures\":"+std::to_string(playerQuests.persistenceFailures)+
+            ",\"playerPingCompatibility\":"+std::to_string(players.pingCompatibility)+
+            ",\"playerPingReadableSamples\":"+std::to_string(players.readablePingSamples)+
+            ",\"playerPingUnavailableSamples\":"+std::to_string(players.unavailablePingSamples)+
+            ",\"adminHomeLocationCompatibility\":"+std::to_string(adminTeleport.homeLocationCompatibility)+
+            ",\"adminHomePersistenceCompatibility\":"+std::to_string(adminTeleport.homePersistenceCompatibility)+
+            ",\"adminHomePersistenceFailures\":"+std::to_string(adminTeleport.homePersistenceFailures)+
+            ",\"adminHomeMalformedRecords\":"+std::to_string(adminTeleport.homeMalformedRecords)+
+            ",\"adminNativeInventoryMutationCompatibility\":"+std::to_string(adminStorage.nativeMutationCaptureCompatibility)+
             ",\"adminAuthorizationStorage\":" + std::string(adminAuthorizationCompatible ? "true" : "false") +
             ",\"adminConsoleCompatibility\":" + std::to_string(adminConsoleCompatible ? 1 : 0) +
             ",\"adminTeleportCompatibility\":" + std::to_string(adminTeleport.compatibility) +
@@ -1141,9 +1189,13 @@ void Run() {
         int reuse=1;setsockopt(listener,SOL_SOCKET,SO_REUSEADDR,&reuse,sizeof(reuse));sockaddr_in address{};address.sin_family=AF_INET;address.sin_port=htons(static_cast<uint16_t>(port));address.sin_addr.s_addr=INADDR_ANY;
         if(bind(listener,reinterpret_cast<sockaddr*>(&address),sizeof(address))!=0||listen(listener,16)!=0){LogMessage("Could not bind/listen on maintenance port "+std::to_string(port)+": "+std::strerror(errno));close(listener);return;}
         LogMessage("Zanik maintenance-only website listening; no native game integration was initialized");
-        while(!stopping){fd_set set;FD_ZERO(&set);FD_SET(listener,&set);timeval wait{0,100000};if(select(listener+1,&set,nullptr,nullptr,&wait)<=0)continue;int client=accept(listener,nullptr,nullptr);if(client<0)continue;timeval io{5,0};setsockopt(client,SOL_SOCKET,SO_RCVTIMEO,&io,sizeof(io));setsockopt(client,SOL_SOCKET,SO_SNDTIMEO,&io,sizeof(io));Handle(client);close(client);}close(listener);return;
+        FlushLogMessages();
+        while(!stopping){fd_set set;FD_ZERO(&set);FD_SET(listener,&set);timeval wait{0,100000};if(select(listener+1,&set,nullptr,nullptr,&wait)<=0){FlushLogMessages();continue;}int client=accept(listener,nullptr,nullptr);if(client<0)continue;timeval io{5,0};setsockopt(client,SOL_SOCKET,SO_RCVTIMEO,&io,sizeof(io));setsockopt(client,SOL_SOCKET,SO_SNDTIMEO,&io,sizeof(io));Handle(client);close(client);FlushLogMessages();}FlushLogMessages();close(listener);return;
     }
-    const bool needsGameThreadDispatcher=true;
+    const bool performanceDiagnosticsEnabled=true;
+    const bool needsGameThreadDispatcher=performanceDiagnosticsEnabled||ZanikConfig::PlayerRecipeTracking()||
+        ZanikConfig::PlayerQuestTracking()||ZanikConfig::AdminTeleport()||
+        ZanikConfig::AdminStorageMutation()||ZanikConfig::AdminGravestoneMutation();
     const bool storageTickReady=needsGameThreadDispatcher&&(!testHost||std::strcmp(testHost,"1")!=0)&&DomEngine::InitializeAdminStorageHookEarly();
     if((!testHost||std::strcmp(testHost,"1")!=0)&&needsGameThreadDispatcher)LogMessage(storageTickReady?"Zanik bounded game-thread dispatcher installed before world startup":"Zanik game-thread dispatcher compatibility unavailable");
     int port = Port();
@@ -1201,7 +1253,7 @@ void Run() {
     auto nextNpcInit = std::chrono::steady_clock::now();
     auto nextPerformance = std::chrono::steady_clock::now();
     auto nextActivityDiscoveryInit = std::chrono::steady_clock::now();
-    double latestAveragePing=-1,latestMaximumPing=-1;std::uint32_t latestOnlinePlayers=0;
+    double latestAveragePing=-1,latestMaximumPing=-1;std::uint32_t latestOnlinePlayers=0;std::vector<PlayerNetworkInput> latestPlayerNetwork;
     while (!stopping) {
         auto now = std::chrono::steady_clock::now();
         if ((!testHost||std::strcmp(testHost,"1")!=0) && !DomEngine::g_Engine->IsInitialized() && now >= nextDiscovery) {
@@ -1224,7 +1276,7 @@ void Run() {
         if(ZanikConfig::PlayerRecipeTracking()&&DomEngine::g_Engine->IsInitialized()&&playerRecipeTrackingAttempted)DomEngine::RefreshPlayerRecipeTrackingCompatibility();
         if(ZanikConfig::PlayerQuestTracking()&&DomEngine::g_Engine->IsInitialized()&&!playerQuestTrackingAttempted){playerQuestTrackingAttempted=true;const bool quests=DomEngine::InitializePlayerQuestTracking(WebRoot()+"/quest-runtime-catalog.tsv",DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());LogMessage(quests?"Player quest tracking compatibility verified":"Player quest tracking unavailable or waiting for quest objects");}
         if(ZanikConfig::PlayerQuestTracking()&&DomEngine::g_Engine->IsInitialized()&&playerQuestTrackingAttempted)DomEngine::RefreshPlayerQuestTrackingCompatibility();
-        if(DomEngine::g_Engine->IsInitialized()&&!playerActivityDiscoveryInitialized&&now>=nextActivityDiscoveryInit){playerActivityDiscoveryInitialized=DomEngine::InitializePlayerActivityDiscovery(ZanikRoot()+"/config/material-first-pickup-catalog.tsv",ZanikRoot()+"/config/player-activity-unlock-catalog.tsv",DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());nextActivityDiscoveryInit=now+std::chrono::seconds(5);LogMessage(playerActivityDiscoveryInitialized?"At least one player activity discovery source initialized; per-source compatibility is available in diagnostics":"Player activity discovery sources are not ready; retrying");}
+        if(DomEngine::g_Engine->IsInitialized()&&!playerActivityDiscoveryInitialized&&now>=nextActivityDiscoveryInit){playerActivityDiscoveryInitialized=DomEngine::InitializePlayerActivityDiscovery(ZanikRoot()+"/config/material-first-pickup-catalog.tsv",ZanikRoot()+"/config/player-activity-unlock-catalog.tsv",GameLogPath(),DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());nextActivityDiscoveryInit=now+std::chrono::seconds(5);LogMessage(playerActivityDiscoveryInitialized?"At least one player activity discovery source initialized; per-source compatibility is available in diagnostics":"Player activity discovery sources are not ready; retrying");}
         if(DomEngine::g_Engine->IsInitialized()&&playerActivityDiscoveryInitialized)DomEngine::RefreshPlayerActivityDiscoveryCompatibility();
         uintptr_t activeWorld=DomEngine::g_Engine->IsInitialized()?DomEngine::g_Engine->GetWorld():0;
         const bool mainWorldReady=activeWorld&&DomEngine::g_Engine->GetObjectName(activeWorld).find("L_World")!=std::string::npos;
@@ -1234,7 +1286,7 @@ void Run() {
             LogMessage(resourceTrackingInitialized?"World resource tracking initialized":"World resource tracking compatibility unavailable");
             nextResourceInit=now+std::chrono::seconds(5);
         }
-        if(ZanikConfig::ResourceTracking()&&mainWorldReady&&resourceTrackingInitialized&&now>=nextResourceRefresh){DomEngine::RefreshResourceStates();nextResourceRefresh=now+std::chrono::seconds(2);}
+        if(ZanikConfig::ResourceTracking()&&mainWorldReady&&resourceTrackingInitialized&&now>=nextResourceRefresh){const bool scanning=DomEngine::RefreshResourceStates();nextResourceRefresh=now+(scanning?std::chrono::milliseconds(10):std::chrono::milliseconds(2000));}
         if(ZanikConfig::NpcTracking()&&mainWorldReady&&!npcTrackingAttempted&&now>=nextNpcInit){
             npcTrackingAttempted=true;
             npcTrackingInitialized=DomEngine::InitializeNpcTracking(DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());
@@ -1258,21 +1310,27 @@ void Run() {
                 auto livePlayers=DomEngine::g_Engine->GetAllPlayers();
                 latestOnlinePlayers=static_cast<std::uint32_t>(livePlayers.size());double pingTotal=0;std::uint32_t pingCount=0;latestMaximumPing=-1;for(const auto&player:livePlayers)if(player.pingMs>=0&&player.pingMs<=10000){pingTotal+=player.pingMs;++pingCount;latestMaximumPing=std::max(latestMaximumPing,double(player.pingMs));}latestAveragePing=pingCount?pingTotal/pingCount:-1;
                 DomEngine::UpdateKillPlayerCache(livePlayers);
+                if(adminStorageInitialized)DomEngine::UpdateAdminStorageMutationPlayers(livePlayers);
+                if(adminTeleportInitialized)DomEngine::UpdateAdminTeleportPlayers(livePlayers);
                 if(ZanikConfig::PlayerRecipeTracking())DomEngine::UpdatePlayerRecipeTargets(livePlayers);
                 if(ZanikConfig::PlayerQuestTracking())DomEngine::UpdatePlayerQuestTargets(livePlayers);
                 auto recipeSnapshots=ZanikConfig::PlayerRecipeTracking()?DomEngine::ReadPlayerRecipeSnapshots():std::vector<DomEngine::PlayerRecipeSnapshot>{};
                 auto questSnapshots=ZanikConfig::PlayerQuestTracking()?DomEngine::ReadPlayerQuestSnapshots():std::vector<DomEngine::PlayerQuestSnapshot>{};
                 if(playerActivityDiscoveryInitialized)DomEngine::UpdatePlayerActivityDiscoveryTargets(livePlayers);
                 auto discoverySnapshots=playerActivityDiscoveryInitialized?DomEngine::ReadPlayerActivityDiscoveries():std::vector<DomEngine::PlayerActivityDiscoverySnapshot>{};
+                if(playerActivityStore&&playerActivityDiscoveryInitialized)playerActivityStore->RecordRegionDiscoveries(DomEngine::DrainNativeRegionDiscoveries());
                 if(playerActivityStore)playerActivityStore->Sync(livePlayers,recipeSnapshots,questSnapshots,discoverySnapshots);
-                playerStore->Sync(livePlayers);
+                playerStore->Sync(livePlayers);latestPlayerNetwork.clear();const auto storedOnline=playerStore->Online();std::unordered_map<std::string,StoredPlayer> storedByIdentity;for(const auto& stored:storedOnline)storedByIdentity.emplace(stored.identity,stored);const auto sampledAt=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();for(const auto& player:livePlayers){if(player.characterGuid.empty()||player.pingMs<0||player.pingMs>10000)continue;auto stored=storedByIdentity.find("character:"+player.characterGuid);if(stored==storedByIdentity.end())continue;latestPlayerNetwork.push_back({stored->second.id,stored->second.name,double(player.pingMs),stored->second.onlineSince>0&&sampledAt>=stored->second.onlineSince?std::uint64_t(sampledAt-stored->second.onlineSince):0});}
                 if(ZanikConfig::PlayerRecipeTracking()&&recipeSnapshotStore)recipeSnapshotStore->Sync(recipeSnapshots);
                 if(ZanikConfig::PlayerQuestTracking()&&questSnapshotStore&&!questSnapshotStore->Sync(questSnapshots))DomEngine::RecordPlayerQuestPersistenceFailure();
-            } else {DomEngine::UpdateKillPlayerCache({});latestAveragePing=-1;latestMaximumPing=-1;latestOnlinePlayers=0;}
+            } else {DomEngine::UpdateKillPlayerCache({});if(adminStorageInitialized)DomEngine::UpdateAdminStorageMutationPlayers({});if(adminTeleportInitialized)DomEngine::UpdateAdminTeleportPlayers({});latestAveragePing=-1;latestMaximumPing=-1;latestOnlinePlayers=0;latestPlayerNetwork.clear();}
             nextSync = now + std::chrono::seconds(2);
         }
-        if(serverPerformanceStore&&now>=nextPerformance){const auto tick=DomEngine::TakePerformanceTickSnapshot();ServerPerformanceInput sample;sample.engineTickMs=tick.maximumEngineTickMilliseconds;sample.zanikGameThreadMs=tick.maximumZanikMilliseconds;sample.engineTicks=tick.frames;sample.gameThreadHitches=tick.hitches;sample.averagePingMs=latestAveragePing;sample.maximumPingMs=latestMaximumPing;sample.onlinePlayers=latestOnlinePlayers;serverPerformanceStore->Sample(sample);nextPerformance=now+std::chrono::seconds(2);}
+        if(adminStorageInitialized)DomEngine::DrainAdminStorageMutationTraces();
+        if(serverPerformanceStore&&now>=nextPerformance){const auto tick=DomEngine::TakePerformanceTickSnapshot();ServerPerformanceInput sample;sample.engineTickMs=tick.maximumEngineTickMilliseconds;sample.zanikGameThreadMs=tick.maximumZanikMilliseconds;sample.engineTicks=tick.frames;sample.gameThreadHitches=tick.hitches;sample.averagePingMs=latestAveragePing;sample.maximumPingMs=latestMaximumPing;sample.onlinePlayers=latestOnlinePlayers;sample.players=latestPlayerNetwork;for(const auto& event:PerformanceTrace::Drain()){PerformanceAttributionInput item;item.feature=event.feature;item.operation=event.operation;item.origin=event.origin;item.microseconds=event.microseconds;item.timingScope=event.timingScope==static_cast<char>(PerformanceTrace::TimingScope::NativeGame)?"native-game":"zanik";StoredPlayer player;bool found=false;if(event.identityKind=='p'&&event.identity[0])found=playerStore->Find(event.identity,player);else if(event.identityKind=='g'&&event.identity[0]){for(const auto& candidate:playerStore->All())if(candidate.identity=="character:"+std::string(event.identity)){player=candidate;found=true;break;}}if(found){item.playerId=player.id;item.playerName=player.name;}sample.attributions.push_back(std::move(item));}sample.attributionDrops=PerformanceTrace::Dropped();serverPerformanceStore->Sample(sample);nextPerformance=now+std::chrono::seconds(2);}
         if(adminStorageAttempted&&ZanikConfig::AdminGravestoneMutation())DomEngine::FlushAdminGravestoneSnapshots();
+        if(adminTeleportInitialized)DomEngine::FlushAdminHomeLocations();
+        FlushLogMessages();
         fd_set readSet;
         FD_ZERO(&readSet);
         FD_SET(listener, &readSet);
@@ -1289,7 +1347,7 @@ void Run() {
         timeval ioTimeout{5, 0};
         setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &ioTimeout, sizeof(ioTimeout));
         setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &ioTimeout, sizeof(ioTimeout));
-        const auto httpStarted=std::chrono::steady_clock::now();Handle(client);if(serverPerformanceStore)serverPerformanceStore->RecordHttpDuration(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-httpStarted).count()));
+        const auto httpStarted=std::chrono::steady_clock::now();std::string performanceRoute;Handle(client,&performanceRoute);if(serverPerformanceStore)serverPerformanceStore->RecordHttpDuration(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-httpStarted).count()),performanceRoute);
         close(client);
     }
     playerStore->Save();
@@ -1297,11 +1355,15 @@ void Run() {
     if(questSnapshotStore)questSnapshotStore->Save();
     if(playerActivityStore)playerActivityStore->Save();
     if(adminStorageAttempted&&ZanikConfig::AdminGravestoneMutation())DomEngine::FlushAdminGravestoneSnapshots();
+    if(adminTeleportInitialized)DomEngine::FlushAdminHomeLocations();
+    FlushLogMessages();
     close(listener);
 }
 }
 
 extern "C" __attribute__((constructor)) void DWStatusLoad() {
+    const char* enabled=std::getenv("ZANIK_ENABLED");
+    if(enabled&&(!std::strcmp(enabled,"0")||!std::strcmp(enabled,"false")||!std::strcmp(enabled,"FALSE")||!std::strcmp(enabled,"off")||!std::strcmp(enabled,"OFF")))return;
     char executable[4096]{};
     const ssize_t length=readlink("/proc/self/exe",executable,sizeof(executable)-1);
     if(length<=0)return;

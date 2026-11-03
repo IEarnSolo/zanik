@@ -1,8 +1,11 @@
 #include "dom_engine.h"
 #include "../utils/memory.h"
+#include "../performance_trace.h"
 #include "../utils/logger.h"
+#include "../utils/runtime_paths.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -28,6 +31,8 @@ pthread_mutex_t stateMutex=PTHREAD_MUTEX_INITIALIZER;
 std::atomic<int> compatibility{0},catalogNodes{0},loadedComponents{0},matchedNodes{0},persistedNodes{0},unresolvedNodes{0};
 std::atomic<int> actionableCatalogNodes{0},foliageCatalogNodes{0},matchedActionableNodes{0},matchedFoliageNodes{0};
 std::atomic<std::uint64_t> rejected{0},collections{0},respawns{0},rawHookCalls{0},unresolvedHookCalls{0};
+std::atomic<std::uint64_t> hookQueueDrops{0},maximumHookMicroseconds{0},slowHookCalls{0};
+std::atomic<std::uint64_t> scanSlices{0},scanObjects{0},maximumScanMicroseconds{0},slowScanSlices{0};
 std::atomic<std::int64_t> lastSuccess{0};
 std::atomic<double> tickRate{0};
 std::atomic<std::int64_t> latestGameTicks{0};
@@ -55,6 +60,33 @@ std::unordered_set<std::string> loggedRuntimeIntervals;
 std::unordered_map<std::string,std::pair<int,std::int64_t>> persisted;
 time_t saveMtime=0;
 
+enum class RawResourceEventKind:std::uint8_t{ActorDepleted,ComponentDepleted,ComponentRespawned};
+struct RawResourceEvent{RawResourceEventKind kind{};uintptr_t object=0,player=0;std::uint64_t identity=0,playerIdentity=0,hookMicros=0;};
+constexpr std::size_t RawResourceEventCapacity=256;
+std::array<RawResourceEvent,RawResourceEventCapacity> rawResourceEvents{};
+std::atomic<std::uint64_t> rawResourceWrite{0},rawResourceRead{0};
+struct ResourceScanCycle{
+    bool active=false;int cursor=0,count=0,loaded=0,matched=0,matchedActionable=0,matchedFoliage=0,unresolved=0;
+    std::int64_t nowTicks=0;std::unordered_map<std::string,ResourceStateInfo> next;
+};
+ResourceScanCycle resourceScan;
+std::chrono::steady_clock::time_point nextResourceReconciliation{};
+
+std::uint64_t RecordHookDuration(const std::chrono::steady_clock::time_point&started){
+    const auto elapsed=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now()-started).count());auto prior=maximumHookMicroseconds.load(std::memory_order_relaxed);
+    while(elapsed>prior&&!maximumHookMicroseconds.compare_exchange_weak(prior,elapsed,std::memory_order_relaxed)){}
+    if(elapsed>=1000)++slowHookCalls;return elapsed;
+}
+void QueueRawResourceEvent(RawResourceEventKind kind,uintptr_t object,std::uint64_t hookMicros,uintptr_t player=0){
+    if(!object||!g_Engine)return;
+    const auto write=rawResourceWrite.load(std::memory_order_relaxed);
+    if(write-rawResourceRead.load(std::memory_order_acquire)>=RawResourceEventCapacity){++hookQueueDrops;return;}
+    const auto identity=g_Engine->GetObjectIdentity(object);if(!identity){++unresolvedHookCalls;return;}
+    rawResourceEvents[write%RawResourceEventCapacity]={kind,object,player,identity,player?g_Engine->GetObjectIdentity(player):0,hookMicros};
+    rawResourceWrite.store(write+1,std::memory_order_release);
+}
+
 uintptr_t ResolveTimeProvider(uintptr_t worldContext){
     using ProviderFn=uintptr_t(*)(uintptr_t);
     if(!getTimeProviderOffset||!g_Engine)return 0;
@@ -63,20 +95,14 @@ uintptr_t ResolveTimeProvider(uintptr_t worldContext){
         if(!cachedTimeSubsystem||!Mem::Readable(reinterpret_cast<void*>(cachedTimeSubsystem),0x30)||
            !g_Engine->IsA(cachedTimeSubsystem,"InGameTimeSubsystem")){
             cachedTimeSubsystem=0;
-            int count=g_Engine->GetObjectCount();
-            for(int i=0;i<count;++i){
-                uintptr_t object=g_Engine->GetObjectByIndex(i);
-                if(!object||g_Engine->GetObjectName(object).rfind("Default__",0)==0)continue;
-                if(g_Engine->IsA(object,"InGameTimeSubsystem")){cachedTimeSubsystem=object;break;}
-            }
         }
         receiver=cachedTimeSubsystem;
     }
     return receiver?reinterpret_cast<ProviderFn>(g_Engine->GetModuleBase()+getTimeProviderOffset)(receiver):0;
 }
 
-std::string IdentityPath(){const char* p=std::getenv("DW_RESOURCE_IDENTITIES");return p&&*p?p:"/home/container/zanik/resource-identities.tsv";}
-std::string SavePath(){const char* p=std::getenv("DW_WORLD_SAVE");return p&&*p?p:"/home/container/RSDragonwilds/Saved/SaveGames/Emberlands TEST.sav";}
+std::string IdentityPath(){return RuntimePaths::Environment("DW_RESOURCE_IDENTITIES",RuntimePaths::WebFile("resource-identities.tsv"));}
+std::string SavePath(){return RuntimePaths::Environment("DW_WORLD_SAVE",RuntimePaths::GameSavedRoot()+"/SaveGames/Emberlands TEST.sav");}
 std::string NormalizeGuid(std::string s){
     for(char& c:s)c=static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
     size_t colon=s.find(':');
@@ -166,7 +192,7 @@ void CaptureCollection(uintptr_t actor){
     uintptr_t base=g_Engine->GetModuleBase();uintptr_t provider=ResolveTimeProvider(component);
     std::int64_t interval=provider?reinterpret_cast<IntervalFn>(base+getRespawnIntervalOffset)(component,provider):0;
     if(changed<=0||interval<=0){++unresolvedHookCalls;return;}
-    pthread_mutex_lock(&stateMutex);bool was=eventDepleted.count(meta->second.id)>0;eventDepleted[meta->second.id]={changed,changed+interval};pthread_mutex_unlock(&stateMutex);
+    pthread_mutex_lock(&stateMutex);bool was=eventDepleted.count(meta->second.id)>0;eventDepleted[meta->second.id]={changed,changed+interval};const double rate=tickRate.load();const auto current=latestGameTicks.load();const double remaining=rate>0&&current>0?std::max(0.0,double(changed+interval-current)/10000000.0/rate):0;const ResourceStateInfo state{meta->second.id,false,remaining,"live-event"};states[meta->second.id]=state;if(resourceScan.active)resourceScan.next[meta->second.id]=state;updatedAt=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();pthread_mutex_unlock(&stateMutex);
     if(!was)++collections;LogMessage("Resource collection id="+meta->second.id+" type="+meta->second.type+" actor="+g_Engine->GetObjectName(actor));
 }
 void CaptureCollectionComponent(uintptr_t component){
@@ -179,7 +205,7 @@ void CaptureCollectionComponent(uintptr_t component){
     uintptr_t base=g_Engine->GetModuleBase();uintptr_t provider=ResolveTimeProvider(component);
     std::int64_t interval=provider?reinterpret_cast<IntervalFn>(base+getRespawnIntervalOffset)(component,provider):0;
     if(changed<=0||interval<=0){++unresolvedHookCalls;return;}
-    pthread_mutex_lock(&stateMutex);bool was=eventDepleted.count(meta->second.id)>0;eventDepleted[meta->second.id]={changed,changed+interval};pthread_mutex_unlock(&stateMutex);
+    pthread_mutex_lock(&stateMutex);bool was=eventDepleted.count(meta->second.id)>0;eventDepleted[meta->second.id]={changed,changed+interval};const double rate=tickRate.load();const auto current=latestGameTicks.load();const double remaining=rate>0&&current>0?std::max(0.0,double(changed+interval-current)/10000000.0/rate):0;const ResourceStateInfo state{meta->second.id,false,remaining,"live-event"};states[meta->second.id]=state;if(resourceScan.active)resourceScan.next[meta->second.id]=state;updatedAt=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();pthread_mutex_unlock(&stateMutex);
     if(!was)++collections;
     if(!was)LogMessage("Resource amount depleted id="+meta->second.id+" type="+meta->second.type+
         " actor="+g_Engine->GetObjectName(Mem::ReadPtr(component+Offsets::UObject_Outer)));
@@ -188,8 +214,9 @@ void HookSetUnavailable(uintptr_t actor,uintptr_t player){
     ++rawHookCalls;
     bool before=actor&&Mem::Readable(reinterpret_cast<void*>(actor+0x444),1)&&Mem::ReadU8(actor+0x444)!=0;
     originalSetUnavailable(actor,player);
+    const auto started=std::chrono::steady_clock::now();
     bool after=actor&&Mem::Readable(reinterpret_cast<void*>(actor+0x444),1)&&Mem::ReadU8(actor+0x444)!=0;
-    if(!before&&after)CaptureCollection(actor);
+    const auto elapsed=RecordHookDuration(started);if(!before&&after)QueueRawResourceEvent(RawResourceEventKind::ActorDepleted,actor,elapsed,player);
 }
 bool InstallSetUnavailableHook(uintptr_t moduleBase,uintptr_t moduleEnd){
     const uintptr_t offset=setUnavailableOffset;constexpr size_t bytes=15;
@@ -205,8 +232,9 @@ void HookSetResourceAmount(uintptr_t component,int amount){
     ++rawHookCalls;
     int before=component&&Mem::Readable(reinterpret_cast<void*>(component+0x170),4)?Mem::ReadI32(component+0x170):-1;
     originalSetResourceAmount(component,amount);
+    const auto started=std::chrono::steady_clock::now();
     int after=component&&Mem::Readable(reinterpret_cast<void*>(component+0x170),4)?Mem::ReadI32(component+0x170):-1;
-    if(before>0&&after<=0)CaptureCollectionComponent(component);
+    const auto elapsed=RecordHookDuration(started);if(before>0&&after<=0)QueueRawResourceEvent(RawResourceEventKind::ComponentDepleted,component,elapsed);
 }
 bool InstallSetResourceAmountHook(uintptr_t moduleBase,uintptr_t moduleEnd){
     const uintptr_t offset=setResourceAmountOffset;constexpr size_t bytes=15;
@@ -222,8 +250,9 @@ void HookRespawnElapsed(uintptr_t component){
     ++rawHookCalls;
     int before=component&&Mem::Readable(reinterpret_cast<void*>(component+0x170),4)?Mem::ReadI32(component+0x170):-1;
     originalRespawnElapsed(component);
+    const auto started=std::chrono::steady_clock::now();
     int after=component&&Mem::Readable(reinterpret_cast<void*>(component+0x170),4)?Mem::ReadI32(component+0x170):-1;
-    if(before<=0&&after>0){std::string key=KeyFor(component);auto meta=identities.find(key);if(meta==identities.end()){++unresolvedHookCalls;return;}pthread_mutex_lock(&stateMutex);bool erased=eventDepleted.erase(meta->second.id)>0;pthread_mutex_unlock(&stateMutex);if(erased)++respawns;}
+    const auto elapsed=RecordHookDuration(started);if(before<=0&&after>0)QueueRawResourceEvent(RawResourceEventKind::ComponentRespawned,component,elapsed);
 }
 bool InstallRespawnElapsedHook(uintptr_t moduleBase,uintptr_t moduleEnd){
     const uintptr_t offset=respawnElapsedOffset;constexpr size_t bytes=18;
@@ -250,7 +279,8 @@ bool InitializeResourceTracking(uintptr_t moduleBase,uintptr_t moduleEnd){
     // This entry is accepted only for the exact analyzed executable. The
     // updater/analyzer must add a new fingerprint before a later build uses it.
     const char* exe=std::getenv("DW_ORIGINAL_EXE");
-    std::string hash=FileSha256(exe&&*exe?exe:"/home/container/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping.zanik-original");
+    const std::string executable=exe&&*exe?exe:RuntimePaths::ServerRoot()+"/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping.zanik-original";
+    std::string hash=FileSha256(executable.c_str());
     if(hash=="d26de80fd01f4b73b726aed855a20377996b7c140ff33f1ec40150c0dd73b259"){
         timeProviderNeedsSubsystem=false;
         getGameTimeOffset=0x0A731740;getTimeProviderOffset=0x0A73A560;
@@ -287,8 +317,18 @@ bool InitializeResourceTracking(uintptr_t moduleBase,uintptr_t moduleEnd){
     compatibility=1;return true;
 }
 
-void RefreshResourceStates(){
-    if(compatibility.load()!=1||!g_Engine||!g_Engine->IsInitialized())return;
+bool RefreshResourceStates(){
+    if(compatibility.load()!=1||!g_Engine||!g_Engine->IsInitialized())return false;
+    auto read=rawResourceRead.load(std::memory_order_relaxed);const auto write=rawResourceWrite.load(std::memory_order_acquire);
+    while(read<write){
+        const auto event=rawResourceEvents[read%RawResourceEventCapacity];++read;
+        if(!event.object||g_Engine->GetObjectIdentity(event.object)!=event.identity){++unresolvedHookCalls;continue;}
+        std::string playerGuid;if(event.player&&event.playerIdentity&&g_Engine->GetObjectIdentity(event.player)==event.playerIdentity)for(const auto& player:g_Engine->GetAllPlayers())if(player.pawnPtr==event.player||player.controllerPtr==event.player||player.playerStatePtr==event.player){playerGuid=player.characterGuid;break;}const char* operation=event.kind==RawResourceEventKind::ActorDepleted?"resource collected":event.kind==RawResourceEventKind::ComponentDepleted?"resource depleted":"resource respawned";PerformanceTrace::Record("resources",operation,event.hookMicros,playerGuid.empty()?nullptr:playerGuid.c_str(),playerGuid.empty()?0:'g',"game");
+        if(event.kind==RawResourceEventKind::ActorDepleted)CaptureCollection(event.object);
+        else if(event.kind==RawResourceEventKind::ComponentDepleted)CaptureCollectionComponent(event.object);
+        else{std::string key=KeyFor(event.object);auto meta=identities.find(key);if(meta==identities.end()){++unresolvedHookCalls;continue;}pthread_mutex_lock(&stateMutex);bool erased=eventDepleted.erase(meta->second.id)>0;states.erase(meta->second.id);if(resourceScan.active)resourceScan.next.erase(meta->second.id);updatedAt=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();pthread_mutex_unlock(&stateMutex);if(erased)++respawns;}
+    }
+    rawResourceRead.store(read,std::memory_order_release);
     using GetGameTimeFn=std::int64_t(*)(uintptr_t);
     auto getTime=reinterpret_cast<GetGameTimeFn>(g_Engine->GetModuleBase()+getGameTimeOffset);
     std::int64_t nowTicks=getTime(g_Engine->GetWorld());
@@ -303,13 +343,15 @@ void RefreshResourceStates(){
             sampleTicks=nowTicks;sampleWall=wall;
         }
     }else{sampleTicks=nowTicks;sampleWall=wall;tickRate=0;}
-    std::unordered_map<std::string,ResourceStateInfo> next;
+    if(!resourceScan.active){
+    if(nextResourceReconciliation.time_since_epoch().count()!=0&&wall<nextResourceReconciliation)return false;
+    resourceScan={};resourceScan.active=true;resourceScan.nowTicks=nowTicks;resourceScan.count=g_Engine->GetObjectCount();resourceScan.next.reserve(states.size()+eventDepleted.size()+64);
     RefreshPersisted();
     for(const auto& saved:persisted){
         auto meta=std::find_if(identities.begin(),identities.end(),[&](const auto& x){return x.second.id==saved.first;});
         if(meta==identities.end())continue;double remaining=0;double hours=ProfileHours(meta->second.profile);
         const double rate=tickRate.load();if(saved.second.second>0&&nowTicks>=saved.second.second){double game=hours*3600.0-(nowTicks-saved.second.second)/10000000.0;remaining=rate>0?std::max(0.0,game/rate):0;}
-        next[saved.first]={saved.first,false,remaining,"persisted"};
+        resourceScan.next[saved.first]={saved.first,false,remaining,"persisted"};
     }
     pthread_mutex_lock(&stateMutex);
     auto captured=eventDepleted;
@@ -317,19 +359,21 @@ void RefreshResourceStates(){
     for(const auto& event:captured){
         auto meta=std::find_if(identities.begin(),identities.end(),[&](const auto& x){return x.second.id==event.first;});if(meta==identities.end())continue;
         const double rate=tickRate.load();double remaining=0;if(event.second.deadline>0){double game=(event.second.deadline-nowTicks)/10000000.0;remaining=rate>0?std::max(0.0,game/rate):0;}
-        next[event.first]={event.first,false,remaining,"live-event"};
+        resourceScan.next[event.first]={event.first,false,remaining,"live-event"};
     }
-    int loaded=0,matched=0,matchedActionable=0,matchedFoliage=0,unresolved=0;
-    int count=g_Engine->GetObjectCount();
-    for(int i=0;i<count;++i){
+    }
+    const auto sliceStarted=std::chrono::steady_clock::now(),sliceDeadline=sliceStarted+std::chrono::microseconds(300);++scanSlices;
+    int inspected=0;
+    for(;resourceScan.cursor<resourceScan.count&&inspected<512&&std::chrono::steady_clock::now()<sliceDeadline;++resourceScan.cursor,++inspected){
+        const int i=resourceScan.cursor;
         uintptr_t c=g_Engine->GetObjectByIndex(i);if(!c||!g_Engine->IsA(c,"ResourceRespawnComponent")||
-           g_Engine->GetObjectName(c).rfind("Default__",0)==0)continue;
+           g_Engine->GetObjectName(c).rfind("Default__",0)==0){if(timeProviderNeedsSubsystem&&!cachedTimeSubsystem&&c&&g_Engine->IsA(c,"InGameTimeSubsystem")&&g_Engine->GetObjectName(c).rfind("Default__",0)!=0)cachedTimeSubsystem=c;continue;}
         uintptr_t owner=Mem::ReadPtr(c+Offsets::UObject_Outer);
         if(!owner||g_Engine->GetObjectName(owner).rfind("Default__",0)==0)continue;
-        ++loaded;std::string key=KeyFor(c);if(key.empty()){++unresolved;continue;}
-        auto meta=identities.find(key);if(meta==identities.end()){++unresolved;continue;}++matched;
-        if(meta->second.type=="irit"||meta->second.type=="corpse-cotton")++matchedActionable;
-        else if(meta->second.type=="desert-weed"||meta->second.type=="barrel-cactus"||meta->second.type=="bunny-cactus"||meta->second.type=="fibrous-pipe-cactus")++matchedFoliage;
+        ++resourceScan.loaded;std::string key=KeyFor(c);if(key.empty()){++resourceScan.unresolved;continue;}
+        auto meta=identities.find(key);if(meta==identities.end()){++resourceScan.unresolved;continue;}++resourceScan.matched;
+        if(meta->second.type=="irit"||meta->second.type=="corpse-cotton")++resourceScan.matchedActionable;
+        else if(meta->second.type=="desert-weed"||meta->second.type=="barrel-cactus"||meta->second.type=="bunny-cactus"||meta->second.type=="fibrous-pipe-cactus")++resourceScan.matchedFoliage;
         if(!Mem::Readable(reinterpret_cast<void*>(c+0x170),0x18)){++rejected;continue;}
         int quantity=Mem::ReadI32(c+0x170);std::int64_t changed=0;std::memcpy(&changed,reinterpret_cast<void*>(c+0x178),8);
         static std::atomic<int> liveSamples{0};if(liveSamples.fetch_add(1)<30)LogMessage("Resource live match id="+meta->second.id+
@@ -356,19 +400,21 @@ void RefreshResourceStates(){
             using IntervalFn=std::int64_t(*)(uintptr_t,uintptr_t);
             uintptr_t base=g_Engine->GetModuleBase();uintptr_t provider=ResolveTimeProvider(c);
             std::int64_t interval=provider?reinterpret_cast<IntervalFn>(base+getRespawnIntervalOffset)(c,provider):0;
-            if(interval>0){double game=(changed+interval-nowTicks)/10000000.0;const double rate=tickRate.load();next[meta->second.id]={meta->second.id,false,rate>0?std::max(0.0,game/rate):0,"live-component"};}
-            else next[meta->second.id]={meta->second.id,false,0,"live-component"};
+            if(interval>0){double game=(changed+interval-resourceScan.nowTicks)/10000000.0;const double rate=tickRate.load();resourceScan.next[meta->second.id]={meta->second.id,false,rate>0?std::max(0.0,game/rate):0,"live-component"};}
+            else resourceScan.next[meta->second.id]={meta->second.id,false,0,"live-component"};
         }else{
-            next.erase(meta->second.id);
+            resourceScan.next.erase(meta->second.id);
             pthread_mutex_lock(&stateMutex);eventDepleted.erase(meta->second.id);pthread_mutex_unlock(&stateMutex);
         }
     }
+    scanObjects.fetch_add(inspected);const auto sliceMicros=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-sliceStarted).count());auto priorSlice=maximumScanMicroseconds.load();while(sliceMicros>priorSlice&&!maximumScanMicroseconds.compare_exchange_weak(priorSlice,sliceMicros)){}if(sliceMicros>=1000)++slowScanSlices;
+    if(resourceScan.cursor<resourceScan.count)return true;
     {
-        pthread_mutex_lock(&stateMutex);states.swap(next);
+        pthread_mutex_lock(&stateMutex);states.swap(resourceScan.next);
         updatedAt=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         pthread_mutex_unlock(&stateMutex);
     }
-    loadedComponents=loaded;matchedNodes=matched;matchedActionableNodes=matchedActionable;matchedFoliageNodes=matchedFoliage;unresolvedNodes=unresolved;lastSuccess=updatedAt;
+    loadedComponents=resourceScan.loaded;matchedNodes=resourceScan.matched;matchedActionableNodes=resourceScan.matchedActionable;matchedFoliageNodes=resourceScan.matchedFoliage;unresolvedNodes=resourceScan.unresolved;lastSuccess=updatedAt;resourceScan.active=false;nextResourceReconciliation=wall+std::chrono::seconds(30);return false;
 }
 
 bool ReadResourceStates(std::vector<ResourceStateInfo>& out,double& rate,std::int64_t& timestamp){
@@ -383,6 +429,6 @@ bool ReadAuthoritativeGameTime(std::int64_t& gameTicks,double& gameSecondsPerRea
     return compatibility.load()==1&&gameTicks>0;
 }
 
-ResourceDiagnostics GetResourceDiagnostics(){return {compatibility.load(),catalogNodes.load(),actionableCatalogNodes.load(),foliageCatalogNodes.load(),loadedComponents.load(),matchedNodes.load(),matchedActionableNodes.load(),matchedFoliageNodes.load(),persistedNodes.load(),unresolvedNodes.load(),rejected.load(),collections.load(),respawns.load(),rawHookCalls.load(),unresolvedHookCalls.load(),lastSuccess.load()};}
+ResourceDiagnostics GetResourceDiagnostics(){return {compatibility.load(),catalogNodes.load(),actionableCatalogNodes.load(),foliageCatalogNodes.load(),loadedComponents.load(),matchedNodes.load(),matchedActionableNodes.load(),matchedFoliageNodes.load(),persistedNodes.load(),unresolvedNodes.load(),rejected.load(),collections.load(),respawns.load(),rawHookCalls.load(),unresolvedHookCalls.load(),rawResourceWrite.load()-rawResourceRead.load(),hookQueueDrops.load(),maximumHookMicroseconds.load(),slowHookCalls.load(),resourceScan.active,scanSlices.load(),scanObjects.load(),maximumScanMicroseconds.load(),slowScanSlices.load(),lastSuccess.load()};}
 
 } // namespace DomEngine

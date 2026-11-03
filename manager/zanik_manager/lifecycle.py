@@ -122,7 +122,9 @@ class PterodactylProvider(ServerProvider):
             "files": {"file.read"},
             "install": {"control.start", "control.stop", "file.read", "file.read-content", "file.create", "file.update", "file.delete"},
             "replacement-install": {"control.start", "control.stop", "file.read", "file.read-content", "file.create", "file.update", "file.delete", "startup.read", "startup.update"},
-            "game-update": {"control.start", "control.stop", "file.read", "file.read-content", "file.create", "file.update", "file.delete", "startup.read", "startup.update"},
+            "wrapper-game-update": {"control.start", "control.stop", "file.read", "file.read-content", "file.create", "file.update", "startup.read"},
+            "wrapper-game-update-auto-update": {"startup.read", "startup.update"},
+            "replacement-game-update": {"control.start", "control.stop", "file.read", "file.read-content", "file.create", "file.update", "file.delete", "startup.read", "startup.update"},
             "assets": {"control.start", "control.stop", "file.read", "file.read-content", "file.create", "file.update", "file.delete"},
             "config": {"file.read", "file.read-content", "file.create", "file.update", "file.delete"},
         }.get(operation, set())
@@ -234,7 +236,6 @@ class PterodactylProvider(ServerProvider):
             if component == "/":
                 continue
             parent = current
-            gateway_failures = 0
             while True:
                 try:
                     self.client.create_folder(server_id, parent, component)
@@ -242,10 +243,9 @@ class PterodactylProvider(ServerProvider):
                 except PterodactylError as error:
                     if error.status in {409, 422}:
                         break
-                    if error.status == 522 or (error.status in {500, 502, 503, 504} and gateway_failures < 5):
+                    if error.status in {500, 502, 503, 504, 522}:
                         if self.client.cancelled():
                             raise PterodactylError("Operation cancelled while waiting for the panel", error.status)
-                        gateway_failures += 1
                         self._status(
                             f"The server node is temporarily unavailable (HTTP {error.status}). Retrying in 60 seconds…"
                         )
@@ -256,10 +256,10 @@ class PterodactylProvider(ServerProvider):
 
     def _entry(self, server_id: str, path: str) -> dict | None:
         posix = PurePosixPath(path)
-        failures = 0
         while True:
             try:
-                for item in self.client.list_files(server_id, str(posix.parent)):
+                listing=getattr(self.client,"list_files_once",self.client.list_files)
+                for item in listing(server_id, str(posix.parent)):
                     if item.get("name") == posix.name:
                         return item
                 return None
@@ -268,8 +268,7 @@ class PterodactylProvider(ServerProvider):
                     return None
                 if error.status in {500, 502, 503, 504} and self._directory_definitely_missing(server_id, posix.parent):
                     return None
-                if error.status == 522 or (error.status in {500, 502, 503, 504} and failures < 5):
-                    failures += 1
+                if error.status in {500, 502, 503, 504, 522}:
                     self._status(
                         f"The server node is temporarily unavailable (HTTP {error.status}). Retrying in 60 seconds…"
                     )
@@ -284,7 +283,8 @@ class PterodactylProvider(ServerProvider):
         while current != container and str(current) not in {"/", "."}:
             parent = current.parent
             try:
-                rows = self.client.list_files(server_id, str(parent))
+                listing=getattr(self.client,"list_files_once",self.client.list_files)
+                rows = listing(server_id, str(parent))
             except PterodactylError as error:
                 if error.status in {500, 502, 503, 504}:
                     current = parent
@@ -308,7 +308,8 @@ class PterodactylProvider(ServerProvider):
             raise ValueError("Invalid managed backup metadata")
         existing = None
         try:
-            existing = json.loads(self.client.read_file(server_id, f"{path}/{BACKUP_MANIFEST}"))
+            reader = getattr(self.client, "read_file_once", self.client.read_file)
+            existing = json.loads(reader(server_id, f"{path}/{BACKUP_MANIFEST}"))
         except Exception:
             pass
         manifest = {
@@ -347,7 +348,8 @@ class PterodactylProvider(ServerProvider):
         records: list[dict] = []
         for parent in self._backup_parents(root):
             try:
-                rows = self.client.list_files(server_id, parent)
+                listing=getattr(self.client,"list_files_once",self.client.list_files)
+                rows = listing(server_id, parent)
             except PterodactylError as error:
                 if error.status in {404, 500, 502, 503, 504}: continue
                 raise
@@ -357,7 +359,8 @@ class PterodactylProvider(ServerProvider):
                 path = f"{parent}/{name}"
                 manifest = None
                 try:
-                    candidate = json.loads(self.client.read_file(server_id, f"{path}/{BACKUP_MANIFEST}"))
+                    reader = getattr(self.client, "read_file_once", self.client.read_file)
+                    candidate = json.loads(reader(server_id, f"{path}/{BACKUP_MANIFEST}"))
                     if (candidate.get("schemaVersion") == 1
                             and candidate.get("owner") in {"Zanik Manager", "Zanik shell lifecycle"}
                             and candidate.get("family") in BACKUP_FAMILIES):
@@ -521,10 +524,10 @@ class PterodactylProvider(ServerProvider):
         parents = sorted({str(PurePosixPath(name).parent) for name in paths})
         for parent in parents:
             directory = install if parent == "." else f"{install}/{parent}"
-            failures = 0
             while True:
                 try:
-                    rows = self.client.list_files(server_id, directory)
+                    listing=getattr(self.client,"list_files_once",self.client.list_files)
+                    rows = listing(server_id, directory)
                     break
                 except PterodactylError as error:
                     if error.status == 404:
@@ -534,8 +537,7 @@ class PterodactylProvider(ServerProvider):
                             and self._directory_definitely_missing(server_id, PurePosixPath(directory))):
                         rows = []
                         break
-                    if error.status == 522 or (error.status in {500, 502, 503, 504} and failures < 5):
-                        failures += 1
+                    if error.status in {500, 502, 503, 504, 522}:
                         self._status(
                             f"The server node is temporarily unavailable (HTTP {error.status}). Retrying in 60 seconds…"
                         )
@@ -1358,7 +1360,6 @@ class PterodactylProvider(ServerProvider):
         if not str(expected_build).isdigit():
             raise ValueError("The expected Dragonwilds build is invalid")
         root = validate_server_root(server_root)
-        self.preflight(server_id, "game-update")
         try:
             install = json.loads(self.client.read_file(server_id, f"{root}/zanik/install-state.json"))
         except Exception:
@@ -1366,6 +1367,8 @@ class PterodactylProvider(ServerProvider):
         mode = install.get("mode", "wrapper")
         if mode not in {"wrapper", "replace-executable"}:
             raise RuntimeError("The installation mode is unknown; repair Zanik before updating Dragonwilds")
+        self.preflight(server_id, "replacement-game-update" if mode == "replace-executable"
+                       else "wrapper-game-update")
         journal = OperationJournal.create(profile_id, "game-update")
         self.journals.save(journal)
         timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -1396,6 +1399,7 @@ class PterodactylProvider(ServerProvider):
             elif variable["value"] == "0":
                 if not variable["editable"]:
                     raise RuntimeError("AUTO_UPDATE is disabled and this API key cannot enable it for the requested update")
+                self.preflight(server_id, "wrapper-game-update-auto-update")
                 previous_auto = "0"
                 self.client.set_startup_variable(server_id, "AUTO_UPDATE", "1")
                 if self._auto_update(server_id)["value"] != "1":
@@ -1450,6 +1454,7 @@ class PterodactylProvider(ServerProvider):
                 self.client.power(server_id, "stop"); self._wait_offline(server_id)
             game = f"{root}/{GAME_RELATIVE}"
             launcher = self.client.read_file(server_id, game)
+            launcher_sha256 = sha256(launcher)
             original_entry = self._entry(server_id, game + ".zanik-original")
             if (LAUNCHER_MARKER not in launcher or not original_entry or
                     not original_entry.get("is_file") or int(original_entry.get("size") or 0) < 1024 * 1024):
@@ -1458,11 +1463,19 @@ class PterodactylProvider(ServerProvider):
             self._write_backup_manifest(server_id, backup, "game-update", journal.operation_id, "preparing")
             backup_created = True
             self.client.upload(server_id, backup, "compat-launcher", launcher)
+            if sha256(self.client.read_file(server_id, f"{backup}/compat-launcher")) != launcher_sha256:
+                raise RuntimeError("The managed recovery launcher upload did not verify")
             self.client.write_file(server_id, f"{root}/zanik/state/game-update-launcher", launcher)
-            request = (json.dumps({"schemaVersion": 1, "operationId": journal.operation_id,
-                                   "backup": backup}, separators=(",", ":")) + "\n").encode()
+            if sha256(self.client.read_file(server_id, f"{root}/zanik/state/game-update-launcher")) != launcher_sha256:
+                raise RuntimeError("The staged replacement launcher did not verify")
+            request = (json.dumps({"schemaVersion": 2, "operationId": journal.operation_id,
+                                   "backup": backup, "expectedBuild": expected_build,
+                                   "launcherSha256": launcher_sha256}, separators=(",", ":")) + "\n").encode()
             self.client.write_file(server_id, f"{root}/zanik/state/game-update-request.json", request)
-            self.client.chmod(server_id, f"{root}/zanik/state", [("game-update-launcher", 0o755)])
+            if sha256(self.client.read_file(server_id, f"{root}/zanik/state/game-update-request.json")) != sha256(request):
+                raise RuntimeError("The replacement update request did not verify")
+            self.client.chmod(server_id, f"{root}/zanik/state",
+                              [("game-update-launcher", 0o755), ("game-update-request.json", 0o600)])
             updater = self.client.read_file(server_id, f"{root}/zanik/scripts/update-game.sh")
             if b"ZANIK_GAME_UPDATER=1" not in updater:
                 raise RuntimeError("The packaged one-shot game updater did not verify")
@@ -1482,8 +1495,10 @@ class PterodactylProvider(ServerProvider):
             report = None; deadline = time.monotonic() + 960
             while time.monotonic() < deadline:
                 try:
-                    report = json.loads(self.client.read_file(server_id, f"{root}/zanik/state/game-update-result.json"))
-                    if report.get("status"):
+                    candidate = json.loads(self.client.read_file(
+                        server_id, f"{root}/zanik/state/game-update-result.json"))
+                    if candidate.get("operationId") == journal.operation_id and candidate.get("status"):
+                        report = candidate
                         break
                 except Exception:
                     pass
@@ -1492,20 +1507,27 @@ class PterodactylProvider(ServerProvider):
                 raise RuntimeError("The launcher-aware Dragonwilds updater did not produce a result before the timeout")
             if report.get("status") != "complete" or report.get("installedBuild") != expected_build:
                 raise RuntimeError("The launcher-aware Dragonwilds update failed safely: " + str(report.get("status")))
+            if report.get("launcherSha256") != launcher_sha256:
+                raise RuntimeError("The launcher-aware Dragonwilds update reported a different launcher")
             if report.get("saveFingerprintBefore") != report.get("saveFingerprintAfter"):
                 raise RuntimeError("The game save-tree fingerprint changed; the server remains stopped for review")
+            restored_launcher = self.client.read_file(server_id, game)
+            if sha256(restored_launcher) != launcher_sha256 or LAUNCHER_MARKER not in restored_launcher:
+                raise RuntimeError("The restored replacement launcher did not verify; the server remains stopped")
             record_installation(report.get("officialSha256", ""), report["installedBuild"])
+            transient = ["game-update-launcher", "game-update-request.json", "game-update-result.json"]
+            self.client.delete(server_id, f"{root}/zanik/state", transient)
+            retained = [name for name in transient
+                        if self._exists(server_id, f"{root}/zanik/state/{name}")]
+            if retained:
+                raise RuntimeError("Replacement update completed but transient recovery files remain: " +
+                                   ", ".join(f"{root}/zanik/state/{name}" for name in retained))
             progress("Starting Dragonwilds through the restored Zanik launcher", 92)
             self.client.power(server_id, "start")
             journal.state = "complete"; journal.completed_steps.append("game-updated")
             self.journals.save(journal)
             self._finish_backup(profile_id, "game-update", server_id, root, backup, "game-update",
                                 journal.operation_id, "complete")
-            try:
-                self.client.delete(server_id, f"{root}/zanik/state",
-                                   ["game-update-launcher", "game-update-request.json", "game-update-result.json"])
-            except Exception:
-                pass
             self.journals.prune(); progress("Dragonwilds update complete", 100)
             return {"mode": mode, "installedBuild": report["installedBuild"], "backup": backup,
                     "maintenanceExpected": True, "operationId": journal.operation_id}

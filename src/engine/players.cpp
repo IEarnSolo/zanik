@@ -25,6 +25,8 @@ std::atomic<int> discoverySpawnedPawns{0};
 std::atomic<int> discoveryWorldLocations{0};
 std::atomic<int> discoveryRegionLookupAttempts{0};
 std::atomic<int> discoveryPlayersProduced{0};
+std::atomic<int> discoveryPingCompatibility{0};
+std::atomic<std::uint64_t> discoveryReadablePingSamples{0},discoveryUnavailablePingSamples{0};
 
 struct PawnComponents {
     uintptr_t sustenance = 0;
@@ -91,7 +93,8 @@ PlayerDiscoveryDiagnostics GetPlayerDiscoveryDiagnostics() {
             discoveryDominionPlayerStates.load(), discoveryCharacterGuids.load(),
             discoveryCharacterNames.load(), discoverySpawnedPawns.load(),
             discoveryWorldLocations.load(), discoveryRegionLookupAttempts.load(),
-            discoveryPlayersProduced.load()};
+            discoveryPlayersProduced.load(),discoveryPingCompatibility.load(),
+            discoveryReadablePingSamples.load(),discoveryUnavailablePingSamples.load()};
 }
 
 void Engine::ReadAttributeArrays(uintptr_t attributesComponent, uintptr_t attributesOffset,
@@ -190,6 +193,7 @@ std::vector<PlayerInfo> Engine::GetAllPlayers() const {
     discoveryWorldLocations = 0;
     discoveryRegionLookupAttempts = 0;
     discoveryPlayersProduced = 0;
+    discoveryPingCompatibility = 0;
     if (!initialized) return players;
 
     uintptr_t gameState = GetGameState();
@@ -300,7 +304,10 @@ std::vector<PlayerInfo> Engine::GetAllPlayers() const {
         info.playerId = Mem::ReadI32(playerState + Offsets::PlayerState_PlayerId);
         info.score = Mem::ReadFloat(playerState + Offsets::PlayerState_Score);
         info.startTime = Mem::ReadI32(playerState + Offsets::PlayerState_StartTime);
-        info.pingMs = (int32_t)Mem::ReadU8(playerState + Offsets::PlayerState_CompressedPing) * 4;
+        if(Mem::Readable(reinterpret_cast<void*>(playerState+Offsets::PlayerState_CompressedPing),1)){
+            info.pingMs=(int32_t)Mem::ReadU8(playerState+Offsets::PlayerState_CompressedPing)*4;
+            ++discoveryReadablePingSamples;discoveryPingCompatibility=1;
+        }else{info.pingMs=-1;++discoveryUnavailablePingSamples;discoveryPingCompatibility=-1;}
 
         uint8_t flags = Mem::ReadU8(playerState + Offsets::PlayerState_Flags);
         info.isSpectator = (flags & (1 << 1)) != 0;

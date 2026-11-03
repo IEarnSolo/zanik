@@ -57,8 +57,10 @@ assert 'FindFunction("QuestProgressComponent","Server_NotifyQuestTracked")' in q
 assert 'FindFunction("QuestProgressComponent","Client_NotifyTrackedQuestLoaded")' in quests
 assert 'FindUniqueFunctionByName("Server_NotifyQuestTracked")' in quests
 assert 'FindUniqueFunctionByName("Client_NotifyTrackedQuestLoaded")' in quests
-assert "knownQuestComponents" in quests
-assert 'name=="Server_NotifyQuestTracked"' in quests
+assert "TrackedQuestQueueCapacity=64" in quests
+assert "DrainTrackedQuestCaptures" in quests
+assert "knownQuestComponents" not in quests
+assert "functionAddress==serverNotifyTracked||functionAddress==clientNotifyTracked" in quests
 assert "trackedNotifyQuestOffset=0;return true" in quests
 assert "PrologueOffset=14,HookBytes=13" in quests
 assert "0x55,0x48,0x89,0xE5,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53" in quests
@@ -70,10 +72,23 @@ assert "serverCallsRename" in analyzer
 assert "serverArgumentOrder" in analyzer
 assert "GetPlayerBedRespawnLocationAndRotation" in analyzer
 assert "home teleport bed-respawn ABI changed" in analyzer
+assert 'containsContractText("LogMapRegions")' in analyzer
+assert 'containsContractText("Revealing map region [%s] (Region %d) for player [%s]")' in analyzer
+assert "region discovery log contract missing" in analyzer
+assert "partial-instruction hook" in analyzer
+assert "0x55,0x53,0x50,0x4c,0x89,0xc0,0x48,0x89,0xfb,0x4c,0x8b,0x17" in analyzer
+assert 'containsContractText("CompressedPing")' in analyzer
+assert "CompatibilityChecks::ContainsContractText" in analyzer
+assert 'APlayerState::GetPingInMilliseconds() const' in analyzer
+assert "player compressed-ping layout changed" in analyzer
+assert "quest ProcessEvent hook signature changed" in analyzer
+assert "processEventFile+14" in analyzer
 
 update_safety = (root / "docs" / "game-update-safety.md").read_text()
 assert "Named-storage compatibility is a required game-update gate" in update_safety
 assert "temporary name" in update_safety and "original name" in update_safety
+assert "Player-network diagnostics update gate" in update_safety
+assert "three consecutive elevated samples" in update_safety
 
 updater = (root / "scripts" / "update-game.sh").read_text()
 assert 'while [ "$attempt" -le 2 ]' in updater

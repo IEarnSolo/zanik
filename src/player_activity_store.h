@@ -43,6 +43,7 @@ public:
               const std::vector<DomEngine::PlayerQuestSnapshot>& quests,
               const std::vector<DomEngine::PlayerActivityDiscoverySnapshot>& discoveries,
               std::int64_t timestamp = 0);
+    bool RecordRegionDiscoveries(const std::vector<DomEngine::NativeRegionDiscovery>& discoveries);
     PlayerActivityPage Page(const std::string& characterGuid, std::size_t limit,
                             std::uint64_t before = 0) const;
     std::string PageJson(const std::string& characterGuid, std::size_t limit,
@@ -70,6 +71,9 @@ private:
         bool regionsInitialized = false;
         std::uint32_t regions = 0;
         std::uint32_t everRegions = 0;
+        // Read-only migration compatibility for the short-lived location-entry fallback format.
+        bool observedRegionsInitialized = false;
+        std::set<std::string> observedRegions;
         bool materialsInitialized = false;
         std::string materialFingerprint;
         std::set<std::string> materials;

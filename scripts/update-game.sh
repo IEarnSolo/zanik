@@ -22,23 +22,40 @@ save_fingerprint(){
   find "$directory" -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum | sha256sum | awk '{print $1}'
 }
 write_report(){
-  printf '{"schemaVersion":1,"status":"%s","startedBuild":"%s","installedBuild":"%s","officialSha256":"%s","saveFingerprintBefore":"%s","saveFingerprintAfter":"%s","backup":"%s","completedAt":"%s"}\n' \
-    "$1" "$2" "$3" "$4" "$5" "$6" "$backup_root" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$temporary"
+  printf '{"schemaVersion":2,"operationId":"%s","status":"%s","startedBuild":"%s","installedBuild":"%s","officialSha256":"%s","launcherSha256":"%s","saveFingerprintBefore":"%s","saveFingerprintAfter":"%s","backup":"%s","completedAt":"%s"}\n' \
+    "$operation_id" "$1" "$2" "$3" "$4" "$launcher_expected" "$5" "$6" "$backup_root" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$temporary"
   chmod 600 "$temporary"; mv -f "$temporary" "$report"
 }
 restore_launcher(){
   [ -f "$launcher_backup" ] || return 1
   grep -q 'ZANIK_COMPAT_LAUNCHER=1' "$launcher_backup" || return 1
+  [ "$(sha "$launcher_backup")" = "$launcher_expected" ] || return 1
   cp -p "$launcher_backup" "$game.restore"
   chmod 755 "$game.restore"
   mv -f "$game.restore" "$game"
+  [ "$(sha "$game")" = "$launcher_expected" ]
 }
 
+request_field(){ sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p" "$request" 2>/dev/null || true; }
+request_schema=$(sed -n 's/.*"schemaVersion":\([0-9][0-9]*\).*/\1/p' "$request" 2>/dev/null || true)
 backup_root=$(sed -n 's/.*"backup":"\([^"]*\)".*/\1/p' "$request" 2>/dev/null || true)
+operation_id=$(request_field operationId)
+expected_build=$(request_field expectedBuild)
+launcher_expected=$(request_field launcherSha256)
+case "$request_schema" in 2) ;; *) exit 2;; esac
+case "$operation_id" in *[!0-9a-f-]*|'') exit 2;; esac
+case "$expected_build" in *[!0-9]*|'') exit 2;; esac
+case "$launcher_expected" in ????????????????????????????????????????????????????????????????) ;; *) exit 2;; esac
+case "$launcher_expected" in *[!0-9a-f]*) exit 2;; esac
 backup_name=${backup_root##*/}
 case "$backup_root" in "$server_root"/zanik-backups/game-update/*) ;; *) exit 2;; esac
 case "$backup_name" in *[!0-9TZabcdef-]*|*/*|'') exit 2;; esac
 [ -d "$backup_root" ] && [ -f "$backup_root/.zanik-backup.json" ] || exit 2
+grep -Fq '"owner":"Zanik Manager"' "$backup_root/.zanik-backup.json" || exit 2
+grep -Fq '"family":"game-update"' "$backup_root/.zanik-backup.json" || exit 2
+grep -Fq "\"operationId\":\"$operation_id\"" "$backup_root/.zanik-backup.json" || exit 2
+grep -Fq '"state":"preparing"' "$backup_root/.zanik-backup.json" || exit 2
 mkdir -p "$zanik/state"
 [ -x "$steamcmd" ] || { restore_launcher || true; write_report steamcmd-unavailable "$(build)" "$(build)" '' '' ''; exit 1; }
 is_elf "$original" || { restore_launcher || true; write_report original-invalid "$(build)" "$(build)" '' '' ''; exit 1; }
@@ -75,6 +92,14 @@ rm -f "$backup_root/steamcmd.log.full"
 if ! is_elf "$game"; then
   restore_launcher || true
   write_report updated-executable-invalid "$before_build" "$(build)" '' "$before_save" "$(save_fingerprint)"
+  exit 1
+fi
+installed_build=$(build)
+if [ "$installed_build" != "$expected_build" ]; then
+  mv -f "$game" "$backup_root/unexpected-official"
+  restore_launcher || true
+  write_report unexpected-build "$before_build" "$installed_build" "$(sha "$backup_root/unexpected-official")" \
+    "$before_save" "$(save_fingerprint)"
   exit 1
 fi
 

@@ -28,7 +28,8 @@ verify-release-tag:
   rules:
     - if: $CI_COMMIT_TAG
   script:
-    - python3 tools/release_contract.py --tag "$CI_COMMIT_TAG" --require-clean
+    - git fetch --no-tags --depth=1000000 origin main:refs/remotes/origin/release-main
+    - python3 tools/release_contract.py --tag "$CI_COMMIT_TAG" --require-clean --require-annotated-tag --require-ref refs/remotes/origin/release-main --commit "$CI_COMMIT_SHA"
 
 build-linux:
   stage: build
@@ -187,21 +188,22 @@ publish-github-release:
     expire_in: never
     paths: [dist/release/github-release.json]
 
-update-github-release-notes:
+update-release-notes:
   stage: distribute
   rules:
-    - if: '$RELEASE_NOTES_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $RELEASE_NOTES_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
   needs: []
   resource_group: github-production
   environment:
     name: github-production
   script:
     - RELEASE_NOTES_VERSION="${RELEASE_NOTES_TAG#v}"
+    - python3 tools/update_gitlab_release_notes.py --version "$RELEASE_NOTES_VERSION" --tag "$RELEASE_NOTES_TAG" --changelog CHANGELOG.md --report gitlab-release-notes-update.json
     - python3 tools/update_github_release_notes.py --version "$RELEASE_NOTES_VERSION" --tag "$RELEASE_NOTES_TAG" --changelog CHANGELOG.md --report github-release-notes-update.json
   artifacts:
     when: always
     expire_in: never
-    paths: [github-release-notes-update.json]
+    paths: [gitlab-release-notes-update.json, github-release-notes-update.json]
 
 publish-curseforge:
   stage: distribute

@@ -5,6 +5,7 @@
 #include "quest_snapshot_store.h"
 #include "player_activity_store.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -41,11 +42,11 @@ int main() {
         DomEngine::PlayerInfo player;player.characterGuid="hero";player.skills={{"SKILL_Attack",33}};player.hasHealth=true;player.health=10;player.isDead=false;player.location="Ashenfall";
         DomEngine::PlayerRecipeSnapshot recipe{"hero",{"r1"},"recipes-a",100,true};
         DomEngine::PlayerQuestSnapshot quest;quest.characterGuid="hero";quest.quests={{"q1","not_started","",0}};quest.catalogFingerprint="quests-a";quest.capturedAt=100;quest.complete=true;
-        DomEngine::PlayerActivityDiscoverySnapshot discovery;discovery.characterGuid="hero";discovery.regionsComplete=true;discovery.regionBitmap=1;discovery.regions={{0,"Ashenfall"},{1,"Dowdun Reach"}};discovery.materialsComplete=true;discovery.materialFingerprint="materials-a";discovery.materials={{"wood","Wood","/assets/items/wood.png"}};discovery.unlocksComplete=true;discovery.unlockFingerprint="unlocks-a";discovery.unlocks={{"perk","perk-one","Stone Sense","/assets/skills/mining.png"},{"spell","spell-one","Wind Step",""}};
+        DomEngine::PlayerActivityDiscoverySnapshot discovery;discovery.characterGuid="hero";discovery.regionsComplete=true;discovery.regionBitmap=1;discovery.regions={{0,"Ashenfall"}};discovery.materialsComplete=true;discovery.materialFingerprint="materials-a";discovery.materials={{"wood","Wood","/assets/items/wood.png"}};discovery.unlocksComplete=true;discovery.unlockFingerprint="unlocks-a";discovery.unlocks={{"perk","perk-one","Stone Sense","/assets/skills/mining.png"},{"spell","spell-one","Wind Step",""}};
         assert(activity.Sync({player},{recipe},{quest},{discovery},100));assert(activity.Page("hero",8).events.empty());
         player.skills[0].currentXP=463;player.health=0;player.isDead=true;
-        recipe.unlockedIds.push_back("r1-alt");recipe.unlockedIds.push_back("r2");quest.quests[0]={"q1","in_progress","Find the dragon",0};discovery.regionBitmap=3;discovery.materials.push_back({"iron","Iron ore","/assets/items/iron.png"});discovery.unlocks.push_back({"perk","perk-two","Sacred Geometry","/assets/skills/construction.png"});discovery.unlocks.push_back({"spell","USD_TempestShield","Tempest Shield","/assets/spells-and-perks/PerkV2_Attack_TempestShield.png"});
-        assert(activity.Sync({player},{recipe},{quest},{discovery},200));auto page=activity.Page("hero",10);assert(page.events.size()==8&&!page.hasMore);assert(page.events[0].type=="spell_unlocked"&&page.events[0].title=="Unlocked Tempest Shield"&&page.events[0].icon=="/assets/spells-and-perks/PerkV2_Attack_TempestShield.png"&&page.events[1].type=="perk_unlocked");const auto count=activity.Diagnostics().events;
+        recipe.unlockedIds.push_back("r1-alt");recipe.unlockedIds.push_back("r2");quest.quests[0]={"q1","in_progress","Find the dragon",0};discovery.regionBitmap=3;discovery.regions.push_back({1,"Dowdun Reach"});discovery.materials.push_back({"iron","Iron ore","/assets/items/iron.png"});discovery.unlocks.push_back({"perk","perk-two","Sacred Geometry","/assets/skills/construction.png"});discovery.unlocks.push_back({"spell","USD_TempestShield","Tempest Shield","/assets/spells-and-perks/PerkV2_Attack_TempestShield.png"});
+        assert(activity.Sync({player},{recipe},{quest},{discovery},200));auto page=activity.Page("hero",10);assert(page.events.size()==8&&!page.hasMore);assert(page.events[0].type=="spell_unlocked"&&page.events[0].title=="Unlocked Tempest Shield"&&page.events[0].icon=="/assets/spells-and-perks/PerkV2_Attack_TempestShield.png"&&page.events[1].type=="perk_unlocked");auto death=std::find_if(page.events.begin(),page.events.end(),[](const auto& event){return event.type=="death";});assert(death!=page.events.end()&&death->icon=="/assets/gravestone-icon.png");const auto count=activity.Diagnostics().events;
         assert(!activity.Sync({player},{recipe},{quest},{discovery},201));assert(activity.Diagnostics().events==count);
         auto regressedPlayer=player;regressedPlayer.skills[0].currentXP=33;assert(!activity.Sync({regressedPlayer},{},{},{},210));assert(!activity.Sync({player},{},{},{},211));
         auto regressedRecipe=recipe;regressedRecipe.unlockedIds={"r1"};assert(!activity.Sync({},{regressedRecipe},{},{},220));assert(!activity.Sync({},{recipe},{},{},221));
@@ -59,6 +60,8 @@ int main() {
         PlayerActivityStore loaded(path);assert(loaded.Load());assert(loaded.Diagnostics().events==activity.Diagnostics().events);assert(loaded.Page("hero",8).events[0].type=="quest_completed");
         auto afterRestart=discovery;afterRestart.unlocks.push_back({"perk","perk-three","Focused Builder",""});afterRestart.unlocks.push_back({"spell","spell-three","Lunar Step",""});const auto restartCount=loaded.Diagnostics().events;assert(loaded.Sync({},{},{},{afterRestart},500));assert(loaded.Diagnostics().events==restartCount+2);assert(loaded.Page("hero",2).events[0].type=="spell_unlocked"&&loaded.Page("hero",2).events[1].type=="perk_unlocked");
         auto changedCatalog=afterRestart;changedCatalog.materialFingerprint="materials-b";changedCatalog.unlockFingerprint="unlocks-b";changedCatalog.materials.push_back({"flax","Flax","/assets/items/flax.png"});changedCatalog.unlocks.push_back({"spell","spell-four","Silent Baseline Spell",""});const auto catalogCount=loaded.Diagnostics().events;assert(loaded.Sync({},{},{},{changedCatalog},510));assert(loaded.Diagnostics().events==catalogCount);std::remove(path.c_str());
+        std::string parsedRegion,parsedController;std::uint8_t parsedRegionId=0;assert(DomEngine::PlayerActivityParseRegionRevealLine("[2026.11.01-05.27.20:666][925]LogMapRegions: Revealing map region [Whispering Swamp] (Region 3) for player [BP_PlayerController_C_2147479928]",parsedRegion,parsedRegionId,parsedController));assert(parsedRegion=="Whispering Swamp"&&parsedRegionId==3&&parsedController=="BP_PlayerController_C_2147479928");assert(!DomEngine::PlayerActivityParseRegionRevealLine("LogMapRegions: Entered map region [Whispering Swamp]",parsedRegion,parsedRegionId,parsedController));
+        const std::string regionPath="dist/player-region-event-test.db";std::remove(regionPath.c_str());PlayerActivityStore regions(regionPath);assert(regions.Load());DomEngine::NativeRegionDiscovery revealed{"explorer","Whispering Swamp",3,600};assert(regions.RecordRegionDiscoveries({revealed}));assert(regions.Page("explorer",10).events.size()==1&&regions.Page("explorer",10).events[0].title=="Discovered Whispering Swamp"&&regions.Page("explorer",10).events[0].icon=="/assets/region-discovery-icon.png?v=places-selected-gold-1");assert(!regions.RecordRegionDiscoveries({revealed}));PlayerActivityStore regionsReloaded(regionPath);assert(regionsReloaded.Load());assert(!regionsReloaded.RecordRegionDiscoveries({revealed}));assert(regionsReloaded.Page("explorer",10).events.size()==1);std::remove(regionPath.c_str());
         const std::string missing="dist/missing-activity-parent/player-activity.db";std::filesystem::remove_all("dist/missing-activity-parent");PlayerActivityStore failing(missing);assert(failing.Load());assert(!failing.Sync({player},{},{},{},500));assert(failing.Diagnostics().persistenceFailures==1);assert(failing.PageJson("hero",8).find("\"persistenceError\":true")!=std::string::npos);
     }
     {
@@ -98,13 +101,14 @@ int main() {
     assert(Status::PlayerJson(stored) ==
            R"({"id":"abc123","name":"Ada <Admin>","online":false,"onlineSince":0,"lastSeen":123456,"location":"Temple <Woods>","skills":[{"name":"Attack","level":2,"xp":33},{"name":"Woodcutting","level":10,"xp":463}],"totalKills":5,"kills":[{"enemy":"Goblin","count":3,"firstKill":100,"lastKill":300},{"enemy":"Wolf","count":2,"firstKill":200,"lastKill":250}],"recentKills":[{"enemy":"Goblin","time":300},{"enemy":"Wolf","time":250}]})");
     assert(Status::PlayersJson(std::vector<StoredPlayer>{stored}) ==
-           R"({"count":1,"players":[{"id":"abc123","name":"Ada <Admin>","online":false,"lastSeen":123456}]})");
+           R"({"count":1,"players":[{"id":"abc123","name":"Ada <Admin>","online":false,"onlineSince":0,"lastSeen":123456}]})");
     StoredPlayer duplicateA=stored,duplicateB=stored;duplicateA.id="first";duplicateA.name="Same Name";duplicateA.lastSeen=1704067200;duplicateB.id="second";duplicateB.name="same name";duplicateB.lastSeen=0;
     assert(Status::PlayerIdsText({duplicateA,duplicateB},"")=="Same Name: first (last seen 2024-01-01 00:00 UTC)\nsame name: second (last seen unavailable)\n");
     assert(Status::PlayerIdsText({stored,duplicateA},"ada")=="Ada <Admin>: abc123\n");
     assert(Status::PlayerIdsText({stored},"missing")=="No known player matches \"missing\".\n");
     stored.online = true;
     assert(Status::PlayerJson(stored).find("\"onlineSince\":120000") != std::string::npos);
+    assert(Status::PlayersJson(std::vector<StoredPlayer>{stored}).find("\"onlineSince\":120000") != std::string::npos);
     stored.hasMapLocation = true;
     stored.mapX = 0.25;
     stored.mapY = 0.75;

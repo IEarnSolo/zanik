@@ -11,20 +11,83 @@ def module(name, path):
 
 contract = module("release_contract", "tools/release_contract.py")
 gitlab = module("publish_gitlab_package", "tools/publish_gitlab_package.py")
+sys.path.insert(0, str(ROOT / "tools"))
+gitlab_notes = module("update_gitlab_release_notes", "tools/update_gitlab_release_notes.py")
 
 current_version = contract.read_version(ROOT / "VERSION")
 contract.validate(f"v{current_version}", current_version)
 assert "Zanik Manager" in contract.release_notes(ROOT / "CHANGELOG.md", current_version)
 package_script = (ROOT / "scripts/package-release.sh").read_text()
+release_validator = (ROOT / "tools/validate_release.py").read_text()
+ci = (ROOT / ".gitlab-ci.yml").read_text()
+release_guide = (ROOT / "docs/releasing.md").read_text()
 assert "python-embed-windows-x86_64" in package_script
 assert "unreal-asset-scout-windows-x86_64" in package_script
 assert "ue4ss-windows-x86_64" in package_script
 assert "zanik-manager-windows-x86_64-$VERSION.zip" in package_script
 assert "zanik-asset-tools-linux-x86_64-$VERSION.tar.gz" in package_script
+assert "prohibited_archive_path(name)" in release_validator
+assert "--require-annotated-tag" in ci and "--require-ref refs/remotes/origin/release-main" in ci
+assert "expire_in: 7 days" in ci and "Branch artifacts expire after 7 days." in release_guide
 for tag in (current_version, "v0.1", "v1.2.3-rc1", "v9.9.9"):
     try:
         contract.validate(tag, current_version); raise AssertionError(tag)
     except ValueError: pass
+
+with tempfile.TemporaryDirectory() as temporary:
+    repository = Path(temporary)
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(["git", "config", "user.name", "Release Test"], cwd=repository, check=True)
+    subprocess.run(["git", "config", "user.email", "release-test@example.invalid"], cwd=repository, check=True)
+    (repository / "candidate").write_text("one\n")
+    subprocess.run(["git", "add", "candidate"], cwd=repository, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "candidate"], cwd=repository, check=True)
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repository, text=True).strip()
+    subprocess.run(["git", "tag", "-a", "v1.2.3", "-m", "Zanik 1.2.3"], cwd=repository, check=True)
+    contract.require_annotated_tag(repository, "v1.2.3")
+    contract.require_ref_contains(repository, "HEAD", commit)
+    subprocess.run(["git", "tag", "v1.2.4"], cwd=repository, check=True)
+    try:
+        contract.require_annotated_tag(repository, "v1.2.4"); raise AssertionError("lightweight tag accepted")
+    except ValueError: pass
+    (repository / "candidate").write_text("two\n")
+    subprocess.run(["git", "commit", "-qam", "later"], cwd=repository, check=True)
+    later = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repository, text=True).strip()
+    contract.require_ref_contains(repository, "HEAD", commit)
+    try:
+        contract.require_ref_contains(repository, "v1.2.3", later); raise AssertionError("uncontained commit accepted")
+    except ValueError: pass
+
+
+class FakeGitLabReleaseClient:
+    def __init__(self, release=None):
+        self.release = release
+        self.calls = []
+
+    def request(self, method, path, body=None):
+        self.calls.append((method, path, body))
+        if method == "GET":
+            if self.release is None: return 404, b"{}"
+            return 200, json.dumps(self.release).encode()
+        if method == "PUT":
+            payload = json.loads(body)
+            self.release = {**self.release, **payload}
+            return 200, json.dumps(self.release).encode()
+        raise AssertionError((method, path))
+
+
+gitlab_release = {"tag_name": "v1.2.3", "name": "Zanik 1.2.3",
+                  "description": "Old notes", "_links": {"self": "https://gitlab.example/release"}}
+gitlab_client = FakeGitLabReleaseClient(gitlab_release)
+gitlab_note_result = gitlab_notes.update_release_notes(
+    gitlab_client, "v1.2.3", "1.2.3", "Correct notes\n")
+assert gitlab_note_result["status"] == "updated"
+assert json.loads(next(call[2] for call in gitlab_client.calls if call[0] == "PUT")) == {
+    "name": "Zanik 1.2.3", "description": "Correct notes\n"}
+try:
+    gitlab_notes.update_release_notes(FakeGitLabReleaseClient(), "v1.2.3", "1.2.3", "notes")
+    raise AssertionError("missing GitLab release accepted")
+except RuntimeError: pass
 
 class Handler(BaseHTTPRequestHandler):
     store = {}; curse = []; next_id = 700

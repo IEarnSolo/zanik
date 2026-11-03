@@ -28,6 +28,9 @@ with tempfile.TemporaryDirectory(prefix="zanik-web-assets-") as temporary:
     lodestone_map_icon = (textures / "batch-01" / generator.LODESTONE_MAP_ICON_PACKAGE).with_suffix(".png")
     lodestone_map_icon.parent.mkdir(parents=True)
     lodestone_map_icon.write_bytes(b"correct-map-icon")
+    region_discovery_icon = (textures / "batch-01" / generator.REGION_DISCOVERY_ICON_PACKAGE).with_suffix(".png")
+    region_discovery_icon.parent.mkdir(parents=True, exist_ok=True)
+    region_discovery_icon.write_bytes(b"selected-places-icon")
     (textures / "T_Arrows_Bone.png").write_bytes(b"fang-arrow")
     (textures / "T_Icon_Cactus_Steak_Raw.png").write_bytes(b"cactus")
     (textures / "T_Skill_Attack_Spell_Tempestshield.png").write_bytes(b"tempest-shield")
@@ -80,6 +83,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-web-assets-") as temporary:
     assert (web / "spells-and-perks" / "PerkV2_Attack_TempestShield.png").read_bytes() == b"tempest-shield"
     assert (web / "lodestone-icon.png").read_bytes() == b"correct-map-icon"
     assert (web / "nodestone-icon.png").read_bytes() == generator.NODESTONE_MAP_ICON.read_bytes()
+    assert (web / "region-discovery-icon.png").read_bytes() == b"selected-places-icon"
     assert (web / "quests/main-quest.png").read_bytes() == b"primary-quest"
     assert (web / "quests/side-quest.png").read_bytes() == b"secondary-quest"
     assert not (web / "quests/clipboard-icon.png").exists()

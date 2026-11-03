@@ -170,7 +170,8 @@ with tempfile.TemporaryDirectory() as temporary:
 
     ci = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     assert "publish-github-release:" in ci
-    assert "update-github-release-notes:" in ci
+    assert "update-release-notes:" in ci
+    assert "update_gitlab_release_notes.py" in ci
     assert "RELEASE_NOTES_TAG" in ci
     assert "name: github-production" in ci
     assert "GITHUB_RELEASE_TOKEN" not in ci

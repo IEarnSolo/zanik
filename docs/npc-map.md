@@ -47,15 +47,11 @@ Object discovery is incremental and resumable: a worker-loop slice is limited to
 
 NPC diagnostics report scan progress, generation wall time, accumulated scanner work, slice and finalization time, transform-refresh time, scanner duty cycle, class-cache effectiveness, rejected stale slots, identity changes, and the configured inter-generation idle interval. These metrics deliberately expose counts and durations only; they never publish native pointers or addresses.
 
-## Pterodactyl destinations
+## Runtime assets
 
-- `dist/libdwstatus.so` → `/home/container/libdwstatus.so`
-- `web/npc-catalog.json` → `/home/container/zanik/web/npc-catalog.json`
-- `web/npcs/*.png` → `/home/container/zanik/web/npcs/*.png`
-- `deploy/npc-identities.tsv` → `/home/container/zanik/npc-identities.tsv`
+- The validated generated bundle supplies `npc-catalog.json`, `npc-identities.tsv`, and `npcs/*.png` under `SERVER_ROOT/zanik/assets/current`.
+- The launcher exports the selected `SERVER_ROOT` and active asset root; runtime code does not assume `/home/container`.
+- Private NPC exclusion and extraction reports remain in the local asset workspace and are never deployed or packaged.
 
 Compatibility validation treats the private identity catalog as a versioned artifact. Its declared node count and catalog fingerprint must be present, every opaque ID and persistent state key must be unique, and the parsed row count must match exactly. At runtime, the reflected `AActor.RootComponent` and `USceneComponent.RelativeLocation` offsets must also match the offsets used by the bounded scanner. A failure disables NPC tracking only and is reported by `/api/diagnostics/npcs` and `/api/update-status`.
-- `deploy/npc-exclusions.tsv` → `/home/container/zanik/npc-exclusions.tsv` (private classification report)
-- `deploy/zanik-bootstrap.sh` → `/home/container/zanik/zanik-bootstrap.sh`
-
 Validate on development server `0f95b34b`. Production server `ef68362b` must not be changed without separate explicit authorization.

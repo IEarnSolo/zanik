@@ -6,8 +6,17 @@ if(!playerPage)throw new Error('player page not found');
 const playerScripts=[...playerPage[1].matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match=>match[1]);
 if(!playerScripts.length)throw new Error('player scripts not found');
 for(const script of playerScripts)new Function(script);
-for(const token of ['class="player-sidebar"','id="manageSidebarGroup"','id="onlineDuration"','Online for ','data-player-view="overview"','data-player-view="storage"','data-player-panel="recipes"','manageSidebarGroup.hidden=!adminStorage','selectPlayerView','class="overview-grid"','id="activityList"','id="activityPrevious"','id="activityNext"',"refreshActivity('previous')","refreshActivity('next')",'&limit=10','id="activeQuestContent"','renderActiveQuest','trackedAvailable','titleNode.textContent','detail.textContent','@media(max-width:1050px)','container-type:inline-size','@container(max-width:29rem)',"grid-template-areas:'heading' 'objective' 'meta' 'map'",'quest-player-marker',"fetch('/api/map/players'",'Center on player','questMap(activeQuestContent,quest,true)',"activePlayerView==='overview'||activePlayerView==='quests'))refreshActiveQuestPlayer()",'Teleport to quest step',"fetch('/api/admin/quest/teleport'",'capabilities?.locationTeleport','markerIndex:saved.markerIndex',"node.classList.contains('quest-card')",'objective:teleportObjective']){
+for(const token of ['class="player-sidebar"','id="manageSidebarGroup"','id="onlineDuration"','Online for ','data-player-view="overview"','data-player-view="storage"','data-player-panel="recipes"','manageSidebarGroup.hidden=!adminStorage','selectPlayerView','class="overview-grid"','id="activityList"','id="activityPrevious"','id="activityNext"',"refreshActivity('previous')","refreshActivity('next')",'&limit=10','/assets/region-discovery-icon.png','id="activeQuestContent"','renderActiveQuest','trackedAvailable','titleNode.textContent','detail.textContent','@media(max-width:1050px)','container-type:inline-size','@container(max-width:29rem)',"grid-template-areas:'heading' 'objective' 'meta' 'map'",'quest-player-marker',"fetch('/api/map/players'",'Center on player','questMap(activeQuestContent,quest,true)',"ZanikPolling.add('player-location',2000",'Teleport to quest step',"fetch('/api/admin/quest/teleport'",'capabilities?.locationTeleport','markerIndex:saved.markerIndex',"node.classList.contains('quest-card')",'objective:teleportObjective']){
   if(!playerPage[1].includes(token))throw new Error('missing focused-player token: '+token);
+}
+if(!playerPage[1].includes("value==='/assets/region-discovery-icon.png'?'/assets/region-discovery-icon.png?v=places-selected-gold-1'")){
+  throw new Error('region discovery activity icon must use a revisioned URL and normalize persisted legacy references');
+}
+const playersPage=source.match(/constexpr const char\* kPlayersPage = R"DWHTML\(([\s\S]*?)\)DWHTML";/);
+if(!playersPage)throw new Error('known players page not found');
+for(const script of [...playersPage[1].matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match=>match[1]))new Function(script);
+for(const token of ['player-presence','player-online-dot','data-online-since','Online for ','Last seen ','updateOnlineDurations',"ZanikPolling.add('known-players',2000,refresh)"]){
+  if(!playersPage[1].includes(token))throw new Error('missing known-players token: '+token);
 }
 const killsPage=source.match(/constexpr const char\* kKillsPage = R"DWHTML\(([\s\S]*?)\)DWHTML";/);
 if(!killsPage)throw new Error('kills page not found');
@@ -20,7 +29,7 @@ for(const token of ['class="kills-sidebar"','id="combatTab"','id="skillsTab"','i
 const diagnosticsPage=source.match(/constexpr const char\* kDiagnosticsPage = R"DWHTML\(([\s\S]*?)\)DWHTML";/);
 if(!diagnosticsPage)throw new Error('diagnostics page not found');
 for(const script of [...diagnosticsPage[1].matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match=>match[1]))new Function(script);
-for(const token of ['id="chart"','1h',"['All',0]",'engineTickMs','zanikGameThreadMs','maximumPingMs','loadCapacity','Spike analysis','item.occurrences','setInterval(load,2000)','document.hidden'])if(!diagnosticsPage[1].includes(token))throw new Error('missing diagnostics token: '+token);
+for(const token of ['id="chart"','1h',"['All',0]",'engineTickMs','zanikGameThreadMs','maximumPingMs','loadCapacity','Spike analysis','item.occurrences','data-sort="recent"','data-sort="worst"','id="insightPrevious"','id="insightNext"','insightPageSize=10',"ZanikPolling.add('diagnostics',2000,load)",'document.hidden'])if(!diagnosticsPage[1].includes(token))throw new Error('missing diagnostics token: '+token);
 const page=source.match(/constexpr const char\* kMapPage = R"DWHTML\(([\s\S]*?)\)DWHTML";/);
 if(!page)throw new Error('map page not found');
 const scripts=[...page[1].matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match=>match[1]);

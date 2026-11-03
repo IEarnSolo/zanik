@@ -66,6 +66,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
         DW_WEB_ROOT=str(web_root),
         DW_GAME_UPDATE_STATE=str(game_update_file),
         DW_STATUS_TEST_HOST="1",
+        ZANIK_FEATURE_QOL_AUTO_COMPOST="1",
     )
     process = subprocess.Popen(
         ["/bin/sleep", "20"], env=env,
@@ -97,6 +98,9 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
         with get(base, "/players") as response:
             page = response.read().decode()
             assert "Known players" in page and 'class="site-header"' in page
+            assert "Last seen " in page and "Online for " in page
+            assert "data-online-since" in page and "updateOnlineDurations" in page
+            assert "player-online-dot" in page and "box-shadow: 0 0 .5rem #69db8d88" in page
         with get(base, "/player?id=test") as response:
             page = response.read().decode()
             assert 'class="player-sidebar"' in page
@@ -110,6 +114,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert 'id="activityList"' in page and 'id="activityPrevious"' in page and 'id="activityNext"' in page
             assert 'id="activeQuestContent"' in page
             assert "/api/player-activity?id=" in page
+            assert "ZanikPolling.add('global-live-status',2000,refreshLive)" in page
         with get(base, "/map") as response:
             page = response.read().decode()
             assert "Live world map" in page
@@ -126,13 +131,38 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert "Server diagnostics" in page
             assert 'id="chart"' in page and "/api/server-performance?window=" in page
             assert "Engine tick work" in page and "Player network" in page and "Spike analysis" in page
-            assert "setInterval(load,2000)" in page and "document.hidden" in page
+            assert 'data-sort="recent"' in page and 'data-sort="worst"' in page
+            assert 'id="insightPrevious"' in page and 'id="insightNext"' in page
+            assert "Player connections" in page and "Network health" in page
+            assert "login warm-up" in page and "client packet loss" in page
+            assert "ZanikPolling.add('diagnostics',2000,load)" in page and "document.hidden" in page
         with get(base, "/api/server-performance?window=3600") as response:
             performance = json.loads(response.read())
             assert performance["windowSeconds"] == 3600
             assert performance["sampleIntervalSeconds"] == 2
+            assert performance["pingJoinGraceSeconds"] == 10
+            assert performance["sustainedPingSamples"] == 3
+            assert performance["clientPacketLossAvailable"] is False
+            assert performance["insightPage"] == 0 and performance["insightPageSize"] == 10
+            assert isinstance(performance["insightTotal"], int)
+            assert isinstance(performance["players"], list)
             assert isinstance(performance["points"], list) and isinstance(performance["insights"], list)
+
+        # A connection that never sends a request must be identified as a
+        # receive timeout rather than the old ambiguous "uncaptured route".
+        with socket.create_connection(("127.0.0.1", port), timeout=3):
+            time.sleep(2.2)
+        with get(base, "/api/server-performance?window=3600") as response:
+            timeout_performance = json.loads(response.read())
+            timeout_insights = timeout_performance["insights"]
+            assert any(item["title"] == "Incomplete web connection · receive timeout"
+                       for item in timeout_insights)
+            assert all("uncaptured route" not in item["title"] and
+                       "uncaptured route" not in item["detail"]
+                       for item in timeout_insights)
         expect_error(base, "/api/server-performance?window=7", 400, "Unsupported performance window")
+        expect_error(base, "/api/server-performance?window=3600&sort=unknown", 400, "Unsupported spike sort")
+        expect_error(base, "/api/server-performance?window=3600&page=invalid", 400, "Invalid spike page")
 
         expect_error(base, "/api/quests/catalog", 503, "Quest catalog unavailable")
         expect_error(base, "/api/player-activity?id=missing", 404, "Player not found")
@@ -176,6 +206,10 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert update["assets"] is None
             assert update["gameUpdate"]["status"] == "current"
             assert update["gameUpdate"]["installedBuild"] == "123"
+            for field in ("playerQuestObjectiveCompatibility", "playerQuestTrackedQuestCompatibility",
+                          "playerPingCompatibility", "adminHomeLocationCompatibility",
+                          "adminHomePersistenceCompatibility", "adminNativeInventoryMutationCompatibility"):
+                assert field in update
         with get(base, "/api/quest-tracker-diagnostics") as response:
             diagnostics = json.loads(response.read())
             assert "catalogCompatibility" in diagnostics

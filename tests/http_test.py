@@ -107,7 +107,7 @@ try:
     with urllib.request.urlopen(base + "/map", timeout=3) as response:
         page = response.read().decode()
         assert "Live world map" in page
-        assert "setInterval(refresh,2000)" in page
+        assert "ZanikPolling.add('world-map',2000,refresh)" in page
         assert "dragonwilds.map.lodestones" in page
         assert "/api/map/lodestones" in page
         assert "/api/map/labels" in page
@@ -139,6 +139,10 @@ try:
         assert len(response.read()) > 100000
 
     with urllib.request.urlopen(base + "/assets/lodestone-icon.png", timeout=3) as response:
+        assert response.headers.get_content_type() == "image/png"
+        assert len(response.read()) > 10000
+
+    with urllib.request.urlopen(base + "/assets/region-discovery-icon.png?v=places-selected-gold-1", timeout=3) as response:
         assert response.headers.get_content_type() == "image/png"
         assert len(response.read()) > 10000
 
@@ -210,7 +214,10 @@ try:
             "regionCompatibility", "mapProjectionCompatibility",
             "lodestoneCompatibility", "resourceCompatibility",
             "npcCatalogCompatibility", "playerRecipeCompatibility",
-            "playerQuestCompatibility", "adminAuthorizationStorage",
+            "playerQuestCompatibility", "playerQuestObjectiveCompatibility",
+            "playerQuestTrackedQuestCompatibility", "playerPingCompatibility",
+            "adminHomeLocationCompatibility", "adminHomePersistenceCompatibility",
+            "adminNativeInventoryMutationCompatibility", "adminAuthorizationStorage",
             "adminTeleportCompatibility", "adminStorageCompatibility",
             "adminGravestoneCompatibility", "updater",
         } <= set(update)

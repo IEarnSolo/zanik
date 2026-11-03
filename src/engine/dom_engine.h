@@ -216,7 +216,7 @@ struct AttributeInfo {
 struct PlayerInfo {
     std::string name;
     int32_t playerId = 0;
-    int32_t pingMs = 0;
+    int32_t pingMs = -1;
     float score = 0.0f;
     int32_t startTime = 0;
     bool isSpectator = false;
@@ -318,7 +318,10 @@ struct AdminTeleportDiagnostics {
     int nodestoneCompatibility = 0;
     int playerCompatibility = 0;
     int homeLocationCompatibility = 0;
+    int homePersistenceCompatibility = 0;
     std::uint64_t cachedHomeLocations = 0;
+    std::uint64_t homePersistenceFailures = 0;
+    std::uint64_t homeMalformedRecords = 0;
     int groundTraceCompatibility = 0;
     int storagePipelineCompatibility = 0;
     int nativeCaptureCompatibility = 0;
@@ -421,6 +424,15 @@ struct ResourceDiagnostics {
     std::uint64_t respawnEvents = 0;
     std::uint64_t rawSetAmountCalls = 0;
     std::uint64_t unresolvedHookCalls = 0;
+    std::uint64_t hookQueueDepth = 0;
+    std::uint64_t hookQueueDrops = 0;
+    std::uint64_t maximumHookMicroseconds = 0;
+    std::uint64_t slowHookCalls = 0;
+    bool scanInProgress = false;
+    std::uint64_t scanSlices = 0;
+    std::uint64_t scanObjects = 0;
+    std::uint64_t maximumScanMicroseconds = 0;
+    std::uint64_t slowScanSlices = 0;
     std::int64_t lastSuccessfulReconciliation = 0;
 };
 
@@ -495,6 +507,8 @@ bool QueueAdminQuestTeleport(const std::string& characterGuid, const std::string
                              const std::string& sessionPrefix);
 bool ResolvePlayerHomeLocation(const std::string& characterGuid, FVector3d& location,
                                std::int64_t* capturedAt = nullptr);
+void UpdateAdminTeleportPlayers(const std::vector<PlayerInfo>& players);
+void FlushAdminHomeLocations();
 bool QueueAdminHomeTeleport(const std::string& characterGuid, const std::string& publicId,
                             const std::string& ownerCharacterGuid, const std::string& ownerPublicId,
                             const FVector3d& location, const std::string& sessionPrefix);
@@ -503,6 +517,7 @@ struct AdminStorageDiagnostics {
     int compatibility = 0;
     int dispatcherCompatibility = 0;
     int mutationCompatibility = 0;
+    int nativeMutationCaptureCompatibility = 0;
     int batchCompatibility = 0;
     int organizationCompatibility = 0;
     int renameCompatibility = 0;
@@ -562,9 +577,19 @@ struct AdminStorageDiagnostics {
     std::uint64_t renameMaximumMicroseconds = 0;
     std::uint64_t rollbackMaximumMicroseconds = 0;
     std::uint32_t circuitBreakers = 0;
+    std::uint64_t nativeMutationCalls = 0;
+    std::uint64_t nativeMutationAttributed = 0;
+    std::uint64_t nativeMutationUnattributed = 0;
+    std::uint64_t nativeMutationDrops = 0;
+    std::uint64_t nativeMutationMaximumMicroseconds = 0;
+    std::uint64_t nativeMutationCaptureMaximumMicroseconds = 0;
 };
 bool InitializeAdminStorage(uintptr_t moduleBase, uintptr_t moduleEnd);
 bool InitializeAdminStorageHookEarly();
+void UpdateAdminStorageMutationPlayers(const std::vector<PlayerInfo>& players);
+void DrainAdminStorageMutationTraces();
+bool ResolveAdminInventoryMutationCallables(uintptr_t moveEntry, uintptr_t removeEntry,
+                                            uintptr_t& moveCallable, uintptr_t& removeCallable);
 void ProcessAdminStorageRequests();
 bool SubmitAdminStorageMutation(const std::string& operation,
                                 const std::string& adminCharacterGuid,
@@ -669,7 +694,7 @@ bool GetAdminTeleportOffsets(uintptr_t& playerTick, uintptr_t& actorTeleportTo,
                              uintptr_t& lodestoneCanTeleport);
 NodestoneDiagnostics GetNodestoneDiagnostics();
 bool InitializeResourceTracking(uintptr_t moduleBase, uintptr_t moduleEnd);
-void RefreshResourceStates();
+bool RefreshResourceStates();
 bool ReadResourceStates(std::vector<ResourceStateInfo>& out, double& gameSecondsPerRealSecond,
                         std::int64_t& updatedAt);
 double UpdateMeasuredGameClockRate(double priorRate, std::int64_t elapsedGameTicks,
@@ -714,6 +739,9 @@ struct PlayerDiscoveryDiagnostics {
     int worldLocations = 0;
     int regionLookupAttempts = 0;
     int playersProduced = 0;
+    int pingCompatibility = 0;
+    std::uint64_t readablePingSamples = 0;
+    std::uint64_t unavailablePingSamples = 0;
 };
 PlayerDiscoveryDiagnostics GetPlayerDiscoveryDiagnostics();
 struct PlayerRecipeSnapshot {
@@ -748,7 +776,7 @@ PlayerRecipeDiagnostics GetPlayerRecipeDiagnostics();
 std::string GetPlayerRecipeCatalogFingerprint();
 struct QuestProgressInfo { std::string id,status,objective;std::int64_t completedObservedAt=0; };
 struct PlayerQuestSnapshot { std::string characterGuid;std::vector<QuestProgressInfo> quests;std::string catalogFingerprint,trackedQuestId;std::int64_t capturedAt=0;bool complete=false,trackedQuestAvailable=false; };
-struct PlayerQuestDiagnostics { int enabled=0,compatibility=0,catalogCompatibility=0,componentCompatibility=0,queryCompatibility=0,objectiveCompatibility=0,trackedQuestCompatibility=0;std::uint64_t catalogEntries=0,resolvedEntries=0,snapshots=0,scansCompleted=0,queryFailures=0,snapshotChanges=0,persistenceFailures=0,cacheHits=0,cacheMisses=0,invalidIdentities=0,trackedQuestFailures=0,trackedQuestCaptures=0;std::int64_t lastScan=0;std::uint64_t lastQueryMicroseconds=0,maximumQueryMicroseconds=0,slowQueries=0; };
+struct PlayerQuestDiagnostics { int enabled=0,compatibility=0,catalogCompatibility=0,componentCompatibility=0,queryCompatibility=0,objectiveCompatibility=0,trackedQuestCompatibility=0;std::uint64_t catalogEntries=0,resolvedEntries=0,snapshots=0,scansCompleted=0,queryFailures=0,snapshotChanges=0,persistenceFailures=0,cacheHits=0,cacheMisses=0,invalidIdentities=0,trackedQuestFailures=0,trackedQuestCaptures=0,processEventHookCalls=0,processEventActiveCalls=0,processEventQueueDepth=0,processEventQueueDrops=0,processEventMaximumMicroseconds=0,processEventSlowCalls=0;std::int64_t lastScan=0;std::uint64_t lastQueryMicroseconds=0,maximumQueryMicroseconds=0,slowQueries=0; };
 bool InitializePlayerQuestTracking(const std::string&,uintptr_t,uintptr_t);
 void RefreshPlayerQuestTrackingCompatibility();
 void UpdatePlayerQuestTargets(const std::vector<PlayerInfo>&);
@@ -757,7 +785,9 @@ std::vector<PlayerQuestSnapshot> ReadPlayerQuestSnapshots();
 PlayerQuestDiagnostics GetPlayerQuestDiagnostics();
 std::string GetPlayerQuestCatalogFingerprint();
 void RecordPlayerQuestPersistenceFailure();
+bool EnsurePlayerProcessEventCapture(uintptr_t moduleBase,uintptr_t moduleEnd);
 struct ActivityRegionInfo { std::uint8_t id=0;std::string name; };
+struct NativeRegionDiscovery { std::string characterGuid,name;std::uint8_t id=0;std::int64_t capturedAt=0; };
 struct ActivityMaterialInfo { std::string key,name,icon; };
 struct ActivityUnlockInfo { std::string type,key,name,icon; };
 struct PlayerActivityDiscoverySnapshot {
@@ -777,14 +807,19 @@ struct PlayerActivityDiscoveryDiagnostics {
     int regionCompatibility=0,materialCompatibility=0,unlockCompatibility=0;
     std::uint64_t materialCatalogEntries=0,resolvedMaterialEntries=0,perkCatalogEntries=0,spellCatalogEntries=0,resolvedUnlockEntries=0;
     std::uint64_t snapshots=0,droppedSamples=0;
+    std::uint64_t queryCalls=0,maximumQueryMicroseconds=0,slowQueries=0,maximumBatchMicroseconds=0;
+    std::uint64_t regionHookCalls=0,regionHookQueueDepth=0,regionHookQueueDrops=0,regionHookMaximumMicroseconds=0,regionHookSlowCalls=0;
 };
 int PlayerActivitySourceCompatibility(bool queryFound,bool queryValid,bool catalogReady);
 bool PlayerActivityDiscoveryReady(int materialStatus,int unlockStatus);
 bool PlayerActivityQueryLayoutValid(const std::vector<std::pair<std::string,int32_t>>& fields,const std::vector<std::string>& inputNames);
-bool InitializePlayerActivityDiscovery(const std::string& materialCatalogPath,const std::string& unlockCatalogPath,uintptr_t moduleBase,uintptr_t moduleEnd);
+bool PlayerActivityParseRegionRevealLine(const std::string& line,std::string& regionName,std::uint8_t& regionId,std::string& controllerName);
+bool InitializePlayerActivityDiscovery(const std::string& materialCatalogPath,const std::string& unlockCatalogPath,const std::string& serverLogPath,uintptr_t moduleBase,uintptr_t moduleEnd);
 void RefreshPlayerActivityDiscoveryCompatibility();
 void UpdatePlayerActivityDiscoveryTargets(const std::vector<PlayerInfo>& players);
 void ProcessPlayerActivityDiscoveryTracking();
+void ObservePlayerActivityProcessEvent(void* object,void* function,void* params);
+std::vector<NativeRegionDiscovery> DrainNativeRegionDiscoveries();
 std::vector<PlayerActivityDiscoverySnapshot> ReadPlayerActivityDiscoveries();
 PlayerActivityDiscoveryDiagnostics GetPlayerActivityDiscoveryDiagnostics();
 std::string FileSha256(const char* path);

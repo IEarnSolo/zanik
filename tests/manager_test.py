@@ -842,6 +842,7 @@ class ManagerTests(unittest.TestCase):
         with self.assertRaises(ConfigError): model.parse("UNKNOWN=true\n")
         with self.assertRaises(ConfigError): model.parse("STATUS_PORT=99999\n")
         with self.assertRaises(ConfigError): model.parse("FEATURE_MAP=perhaps\n")
+        with self.assertRaises(ConfigError): model.parse("FEATURE_QOL_AUTO_COMPOST=true\n")
 
     def test_post_install_website_settings_preserve_other_configuration(self):
         model = ConfigModel(ROOT / "config/zanik-config.schema.json")
@@ -885,7 +886,7 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(contract["compatibilityProfileVersion"], recipe["catalogProfile"]["version"])
         self.assertEqual(contract["extractionRecipeSha256"], hashlib.sha256(
             (ROOT / "asset-tools/extraction-recipes.json").read_bytes()).hexdigest())
-        self.assertEqual(contract["extractionRecipeVersion"], 15)
+        self.assertEqual(contract["extractionRecipeVersion"], 16)
         self.assertNotEqual(contract["extractionRecipeSha256"], recipe12["sha256"])
         stale = asset_contract_presentation({
             "installed": True,
@@ -1002,9 +1003,54 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(calls[-1][2]["Authorization"], "Bearer secret-token")
 
     def test_pterodactyl_errors_do_not_include_response_body(self):
-        client = PterodactylClient("https://panel.example", "secret", lambda *args: Response(500, b'token=leak', {}))
+        client = PterodactylClient("https://panel.example", "secret", lambda *args: Response(400, b'token=leak', {}))
         with self.assertRaises(PterodactylError) as raised: client.servers()
         self.assertNotIn("leak", str(raised.exception))
+
+    def test_pterodactyl_retries_all_temporary_gateway_statuses_until_success(self):
+        statuses = [500, 502, 503, 504, 522, 200]
+        calls = []
+        def transport(*args):
+            calls.append(args)
+            status = statuses[len(calls) - 1]
+            return Response(status, b'{"data":[]}' if status == 200 else b'', {})
+        client = PterodactylClient("https://panel.example", "secret", transport, retry_seconds=0)
+        self.assertEqual(client.servers(), [])
+        self.assertEqual(len(calls), 6)
+
+    def test_pterodactyl_explicit_cancellation_stops_temporary_retry(self):
+        client = PterodactylClient("https://panel.example", "secret", lambda *args: Response(504, b'', {}),
+                                   retry_seconds=0, cancelled=lambda: True)
+        with self.assertRaises(PterodactylError) as raised:
+            client.servers()
+        self.assertEqual(raised.exception.status, 504)
+
+    def test_power_timeout_reconciles_an_already_applied_state(self):
+        calls = []
+        def transport(method, url, headers, body, timeout):
+            calls.append((method, url))
+            if url.endswith("/power"):
+                return Response(500, b'', {})
+            if url.endswith("/resources"):
+                return Response(200, b'{"attributes":{"current_state":"running","resources":{"uptime":10}}}', {})
+            raise AssertionError(url)
+        client = PterodactylClient("https://panel.example", "secret", transport, retry_seconds=0)
+        client.power("dev", "start")
+        self.assertEqual([method for method, _url in calls], ["POST", "GET"])
+
+    def test_power_timeout_retries_when_state_was_not_applied(self):
+        power_calls = 0
+        def transport(method, url, headers, body, timeout):
+            nonlocal power_calls
+            if url.endswith("/power"):
+                power_calls += 1
+                return Response(500 if power_calls == 1 else 204, b'', {})
+            if url.endswith("/resources"):
+                return Response(200, b'{"attributes":{"current_state":"running","resources":{"uptime":10}}}', {})
+            raise AssertionError(url)
+        client = PterodactylClient("https://panel.example", "secret", transport, retry_seconds=0)
+        client.power("dev", "stop")
+        self.assertEqual(power_calls, 2)
 
     def test_file_contents_node_failure_uses_signed_download_fallback(self):
         calls = []
@@ -1048,6 +1094,16 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(content, b"\x7fELFlarge")
         self.assertEqual(len(calls), 3)
         self.assertNotIn("Authorization", calls[-1][2])
+
+    def test_optional_file_probe_does_not_retry_wings_missing_file_500(self):
+        calls = []
+        def transport(method, url, headers, body, timeout):
+            calls.append((method, url))
+            return Response(500, b'{"errors":[{"detail":"stat: no such file"}]}', {})
+        client = PterodactylClient("https://panel.example", "secret", transport, retry_seconds=0)
+        with self.assertRaises(PterodactylError):
+            client.read_file_once("dev", "/home/container/backup/.zanik-backup.json")
+        self.assertEqual(len(calls), 1)
 
     def test_pterodactyl_translates_container_paths_to_virtual_root(self):
         calls = []

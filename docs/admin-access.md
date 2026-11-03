@@ -92,10 +92,14 @@ boundaries independently:
 `/api/update-status` and `/api/admin-diagnostics` expose these results instead
 of reducing the admin panel to one build fingerprint. A failed subfeature must
 fail closed without disabling unrelated read-only player pages or admin tools.
-The update bootstrap records the admin results in both Markdown and JSON update
-reports. It backs up the allowlist, session database, audit log, console secret,
-gravestone capture data, compatibility manifest, mod, catalogs, and web assets
-before applying an update.
+The compatibility reporting workflow records admin results in authoritative JSON
+and derives the Markdown update report from the same capability inventory. Zanik
+Manager preserves mutable authorization and persistent data in place during an
+ordinary payload update and creates a managed recovery point for files it will
+actually change. A destructive migration must include the affected allowlist,
+session database, audit data, console secret, gravestone data, catalogs, or
+assets in that migration's reviewed recovery point; routine updates do not copy
+unmodified secrets merely to create a duplicate.
 
 Post-update validation checks authorization storage health, console claim
 creation through the loopback secret, rejection of an unauthenticated admin API

@@ -26,7 +26,8 @@ inline bool AdminRecipeSettings() { return Flag("ZANIK_FEATURE_ADMIN_RECIPE_SETT
 inline bool AdminTeleport() { return Flag("ZANIK_FEATURE_ADMIN_TELEPORT", false); }
 inline bool AdminStorageMutation() { return Flag("ZANIK_FEATURE_ADMIN_STORAGE_MUTATION", false); }
 inline bool AdminGravestoneMutation() { return Flag("ZANIK_FEATURE_ADMIN_GRAVESTONE_MUTATION", false); }
-inline bool QolAutoCompost() { return Flag("ZANIK_FEATURE_QOL_AUTO_COMPOST", false); }
+// Reserved until a deployable native integration and its safety gates exist.
+inline bool QolAutoCompost() { return false; }
 
 inline const char* State(bool enabled, int compatibility) {
     if (!enabled) return "disabled";

@@ -45,10 +45,14 @@ class ConfigModel:
         if spec["type"] == "boolean":
             normalized = value.lower()
             if normalized in TRUE_VALUES:
-                return True
-            if normalized in FALSE_VALUES:
-                return False
-            raise ConfigError(f"Invalid boolean for '{key}' at line {line}")
+                parsed = True
+            elif normalized in FALSE_VALUES:
+                parsed = False
+            else:
+                raise ConfigError(f"Invalid boolean for '{key}' at line {line}")
+            if "const" in spec and parsed != spec["const"]:
+                raise ConfigError(f"'{key}' is reserved and must remain false at line {line}")
+            return parsed
         if spec["type"] == "integer":
             if not value.isdigit():
                 raise ConfigError(f"Invalid integer for '{key}' at line {line}")

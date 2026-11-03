@@ -81,13 +81,15 @@ copy_required "$SOURCE_DIR/lib/zanik-common.sh" "$install_dir/lib/zanik-common.s
 copy_required "$SOURCE_DIR/config/zanik.conf.example" "$install_dir/config/zanik.conf.example"
 copy_required "$SOURCE_DIR/config/zanik-config.schema.json" "$install_dir/config/zanik-config.schema.json"
 copy_required "$SOURCE_DIR/compatibility/compatibility.tsv" "$install_dir/compatibility.tsv"
+copy_required "$SOURCE_DIR/compatibility/capabilities.json" "$install_dir/compatibility-capabilities.json"
 copy_required "$SOURCE_DIR/payload-contract.json" "$install_dir/payload-contract.json"
 for command in install update uninstall doctor init-assets verify-assets check-game-update check-compatible-release update-game apply-asset-delta; do copy_required "$SOURCE_DIR/scripts/$command.sh" "$install_dir/scripts/$command.sh"; done
 copy_required "$SOURCE_DIR/scripts/compat-launcher.sh" "$install_dir/scripts/compat-launcher.sh"
 copy_required "$SOURCE_DIR/tools/zanik_assets.py" "$install_dir/tools/zanik_assets.py"
+copy_required "$SOURCE_DIR/tools/generate_compatibility_report.py" "$install_dir/tools/generate_compatibility_report.py"
 [ -f "$install_dir/config/zanik.conf" ] || cp -p "$install_dir/config/zanik.conf.example" "$install_dir/config/zanik.conf"
 [ -f "$install_dir/admins.txt" ] || { umask 077; : > "$install_dir/admins.txt"; }
-chmod 755 "$install_dir/bin/zanik-server" "$install_dir/bin/zanik-compat-analyzer" "$install_dir/scripts"/*.sh
+chmod 755 "$install_dir/bin/zanik-server" "$install_dir/bin/zanik-compat-analyzer" "$install_dir/scripts"/*.sh "$install_dir/tools/generate_compatibility_report.py"
 chmod 600 "$install_dir/config/zanik.conf" "$install_dir/admins.txt"
 zanik_make_secret "$data_dir/console-admin.key"
 

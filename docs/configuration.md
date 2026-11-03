@@ -2,7 +2,7 @@
 
 Copy `config/zanik.conf.example` to `config/zanik.conf`. It is strict `KEY=VALUE` text: no quoting, substitution, shell code, or unknown keys. Precedence is launcher/install options, `ZANIK_*` environment variables, this file, legacy `DW_*` compatibility variables, then defaults.
 
-`ZANIK_ENABLED=true` is the master switch. Set it to `false` and restart to make the canonical launcher execute the official game server without `LD_PRELOAD`, native hooks, the website, scanners, or periodic Zanik work. The Zanik installation, configuration, authorization records, generated assets, and persistent data remain in place so the mod can be re-enabled safely later.
+`ZANIK_ENABLED=true` is the master switch. Set it to `false` and restart to make the canonical launcher sanitize inherited `LD_PRELOAD` and execute the official game server without the Zanik library, native hooks, website, scanners, dispatchers, console proxy, maintenance watcher, asset activation, persistence writes, or periodic Zanik work. A persisted master-off setting cannot be overridden back on by the environment. The Zanik installation, configuration, authorization records, generated assets, and persistent data remain in place so the mod can be re-enabled safely later.
 
 Malformed configuration logs the exact non-secret key/line error and launches the official game without Zanik. It never prevents the server itself starting.
 
@@ -12,6 +12,6 @@ Read-only player/status, kills, map/catalog, resource/NPC, recipe/quest, and aut
 
 `FEATURE_ADMIN_TELEPORT` controls every authenticated teleport action: teleports between players, player-built lodestones, fixed nodestones, storage, and gravestones. Its independently validated compatibility gates can still disable only an unsafe destination family while leaving the others available.
 
-`FEATURE_QOL_AUTO_COMPOST` is reserved for an incomplete feature with no deployable server integration. Leave it `false`; it is not currently a supported opt-in capability.
+`FEATURE_QOL_AUTO_COMPOST` is reserved for an incomplete feature with no deployable server integration. The launcher, Manager, and native runtime enforce `false`; it is not currently a supported opt-in capability.
 
 `/api/update-status` reports configuration validity, install mode, feature booleans and states, native compatibility, and asset/catalog health.

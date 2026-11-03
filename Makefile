@@ -11,6 +11,7 @@ SRC += src/engine/admin_gravestone.cpp
 SRC += src/recipe_snapshot_store.cpp src/engine/player_recipes.cpp src/quest_snapshot_store.cpp src/engine/player_quests.cpp
 SRC += src/player_activity_store.cpp src/engine/player_activity_discovery.cpp
 SRC += src/server_performance_store.cpp
+SRC += src/home_location_persistence.cpp
 OBJ = $(SRC:.cpp=.o)
 DEP = $(OBJ:.o=.d)
 OUT = dist/libdwstatus.so
@@ -29,7 +30,7 @@ $(OUT): $(OBJ)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) $(DEP) $(OUT) dist/zanik-compat-analyzer dist/status_test dist/admin_store_test dist/memory_safe_read_test
+	rm -f $(OBJ) $(DEP) $(OUT) dist/zanik-compat-analyzer dist/status_test dist/admin_store_test dist/memory_safe_read_test dist/compatibility_checks_test dist/home_location_persistence_test dist/server_performance_store_test dist/runtime_paths_test
 	$(MAKE) -C qol clean
 
 -include $(DEP)
@@ -45,14 +46,21 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	src/engine/player_recipes.o \
 	src/engine/player_quests.o \
 	src/engine/player_activity_discovery.o \
+	src/home_location_persistence.o \
 	src/utils/glibc_compat.o -o dist/status_test -pthread -ldl
 	./dist/status_test
 	$(CXX) $(CXXFLAGS) tests/admin_store_test.cpp src/admin_store.o -o dist/admin_store_test -pthread
 	./dist/admin_store_test
 	$(CXX) $(CXXFLAGS) tests/memory_safe_read_test.cpp src/utils/memory.o -o dist/memory_safe_read_test -pthread
 	./dist/memory_safe_read_test
+	$(CXX) -std=c++17 -O2 tests/compatibility_checks_test.cpp -o dist/compatibility_checks_test
+	./dist/compatibility_checks_test
+	$(CXX) $(CXXFLAGS) tests/home_location_persistence_test.cpp src/home_location_persistence.o -o dist/home_location_persistence_test
+	./dist/home_location_persistence_test
 	$(CXX) $(CXXFLAGS) tests/server_performance_store_test.cpp src/server_performance_store.o -o dist/server_performance_store_test -pthread
 	./dist/server_performance_store_test
+	$(CXX) $(CXXFLAGS) tests/runtime_paths_test.cpp -o dist/runtime_paths_test
+	./dist/runtime_paths_test
 	$(MAKE) -C qol test
 	$(PYTHON) tests/player_recipe_links_test.py
 	$(PYTHON) tests/recipe_category_navigation_test.py
@@ -60,15 +68,18 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(PYTHON) tests/recipe_tree_wiki_links_test.py
 	$(PYTHON) tests/gitlab_pipeline_monitor_test.py
 	$(PYTHON) tests/release_automation_test.py
+	$(PYTHON) tests/release_archive_policy_test.py
 	$(PYTHON) tests/github_release_test.py
 	$(PYTHON) tests/game_update_25811348_test.py
 	$(PYTHON) tests/game_update_25991736_test.py
 	$(PYTHON) tests/game_update_26161880_test.py
+	$(PYTHON) tests/compatibility_report_test.py
 	$(PYTHON) tests/storage_teleport_compatibility_test.py
 	$(PYTHON) tests/home_teleport_test.py
 	$(PYTHON) tests/player_page_polling_test.py
 	$(PYTHON) tests/player_discovery_performance_test.py
 	$(PYTHON) tests/storage_mutation_pipeline_test.py
+	$(PYTHON) tests/game_thread_non_interference_test.py
 	$(PYTHON) tests/quest_schema_test.py
 	sh tests/config_test.sh
 	$(PYTHON) tests/asset_tool_test.py
@@ -81,6 +92,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(PYTHON) tests/windows_mapping_test.py
 	$(PYTHON) tests/manager_test.py
 	$(PYTHON) tests/game_update_safety_test.py
+	$(PYTHON) tests/game_update_lifecycle_test.py
 	$(PYTHON) tests/update_awareness_test.py
 	sh tests/installer_test.sh
 	sh tests/server_asset_verifier_test.sh
@@ -94,7 +106,6 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(PYTHON) tests/activity_unlock_catalog_test.py
 	$(PYTHON) tests/maintenance_http_test.py
 	$(PYTHON) tests/feature_gate_http_test.py
-	sh tests/updater_test.sh
 	sh tests/launcher_game_update_test.sh
 	sh tests/compatible_release_check_test.sh
 

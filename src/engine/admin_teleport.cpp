@@ -1,21 +1,29 @@
 #include "dom_engine.h"
 #include "../utils/logger.h"
 #include "../utils/memory.h"
+#include "../performance_trace.h"
+#include "../home_location_persistence.h"
+#include "../utils/runtime_paths.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cctype>
+#include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <fstream>
 #include <iomanip>
 #include <unordered_map>
 #include <sstream>
+#include <memory>
 #include <pthread.h>
+#include <fcntl.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace DomEngine {
@@ -28,6 +36,9 @@ struct Request{
     std::uint64_t preparedActorIdentity=0;
     FVector3d preparedLocation{};
     std::uint32_t preparedName[2]{};
+    uintptr_t preparedComponent=0;std::uint64_t preparedComponentIdentity=0;int32_t preparedCostOffset=-1;
+    std::uint32_t preparedFrom[4]{},preparedTo[4]{};
+    FVector3d preparedArrival{};
 };
 using TickFn=void(*)(void*,float,int,void*);
 struct FRotator3d{double Pitch=0,Yaw=0,Roll=0;};
@@ -41,6 +52,7 @@ TryTeleportFn nativeTryTeleport=nullptr;CanTeleportFn originalCanTeleport=nullpt
 uintptr_t lineTraceObject=0,lineTraceFunction=0;
 uintptr_t teleportSubsystem=0,teleportWithParamsFunction=0,getActorBoundsFunction=0;
 uintptr_t nodestoneNamedFunction=0;
+uintptr_t clientTeleportSuccessfulFunction=0;
 uintptr_t playerBedObject=0,playerBedFunction=0;
 BPTriggerDelayedTeleportFn bpTriggerDelayedTeleport=nullptr;
 struct LineTraceLayout{int world=-1,start=-1,end=-1,channel=-1,complex=-1,ignore=-1,debug=-1,outHit=-1,ignoreSelf=-1,result=-1;};
@@ -50,11 +62,13 @@ pthread_mutex_t requestMutex=PTHREAD_MUTEX_INITIALIZER;std::deque<Request> reque
 struct PendingTeleport{
     std::string characterGuid,publicId,destinationId,sessionPrefix;
     uintptr_t pawn=0,component=0;FVector3d target{};int32_t costOffset=-1;std::uint8_t oldCost=0;
-    bool storage=false;std::string targetCharacterGuid,targetPublicId;FVector3d origin{};
+    bool storage=false;std::string targetCharacterGuid,targetPublicId;FVector3d origin{};int landingCandidate=0;
     std::chrono::steady_clock::time_point started{};
 };
 std::vector<PendingTeleport> pendingTeleports;
 struct QueueLock{QueueLock(){pthread_mutex_lock(&requestMutex);}~QueueLock(){pthread_mutex_unlock(&requestMutex);}};
+struct TryQueueLock{bool locked=false;TryQueueLock():locked(pthread_mutex_trylock(&requestMutex)==0){}~TryQueueLock(){if(locked)pthread_mutex_unlock(&requestMutex);}explicit operator bool()const{return locked;}};
+std::shared_ptr<const std::vector<PlayerInfo>> teleportPlayers=std::make_shared<const std::vector<PlayerInfo>>();
 std::atomic<int> compatibility{0};
 std::atomic<int> nodestoneTeleportCompatibility{0};
 std::atomic<int> groundTraceCompatibility{0},storagePipelineCompatibility{0},nativeCaptureCompatibility{0};
@@ -63,7 +77,11 @@ std::atomic<std::uint64_t> acceptedStorage{0},acceptedQuest{0},staleStorage{0},u
 struct HomeLocation{FVector3d location{};std::int64_t capturedAt=0;};
 std::unordered_map<std::string,HomeLocation> homeLocations;
 std::unordered_map<uintptr_t,std::chrono::steady_clock::time_point> nextHomeRefresh;
+std::atomic<bool> homeLocationsDirty{false};
+bool homeLocationsLoaded=false;
 std::atomic<int> homeLocationCompatibility{0};
+std::atomic<int> homePersistenceCompatibility{0};
+std::atomic<std::uint64_t> homePersistenceFailures{0},homeMalformedRecords{0};
 std::atomic<std::uint64_t> tickCalls{0},maximumTickMicros{0},slowTickCalls{0};
 std::atomic<std::uint64_t> maximumStorageTeleportMicros{0},slowStorageTeleportCalls{0};
 std::atomic<bool> storageTeleportCircuitBroken{false};
@@ -134,16 +152,16 @@ void FlushNativeTeleportCapture(){
            <<" flags="<<unsigned(capturedTeleportParams[0x40])<<","<<unsigned(capturedTeleportParams[0x41])<<","<<unsigned(capturedTeleportParams[0x42])
            <<","<<unsigned(capturedTeleportParams[0x43])<<","<<unsigned(capturedTeleportParams[0x44])<<","<<unsigned(capturedTeleportParams[0x45]);
     LogMessage(message.str());
-    std::ofstream report("/home/container/zanik-data/teleport-native-capture.log",std::ios::app);
+    std::ofstream report(RuntimePaths::DataFile("teleport-native-capture.log"),std::ios::app);
     if(report)report<<message.str()<<" raw="<<hex.str()<<'\n';
-    std::ofstream raw("/home/container/zanik-data/teleport-native-capture.bin",std::ios::binary|std::ios::trunc);
+    std::ofstream raw(RuntimePaths::DataFile("teleport-native-capture.bin"),std::ios::binary|std::ios::trunc);
     if(raw)raw.write(reinterpret_cast<const char*>(capturedTeleportParams),sizeof(capturedTeleportParams));
     const bool leadingNull=std::all_of(capturedTeleportParams,capturedTeleportParams+0x10,[](unsigned char value){return value==0;});
     storageTeleportTemplateValid=leadingNull&&capturedTeleportParams[0x40]==1&&capturedTeleportParams[0x44]==1;
 }
 
 bool LoadCapturedTeleportTemplate(){
-    std::ifstream raw("/home/container/zanik-data/teleport-native-capture.bin",std::ios::binary);
+    std::ifstream raw(RuntimePaths::DataFile("teleport-native-capture.bin"),std::ios::binary);
     if(!raw)return false;
     raw.read(reinterpret_cast<char*>(capturedTeleportParams),sizeof(capturedTeleportParams));
     if(raw.gcount()!=static_cast<std::streamsize>(sizeof(capturedTeleportParams))||raw.peek()!=std::char_traits<char>::eof())return false;
@@ -169,7 +187,7 @@ std::vector<std::pair<std::string,int32_t>> ReflectedFields(uintptr_t structure)
 
 void LogTeleportReflection(){
     if(!g_Engine)return;
-    std::ofstream report("/home/container/zanik-data/teleport-reflection.log",std::ios::trunc);
+    std::ofstream report(RuntimePaths::DataFile("teleport-reflection.log"),std::ios::trunc);
     auto record=[&](const std::string& message){LogMessage(message);if(report)report<<message<<'\n';};
     const int32_t count=g_Engine->GetObjectCount();
     for(int32_t i=0;i<count;++i){
@@ -257,12 +275,11 @@ bool TraceGround(double x,double y,double aroundZ,double& floorZ){
     return std::isfinite(floorZ);
 }
 
-bool FindSafeStorageLanding(uintptr_t pawn,const FVector3d& chest,double yaw,FVector3d& landing){
+int TrySafeStorageLanding(uintptr_t pawn,const FVector3d& chest,double yaw,int&candidateIndex,FVector3d& landing){
     constexpr double Pi=3.14159265358979323846;
     constexpr double radii[]={240.0,300.0,380.0,480.0,600.0};
-    const double base=yaw*Pi/180.0;
-    if(!lineTraceObject||!lineTraceFunction)return false;
-    for(double radius:radii)for(int i=0;i<16;++i){
+    if(!lineTraceObject||!lineTraceFunction||candidateIndex>=80)return -1;
+    const double base=yaw*Pi/180.0;const int index=candidateIndex++;const double radius=radii[index/16];const int i=index%16;
         const double angle=base+Pi+(Pi*2.0*i/16.0);
         const double x=chest.X+std::cos(angle)*radius,y=chest.Y+std::sin(angle)*radius;
         const FVector3d traceStart{x,y,chest.Z+180.0},traceEnd{x,y,chest.Z-650.0};
@@ -273,7 +290,7 @@ bool FindSafeStorageLanding(uintptr_t pawn,const FVector3d& chest,double yaw,FVe
         const std::uint8_t visibility=0,disabled=0;put(lineTraceLayout.channel,&visibility,1);put(lineTraceLayout.complex,&disabled,1);
         put(lineTraceLayout.debug,&disabled,1);put(lineTraceLayout.ignoreSelf,&disabled,1);
         processEvent(reinterpret_cast<void*>(lineTraceObject),reinterpret_cast<void*>(lineTraceFunction),params);
-        if(lineTraceLayout.result<0||!params[lineTraceLayout.result]||lineTraceLayout.outHit<0)continue;
+        if(lineTraceLayout.result<0||!params[lineTraceLayout.result]||lineTraceLayout.outHit<0)return candidateIndex>=80?-1:0;
         // FHitResult contains Location and ImpactPoint vectors. Locate the
         // reflected output vector defensively instead of binding its private
         // layout: X/Y must match this vertical trace and Z must be between its
@@ -285,20 +302,16 @@ bool FindSafeStorageLanding(uintptr_t pawn,const FVector3d& chest,double yaw,FVe
                std::abs(hit.X-x)<2.0&&std::abs(hit.Y-y)<2.0&&hit.Z<traceStart.Z-2.0&&hit.Z>traceEnd.Z+2.0)
                 floorZ=std::min(floorZ,hit.Z);
         }
-        if(!std::isfinite(floorZ))continue;
+        if(!std::isfinite(floorZ))return candidateIndex>=80?-1:0;
         // Dragonwilds' character capsule centre sits about 96 uu above the
         // walkable surface. TeleportTo performs the authoritative full-capsule
         // encroachment test; the trace supplies the ground height it lacks.
         const FVector3d candidate{x,y,floorZ+100.0};
         const FRotator3d rotation{0.0,angle*180.0/Pi+180.0,0.0};
-        if(!actorTeleport(reinterpret_cast<void*>(pawn),&candidate,&rotation,false,false))continue;
-        for(const auto& player:g_Engine->GetAllPlayers())if(player.pawnPtr==pawn&&player.hasLocation){
-            const double dx=player.x-x,dy=player.y-y;
-            if(dx*dx+dy*dy<=14400.0&&player.z>=floorZ+70.0&&player.z<=floorZ+180.0){landing={player.x,player.y,player.z};return true;}
-            break;
-        }
-    }
-    return false;
+        if(!actorTeleport(reinterpret_cast<void*>(pawn),&candidate,&rotation,false,false))return candidateIndex>=80?-1:0;
+        const uintptr_t root=Mem::ReadPtr(pawn+Offsets::Actor_RootComponent);FVector3d actual{};
+        if(root&&Mem::Readable(reinterpret_cast<void*>(root+Offsets::SceneComp_RelativeLocation),sizeof(actual))){std::memcpy(&actual,reinterpret_cast<void*>(root+Offsets::SceneComp_RelativeLocation),sizeof(actual));const double dx=actual.X-x,dy=actual.Y-y;if(dx*dx+dy*dy<=14400.0&&actual.Z>=floorZ+70.0&&actual.Z<=floorZ+180.0){landing=actual;return 1;}}
+    return candidateIndex>=80?-1:0;
 }
 
 bool InitializeGroundTrace(){
@@ -341,6 +354,24 @@ bool InitializeStorageTeleportPipeline(){
     return true;
 }
 
+std::string HomeLocationPath(){
+    return RuntimePaths::DataFile("home-locations.db");
+}
+
+void LoadHomeLocations(){
+    if(homeLocationsLoaded)return;
+    homeLocationsLoaded=true;
+    const std::string path=HomeLocationPath();errno=0;std::ifstream input(path);
+    if(!input){if(errno==ENOENT){homePersistenceCompatibility=1;return;}homePersistenceCompatibility=-1;++homePersistenceFailures;LogMessage("Unable to read saved home locations from "+path);return;}
+    const auto parsed=HomeLocationPersistence::Parse(input);std::unordered_map<std::string,HomeLocation> loaded;
+    for(const auto&entry:parsed.records)loaded[entry.first]={{entry.second.x,entry.second.y,entry.second.z},entry.second.capturedAt};
+    if(parsed.malformedRecords){homeMalformedRecords+=parsed.malformedRecords;homePersistenceCompatibility=-1;LogMessage("Ignored "+std::to_string(parsed.malformedRecords)+" malformed saved home location record(s)");}
+    {QueueLock lock;homeLocations=std::move(loaded);}
+    if(chmod(path.c_str(),0600)!=0){homePersistenceCompatibility=-1;++homePersistenceFailures;LogMessage("Unable to restrict saved home location permissions at "+path);}
+    else if(!parsed.malformedRecords)homePersistenceCompatibility=1;
+    LogMessage("Loaded "+std::to_string(homeLocations.size())+" saved home teleport locations");
+}
+
 bool InitializeHomeLocationPipeline(){
     playerBedFunction=g_Engine->FindFunction("DominionRuntimeBlueprintLibrary","GetPlayerBedRespawnLocationAndRotation");
     playerBedObject=g_Engine->FindObject("DominionRuntimeBlueprintLibrary",true);
@@ -353,22 +384,26 @@ bool InitializeHomeLocationPipeline(){
         for(const auto& field:fields)message+=" "+field.first+"=0x"+[] (int value){char text[24]{};std::snprintf(text,sizeof(text),"%x",value);return std::string(text);}(field.second);
         LogMessage(message);
     }
+    if(valid)LoadHomeLocations();
     return valid;
 }
 
 void RefreshHomeLocation(uintptr_t pawn){
     if(homeLocationCompatibility.load()!=1||!playerBedObject||!playerBedFunction)return;
     const auto now=std::chrono::steady_clock::now();
-    {QueueLock lock;auto& due=nextHomeRefresh[pawn];if(due>now)return;due=now+std::chrono::seconds(2);}
-    PlayerInfo player;bool found=false;for(const auto& candidate:g_Engine->GetAllPlayers())if(candidate.pawnPtr==pawn){player=candidate;found=true;break;}
+    auto& due=nextHomeRefresh[pawn];if(due>now)return;due=now+std::chrono::seconds(2);
+    const auto players=std::atomic_load_explicit(&teleportPlayers,std::memory_order_acquire);PlayerInfo player;bool found=false;for(const auto& candidate:*players)if(candidate.pawnPtr==pawn){player=candidate;found=true;break;}
     if(!found||player.characterGuid.empty()||!player.controllerPtr)return;
     alignas(16) unsigned char params[0x40]{};std::memcpy(params,&player.controllerPtr,sizeof(player.controllerPtr));
     processEvent(reinterpret_cast<void*>(playerBedObject),reinterpret_cast<void*>(playerBedFunction),params);
     FVector3d location{};std::memcpy(&location,params+0x8,sizeof(location));
     const bool available=params[0x38]&&std::isfinite(location.X)&&std::isfinite(location.Y)&&std::isfinite(location.Z);
-    QueueLock lock;
-    if(available)homeLocations[player.characterGuid]={location,std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count()};
-    else homeLocations.erase(player.characterGuid);
+    TryQueueLock lock;if(!lock)return;const auto existing=homeLocations.find(player.characterGuid);
+    if(available){
+        const bool changed=existing==homeLocations.end()||existing->second.location.X!=location.X||
+            existing->second.location.Y!=location.Y||existing->second.location.Z!=location.Z;
+        if(changed){homeLocations[player.characterGuid]={location,std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count()};homeLocationsDirty=true;}
+    }else if(existing!=homeLocations.end()){homeLocations.erase(existing);homeLocationsDirty=true;}
 }
 
 bool InitializeNodestoneTeleportPipeline(){
@@ -439,42 +474,34 @@ bool InitializeNativeTeleportCapture(uintptr_t moduleBase,uintptr_t moduleEnd,ui
 }
 
 void ReconcilePending(void* tickingPawn){
-    QueueLock lock;const auto now=std::chrono::steady_clock::now();
-    for(auto it=pendingTeleports.begin();it!=pendingTeleports.end();){
-        if(it->pawn!=reinterpret_cast<uintptr_t>(tickingPawn)){++it;continue;}
-        bool arrived=false;
-        for(const auto& player:g_Engine->GetAllPlayers())if(player.pawnPtr==it->pawn&&player.hasLocation){
-            const double dx=player.x-it->target.X,dy=player.y-it->target.Y,dz=player.z-it->target.Z;
-            arrived=dx*dx+dy*dy+dz*dz<250000.0;break;
-        }
-        if(arrived&&it->storage){
-            FVector3d chest{},landing{};double yaw=0.0;
-            for(const auto& player:g_Engine->GetAllPlayers())if(player.pawnPtr==it->pawn){yaw=player.yaw;break;}
-            if(ResolveAdminStorageLocation(it->targetCharacterGuid,it->destinationId,chest)&&
-               FindSafeStorageLanding(it->pawn,chest,yaw,landing)){
-                RestoreCost(*it);++accepted;++acceptedStorage;
-                LogMessage("Admin streamed storage teleport completed character="+it->publicId+" owner="+it->targetPublicId+" chest="+it->destinationId+" session="+it->sessionPrefix);
-                it=pendingTeleports.erase(it);continue;
-            }
-            if(now-it->started<=std::chrono::seconds(8)){++it;continue;}
-        }
-        const bool timedOut=now-it->started>std::chrono::seconds(20);
-        if(!arrived&&!timedOut){++it;continue;}
-        RestoreCost(*it);
-        const bool nodestone=!it->storage&&!it->component;
-        if(arrived&&!it->storage){++accepted;LogMessage(std::string("Admin native ")+(nodestone?"nodestone":"lodestone")+" teleport completed character="+it->publicId+" session="+it->sessionPrefix+" destination="+it->destinationId);}
-        else if(it->storage){
-            ++rejected;++unsafeStorage;
-            const FRotator3d rotation{};actorTeleport(reinterpret_cast<void*>(it->pawn),&it->origin,&rotation,false,false);
-            LogMessage("Admin streamed storage teleport rejected after preload: no collision-safe arrival chest="+it->destinationId);
-        }
-        else{++rejected;LogMessage(std::string("Admin native ")+(nodestone?"nodestone":"lodestone")+" teleport timed out character="+it->publicId+" destination="+it->destinationId);}
-        if(nodestone){
-            if(arrived)++nodestoneAccepted;
-            else{++nodestoneRejected;++nodestoneTimedOut;}
-        }
-        it=pendingTeleports.erase(it);
+    PendingTeleport pending;bool foundPending=false;{
+        TryQueueLock lock;if(!lock)return;
+        auto found=std::find_if(pendingTeleports.begin(),pendingTeleports.end(),[&](const auto&value){return value.pawn==reinterpret_cast<uintptr_t>(tickingPawn);});
+        if(found!=pendingTeleports.end()){pending=*found;foundPending=true;}
     }
+    if(!foundPending)return;const auto now=std::chrono::steady_clock::now();
+    const auto players=std::atomic_load_explicit(&teleportPlayers,std::memory_order_acquire);bool arrived=false;
+    for(const auto& player:*players)if(player.pawnPtr==pending.pawn&&player.hasLocation){const double dx=player.x-pending.target.X,dy=player.y-pending.target.Y,dz=player.z-pending.target.Z;arrived=dx*dx+dy*dy+dz*dz<250000.0;break;}
+    bool storageCompleted=false;
+    if(arrived&&pending.storage){
+        FVector3d chest{},landing{};double yaw=0.0;for(const auto& player:*players)if(player.pawnPtr==pending.pawn){yaw=player.yaw;break;}
+        const bool resolved=ResolveAdminStorageLocation(pending.targetCharacterGuid,pending.destinationId,chest);const int landingResult=resolved?TrySafeStorageLanding(pending.pawn,chest,yaw,pending.landingCandidate,landing):-1;
+        if(landingResult==1){
+            RestoreCost(pending);++accepted;++acceptedStorage;storageCompleted=true;
+            LogMessage("Admin streamed storage teleport completed character="+pending.publicId+" owner="+pending.targetPublicId+" chest="+pending.destinationId+" session="+pending.sessionPrefix);
+        }else if(landingResult==0&&now-pending.started<=std::chrono::seconds(8)){
+            TryQueueLock lock;if(lock){auto found=std::find_if(pendingTeleports.begin(),pendingTeleports.end(),[&](const auto&value){return value.pawn==pending.pawn&&value.destinationId==pending.destinationId&&value.started==pending.started;});if(found!=pendingTeleports.end())found->landingCandidate=pending.landingCandidate;}return;
+        }else arrived=false;
+    }
+    const bool timedOut=now-pending.started>std::chrono::seconds(20);if(!storageCompleted&&!arrived&&!timedOut)return;
+    if(!storageCompleted){
+        RestoreCost(pending);const bool nodestone=!pending.storage&&!pending.component;
+        if(arrived&&!pending.storage){++accepted;LogMessage(std::string("Admin native ")+(nodestone?"nodestone":"lodestone")+" teleport completed character="+pending.publicId+" session="+pending.sessionPrefix+" destination="+pending.destinationId);}
+        else if(pending.storage){++rejected;++unsafeStorage;const FRotator3d rotation{};actorTeleport(reinterpret_cast<void*>(pending.pawn),&pending.origin,&rotation,false,false);LogMessage("Admin streamed storage teleport rejected after preload: no collision-safe arrival chest="+pending.destinationId);}
+        else{++rejected;LogMessage(std::string("Admin native ")+(nodestone?"nodestone":"lodestone")+" teleport timed out character="+pending.publicId+" destination="+pending.destinationId);}
+        if(nodestone){if(arrived)++nodestoneAccepted;else{++nodestoneRejected;++nodestoneTimedOut;}}
+    }
+    TryQueueLock lock;if(!lock)return;auto found=std::find_if(pendingTeleports.begin(),pendingTeleports.end(),[&](const auto&value){return value.pawn==pending.pawn&&value.destinationId==pending.destinationId&&value.started==pending.started;});if(found!=pendingTeleports.end())pendingTeleports.erase(found);
 }
 
 std::vector<NearbyObstacle> ReadNearbyBuildingBounds(uintptr_t targetActor,const FVector3d& center){
@@ -553,20 +580,21 @@ FVector3d ChooseStorageArrival(const FVector3d& origin,const FVector3d& extent,c
 void RunOne(void* tickingPawn){
     Request request;
     {
-        QueueLock lock;
+        TryQueueLock lock;if(!lock)return;
         if(requests.empty())return;
         request=requests.front();
     }
-    auto started=std::chrono::steady_clock::now();
+    auto started=std::chrono::steady_clock::now();struct TraceScope{const Request& request;std::chrono::steady_clock::time_point started;~TraceScope(){const auto micros=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-started).count());PerformanceTrace::Record("teleport",request.action.empty()?"lodestone":request.action.c_str(),micros,request.publicId.c_str(),'p',"website");}}trace{request,started};
     PlayerInfo player;bool found=false;
-    for(const auto& candidate:g_Engine->GetAllPlayers()){
+    const auto players=std::atomic_load_explicit(&teleportPlayers,std::memory_order_acquire);
+    for(const auto& candidate:*players){
         if(candidate.characterGuid==request.characterGuid&&candidate.pawnPtr==reinterpret_cast<uintptr_t>(tickingPawn)){
             player=candidate;found=true;break;
         }
     }
     if(!found)return; // The matching pawn will drain it on its own tick.
     {
-        QueueLock lock;
+        TryQueueLock lock;if(!lock)return;
         if(requests.empty()||requests.front().destinationId!=request.destinationId||
            requests.front().characterGuid!=request.characterGuid)return;
         requests.pop_front();
@@ -603,7 +631,7 @@ void RunOne(void* tickingPawn){
         PendingTeleport pending;pending.characterGuid=request.characterGuid;pending.publicId=request.publicId;
         pending.destinationId=request.destinationId;pending.sessionPrefix=request.sessionPrefix;
         pending.pawn=pawn;pending.target=request.preparedLocation;pending.started=std::chrono::steady_clock::now();
-        {QueueLock lock;pendingTeleports.push_back(std::move(pending));}
+        {TryQueueLock lock;if(!lock)return;pendingTeleports.push_back(std::move(pending));}
         LogMessage("Admin native nodestone teleport started character="+request.publicId+" session="+request.sessionPrefix+
                    " destination="+request.destinationId+" nativeMicros="+std::to_string(nativeMicros));
         return;
@@ -660,7 +688,7 @@ void RunOne(void* tickingPawn){
     }
     if(!request.action.empty()){
         PlayerInfo target;bool targetFound=false;
-        for(const auto& candidate:g_Engine->GetAllPlayers())if(candidate.characterGuid==request.targetCharacterGuid){target=candidate;targetFound=true;break;}
+        for(const auto& candidate:*players)if(candidate.characterGuid==request.targetCharacterGuid){target=candidate;targetFound=true;break;}
         if(!targetFound||!target.spawned||target.isDead||!target.hasLocation){++rejected;LogMessage("Admin player teleport rejected: target unavailable id="+request.targetPublicId);return;}
         constexpr double Pi=3.14159265358979323846,Radius=150.0;
         const double base=target.yaw*Pi/180.0;bool moved=false;FVector3d landing{};
@@ -671,38 +699,25 @@ void RunOne(void* tickingPawn){
             moved=actorTeleport(tickingPawn,&landing,&rotation,false,false);
         }
         if(!moved){++rejected;LogMessage("Admin player teleport rejected: no collision-safe arrival near target="+request.targetPublicId);return;}
-        uintptr_t component=FindTeleportComponent(reinterpret_cast<uintptr_t>(tickingPawn),player.controllerPtr);
-        uintptr_t function=g_Engine->FindFunction("BaseTeleportationComponent","Client_OnTeleportSuccessful");
-        if(component&&function){FVector3d params=landing;processEvent(reinterpret_cast<void*>(component),reinterpret_cast<void*>(function),&params);}
+        if(request.preparedComponent&&request.preparedComponentIdentity&&clientTeleportSuccessfulFunction&&
+           g_Engine->GetObjectIdentity(request.preparedComponent)==request.preparedComponentIdentity){FVector3d params=landing;processEvent(reinterpret_cast<void*>(request.preparedComponent),reinterpret_cast<void*>(clientTeleportSuccessfulFunction),&params);}
         ++accepted;LogMessage("Admin player teleport accepted action="+request.action+" mover="+request.publicId+" target="+request.targetPublicId+" session="+request.sessionPrefix);
         return;
     }
-    std::vector<LodestoneInfo> stones;const LodestoneInfo* destination=nullptr;
-    if(ReadLodestones(stones))for(const auto& stone:stones)if(stone.id==request.destinationId){destination=&stone;break;}
-    if(!destination||!std::isfinite(destination->worldLocation.X)||!std::isfinite(destination->worldLocation.Y)||
-       !std::isfinite(destination->worldLocation.Z)){++rejected;LogMessage("Admin teleport rejected: stale lodestone id="+request.destinationId);return;}
-    uintptr_t component=FindTeleportComponent(reinterpret_cast<uintptr_t>(tickingPawn),player.controllerPtr);
-    const int32_t costOffset=VerifiedCostFlagOffset(component);
-    if(!component||costOffset!=0x110){++rejected;compatibility=-7;LogMessage("Admin teleport disabled: exact lodestone cost flag layout unavailable");return;}
-    const LodestoneInfo* source=nullptr;double nearest=INFINITY;
-    for(const auto& stone:stones){
-        if(stone.id==destination->id||!(stone.nativeGuid[0]|stone.nativeGuid[1]|stone.nativeGuid[2]|stone.nativeGuid[3]))continue;
-        const double dx=stone.worldLocation.X-player.x,dy=stone.worldLocation.Y-player.y,dz=stone.worldLocation.Z-player.z;
-        const double distance=dx*dx+dy*dy+dz*dz;if(distance<nearest){nearest=distance;source=&stone;}
-    }
-    if(!source){++rejected;LogMessage("Admin teleport rejected: no distinct authoritative source lodestone");return;}
+    const uintptr_t component=request.preparedComponent;const int32_t costOffset=request.preparedCostOffset;
+    if(!component||costOffset!=0x110||!request.preparedComponentIdentity||g_Engine->GetObjectIdentity(component)!=request.preparedComponentIdentity){++rejected;++staleStorage;LogMessage("Admin teleport rejected: prepared lodestone evidence changed id="+request.destinationId);return;}
     std::uint8_t oldCost=0;std::memcpy(&oldCost,reinterpret_cast<void*>(component+costOffset),1);
     const std::uint8_t disabled=0;std::memcpy(reinterpret_cast<void*>(component+costOffset),&disabled,1);
     ScopedBypass bypass; bypass.component=reinterpret_cast<void*>(component);
-    std::memcpy(bypass.from,source->nativeGuid,16);std::memcpy(bypass.to,destination->nativeGuid,16);
+    std::memcpy(bypass.from,request.preparedFrom,16);std::memcpy(bypass.to,request.preparedTo,16);
     activeBypass=&bypass;
-    nativeTryTeleport(reinterpret_cast<void*>(component),source->nativeGuid,destination->nativeGuid);
+    nativeTryTeleport(reinterpret_cast<void*>(component),request.preparedFrom,request.preparedTo);
     activeBypass=nullptr;
     {
-        QueueLock lock;
+        TryQueueLock lock;if(!lock)return;
         pendingTeleports.push_back({request.characterGuid,request.publicId,request.destinationId,request.sessionPrefix,
-                                    reinterpret_cast<uintptr_t>(tickingPawn),component,destination->arrivalLocation,
-                                    costOffset,oldCost,false,{},{},{},std::chrono::steady_clock::now()});
+                                    reinterpret_cast<uintptr_t>(tickingPawn),component,request.preparedArrival,
+                                    costOffset,oldCost,false,{},{},{},0,std::chrono::steady_clock::now()});
     }
     LogMessage("Admin native lodestone teleport started character="+request.publicId+" session="+request.sessionPrefix+" destination="+request.destinationId);
     auto micros=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-started).count());
@@ -713,13 +728,13 @@ void HookTick(void* pawn,float delta,int levelTick,void* tickFunction){
     originalTick(pawn,delta,levelTick,tickFunction);
     const auto started=std::chrono::steady_clock::now();++tickCalls;
     RefreshHomeLocation(reinterpret_cast<uintptr_t>(pawn));
-    FlushNativeTeleportCapture();
     ReconcilePending(pawn);
-    bool pending=false;{QueueLock lock;pending=!requests.empty();}
+    bool pending=false;{TryQueueLock lock;if(lock)pending=!requests.empty();}
     if(pending)RunOne(pawn);
     const auto elapsed=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now()-started).count());
     auto prior=maximumTickMicros.load();while(elapsed>prior&&!maximumTickMicros.compare_exchange_weak(prior,elapsed)){}
+    if(elapsed>=100){const auto players=std::atomic_load_explicit(&teleportPlayers,std::memory_order_acquire);const char* identity=nullptr;for(const auto& player:*players)if(player.pawnPtr==reinterpret_cast<uintptr_t>(pawn)){identity=player.characterGuid.c_str();break;}PerformanceTrace::Record("teleport","home/location reconciliation",elapsed,identity,identity?'g':0,"game");}
     if(elapsed>=1000)++slowTickCalls;
 }
 }
@@ -768,6 +783,7 @@ bool InitializeAdminTeleport(uintptr_t moduleBase,uintptr_t moduleEnd){
     std::memcpy(canTarget,canPatch,sizeof(canPatch));__builtin___clear_cache(reinterpret_cast<char*>(canTarget),reinterpret_cast<char*>(canTarget+sizeof(canPatch)));
     mprotect(reinterpret_cast<void*>(canPage),size_t(pageSize),PROT_READ|PROT_EXEC);
     nativeTryTeleport=reinterpret_cast<TryTeleportFn>(moduleBase+tryOffset);
+    clientTeleportSuccessfulFunction=g_Engine->FindFunction("BaseTeleportationComponent","Client_OnTeleportSuccessful");
     if(!LoadCapturedTeleportTemplate())
         LogMessage("No validated native teleport template is available; storage teleport remains disabled");
     nativeCaptureCompatibility=InitializeNativeTeleportCapture(moduleBase,moduleEnd,tryOffset)?1:-1;
@@ -795,10 +811,14 @@ bool RefreshAdminNodestoneTeleportCompatibility(){
 bool QueueAdminTeleport(const std::string& characterGuid,const std::string& publicId,
                         const std::string& destinationId,const std::string& sessionPrefix){
     if(compatibility.load()!=1||characterGuid.empty()||destinationId.empty())return false;
+    const auto players=std::atomic_load_explicit(&teleportPlayers,std::memory_order_acquire);auto player=std::find_if(players->begin(),players->end(),[&](const auto&value){return value.characterGuid==characterGuid;});if(player==players->end()||!player->pawnPtr)return false;
+    std::vector<LodestoneInfo> stones;if(!ReadLodestones(stones))return false;auto destination=std::find_if(stones.begin(),stones.end(),[&](const auto&stone){return stone.id==destinationId;});if(destination==stones.end())return false;
+    const LodestoneInfo*source=nullptr;double nearest=INFINITY;for(const auto&stone:stones){if(stone.id==destination->id||!(stone.nativeGuid[0]|stone.nativeGuid[1]|stone.nativeGuid[2]|stone.nativeGuid[3]))continue;const double dx=stone.worldLocation.X-player->x,dy=stone.worldLocation.Y-player->y,dz=stone.worldLocation.Z-player->z;const double distance=dx*dx+dy*dy+dz*dz;if(distance<nearest){nearest=distance;source=&stone;}}
+    const uintptr_t component=FindTeleportComponent(player->pawnPtr,player->controllerPtr);const auto componentIdentity=component?g_Engine->GetObjectIdentity(component):0;const int32_t costOffset=VerifiedCostFlagOffset(component);if(!source||!componentIdentity||costOffset!=0x110)return false;
     QueueLock lock;
     if(requests.size()>=QueueCapacity||std::any_of(requests.begin(),requests.end(),[&](const Request&r){return r.characterGuid==characterGuid;})||
        std::any_of(pendingTeleports.begin(),pendingTeleports.end(),[&](const PendingTeleport&p){return p.characterGuid==characterGuid;}))return false;
-    Request request;request.characterGuid=characterGuid;request.publicId=publicId;request.destinationId=destinationId;request.sessionPrefix=sessionPrefix;
+    Request request;request.characterGuid=characterGuid;request.publicId=publicId;request.destinationId=destinationId;request.sessionPrefix=sessionPrefix;request.preparedComponent=component;request.preparedComponentIdentity=componentIdentity;request.preparedCostOffset=costOffset;request.preparedArrival=destination->arrivalLocation;std::memcpy(request.preparedFrom,source->nativeGuid,16);std::memcpy(request.preparedTo,destination->nativeGuid,16);
     requests.push_back(std::move(request));++queued;return true;
 }
 
@@ -824,10 +844,11 @@ bool QueueAdminPlayerTeleport(const std::string& movingCharacterGuid,const std::
                               const std::string& action,const std::string& sessionPrefix){
     if(compatibility.load()!=1||movingCharacterGuid.empty()||targetCharacterGuid.empty()||movingCharacterGuid==targetCharacterGuid||
        (action!="to-player"&&action!="player-to-me"))return false;
+    const auto players=std::atomic_load_explicit(&teleportPlayers,std::memory_order_acquire);auto mover=std::find_if(players->begin(),players->end(),[&](const auto&value){return value.characterGuid==movingCharacterGuid;});if(mover==players->end()||!mover->pawnPtr)return false;const uintptr_t component=FindTeleportComponent(mover->pawnPtr,mover->controllerPtr);const auto componentIdentity=component&&g_Engine?g_Engine->GetObjectIdentity(component):0;
     QueueLock lock;
     if(requests.size()>=QueueCapacity||std::any_of(requests.begin(),requests.end(),[&](const Request&r){return r.characterGuid==movingCharacterGuid;})||
        std::any_of(pendingTeleports.begin(),pendingTeleports.end(),[&](const PendingTeleport&p){return p.characterGuid==movingCharacterGuid;}))return false;
-    Request request;request.characterGuid=movingCharacterGuid;request.publicId=movingPublicId;request.sessionPrefix=sessionPrefix;request.targetCharacterGuid=targetCharacterGuid;request.targetPublicId=targetPublicId;request.action=action;
+    Request request;request.characterGuid=movingCharacterGuid;request.publicId=movingPublicId;request.sessionPrefix=sessionPrefix;request.targetCharacterGuid=targetCharacterGuid;request.targetPublicId=targetPublicId;request.action=action;request.preparedComponent=component;request.preparedComponentIdentity=componentIdentity;
     requests.push_back(std::move(request));++queued;return true;
 }
 
@@ -861,6 +882,23 @@ bool ResolvePlayerHomeLocation(const std::string& characterGuid,FVector3d& locat
     location=found->second.location;if(capturedAt)*capturedAt=found->second.capturedAt;return true;
 }
 
+void UpdateAdminTeleportPlayers(const std::vector<PlayerInfo>&players){
+    std::atomic_store_explicit(&teleportPlayers,std::make_shared<const std::vector<PlayerInfo>>(players),std::memory_order_release);
+}
+
+void FlushAdminHomeLocations(){
+    // Native capture is produced by a tiny assembly hook. Formatting and all
+    // diagnostic file I/O must happen on the service worker, never a pawn tick.
+    FlushNativeTeleportCapture();
+    if(!homeLocationsDirty.exchange(false))return;
+    std::unordered_map<std::string,HomeLocation> snapshot;{QueueLock lock;snapshot=homeLocations;}
+    std::unordered_map<std::string,HomeLocationPersistence::Record> records;
+    for(const auto&entry:snapshot)records[entry.first]={entry.second.location.X,entry.second.location.Y,entry.second.location.Z,entry.second.capturedAt};
+    const std::string path=HomeLocationPath();
+    if(HomeLocationPersistence::SaveAtomic(path,records))homePersistenceCompatibility=1;
+    else{homePersistenceCompatibility=-1;++homePersistenceFailures;homeLocationsDirty=true;LogMessage("Unable to commit saved home teleport locations to "+path);}
+}
+
 bool QueueAdminHomeTeleport(const std::string& characterGuid,const std::string& publicId,
                             const std::string& ownerCharacterGuid,const std::string& ownerPublicId,
                             const FVector3d& location,const std::string& sessionPrefix){
@@ -887,7 +925,7 @@ bool QueueAdminGravestoneTeleport(const std::string& characterGuid,const std::st
 AdminTeleportDiagnostics GetAdminTeleportDiagnostics(){
     AdminTeleportDiagnostics d;d.compatibility=compatibility.load();d.lodestoneCompatibility=d.compatibility;
     d.nodestoneCompatibility=nodestoneTeleportCompatibility.load();d.playerCompatibility=d.compatibility;
-    d.homeLocationCompatibility=homeLocationCompatibility.load();{QueueLock lock;d.cachedHomeLocations=homeLocations.size();}
+    d.homeLocationCompatibility=homeLocationCompatibility.load();d.homePersistenceCompatibility=homePersistenceCompatibility.load();d.homePersistenceFailures=homePersistenceFailures.load();d.homeMalformedRecords=homeMalformedRecords.load();{QueueLock lock;d.cachedHomeLocations=homeLocations.size();}
     d.groundTraceCompatibility=groundTraceCompatibility.load();d.storagePipelineCompatibility=storagePipelineCompatibility.load();
     d.nativeCaptureCompatibility=nativeCaptureCompatibility.load();d.nativeTemplateAvailable=storageTeleportTemplateValid.load()?1:0;
     d.storageTransportCompatibility=storageTeleportCircuitBroken.load()?-1:(d.nativeCaptureCompatibility==1&&d.nativeTemplateAvailable==1?1:0);d.queuedRequests=queued.load();

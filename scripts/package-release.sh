@@ -23,9 +23,11 @@ install -m 0644 "$ROOT/config/zanik-config.schema.json" "$WORK/server/config/zan
 install -m 0644 "$ROOT/config/material-first-pickup-catalog.tsv" "$WORK/server/config/material-first-pickup-catalog.tsv"
 install -m 0644 "$ROOT/config/player-activity-unlock-catalog.tsv" "$WORK/server/config/player-activity-unlock-catalog.tsv"
 install -m 0644 "$ROOT/deploy/compatibility.tsv" "$WORK/server/compatibility/compatibility.tsv"
+install -m 0644 "$ROOT/deploy/compatibility-capabilities.json" "$WORK/server/compatibility/capabilities.json"
 for file in install update uninstall doctor init-assets compat-launcher verify-assets check-game-update check-compatible-release update-game apply-asset-delta; do install -m 0755 "$ROOT/scripts/$file.sh" "$WORK/server/scripts/$file.sh"; done
 install -m 0644 "$ROOT/tools/zanik_assets.py" "$WORK/server/tools/zanik_assets.py"
 install -m 0644 "$ROOT/tools/asset_filesystem.py" "$WORK/server/tools/asset_filesystem.py"
+install -m 0755 "$ROOT/tools/generate_compatibility_report.py" "$WORK/server/tools/generate_compatibility_report.py"
 install -m 0644 "$ROOT/VERSION" "$ROOT/CHANGELOG.md" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/README.md" "$WORK/server/"
 for file in installation.md linux.md pterodactyl.md docker.md upgrades.md uninstall.md configuration.md assets.md security.md hosting.md curseforge.md releasing.md contributor-architecture.md manager.md game-update-safety.md backups.md; do install -m 0644 "$ROOT/docs/$file" "$WORK/server/docs/$file"; done
 python3 "$ROOT/manager/zanik_manager/payload_contract.py" --root "$WORK/server" --release-version "$VERSION" --output "$WORK/server/payload-contract.json"

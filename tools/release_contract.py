@@ -45,6 +45,35 @@ def require_clean(root: Path) -> None:
         raise ValueError("tracked release inputs are dirty")
 
 
+def git_value(root: Path, *arguments: str) -> str:
+    try:
+        return subprocess.check_output(
+            ["git", *arguments], cwd=root, text=True, stderr=subprocess.PIPE
+        ).strip()
+    except subprocess.CalledProcessError as error:
+        detail = error.stderr.strip() or "Git did not return the requested object"
+        raise ValueError(detail) from error
+
+
+def require_annotated_tag(root: Path, tag: str) -> None:
+    reference = f"refs/tags/{tag}"
+    if git_value(root, "cat-file", "-t", reference) != "tag":
+        raise ValueError(f"release tag must be an annotated tag object: {tag}")
+    if git_value(root, "rev-parse", f"{reference}^{{commit}}") != git_value(root, "rev-parse", "HEAD"):
+        raise ValueError(f"release tag does not point to the checked-out commit: {tag}")
+
+
+def require_ref_contains(root: Path, reference: str, commit: str) -> None:
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", commit):
+        raise ValueError(f"invalid release commit: {commit!r}")
+    git_value(root, "rev-parse", f"{reference}^{{commit}}")
+    try:
+        subprocess.run(["git", "merge-base", "--is-ancestor", commit, reference], cwd=root,
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    except subprocess.CalledProcessError as error:
+        raise ValueError(f"{reference} does not contain release commit {commit}") from error
+
+
 def validate(tag: str, version: str) -> None:
     match = TAG_RE.fullmatch(tag)
     if not match:
@@ -60,6 +89,9 @@ def main() -> int:
     parser.add_argument("--changelog", type=Path, default=ROOT / "CHANGELOG.md")
     parser.add_argument("--notes-output", type=Path)
     parser.add_argument("--require-clean", action="store_true")
+    parser.add_argument("--require-annotated-tag", action="store_true")
+    parser.add_argument("--require-ref")
+    parser.add_argument("--commit")
     args = parser.parse_args()
     try:
         version = read_version(args.version_file)
@@ -67,6 +99,12 @@ def main() -> int:
         notes = release_notes(args.changelog, version)
         if args.require_clean:
             require_clean(ROOT)
+        if args.require_annotated_tag:
+            require_annotated_tag(ROOT, args.tag)
+        if bool(args.require_ref) != bool(args.commit):
+            raise ValueError("--require-ref and --commit must be supplied together")
+        if args.require_ref:
+            require_ref_contains(ROOT, args.require_ref, args.commit)
         if args.notes_output:
             args.notes_output.parent.mkdir(parents=True, exist_ok=True)
             args.notes_output.write_text(notes, encoding="utf-8")

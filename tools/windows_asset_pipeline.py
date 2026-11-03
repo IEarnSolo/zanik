@@ -23,7 +23,7 @@ except ModuleNotFoundError:  # Imported as tools.* by repository tests.
     from tools.asset_filesystem import extended_path, read_json as read_json_file
 
 
-RECIPE_VERSION = 15
+RECIPE_VERSION = 16
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 EXPORT_CHECKPOINT = "export-checkpoint.json"
 INCREMENTAL_STATE = "incremental-state.json"
@@ -38,6 +38,7 @@ MAP_ICON_TARGETS = {
     # fragment-crystal texture is no longer used for nodestone map markers.
     "package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal",
     "basename:T_Icon_Gravestone",
+    "package:RSDragonwilds/Content/Art/UI/Icons/T_Icons_Journal_Cat_Knowledge_Places_Selected",
 }
 QUEST_BADGE_TARGETS = {
     "package:RSDragonwilds/Content/Art/UI/Map/QuestList/T_Icon_Quest_Primary",
@@ -59,6 +60,7 @@ REVIEWED_LEGACY_GENERATION_RECIPES = {
     "a8a4ae9a1078cb5c505b32fa4c0821a8295a5d13b58d5dc57db73a3c3d645f22",  # recipe 13
     "3b60bfa9d705491b9eca6378d12cc42eabfd3dbf17fc82d650e7ee621bed0058",  # recipe 14
     "0e4641495656c163750e27ee7e5bcc037b5ffd7d5fa28b0ef7cf0bf08f5f4bcf",  # recipe 15
+    "9bfc5332a7b53f5f364cf2781ad6adb8dec6db02c8783fbaee7f754eefe84d3c",  # recipe 16
 }
 RETIRED_FRAGMENT_CRYSTAL_TARGET = \
     "package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal"
@@ -77,7 +79,7 @@ GROUP_OUTPUTS = {
     "quests": ("quest-catalog.json", "quest-runtime-catalog.tsv"),
     "item-artwork": ("items",), "npc-artwork": ("npcs",),
     "resource-artwork": ("resources",), "spell-and-perk-artwork": ("spells-and-perks",), "skills": ("skills",),
-    "map-icons": ("lodestone-icon.png", "nodestone-icon.png", "gravestone-icon.png",
+    "map-icons": ("lodestone-icon.png", "nodestone-icon.png", "gravestone-icon.png", "region-discovery-icon.png",
                   "quests/clipboard-icon.png", "quests/objective-arrow-icon.png"),
     "world-map": ("world-map.jpg",), "font": ("Jancient-Regular.ttf",),
     "quest-badges": ("quests/main-quest.png", "quests/side-quest.png"),

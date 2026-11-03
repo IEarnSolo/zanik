@@ -4,7 +4,6 @@ root = Path(__file__).resolve().parents[1]
 player_recipes = (root / "src/engine/player_recipes.cpp").read_text()
 npcs = (root / "src/engine/npcs.cpp").read_text()
 storage = (root / "src/engine/admin_storage.cpp").read_text()
-bootstrap = (root / "deploy/zanik-bootstrap.sh").read_text()
 validator = (root / "deploy/validate-dev-update.ps1").read_text()
 
 assert 'ValidateQueryLayout(recipeQuery,"RecipeData")' in player_recipes
@@ -18,7 +17,6 @@ assert 'Mem::SafeRead(actor+Offsets::Actor_RootComponent,root)' in npcs
 assert 'Mem::SafeRead(root+Offsets::SceneComp_RelativeLocation,location)' in npcs
 assert 'confirmedRoot!=root' in npcs
 assert 'value.schema==1&&fingerprintValid' in storage
-assert '$DATA/player-recipe-snapshots.db' in bootstrap
 for check in ('adminBuildingExpectedPieces -eq 827', 'adminBuildingResolvedPieces -eq 827',
               'adminBuildingUnavailablePieces -eq 0', 'adminBuildingReferences -eq 844'):
     assert check in validator

@@ -1,6 +1,7 @@
 #!/bin/sh
 # ZANIK_COMPAT_LAUNCHER=1
 set -eu
+unset LD_PRELOAD
 game_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 server_root=$(CDPATH= cd -- "$game_dir/../../.." && pwd)
 export ZANIK_INSTALL_MODE=replace-executable

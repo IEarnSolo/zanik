@@ -1,5 +1,6 @@
 #include "dom_engine.h"
 #include "../utils/logger.h"
+#include "../utils/runtime_paths.h"
 #include "../utils/memory.h"
 
 #include <cstdio>
@@ -20,8 +21,7 @@ namespace {
 const std::unordered_map<std::string,std::string>& BuildingActorDisplayNames(){
     static const auto names=[](){
         std::unordered_map<std::string,std::string> values;
-        const char* root=std::getenv("DW_WEB_ROOT");
-        std::ifstream input(std::string(root&&*root?root:"/home/container/zanik/web")+"/buildings/metadata.tsv");
+        std::ifstream input(RuntimePaths::WebFile("buildings/metadata.tsv"));
         std::string line;
         while(std::getline(input,line)){
             if(line.empty()||line[0]=='#')continue;

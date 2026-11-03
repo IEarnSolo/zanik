@@ -35,3 +35,20 @@ with tempfile.TemporaryDirectory(prefix='zanik-gates-') as name:
         assert 'hook installed' not in text.lower()
         assert 'tracking initialized' not in text.lower()
 print('feature gate HTTP tests passed')
+
+# Defense in depth: even a direct preload must remain inert when the master
+# runtime gate is explicitly disabled.
+with socket.socket() as probe:
+    probe.bind(('127.0.0.1',0)); disabled_port=probe.getsockname()[1]
+disabled_env=os.environ.copy(); disabled_env.update({
+    'LD_PRELOAD':str(ROOT/'dist/libdwstatus.so'), 'DW_STATUS_PORT':str(disabled_port),
+    'DW_STATUS_TEST_HOST':'1', 'ZANIK_ENABLED':'false',
+})
+disabled=subprocess.Popen(['/bin/sleep','1'],env=disabled_env,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+time.sleep(.2)
+with socket.socket() as probe:
+    probe.settimeout(.2)
+    assert probe.connect_ex(('127.0.0.1',disabled_port)) != 0
+_,disabled_stderr=disabled.communicate(timeout=3)
+assert b'listening' not in disabled_stderr.lower()
+print('master runtime constructor gate passed')

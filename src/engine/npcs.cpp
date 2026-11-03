@@ -1,6 +1,7 @@
 #include "dom_engine.h"
 #include "../utils/memory.h"
 #include "../utils/logger.h"
+#include "../utils/runtime_paths.h"
 
 #include <algorithm>
 #include <atomic>
@@ -57,7 +58,7 @@ constexpr int ScanIdleMilliseconds=500;
 uintptr_t scanAiDirector=0;
 enum ClassKind : std::uint8_t { ClassNone=0,ClassAi=1,ClassSpawn=2,ClassCharacter=4,ClassDirector=8 };
 
-std::string IdentityPath(){const char* p=std::getenv("DW_NPC_IDENTITIES");return p&&*p?p:"/home/container/zanik/npc-identities.tsv";}
+std::string IdentityPath(){return RuntimePaths::Environment("DW_NPC_IDENTITIES",RuntimePaths::WebFile("npc-identities.tsv"));}
 std::string StripClass(std::string s){
     if(s.size()>2&&s.compare(s.size()-2,2,"_C")==0)s.resize(s.size()-2);
     return s;

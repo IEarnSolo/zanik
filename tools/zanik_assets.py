@@ -47,6 +47,7 @@ REQUIRED = (
     "lodestone-icon.png",
     "nodestone-icon.png",
     "gravestone-icon.png",
+    "region-discovery-icon.png",
     "Jancient-Regular.ttf",
     "skills/attack.png",
     "quests/main-quest.png",
@@ -71,7 +72,7 @@ CATALOG_MINIMUMS = {
 ALLOWED_TOP_LEVEL = {
     "asset-manifest.json", "buildings", "items", "npcs", "quests", "recipe-icons", "spells-and-perks",
     "resources", "skills", "world-map.jpg", "lodestone-icon.png", "nodestone-icon.png",
-    "gravestone-icon.png", "Jancient-Regular.ttf", "npc-catalog.json", "plan-items.tsv",
+    "gravestone-icon.png", "region-discovery-icon.png", "Jancient-Regular.ttf", "npc-catalog.json", "plan-items.tsv",
     "quest-catalog.json", "quest-runtime-catalog.tsv", "quest-step-locations.json",
     "recipe-unlocks.json", "recipe-runtime-catalog.tsv", "recipe-runtime-catalog-history.tsv",
     "resource-catalog.json", "resource-identities.tsv", "npc-identities.tsv",

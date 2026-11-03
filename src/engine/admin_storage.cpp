@@ -2,7 +2,9 @@
 #define _GNU_SOURCE
 #endif
 #include "dom_engine.h"
+#include "../performance_trace.h"
 #include "../utils/logger.h"
+#include "../utils/runtime_paths.h"
 #include "../utils/memory.h"
 
 #include <algorithm>
@@ -36,7 +38,7 @@ constexpr const char* CurrentSha="45cd13cf24658153f4c53777816ffa38ac893a471ebdf5
 // The current build's native storage entry points are statically understood and
 // request preparation is now off-thread. Keep mutation compatibility closed in
 // ordinary releases until the bounded dispatcher passes live performance testing.
-bool ExpectedSha(const std::string& hash){const char*candidate=std::getenv("ZANIK_STORAGE_PERFORMANCE_CANDIDATE");struct stat marker{};const bool candidateEnabled=(candidate&&std::string(candidate)=="1")||stat("/home/container/zanik-data/storage-performance-candidate",&marker)==0;return hash=="445f8b65047d208adb04a3cb03bc7706f069306d814172ae29caec16c15bec7e"||hash=="ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac"||(candidateEnabled&&(hash==PreviousSha||hash==CurrentSha));}
+bool ExpectedSha(const std::string& hash){const char*candidate=std::getenv("ZANIK_STORAGE_PERFORMANCE_CANDIDATE");struct stat marker{};const std::string markerPath=RuntimePaths::DataFile("storage-performance-candidate");const bool candidateEnabled=(candidate&&std::string(candidate)=="1")||stat(markerPath.c_str(),&marker)==0;return hash=="445f8b65047d208adb04a3cb03bc7706f069306d814172ae29caec16c15bec7e"||hash=="ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac"||(candidateEnabled&&(hash==PreviousSha||hash==CurrentSha));}
 bool ExpectedDispatcherSha(const std::string& hash){return ExpectedSha(hash)||hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"||hash==PreviousSha||hash==CurrentSha;}
 constexpr std::size_t QueueCapacity=32;
 constexpr uintptr_t AddItemByDataOffset=0x0A6118E0;
@@ -55,6 +57,8 @@ constexpr uintptr_t FTextFromStringOffset=0x04AA6AE0;
 constexpr uintptr_t UniqueNetIdDestructorOffset=0x079A74B0;
 constexpr uintptr_t FTextDestructorOffset=0x049F69F0;
 constexpr size_t EngineTickHookBytes=16;
+constexpr size_t MoveItemHookBytes=12;
+constexpr size_t RemoveFromSlotHookBytes=17;
 struct StorageOffsets {
     uintptr_t addItemByData=AddItemByDataOffset,canAddItemByData=CanAddItemByDataOffset,moveItem=MoveItemOffset,removeFromSlot=RemoveFromSlotOffset;
     uintptr_t canAddItemsByData=CanAddItemsByDataOffset,addItemsByData=AddItemsByDataOffset,buildingRequirements=BuildingScaledRequirementsOffset,memoryFree=FMemoryFreeOffset,engineTick=EngineTickOffset;
@@ -91,6 +95,8 @@ AddItemByDataFn addItemByData=nullptr;
 CanAddItemByDataFn canAddItemByData=nullptr;
 MoveItemFn moveItem=nullptr;
 RemoveFromSlotFn removeFromSlot=nullptr;
+MoveItemFn originalObservedMoveItem=nullptr;
+RemoveFromSlotFn originalObservedRemoveFromSlot=nullptr;
 CanAddItemsByDataFn canAddItemsByData=nullptr;
 AddItemsByDataFn addItemsByData=nullptr;
 BuildingScaledRequirementsFn buildingScaledRequirements=nullptr;
@@ -115,7 +121,7 @@ struct NativeAction {
     int sourceSlot=-1,destinationSlot=-1,quantity=0,expectedQuantity=0;
 };
 struct Request {
-    std::string id,operation,session,conflictKey,successMessage;
+    std::string id,operation,session,conflictKey,successMessage,adminId,targetId;
     std::vector<NativeAction> actions,rollback;
     std::atomic<JobState> state{JobState::Queued};
     std::atomic<std::size_t> actionIndex{0};
@@ -139,6 +145,8 @@ std::mutex jobsMutex;
 std::unordered_map<std::string,std::shared_ptr<Request>> jobs;
 std::atomic<int> compatibility{0};
 std::atomic<int> dispatcherCompatibility{0},batchCompatibility{0},renameCompatibility{0},removalTrackingCompatibility{0},catalogCompatibility{0},unlockCatalogCompatibility{0},planCatalogCompatibility{0};
+std::atomic<int> nativeMutationCaptureCompatibility{0};
+std::atomic<uintptr_t> observedMoveEntry{0},observedRemoveEntry{0};
 std::atomic<int> buildingTaxonomyCompatibility{0},buildingRequirementsCompatibility{0},buildingIconsCompatibility{0},craftingRecipeCompatibility{0};
 std::atomic<std::uint64_t> resolvedBuildingPieces{0},unavailableBuildingPieces{0};
 std::atomic<std::uint64_t> queued{0},accepted{0},rejected{0},stale{0},maximumMicros{0};
@@ -149,10 +157,24 @@ std::atomic<std::uint64_t> maximumStorageTickMicros{0},maximumGravestoneTickMicr
 std::atomic<unsigned> pendingCount{0};
 std::atomic<std::uint64_t> snapshotGenerations{0},snapshotHits{0},snapshotMisses{0},snapshotInvalidations{0},maximumSnapshotMicros{0};
 std::atomic<std::uint64_t> queueDrops{0},runningJobs{0},completedJobs{0},failedJobs{0},staleIdentities{0},worldChanges{0},rollbackAttempts{0},rollbackFailures{0};
+std::atomic<std::uint64_t> nativeMutationCalls{0},nativeMutationAttributed{0},nativeMutationUnattributed{0},nativeMutationDrops{0},nativeMutationMaximumMicros{0},nativeMutationCaptureMaximumMicros{0};
 std::array<std::atomic<std::uint64_t>,size_t(OperationFamily::Count)> familyMaximum{};
 std::array<std::atomic<bool>,size_t(OperationFamily::Count)> familyCircuitBroken{};
 std::atomic<std::uint64_t> storageGeneration{1};
 std::atomic<bool> earlyHookInstalled{false};
+enum class ObservedMutationKind : std::uint8_t { Move,Remove };
+struct ObservedMutationEvent {
+    ObservedMutationKind kind=ObservedMutationKind::Move;
+    uintptr_t source=0,destination=0,controller=0;
+    std::uint64_t nativeMicros=0,captureMicros=0;
+    bool succeeded=false;
+};
+struct ObservedMutationSlot {std::atomic<std::uint8_t> state{0};ObservedMutationEvent event;};
+constexpr std::size_t ObservedMutationCapacity=128;
+std::array<ObservedMutationSlot,ObservedMutationCapacity> observedMutationRing{};
+std::atomic<std::uint64_t> observedMutationHead{0};
+std::shared_ptr<const std::vector<PlayerInfo>> observedMutationPlayers=std::make_shared<const std::vector<PlayerInfo>>();
+thread_local bool suppressObservedMutation=false;
 constexpr size_t BuildingEndPlayHookBytes=16;
 constexpr uintptr_t BuildingEndPlayOffset=0x0A37C2D0;
 using BuildingEndPlayFn=void(*)(void*,int);
@@ -168,7 +190,7 @@ std::unordered_map<std::uint64_t,uintptr_t> pendingCustomNames;
 
 std::string Escape(const std::string&s){std::string o;for(unsigned char c:s){if(c=='"'||c=='\\'){o+='\\';o+=char(c);}else if(c>=32)o+=char(c);}return o;}
 const std::unordered_map<std::string,std::string>& BuildingActorNames(){
-    static const auto names=[](){std::unordered_map<std::string,std::string> values;const char* root=std::getenv("DW_WEB_ROOT");std::ifstream input(std::string(root&&*root?root:"/home/container/zanik/web")+"/buildings/metadata.tsv");std::string line;while(std::getline(input,line)){if(line.empty()||line[0]=='#')continue;auto a=line.find('\t'),b=a==std::string::npos?std::string::npos:line.find('\t',a+1),c=b==std::string::npos?std::string::npos:line.find('\t',b+1);if(a==std::string::npos||b==std::string::npos||c==std::string::npos)continue;std::string name=line.substr(a+1,b-a-1),actor=line.substr(c+1);if(!actor.empty()&&actor.back()=='\r')actor.pop_back();if(!name.empty()&&!actor.empty())values[std::move(actor)]=std::move(name);}return values;}();return names;
+    static const auto names=[](){std::unordered_map<std::string,std::string> values;std::ifstream input(RuntimePaths::WebFile("buildings/metadata.tsv"));std::string line;while(std::getline(input,line)){if(line.empty()||line[0]=='#')continue;auto a=line.find('\t'),b=a==std::string::npos?std::string::npos:line.find('\t',a+1),c=b==std::string::npos?std::string::npos:line.find('\t',b+1);if(a==std::string::npos||b==std::string::npos||c==std::string::npos)continue;std::string name=line.substr(a+1,b-a-1),actor=line.substr(c+1);if(!actor.empty()&&actor.back()=='\r')actor.pop_back();if(!name.empty()&&!actor.empty())values[std::move(actor)]=std::move(name);}return values;}();return names;
 }
 std::string CleanType(std::string value){auto exact=BuildingActorNames().find(value);if(exact!=BuildingActorNames().end())return exact->second;const std::string p="BP_BaseBuilding_";if(value.rfind(p,0)==0)value.erase(0,p.size());if(value.size()>2&&value.compare(value.size()-2,2,"_C")==0)value.resize(value.size()-2);std::string readable;for(size_t i=0;i<value.size();++i){char c=value[i];if(c=='_'){if(!readable.empty()&&readable.back()!=' ')readable+=' ';continue;}if(i&&std::isupper(static_cast<unsigned char>(c))&&std::islower(static_cast<unsigned char>(value[i-1]))&&readable.back()!=' ')readable+=' ';readable+=c;}return readable.empty()?"Storage":readable;}
 std::string HexHash(std::uint64_t hash){char id[17]{};std::snprintf(id,sizeof(id),"%016llx",static_cast<unsigned long long>(hash));return id;}
@@ -194,7 +216,7 @@ struct BuildingCatalog {bool valid=false,iconsValid=false;int expectedPieces=0,e
 struct PlanCatalog {bool valid=false;int expected=0;std::string fingerprint;std::unordered_set<std::string> keys;};
 std::vector<std::string> SplitTabs(const std::string&line){std::vector<std::string> out;size_t start=0;for(;;){auto at=line.find('\t',start);out.push_back(line.substr(start,at==std::string::npos?std::string::npos:at-start));if(at==std::string::npos)return out;start=at+1;}}
 const BuildingCatalog& AuthoritativeBuildingCatalog(){
-    static const auto catalog=[](){BuildingCatalog value;const char* root=std::getenv("DW_WEB_ROOT");std::string base=std::string(root&&*root?root:"/home/container/zanik/web")+"/buildings/";std::ifstream input(base+"catalog.tsv");std::string line;int declaredTabs=0,declaredSections=0;
+    static const auto catalog=[](){BuildingCatalog value;std::string base=RuntimePaths::WebRoot()+"/buildings/";std::ifstream input(base+"catalog.tsv");std::string line;int declaredTabs=0,declaredSections=0;
         while(std::getline(input,line)){if(!line.empty()&&line.back()=='\r')line.pop_back();auto f=SplitTabs(line);if(f.empty())continue;if(f[0]=="# zanik-building-catalog"&&f.size()>=7){value.schema=std::atoi(f[1].c_str());declaredTabs=std::atoi(f[2].c_str());declaredSections=std::atoi(f[3].c_str());value.expectedReferences=std::atoi(f[4].c_str());value.expectedPieces=std::atoi(f[5].c_str());value.fingerprint=f[6];}
             else if(f[0]=="T"&&f.size()>=4){BuildingTab tab;tab.order=std::atoi(f[1].c_str());tab.key=f[2];tab.label=f[3];value.tabs.push_back(std::move(tab));}
             else if(f[0]=="S"&&f.size()>=6){int tab=std::atoi(f[1].c_str());if(tab<0||size_t(tab)>=value.tabs.size())continue;BuildingSection section;section.order=std::atoi(f[2].c_str());section.favourites=f[3]=="1";section.key=f[4];section.label=f[5];value.tabs[tab].sections.push_back(std::move(section));}
@@ -208,7 +230,7 @@ const std::unordered_map<std::string,BuildingMeta>& BuildingMetadata(){
     return AuthoritativeBuildingCatalog().pieces;
 }
 const PlanCatalog& PlanItemCatalog(){
-    static const auto catalog=[](){PlanCatalog value;const char* root=std::getenv("DW_WEB_ROOT");std::string base=std::string(root&&*root?root:"/home/container/zanik/web");std::ifstream input(base+"/plan-items.tsv");std::string line;
+    static const auto catalog=[](){PlanCatalog value;std::string base=RuntimePaths::WebRoot();std::ifstream input(base+"/plan-items.tsv");std::string line;
         while(std::getline(input,line)){if(!line.empty()&&line.back()=='\r')line.pop_back();auto f=SplitTabs(line);if(f.empty())continue;if(f[0]=="# zanik-plan-items"&&f.size()==4){if(f[1]!="1")return value;value.expected=std::atoi(f[2].c_str());value.fingerprint=f[3];continue;}if(f.size()!=4||f[0].rfind("DA_Consumable_Plan",0)!=0||f[1].rfind("PLAN: ",0)!=0||f[2].size()!=22||f[3]!=f[0]+".png")return PlanCatalog{};struct stat st{};if(stat((base+"/items/"+f[3]).c_str(),&st)!=0||st.st_size<1)return PlanCatalog{};value.keys.insert(f[0]);}
         const bool fingerprintValid=value.fingerprint.size()==64&&std::all_of(value.fingerprint.begin(),value.fingerprint.end(),[](unsigned char c){return std::isxdigit(c)!=0;});value.valid=value.expected==123&&value.keys.size()==size_t(value.expected)&&fingerprintValid;return value;}();return catalog;
 }
@@ -292,7 +314,7 @@ struct StorageSnapshot {
     bool adminFound=false,adminSpawned=false,adminDead=false;
     std::string targetGuid,adminGuid;
     std::vector<SnapshotChest> chests;
-    std::chrono::steady_clock::time_point createdAt;
+    std::chrono::steady_clock::time_point createdAt,discoveredAt;
 };
 std::shared_mutex snapshotMutex;
 std::unordered_map<std::string,std::shared_ptr<const StorageSnapshot>> snapshotCache;
@@ -341,14 +363,40 @@ void ProcessOneCustomName(){
     PublishCustomName(identity,ReadCustomNameOnGameThread(actor));
 }
 
+std::shared_ptr<const StorageSnapshot> RefreshKnownStorageSnapshot(const std::shared_ptr<const StorageSnapshot>&known){
+    if(!known||!g_Engine||known->world!=g_Engine->GetWorld()||
+       known->worldIdentity!=g_Engine->GetObjectIdentity(known->world))return {};
+    auto snapshot=std::make_shared<StorageSnapshot>(*known);snapshot->createdAt=std::chrono::steady_clock::now();snapshot->generation=storageGeneration.load();snapshot->removalGeneration=buildingRemovalEvents.load();snapshot->chests.clear();
+    for(const auto&prior:known->chests){
+        if(!prior.actor||!prior.inventory||g_Engine->GetObjectIdentity(prior.actor)!=prior.actorIdentity||
+           g_Engine->GetObjectIdentity(prior.inventory)!=prior.inventoryIdentity||
+           !g_Engine->IsObjectLive(prior.actor)||!g_Engine->IsObjectLive(prior.inventory)||
+           WasAdminStorageBuildingRemoved(prior.actor))continue;
+        bool destroying=false;if(g_Engine->ReadBoolProperty(prior.actor,"bActorIsBeingDestroyed",destroying)&&destroying)continue;
+        uintptr_t slots=0;int32_t count=0;if(!ReadSlots(prior.inventory,slots,count))continue;
+        SnapshotChest chest=prior;chest.customName=ReadCustomNameCached(chest.actor);chest.totalSlots=count;chest.items.clear();
+        for(int32_t slot=0;slot<count;++slot){
+            uintptr_t item=Mem::ReadPtr(slots+uintptr_t(slot)*8);if(!item||!g_Engine->IsA(item,"Item"))continue;
+            uintptr_t data=Mem::ReadPtr(item+0xB0);int quantity=Mem::ReadI32(item+0x58);if(!data||quantity<=0||quantity>1000000)continue;
+            const auto itemIdentity=g_Engine->GetObjectIdentity(item),dataIdentity=g_Engine->GetObjectIdentity(data);if(!itemIdentity||!dataIdentity)continue;
+            auto old=std::find_if(prior.items.begin(),prior.items.end(),[&](const auto&value){return value.slot==slot&&value.objectIdentity==itemIdentity&&value.dataIdentity==dataIdentity;});
+            SnapshotItem value;if(old!=prior.items.end())value=*old;else{value.key=g_Engine->GetObjectName(data);value.name=ItemDisplayName(data);value.icon="/assets/items/"+value.key+".png";value.maxStack=MaxStackSize(data);}
+            value.slot=slot;value.quantity=quantity;value.object=item;value.data=data;value.objectIdentity=itemIdentity;value.dataIdentity=dataIdentity;value.id=ItemId(chest.id,slot,value.key,quantity);chest.items.push_back(std::move(value));
+        }
+        snapshot->chests.push_back(std::move(chest));
+    }
+    return snapshot;
+}
+
 std::shared_ptr<const StorageSnapshot> BuildStorageSnapshot(const std::string&targetGuid,const std::string&adminGuid,bool allowCache){
     const auto started=std::chrono::steady_clock::now();const std::string cacheKey=targetGuid+'\n'+adminGuid;
-    // Native mutations and building-removal hooks advance the generations
-    // below, so ordinary page refreshes can reuse this snapshot. The timeout
-    // is only a fallback for inventory changes made directly in-game that do
-    // not pass through Zanik's mutation pipeline.
-    if(allowCache){std::shared_lock<std::shared_mutex> lock(snapshotMutex);auto found=snapshotCache.find(cacheKey);if(found!=snapshotCache.end()&&found->second&&std::chrono::steady_clock::now()-found->second->createdAt<std::chrono::seconds(30)&&found->second->generation==storageGeneration.load()&&found->second->world==g_Engine->GetWorld()&&found->second->worldIdentity==g_Engine->GetObjectIdentity(found->second->world)&&found->second->removalGeneration==buildingRemovalEvents.load()){++snapshotHits;return found->second;}}
-    ++snapshotMisses;auto snapshot=std::make_shared<StorageSnapshot>();snapshot->createdAt=std::chrono::steady_clock::now();snapshot->generation=storageGeneration.load();snapshot->removalGeneration=buildingRemovalEvents.load();snapshot->targetGuid=targetGuid;snapshot->adminGuid=adminGuid;snapshot->world=g_Engine?g_Engine->GetWorld():0;snapshot->worldIdentity=g_Engine&&snapshot->world?g_Engine->GetObjectIdentity(snapshot->world):0;
+    if(allowCache){
+        std::shared_ptr<const StorageSnapshot> known;{std::shared_lock<std::shared_mutex> lock(snapshotMutex);auto found=snapshotCache.find(cacheKey);if(found!=snapshotCache.end())known=found->second;}
+        const auto now=std::chrono::steady_clock::now();const bool valid=known&&known->generation==storageGeneration.load()&&known->world==g_Engine->GetWorld()&&known->worldIdentity==g_Engine->GetObjectIdentity(known->world)&&known->removalGeneration==buildingRemovalEvents.load();
+        if(valid&&now-known->createdAt<std::chrono::seconds(2)){++snapshotHits;return known;}
+        if(valid&&now-known->discoveredAt<std::chrono::seconds(30))if(auto refreshed=RefreshKnownStorageSnapshot(known)){std::unique_lock<std::shared_mutex> lock(snapshotMutex);snapshotCache[cacheKey]=refreshed;++snapshotHits;return refreshed;}
+    }
+    ++snapshotMisses;auto snapshot=std::make_shared<StorageSnapshot>();snapshot->createdAt=snapshot->discoveredAt=std::chrono::steady_clock::now();snapshot->generation=storageGeneration.load();snapshot->removalGeneration=buildingRemovalEvents.load();snapshot->targetGuid=targetGuid;snapshot->adminGuid=adminGuid;snapshot->world=g_Engine?g_Engine->GetWorld():0;snapshot->worldIdentity=g_Engine&&snapshot->world?g_Engine->GetObjectIdentity(snapshot->world):0;
     if(!g_Engine||!snapshot->world||!snapshot->worldIdentity)return {};
     std::unordered_map<uintptr_t,uintptr_t> owners,linked,inventories;const int32_t count=g_Engine->GetObjectCount();
     for(int32_t i=0;i<count;++i){uintptr_t object=g_Engine->GetObjectByIndex(i);if(!object)continue;const std::string name=g_Engine->GetObjectName(object);if(name.rfind("Default__",0)==0||name.find("GEN_VARIABLE")!=std::string::npos)continue;uintptr_t actor=Mem::ReadPtr(object+Offsets::UObject_Outer);if(!actor)continue;if(g_Engine->IsA(object,"OwnershipComponent"))owners[actor]=object;else if(g_Engine->IsA(object,"LinkedInventoryComponent"))linked[actor]=object;else if(g_Engine->IsA(object,"InventoryComponent"))inventories[actor]=object;}
@@ -368,7 +416,7 @@ bool IsUnlockCatalogKey(const std::string&key){return key.rfind("DA_Consumable_V
 bool AllowedCatalogKey(const std::string&key){return key.rfind("ITEM_",0)==0||(unlockCatalogCompatibility.load()==1&&IsUnlockCatalogKey(key))||(planCatalogCompatibility.load()==1&&PlanItemCatalog().keys.count(key));}
 bool UnlockCatalogAssetsValid(){
     static const char* required[]={"DA_Consumable_Vestige_Weapon_Club_Swingslash.png","DA_Consumable_Vestige_Weapon_Longbow_HunterStag.png","DA_Consumable_Vestige_Weapon_Staff_GrievingMoon.png","DA_Consumable_Vestige_Weapon_Staff_ToktzMejTal.png","DA_Consumable_Vestige_Weapon_Whip_Abysmal.png","DA_Consumabe_Mount_TerrorBird_02_04.png","DA_Consumabe_Mount_TerrorBird_02_02.png"};
-    const char* root=std::getenv("DW_WEB_ROOT");const std::string itemRoot=std::string(root&&*root?root:"/home/container/zanik/web")+"/items/";
+    const std::string itemRoot=RuntimePaths::WebRoot()+"/items/";
     for(const char*name:required){struct stat st{};std::string path=itemRoot+name;if(stat(path.c_str(),&st)!=0||st.st_size<1)return false;}return true;
 }
 uintptr_t FindCatalogData(const std::string&id,std::string*keyOut=nullptr){
@@ -429,7 +477,7 @@ void ProcessOneStorageAction(){
     if(!activeRequest){const auto tail=requestTail.load(std::memory_order_relaxed),head=requestHead.load(std::memory_order_acquire);if(tail==head)return;activeRequest=requestRing[tail%QueueCapacity];requestTail.store(tail+1,std::memory_order_release);if(!activeRequest)return;activeRequest->state.store(JobState::Running);activeRequest->updatedUnix.store(UnixNow());++runningJobs;}
     Request&r=*activeRequest;const bool rolling=r.state.load()==JobState::RollingBack;if((rolling&&r.rollbackIndex.load()==0)||(!rolling&&r.actionIndex.load()>=r.actions.size())){if(rolling){FinishJob(r,false,r.resultCode.load()==-5?-5:-2);}else if(r.finishAsFailure.load())FinishJob(r,false,r.resultCode.load()?r.resultCode.load():-2);else FinishJob(r,true,r.resultCode.load()==2?2:1);runningJobs.fetch_sub(1);activeRequest=nullptr;return;}
     const NativeAction action=rolling?r.rollback[r.rollbackIndex.load()-1]:r.actions[r.actionIndex.load()];const auto started=std::chrono::steady_clock::now();const bool ok=RunNativeAction(r,action);const auto micros=std::uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-started).count());auto& maximum=familyMaximum[size_t(action.family)];if(micros>maximum.load())maximum.store(micros);if(micros>maximumMicros.load())maximumMicros.store(micros);
-    if(micros>=1000){familyCircuitBroken[size_t(action.family)]=true;if(r.resultCode.load()==0)r.resultCode=2;}
+    PerformanceTrace::Record("storage",r.operation.c_str(),micros,r.adminId.c_str(),'p',"website");if(micros>=1000){familyCircuitBroken[size_t(action.family)]=true;if(r.resultCode.load()==0)r.resultCode=2;}
     if(ok){if(rolling)r.rollbackIndex.fetch_sub(1);else{r.actionIndex.fetch_add(1);if(action.kind==ActionKind::Move){NativeAction reverse=action;std::swap(reverse.source,reverse.destination);std::swap(reverse.sourceIdentity,reverse.destinationIdentity);std::swap(reverse.sourceSlot,reverse.destinationSlot);uintptr_t slots=0;int32_t count=0;if(ReadSlots(reverse.source,slots,count)&&reverse.sourceSlot>=0&&reverse.sourceSlot<count){reverse.item=Mem::ReadPtr(slots+uintptr_t(reverse.sourceSlot)*8);reverse.itemIdentity=g_Engine->GetObjectIdentity(reverse.item);reverse.itemData=reverse.item?Mem::ReadPtr(reverse.item+0xB0):0;reverse.itemDataIdentity=g_Engine->GetObjectIdentity(reverse.itemData);reverse.expectedQuantity=reverse.item?Mem::ReadI32(reverse.item+0x58):0;}reverse.family=OperationFamily::Rollback;r.rollback.push_back(reverse);}}return;}
     if(!rolling&&(r.renameTextConstructed||r.renameSetterConstructed)){r.finishAsFailure=true;r.actionIndex=r.renameSetterConstructed?r.actions.size()-2:r.actions.size()-1;return;}
     if(!rolling&&!r.rollback.empty()){++rollbackAttempts;r.rollbackIndex=r.rollback.size();r.state=JobState::RollingBack;return;}
@@ -437,6 +485,31 @@ void ProcessOneStorageAction(){
 }
 
 void WriteJump(unsigned char* at,uintptr_t target){at[0]=0x48;at[1]=0xB8;std::memcpy(at+2,&target,8);at[10]=0xFF;at[11]=0xE0;}
+void WriteRegisterPreservingJump(unsigned char*at,uintptr_t target){at[0]=0xff;at[1]=0x25;std::memset(at+2,0,4);std::memcpy(at+6,&target,8);}
+void UpdateMaximum(std::atomic<std::uint64_t>&maximum,std::uint64_t value){auto current=maximum.load(std::memory_order_relaxed);if(value>current)maximum.compare_exchange_strong(current,value,std::memory_order_relaxed);}
+void PublishObservedMutation(ObservedMutationEvent event,const std::chrono::steady_clock::time_point&captureStarted){
+    const auto sequence=observedMutationHead.fetch_add(1,std::memory_order_relaxed);auto&slot=observedMutationRing[sequence%ObservedMutationCapacity];std::uint8_t empty=0;
+    if(!slot.state.compare_exchange_strong(empty,1,std::memory_order_acquire)){nativeMutationDrops.fetch_add(1,std::memory_order_relaxed);return;}
+    event.captureMicros=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-captureStarted).count());slot.event=event;slot.state.store(2,std::memory_order_release);UpdateMaximum(nativeMutationCaptureMaximumMicros,event.captureMicros);
+}
+bool HookMoveItem(void*source,int sourceSlot,void*destination,int destinationSlot,void*controller,int quantity){
+    const auto started=std::chrono::steady_clock::now();const bool result=originalObservedMoveItem(source,sourceSlot,destination,destinationSlot,controller,quantity);const auto nativeMicros=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-started).count());
+    nativeMutationCalls.fetch_add(1,std::memory_order_relaxed);UpdateMaximum(nativeMutationMaximumMicros,nativeMicros);if(!suppressObservedMutation){const auto captureStarted=std::chrono::steady_clock::now();PublishObservedMutation({ObservedMutationKind::Move,reinterpret_cast<uintptr_t>(source),reinterpret_cast<uintptr_t>(destination),reinterpret_cast<uintptr_t>(controller),nativeMicros,0,result},captureStarted);}return result;
+}
+bool HookRemoveFromSlot(void*source,int slot,int quantity,void*controller){
+    const auto started=std::chrono::steady_clock::now();const bool result=originalObservedRemoveFromSlot(source,slot,quantity,controller);const auto nativeMicros=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-started).count());
+    nativeMutationCalls.fetch_add(1,std::memory_order_relaxed);UpdateMaximum(nativeMutationMaximumMicros,nativeMicros);if(!suppressObservedMutation){const auto captureStarted=std::chrono::steady_clock::now();PublishObservedMutation({ObservedMutationKind::Remove,reinterpret_cast<uintptr_t>(source),0,reinterpret_cast<uintptr_t>(controller),nativeMicros,0,result},captureStarted);}return result;
+}
+template<typename Function> bool InstallObservedMutationHook(uintptr_t moduleBase,uintptr_t moduleEnd,uintptr_t offset,const unsigned char*signature,std::size_t bytes,uintptr_t hook,Function&original){
+    if(original)return true;if(moduleBase+offset<moduleBase||moduleBase+offset+bytes>moduleEnd)return false;auto*target=reinterpret_cast<unsigned char*>(moduleBase+offset);if(std::memcmp(target,signature,bytes))return false;auto*trampoline=static_cast<unsigned char*>(mmap(nullptr,64,PROT_READ|PROT_WRITE|PROT_EXEC,MAP_PRIVATE|MAP_ANONYMOUS,-1,0));if(trampoline==MAP_FAILED)return false;std::memcpy(trampoline,target,bytes);WriteRegisterPreservingJump(trampoline+bytes,reinterpret_cast<uintptr_t>(target+bytes));original=reinterpret_cast<Function>(trampoline);long pageSize=sysconf(_SC_PAGESIZE);uintptr_t page=reinterpret_cast<uintptr_t>(target)&~(uintptr_t(pageSize)-1);if(mprotect(reinterpret_cast<void*>(page),size_t(pageSize),PROT_READ|PROT_WRITE|PROT_EXEC)!=0){original=nullptr;munmap(trampoline,64);return false;}unsigned char patch[RemoveFromSlotHookBytes];std::memset(patch,0x90,bytes);WriteJump(patch,hook);std::memcpy(target,patch,bytes);__builtin___clear_cache(reinterpret_cast<char*>(target),reinterpret_cast<char*>(target+bytes));mprotect(reinterpret_cast<void*>(page),size_t(pageSize),PROT_READ|PROT_EXEC);return true;
+}
+bool InstallObservedMutationHooks(uintptr_t moduleBase,uintptr_t moduleEnd,const StorageOffsets&offsets){
+    const unsigned char moveSignature[MoveItemHookBytes]={0x55,0x53,0x50,0x4c,0x89,0xc0,0x48,0x89,0xfb,0x4c,0x8b,0x17};
+    const unsigned char removeSignature[RemoveFromSlotHookBytes]={0x55,0x41,0x57,0x41,0x56,0x53,0x48,0x83,0xec,0x28,0x80,0xbf,0x68,0x02,0x00,0x00,0x00};
+    if(moduleBase+offsets.moveItem+sizeof(moveSignature)>moduleEnd||moduleBase+offsets.removeFromSlot+sizeof(removeSignature)>moduleEnd||std::memcmp(reinterpret_cast<void*>(moduleBase+offsets.moveItem),moveSignature,sizeof(moveSignature))||std::memcmp(reinterpret_cast<void*>(moduleBase+offsets.removeFromSlot),removeSignature,sizeof(removeSignature)))return false;
+    if(!InstallObservedMutationHook(moduleBase,moduleEnd,offsets.moveItem,moveSignature,sizeof(moveSignature),reinterpret_cast<uintptr_t>(&HookMoveItem),originalObservedMoveItem))return false;moveItem=originalObservedMoveItem;
+    if(!InstallObservedMutationHook(moduleBase,moduleEnd,offsets.removeFromSlot,removeSignature,sizeof(removeSignature),reinterpret_cast<uintptr_t>(&HookRemoveFromSlot),originalObservedRemoveFromSlot))return false;removeFromSlot=originalObservedRemoveFromSlot;observedMoveEntry.store(moduleBase+offsets.moveItem,std::memory_order_release);observedRemoveEntry.store(moduleBase+offsets.removeFromSlot,std::memory_order_release);return true;
+}
 void HookBuildingEndPlay(void* actor,int reason){
     if(reason==0){++buildingRemovalEvents;++snapshotInvalidations;storageGeneration.fetch_add(1);}
     originalBuildingEndPlay(actor,reason);
@@ -457,17 +530,22 @@ void HookEngineTick(void* actor,float delta,int levelTick,void* tickFunction){
         const auto elapsed=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now()-started).count());if(elapsed>maximum.load())maximum.store(elapsed);return elapsed;
     };
+    // Exactly one latency-sensitive consumer receives each engine tick. This
+    // is the aggregate budget: feature-local 250us limits are not additive.
+    // Four-way rotation still gives each background tracker several slices a
+    // second while preventing an admin mutation from sharing a frame with it.
+    static std::uint64_t phase=0,trackerPhase=0;const auto selected=phase++%4;const char*traceFeature="dispatcher";const char*traceOperation="idle";
     auto sectionStarted=std::chrono::steady_clock::now();
-    ProcessPlayerRecipeTracking();
-    ProcessPlayerQuestTracking();
-    ProcessPlayerActivityDiscoveryTracking();
-    measure(sectionStarted,maximumRecipeTickMicros);sectionStarted=std::chrono::steady_clock::now();
-    ProcessOneCustomName();
-    measure(sectionStarted,maximumCustomNameTickMicros);sectionStarted=std::chrono::steady_clock::now();
-    if(pendingCount.load(std::memory_order_acquire)&&std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-tickStarted).count()<250)ProcessOneStorageAction();
-    measure(sectionStarted,maximumStorageTickMicros);sectionStarted=std::chrono::steady_clock::now();
-    ProcessAdminGravestoneRequests();
-    measure(sectionStarted,maximumGravestoneTickMicros);
+    if(selected==0){
+        switch(trackerPhase++%3){case 0:traceFeature="recipes";traceOperation="player recipe scan";ProcessPlayerRecipeTracking();break;case 1:traceFeature="quests";traceOperation="player quest scan";ProcessPlayerQuestTracking();break;default:traceFeature="activity";traceOperation="player unlock scan";ProcessPlayerActivityDiscoveryTracking();break;}
+        const auto sectionElapsed=measure(sectionStarted,maximumRecipeTickMicros);PerformanceTrace::Record(traceFeature,traceOperation,sectionElapsed);
+    }else if(selected==1){
+        ProcessOneCustomName();const auto sectionElapsed=measure(sectionStarted,maximumCustomNameTickMicros);PerformanceTrace::Record("storage","in-game name observation",sectionElapsed,nullptr,0,"game");
+    }else if(selected==2&&pendingCount.load(std::memory_order_acquire)){
+        ProcessOneStorageAction();measure(sectionStarted,maximumStorageTickMicros);
+    }else{
+        suppressObservedMutation=true;ProcessAdminGravestoneRequests();suppressObservedMutation=false;const auto sectionElapsed=measure(sectionStarted,maximumGravestoneTickMicros);PerformanceTrace::Record("gravestones","lifecycle or mutation",sectionElapsed);
+    }
     const auto elapsed=measure(tickStarted,maximumTickMicros);auto current=performanceMaximumZanikMicros.load();while(elapsed>current&&!performanceMaximumZanikMicros.compare_exchange_weak(current,elapsed)){}if(elapsed>=1000)++slowTickCalls;
 }
 }
@@ -539,7 +617,7 @@ bool InitializeAdminStorage(uintptr_t moduleBase,uintptr_t moduleEnd){
     const bool serverRenameValid=!serverRenameOffset||!std::memcmp(reinterpret_cast<void*>(moduleBase+serverRenameOffset),serverRenameSig,sizeof(serverRenameSig));
     renameCompatibility=(!std::memcmp(reinterpret_cast<void*>(moduleBase+offsets.renameGet),renameGetSig,sizeof(renameGetSig))&&!std::memcmp(reinterpret_cast<void*>(moduleBase+offsets.renameSetter),renameSetterSig,sizeof(renameSetterSig))&&!std::memcmp(reinterpret_cast<void*>(moduleBase+offsets.renameSet),renameSetSig,sizeof(renameSetSig))&&serverRenameValid)?1:-1;
     if(renameCompatibility.load()!=1)LogMessage("Storage rename ABI validation failed for this game build; rename remains disabled");
-    catalogCompatibility=1;unlockCatalogCompatibility=UnlockCatalogAssetsValid()?1:-1;const auto& buildCatalog=AuthoritativeBuildingCatalog();buildingTaxonomyCompatibility=buildCatalog.valid?1:-1;buildingIconsCompatibility=buildCatalog.iconsValid?1:-1;buildingRequirementsCompatibility=batchCompatibility.load()==1?1:-1;craftingRecipeCompatibility=batchCompatibility.load()==1?1:-1;if(unlockCatalogCompatibility.load()!=1)LogMessage("Vestige and mount unlock catalog assets unavailable; ordinary item catalog remains enabled");if(buildingTaxonomyCompatibility.load()!=1)LogMessage("Authoritative building catalogue is invalid; crafting recipes remain enabled");if(buildingIconsCompatibility.load()!=1)LogMessage("One or more authoritative building catalogue icons are unavailable");removalTrackingCompatibility=InstallBuildingEndPlayHook(moduleBase,moduleEnd,offsets.buildingEndPlay)?1:-1;if(removalTrackingCompatibility.load()!=1)LogMessage("Immediate storage removal tracking unavailable; storage editing remains enabled with ordinary actor reconciliation");dispatcherCompatibility=1;compatibility=1;return true;
+    catalogCompatibility=1;unlockCatalogCompatibility=UnlockCatalogAssetsValid()?1:-1;const auto& buildCatalog=AuthoritativeBuildingCatalog();buildingTaxonomyCompatibility=buildCatalog.valid?1:-1;buildingIconsCompatibility=buildCatalog.iconsValid?1:-1;buildingRequirementsCompatibility=batchCompatibility.load()==1?1:-1;craftingRecipeCompatibility=batchCompatibility.load()==1?1:-1;if(unlockCatalogCompatibility.load()!=1)LogMessage("Vestige and mount unlock catalog assets unavailable; ordinary item catalog remains enabled");if(buildingTaxonomyCompatibility.load()!=1)LogMessage("Authoritative building catalogue is invalid; crafting recipes remain enabled");if(buildingIconsCompatibility.load()!=1)LogMessage("One or more authoritative building catalogue icons are unavailable");removalTrackingCompatibility=InstallBuildingEndPlayHook(moduleBase,moduleEnd,offsets.buildingEndPlay)?1:-1;if(removalTrackingCompatibility.load()!=1)LogMessage("Immediate storage removal tracking unavailable; storage editing remains enabled with ordinary actor reconciliation");nativeMutationCaptureCompatibility=InstallObservedMutationHooks(moduleBase,moduleEnd,offsets)?1:-1;if(nativeMutationCaptureCompatibility.load()!=1)LogMessage("Native in-game inventory mutation attribution unavailable; website storage editing remains enabled");else LogMessage("Native in-game inventory mutation attribution armed");dispatcherCompatibility=1;compatibility=1;return true;
 }
 bool InitializeAdminStorageHookEarly(){
     if(earlyHookInstalled.load())return true;
@@ -583,7 +661,7 @@ bool BuildMutationPlan(const std::string&operation,const std::string&adminGuid,c
     if(r.successMessage.empty())r.successMessage="Storage updated";r.rollback.reserve(r.actions.size());return true;
 }
 bool SubmitAdminStorageMutation(const std::string&operation,const std::string&adminGuid,const std::string&adminId,const std::string&targetGuid,const std::string&targetId,const std::string&chestId,const std::string&itemId,const std::string&catalogId,int quantity,const std::string&session,std::string&requestId,std::string&result,const std::string&destinationChestId,int destinationSlot,const std::vector<std::string>&itemIds,const std::string&customName){
-    (void)adminId;(void)targetId;if(compatibility.load()!=1){result="Storage editing compatibility unavailable";return false;}auto r=std::make_shared<Request>();r->id=NewRequestId();r->operation=operation;r->session=session;r->conflictKey=targetGuid;r->updatedUnix=UnixNow();if(!BuildMutationPlan(operation,adminGuid,targetGuid,chestId,itemId,catalogId,quantity,destinationChestId,destinationSlot,itemIds,customName,*r,result))return false;
+    if(compatibility.load()!=1){result="Storage editing compatibility unavailable";return false;}auto r=std::make_shared<Request>();r->id=NewRequestId();r->operation=operation;r->session=session;r->conflictKey=targetGuid;r->adminId=adminId;r->targetId=targetId;r->updatedUnix=UnixNow();if(!BuildMutationPlan(operation,adminGuid,targetGuid,chestId,itemId,catalogId,quantity,destinationChestId,destinationSlot,itemIds,customName,*r,result))return false;
     {std::lock_guard<std::mutex> lock(jobsMutex);const auto now=UnixNow();for(auto it=jobs.begin();it!=jobs.end();){auto state=it->second->state.load();if((state==JobState::Completed||state==JobState::Failed)&&now>it->second->updatedUnix.load()+300)it=jobs.erase(it);else{if((state==JobState::Queued||state==JobState::Running||state==JobState::RollingBack)&&it->second->conflictKey==r->conflictKey){result="Another storage operation is already pending";return false;}++it;}}const auto head=requestHead.load(std::memory_order_relaxed),tail=requestTail.load(std::memory_order_acquire);if(head-tail>=QueueCapacity){++queueDrops;result="Storage mutation queue is full";return false;}jobs[r->id]=r;requestRing[head%QueueCapacity]=r.get();requestHead.store(head+1,std::memory_order_release);pendingCount.fetch_add(1);++queued;}
     requestId=r->id;result="Storage operation queued";return true;
 }
@@ -607,10 +685,23 @@ std::string GetAdminPlayerStorageJson(const std::string&characterGuid,const std:
 }
 void InvalidateAdminStorageSnapshots(){++snapshotInvalidations;storageGeneration.fetch_add(1);}
 PerformanceTickSnapshot TakePerformanceTickSnapshot(){PerformanceTickSnapshot result;result.compatibility=dispatcherCompatibility.load();result.frames=performanceFrames.exchange(0);const auto engine=performanceMaximumFrameMicros.exchange(0),zanik=performanceMaximumZanikMicros.exchange(0);result.maximumEngineTickMilliseconds=result.frames?double(engine)/1000.0:-1;result.maximumZanikMilliseconds=result.frames?double(zanik)/1000.0:-1;result.hitches=performanceHitches.exchange(0);return result;}
-AdminStorageDiagnostics GetAdminStorageDiagnostics(){AdminStorageDiagnostics d;d.compatibility=compatibility.load();d.dispatcherCompatibility=dispatcherCompatibility.load();d.mutationCompatibility=compatibility.load();d.batchCompatibility=batchCompatibility.load();d.organizationCompatibility=compatibility.load();d.renameCompatibility=renameCompatibility.load();d.removalTrackingCompatibility=removalTrackingCompatibility.load();d.catalogCompatibility=catalogCompatibility.load();d.unlockCatalogCompatibility=unlockCatalogCompatibility.load();d.planCatalogCompatibility=planCatalogCompatibility.load();d.planCatalogItems=PlanItemCatalog().keys.size();d.buildingTaxonomyCompatibility=buildingTaxonomyCompatibility.load();d.buildingRequirementsCompatibility=buildingRequirementsCompatibility.load();d.buildingIconsCompatibility=buildingIconsCompatibility.load();d.craftingRecipeCompatibility=craftingRecipeCompatibility.load();const auto& catalog=AuthoritativeBuildingCatalog();d.expectedBuildingPieces=catalog.expectedPieces;d.resolvedBuildingPieces=resolvedBuildingPieces.load();d.unavailableBuildingPieces=unavailableBuildingPieces.load();d.buildingTabs=catalog.tabs.size();for(const auto&tab:catalog.tabs){d.buildingSections+=tab.sections.size();for(const auto&section:tab.sections)d.buildingReferences+=section.pieces.size();}d.queuedRequests=queued.load();d.acceptedMutations=accepted.load();d.rejectedRequests=rejected.load();d.staleRequests=stale.load();d.maximumExecutionMicroseconds=maximumMicros.load();d.tickCalls=tickCalls.load();d.maximumTickMicroseconds=maximumTickMicros.load();d.slowTickCalls=slowTickCalls.load();d.maximumRecipeTickMicroseconds=maximumRecipeTickMicros.load();d.maximumCustomNameTickMicroseconds=maximumCustomNameTickMicros.load();d.maximumStorageTickMicroseconds=maximumStorageTickMicros.load();d.maximumGravestoneTickMicroseconds=maximumGravestoneTickMicros.load();d.snapshotCompatibility=g_Engine?1:-1;d.singleItemCompatibility=familyCircuitBroken[size_t(OperationFamily::SingleItem)]?-1:compatibility.load();d.slotMovementCompatibility=familyCircuitBroken[size_t(OperationFamily::SlotMovement)]?-1:compatibility.load();d.batchAdditionCompatibility=familyCircuitBroken[size_t(OperationFamily::BatchAddition)]?-1:batchCompatibility.load();d.batchMovementCompatibility=familyCircuitBroken[size_t(OperationFamily::BatchMovement)]?-1:compatibility.load();d.deletionCompatibility=familyCircuitBroken[size_t(OperationFamily::Deletion)]?-1:compatibility.load();d.renameCompatibility=familyCircuitBroken[size_t(OperationFamily::Rename)]?-1:renameCompatibility.load();d.rollbackCompatibility=familyCircuitBroken[size_t(OperationFamily::Rollback)]?-1:compatibility.load();d.snapshotGenerations=snapshotGenerations.load();d.snapshotCacheHits=snapshotHits.load();d.snapshotCacheMisses=snapshotMisses.load();d.snapshotInvalidations=snapshotInvalidations.load();d.maximumSnapshotPreparationMicroseconds=maximumSnapshotMicros.load();d.queueDepth=pendingCount.load();d.queueDrops=queueDrops.load();d.runningJobs=runningJobs.load();d.completedJobs=completedJobs.load();d.failedJobs=failedJobs.load();d.staleIdentities=staleIdentities.load();d.worldChanges=worldChanges.load();d.rollbackAttempts=rollbackAttempts.load();d.rollbackFailures=rollbackFailures.load();d.singleItemMaximumMicroseconds=familyMaximum[size_t(OperationFamily::SingleItem)].load();d.slotMovementMaximumMicroseconds=familyMaximum[size_t(OperationFamily::SlotMovement)].load();d.batchAdditionMaximumMicroseconds=familyMaximum[size_t(OperationFamily::BatchAddition)].load();d.batchMovementMaximumMicroseconds=familyMaximum[size_t(OperationFamily::BatchMovement)].load();d.deletionMaximumMicroseconds=familyMaximum[size_t(OperationFamily::Deletion)].load();d.renameMaximumMicroseconds=familyMaximum[size_t(OperationFamily::Rename)].load();d.rollbackMaximumMicroseconds=familyMaximum[size_t(OperationFamily::Rollback)].load();for(size_t i=0;i<size_t(OperationFamily::Count);++i)if(familyCircuitBroken[i])d.circuitBreakers|=1u<<i;return d;}
+void UpdateAdminStorageMutationPlayers(const std::vector<PlayerInfo>&players){std::atomic_store(&observedMutationPlayers,std::make_shared<const std::vector<PlayerInfo>>(players));}
+bool ResolveAdminInventoryMutationCallables(uintptr_t moveEntry,uintptr_t removeEntry,uintptr_t&moveCallable,uintptr_t&removeCallable){
+    moveCallable=0;removeCallable=0;if(nativeMutationCaptureCompatibility.load(std::memory_order_acquire)!=1||moveEntry!=observedMoveEntry.load(std::memory_order_acquire)||removeEntry!=observedRemoveEntry.load(std::memory_order_acquire)||!originalObservedMoveItem||!originalObservedRemoveFromSlot)return false;moveCallable=reinterpret_cast<uintptr_t>(originalObservedMoveItem);removeCallable=reinterpret_cast<uintptr_t>(originalObservedRemoveFromSlot);return true;
+}
+void DrainAdminStorageMutationTraces(){
+    auto players=std::atomic_load(&observedMutationPlayers);for(auto&slot:observedMutationRing){if(slot.state.load(std::memory_order_acquire)!=2)continue;const auto event=slot.event;slot.state.store(0,std::memory_order_release);uintptr_t sourceOuter=0,destinationOuter=0;if(g_Engine&&event.source&&g_Engine->IsObjectLive(event.source))sourceOuter=Mem::ReadPtr(event.source+Offsets::UObject_Outer);if(g_Engine&&event.destination&&g_Engine->IsObjectLive(event.destination))destinationOuter=Mem::ReadPtr(event.destination+Offsets::UObject_Outer);
+        const PlayerInfo*player=nullptr;for(const auto&candidate:*players)if((event.controller&&candidate.controllerPtr==event.controller)||(sourceOuter&&(candidate.controllerPtr==sourceOuter||candidate.pawnPtr==sourceOuter))||(destinationOuter&&(candidate.controllerPtr==destinationOuter||candidate.pawnPtr==destinationOuter))){player=&candidate;break;}
+        const auto isGrave=[&](uintptr_t outer){return outer&&g_Engine&&g_Engine->IsObjectLive(outer)&&(g_Engine->IsA(outer,"Gravestone")||g_Engine->GetObjectName(outer).find("Grave")!=std::string::npos);};
+        const auto isStorage=[&](uintptr_t inventory,uintptr_t outer){if(!g_Engine)return false;if(inventory&&g_Engine->IsObjectLive(inventory)&&g_Engine->IsA(inventory,"LinkedInventoryComponent"))return true;if(!outer||!g_Engine->IsObjectLive(outer))return false;const auto name=g_Engine->GetObjectName(outer);return name.rfind("BP_BaseBuilding_",0)==0||name.find("Chest")!=std::string::npos||name.find("Storage")!=std::string::npos;};
+        const bool grave=isGrave(sourceOuter)||isGrave(destinationOuter),storage=!grave&&(isStorage(event.source,sourceOuter)||isStorage(event.destination,destinationOuter));const char*feature=grave?"gravestones":(storage?"storage":"inventory");const char*operation=event.kind==ObservedMutationKind::Move?(event.succeeded?"in-game item move":"failed in-game item move"):(event.succeeded?"in-game item removal":"failed in-game item removal");
+        if(player&&!player->characterGuid.empty()){nativeMutationAttributed.fetch_add(1,std::memory_order_relaxed);PerformanceTrace::Record(feature,operation,event.nativeMicros,player->characterGuid.c_str(),'g',"game",PerformanceTrace::TimingScope::NativeGame);if(event.captureMicros>=100)PerformanceTrace::Record("diagnostics","inventory mutation trace capture",event.captureMicros,player->characterGuid.c_str(),'g',"game");}else{nativeMutationUnattributed.fetch_add(1,std::memory_order_relaxed);PerformanceTrace::Record(feature,operation,event.nativeMicros,nullptr,0,"game",PerformanceTrace::TimingScope::NativeGame);}
+    }
+}
+AdminStorageDiagnostics GetAdminStorageDiagnostics(){AdminStorageDiagnostics d;d.compatibility=compatibility.load();d.dispatcherCompatibility=dispatcherCompatibility.load();d.mutationCompatibility=compatibility.load();d.nativeMutationCaptureCompatibility=nativeMutationCaptureCompatibility.load();d.batchCompatibility=batchCompatibility.load();d.organizationCompatibility=compatibility.load();d.renameCompatibility=renameCompatibility.load();d.removalTrackingCompatibility=removalTrackingCompatibility.load();d.catalogCompatibility=catalogCompatibility.load();d.unlockCatalogCompatibility=unlockCatalogCompatibility.load();d.planCatalogCompatibility=planCatalogCompatibility.load();d.planCatalogItems=PlanItemCatalog().keys.size();d.buildingTaxonomyCompatibility=buildingTaxonomyCompatibility.load();d.buildingRequirementsCompatibility=buildingRequirementsCompatibility.load();d.buildingIconsCompatibility=buildingIconsCompatibility.load();d.craftingRecipeCompatibility=craftingRecipeCompatibility.load();const auto& catalog=AuthoritativeBuildingCatalog();d.expectedBuildingPieces=catalog.expectedPieces;d.resolvedBuildingPieces=resolvedBuildingPieces.load();d.unavailableBuildingPieces=unavailableBuildingPieces.load();d.buildingTabs=catalog.tabs.size();for(const auto&tab:catalog.tabs){d.buildingSections+=tab.sections.size();for(const auto&section:tab.sections)d.buildingReferences+=section.pieces.size();}d.queuedRequests=queued.load();d.acceptedMutations=accepted.load();d.rejectedRequests=rejected.load();d.staleRequests=stale.load();d.maximumExecutionMicroseconds=maximumMicros.load();d.tickCalls=tickCalls.load();d.maximumTickMicroseconds=maximumTickMicros.load();d.slowTickCalls=slowTickCalls.load();d.maximumRecipeTickMicroseconds=maximumRecipeTickMicros.load();d.maximumCustomNameTickMicroseconds=maximumCustomNameTickMicros.load();d.maximumStorageTickMicroseconds=maximumStorageTickMicros.load();d.maximumGravestoneTickMicroseconds=maximumGravestoneTickMicros.load();d.snapshotCompatibility=g_Engine?1:-1;d.singleItemCompatibility=familyCircuitBroken[size_t(OperationFamily::SingleItem)]?-1:compatibility.load();d.slotMovementCompatibility=familyCircuitBroken[size_t(OperationFamily::SlotMovement)]?-1:compatibility.load();d.batchAdditionCompatibility=familyCircuitBroken[size_t(OperationFamily::BatchAddition)]?-1:batchCompatibility.load();d.batchMovementCompatibility=familyCircuitBroken[size_t(OperationFamily::BatchMovement)]?-1:compatibility.load();d.deletionCompatibility=familyCircuitBroken[size_t(OperationFamily::Deletion)]?-1:compatibility.load();d.renameCompatibility=familyCircuitBroken[size_t(OperationFamily::Rename)]?-1:renameCompatibility.load();d.rollbackCompatibility=familyCircuitBroken[size_t(OperationFamily::Rollback)]?-1:compatibility.load();d.snapshotGenerations=snapshotGenerations.load();d.snapshotCacheHits=snapshotHits.load();d.snapshotCacheMisses=snapshotMisses.load();d.snapshotInvalidations=snapshotInvalidations.load();d.maximumSnapshotPreparationMicroseconds=maximumSnapshotMicros.load();d.queueDepth=pendingCount.load();d.queueDrops=queueDrops.load();d.runningJobs=runningJobs.load();d.completedJobs=completedJobs.load();d.failedJobs=failedJobs.load();d.staleIdentities=staleIdentities.load();d.worldChanges=worldChanges.load();d.rollbackAttempts=rollbackAttempts.load();d.rollbackFailures=rollbackFailures.load();d.singleItemMaximumMicroseconds=familyMaximum[size_t(OperationFamily::SingleItem)].load();d.slotMovementMaximumMicroseconds=familyMaximum[size_t(OperationFamily::SlotMovement)].load();d.batchAdditionMaximumMicroseconds=familyMaximum[size_t(OperationFamily::BatchAddition)].load();d.batchMovementMaximumMicroseconds=familyMaximum[size_t(OperationFamily::BatchMovement)].load();d.deletionMaximumMicroseconds=familyMaximum[size_t(OperationFamily::Deletion)].load();d.renameMaximumMicroseconds=familyMaximum[size_t(OperationFamily::Rename)].load();d.rollbackMaximumMicroseconds=familyMaximum[size_t(OperationFamily::Rollback)].load();d.nativeMutationCalls=nativeMutationCalls.load();d.nativeMutationAttributed=nativeMutationAttributed.load();d.nativeMutationUnattributed=nativeMutationUnattributed.load();d.nativeMutationDrops=nativeMutationDrops.load();d.nativeMutationMaximumMicroseconds=nativeMutationMaximumMicros.load();d.nativeMutationCaptureMaximumMicroseconds=nativeMutationCaptureMaximumMicros.load();for(size_t i=0;i<size_t(OperationFamily::Count);++i)if(familyCircuitBroken[i])d.circuitBreakers|=1u<<i;return d;}
 std::string GetAdminStorageCatalogJson(){
     if(compatibility.load()!=1||!g_Engine)return {};using GetDisplayStringFn=const FString*(*)(const void*);auto display=reinterpret_cast<GetDisplayStringFn>(g_Engine->GetModuleBase()+DisplayTextOffset());
-    const char* root=std::getenv("DW_WEB_ROOT");const std::string itemRoot=std::string(root&&*root?root:"/home/container/zanik/web")+"/items/";std::ostringstream out;out<<"{\"items\":[";bool first=true;int count=0;const int32_t objects=g_Engine->GetObjectCount();
+    const std::string itemRoot=RuntimePaths::WebRoot()+"/items/";std::ostringstream out;out<<"{\"items\":[";bool first=true;int count=0;const int32_t objects=g_Engine->GetObjectCount();
     for(int32_t i=0;i<objects;++i){uintptr_t data=g_Engine->GetObjectByIndex(i);if(!data||!g_Engine->IsA(data,"ItemData"))continue;std::string key=g_Engine->GetObjectName(data);if(!AllowedCatalogKey(key))continue;std::string lower=key;std::transform(lower.begin(),lower.end(),lower.begin(),[](unsigned char c){return char(std::tolower(c));});if(lower.find("test")!=std::string::npos||lower.find("debug")!=std::string::npos||lower.find("developer")!=std::string::npos||lower.find("deprecated")!=std::string::npos||lower.find("_old")!=std::string::npos)continue;std::string icon=itemRoot+key+".png";struct stat st{};if(stat(icon.c_str(),&st)!=0||st.st_size<1)continue;std::string name;const FString* text=display(reinterpret_cast<const void*>(data+0x68));if(text&&Mem::Readable(text,sizeof(FString)))name=g_Engine->ReadFString(reinterpret_cast<uintptr_t>(text));if(name.empty())continue;int maxStack=MaxStackSize(data);auto meta=CatalogMetadata(key,name);if(!first)out<<',';first=false;++count;out<<"{\"id\":\""<<CatalogId(key)<<"\",\"name\":\""<<Escape(name)<<"\",\"icon\":\"/assets/items/"<<Escape(key)<<".png\",\"maxStack\":"<<maxStack<<",\"stackable\":"<<(maxStack>1?"true":"false")<<",\"category\":\""<<Escape(meta.category)<<"\",\"categoryOrder\":"<<meta.categoryOrder<<",\"tier\":"<<(meta.tier?std::to_string(meta.tier):"null")<<",\"basePowerLevel\":"<<(meta.tier?std::to_string(meta.tier):"null")<<",\"recipeOrder\":"<<meta.recipeOrder<<",\"aliases\":[\""<<Escape(meta.aliases)<<"\"]}";}
     out<<"],\"count\":"<<count<<'}';return out.str();
 }

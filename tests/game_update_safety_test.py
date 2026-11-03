@@ -6,6 +6,29 @@ from manager.zanik_manager.lifecycle import PterodactylProvider
 from manager.zanik_manager.pterodactyl import PterodactylClient, Response
 
 class StartupSafetyTests(unittest.TestCase):
+    def test_wrapper_update_requires_startup_update_only_when_changing_auto_update(self):
+        base = {"control.start", "control.stop", "file.read", "file.read-content",
+                "file.create", "file.update", "startup.read"}
+        details = {"permissions": sorted(base)}
+        with tempfile.TemporaryDirectory() as temporary:
+            provider = PterodactylProvider(object(), JournalStore(pathlib.Path(temporary)))
+            provider.preflight("dev", "wrapper-game-update", details)
+            with self.assertRaisesRegex(RuntimeError, "startup.update"):
+                provider.preflight("dev", "wrapper-game-update-auto-update", details)
+            provider.preflight("dev", "wrapper-game-update-auto-update",
+                               {"permissions": sorted(base | {"startup.update"})})
+
+    def test_replacement_update_keeps_full_startup_and_file_permissions(self):
+        permissions = {"control.start", "control.stop", "file.read", "file.read-content",
+                       "file.create", "file.update", "file.delete", "startup.read"}
+        with tempfile.TemporaryDirectory() as temporary:
+            provider = PterodactylProvider(object(), JournalStore(pathlib.Path(temporary)))
+            with self.assertRaisesRegex(RuntimeError, "startup.update"):
+                provider.preflight("dev", "replacement-game-update",
+                                   {"permissions": sorted(permissions)})
+            provider.preflight("dev", "replacement-game-update",
+                               {"permissions": sorted(permissions | {"startup.update"})})
+
     def test_startup_variable_is_normalized_without_other_values(self):
         def transport(method,url,headers,body,timeout):
             return Response(200,json.dumps({"data":[
