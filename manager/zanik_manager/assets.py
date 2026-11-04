@@ -812,7 +812,7 @@ class AssetDeployer:
         report = None
         while time.monotonic() < deadline:
             try:
-                value = json.loads(self.provider.client.read_file(server_id, report_path))
+                value = json.loads(self.provider._read_file_once(server_id, report_path))
                 if value.get("requestId") == request_id:
                     report = value
                     break

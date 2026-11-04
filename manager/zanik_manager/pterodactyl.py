@@ -77,17 +77,33 @@ def direct_transport(method: str, url: str, headers: dict[str, str], body: bytes
 class PterodactylClient:
     def __init__(self, origin: str, token: str, transport: Transport = urllib_transport,
                  retry_seconds: float = 60.0, cancelled: Callable[[], bool] = lambda: False,
-                 status: Callable[[str], None] = lambda _message: None):
+                 status: Callable[[str], None] = lambda _message: None,
+                 max_transient_retries: int | None = None):
+        if max_transient_retries is not None and max_transient_retries < 0:
+            raise ValueError("Transient retry limit cannot be negative")
         self.origin = origin.rstrip("/")
         self.token = token
         self.transport = transport
         self.retry_seconds = retry_seconds
         self.cancelled = cancelled
         self.status = status
+        self.max_transient_retries = max_transient_retries
+
+    @staticmethod
+    def _request_context(method: str, path: str) -> str:
+        if "/files/contents" in path: return "reading a server file"
+        if "/files/download" in path: return "requesting a server-file download"
+        if "/files/list" in path: return "listing server files"
+        if "/resources" in path: return "reading server status"
+        if path.endswith("/power"): return "changing server power state"
+        if "/startup" in path: return "reading or changing server startup settings"
+        return f"performing a panel {method.upper()} request"
 
     def _transport_with_retry(self, method: str, url: str, headers: dict[str, str],
                               body: bytes | None, timeout: float,
-                              retry_statuses: frozenset[int] = TRANSIENT_STATUSES) -> Response:
+                              retry_statuses: frozenset[int] = TRANSIENT_STATUSES,
+                              context: str = "performing a panel request") -> Response:
+        retries = 0
         while True:
             try:
                 response = self.transport(method, url, headers, body, timeout)
@@ -96,15 +112,21 @@ class PterodactylClient:
                     raise
                 if self.cancelled():
                     raise PterodactylError("Operation cancelled while waiting for the panel") from error
-                self.status("The panel is temporarily unreachable. Retrying in 60 seconds…")
+                if self.max_transient_retries is not None and retries >= self.max_transient_retries:
+                    raise
+                retries += 1
+                self.status(f"The panel is temporarily unreachable while {context}. Retrying in 60 seconds…")
                 time.sleep(self.retry_seconds)
                 continue
             if response.status not in retry_statuses:
                 return response
             if self.cancelled():
                 raise PterodactylError("Operation cancelled while waiting for the panel", response.status)
+            if self.max_transient_retries is not None and retries >= self.max_transient_retries:
+                return response
+            retries += 1
             self.status(
-                f"The panel or server node is temporarily unavailable (HTTP {response.status}). "
+                f"The panel or server node is temporarily unavailable while {context} (HTTP {response.status}). "
                 "Retrying in 60 seconds…"
             )
             time.sleep(self.retry_seconds)
@@ -123,7 +145,9 @@ class PterodactylClient:
             headers["Content-Type"] = "application/json"
         elif raw is not None:
             headers["Content-Type"] = "application/octet-stream"
-        response = self._transport_with_retry(method, url, headers, body, timeout, retry_statuses)
+        response = self._transport_with_retry(
+            method, url, headers, body, timeout, retry_statuses,
+            self._request_context(method, path))
         if response.status < 200 or response.status >= 300:
             detail = ""
             try:
@@ -258,8 +282,9 @@ class PterodactylClient:
         url = details.get("url")
         if not url:
             raise PterodactylError("Panel did not return a file download URL")
-        response = self._transport_with_retry("GET", url, {"Accept": "application/octet-stream",
-                                                             "User-Agent": USER_AGENT}, None, 300.0)
+        response = self._transport_with_retry(
+            "GET", url, {"Accept": "application/octet-stream", "User-Agent": USER_AGENT},
+            None, 300.0, context="downloading a server file")
         if response.status < 200 or response.status >= 300:
             raise PterodactylError(f"File download failed with HTTP {response.status}", response.status)
         return response.body
@@ -301,8 +326,9 @@ class PterodactylClient:
         upload_headers = {"Accept": "*/*", "Content-Type": f"multipart/form-data; boundary={boundary}",
                           "User-Agent": USER_AGENT}
         if upload_transport is self.transport:
-            response = self._transport_with_retry("POST", upload_url, upload_headers,
-                                                  prefix + content + suffix, 300.0)
+            response = self._transport_with_retry(
+                "POST", upload_url, upload_headers, prefix + content + suffix, 300.0,
+                context="uploading a server file")
         else:
             while True:
                 try:

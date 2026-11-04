@@ -97,7 +97,11 @@ with tempfile.TemporaryDirectory() as temporary:
         csrf = first_login["csrf"]
 
         with first.open(base + "/admin/sessions", timeout=3) as response:
-            assert b"Admin sessions" in response.read()
+            admin_page = response.read()
+            assert b"Admin sessions" in admin_page
+            assert b'id="refreshSessions"' in admin_page
+            assert b"ZanikPolling.add('admin-sessions'" not in admin_page
+            assert b"renderPlayers(selected)" in admin_page
         with first.open(base + "/api/admin/link-manager", timeout=3) as response:
             manager = json.loads(response.read())
         assert manager["players"]["count"] == 2

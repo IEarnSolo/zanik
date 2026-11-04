@@ -17,7 +17,7 @@ from .config import content_hash
 from .game_updates import INTERVAL_SECONDS, PublicSteamBuildChecker, installed_build
 from .journal import JournalStore, OperationJournal
 from .payload_contract import CONTRACT_SCHEMA_VERSION, validate_contract
-from .pterodactyl import PterodactylClient, PterodactylError, api_file_path
+from .pterodactyl import PterodactylClient, PterodactylError, TRANSIENT_STATUSES, api_file_path
 from .provider import ServerProvider
 
 GAME_RELATIVE = "RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping"
@@ -115,6 +115,11 @@ class PterodactylProvider(ServerProvider):
         callback = getattr(self.client, "status", None)
         if callback:
             callback(message)
+
+    def _read_file_once(self, server_id: str, path: str) -> bytes:
+        """Probe an optional/pending file without entering the operation-wide retry loop."""
+        reader = getattr(self.client, "read_file_once", self.client.read_file)
+        return reader(server_id, path)
 
     def preflight(self, server_id: str, operation: str, server: dict | None = None) -> None:
         required={
@@ -229,6 +234,12 @@ class PterodactylProvider(ServerProvider):
 
     def _path(self, root: str, relative: str) -> str:
         return root.rstrip("/") + "/" + relative.lstrip("/")
+
+    def _read_payload_entry(self, server_id: str, path: str, entry: PayloadEntry) -> bytes:
+        """Use Wings' signed download route when a package file exceeds its editor limit."""
+        if entry.size > 1024 * 1024:
+            return self.client.download_file(server_id, path)
+        return self.client.read_file(server_id, path)
 
     def _mkdir(self, server_id: str, path: str) -> None:
         current = "/"
@@ -480,7 +491,7 @@ class PterodactylProvider(ServerProvider):
             data = payload.read(name)
             self.client.upload(server_id, directory, PurePosixPath(name).name, data)
             remote = str(PurePosixPath(stage) / name)
-            if sha256(self.client.read_file(server_id, remote)) != entry.sha256:
+            if sha256(self._read_payload_entry(server_id, remote, entry)) != entry.sha256:
                 raise RuntimeError(f"Remote verification failed for {name}")
             modes.setdefault(directory, []).append((PurePosixPath(name).name, entry.mode))
         for directory, files in modes.items():
@@ -597,7 +608,7 @@ class PterodactylProvider(ServerProvider):
                 changed.append(name)
                 continue
             try:
-                current = self.client.read_file(server_id, f"{install}/{name}")
+                current = self._read_payload_entry(server_id, f"{install}/{name}", entry)
             except Exception:
                 changed.append(name)
                 continue
@@ -655,7 +666,7 @@ class PterodactylProvider(ServerProvider):
                 progress(f"Uploading and verifying {name}", 30 + int(index * 30 / max(total, 1)))
             data = payload.read(name)
             self.client.upload(server_id, directory, PurePosixPath(name).name, data)
-            if sha256(self.client.read_file(server_id, f"{root}/zanik/{name}")) != entry.sha256:
+            if sha256(self._read_payload_entry(server_id, f"{root}/zanik/{name}", entry)) != entry.sha256:
                 raise RuntimeError(f"Remote verification failed for {name}")
             modes.setdefault(directory, []).append((PurePosixPath(name).name, entry.mode))
         for directory, files in modes.items():
@@ -1218,6 +1229,13 @@ class PterodactylProvider(ServerProvider):
         manifest_path = f"{root}/zanik/assets/current/asset-manifest.json"
         try:
             manifest = json.loads(self.client.read_file(server_id, manifest_path))
+        except PterodactylError as error:
+            unavailable = error.status in TRANSIENT_STATUSES or error.status is None
+            return {"valid": False, "installed": None if unavailable else False,
+                    "validationUnavailable": unavailable,
+                    "reasons": (["Website asset validation is temporarily unavailable."] if unavailable else
+                                ["No readable active asset manifest was found."]),
+                    "detail": str(error)}
         except Exception as error:
             return {"valid": False, "installed": False,
                     "reasons": ["No readable active asset manifest was found."], "detail": str(error)}
@@ -1242,6 +1260,7 @@ class PterodactylProvider(ServerProvider):
             reasons.append("The active bundle manifest file count is inconsistent.")
             entries = []
         by_path = {entry.get("path"): entry for entry in entries if isinstance(entry, dict)}
+        validation_unavailable = False
         for relative in contract.get("criticalFiles", []):
             entry = by_path.get(relative)
             if not entry or not isinstance(entry.get("sha256"), str):
@@ -1251,16 +1270,20 @@ class PterodactylProvider(ServerProvider):
                 actual = sha256(self.client.download_file(server_id, f"{root}/zanik/assets/current/{relative}"))
                 if actual != entry["sha256"]:
                     reasons.append(f"The active critical asset failed verification: {relative}.")
+            except PterodactylError as error:
+                validation_unavailable |= error.status in TRANSIENT_STATUSES or error.status is None
+                reasons.append(f"The active critical asset is unavailable: {relative}.")
             except Exception:
                 reasons.append(f"The active critical asset is unavailable: {relative}.")
         return {"valid": not reasons, "installed": True, "reasons": reasons,
+                "validationUnavailable": validation_unavailable,
                 "gameBuild": manifest.get("gameBuild") or manifest.get("clientBuild"),
                 "extractionRecipeVersion": manifest.get("extractionRecipeVersion"),
                 "extractionRecipeSha256": manifest.get("extractionRecipeSha256"),
                 "compatibilityProfileVersion": profile_version}
 
     def _read_game_update_report(self, server_id: str, root: str) -> dict:
-        raw = self.client.read_file(server_id, f"{root}/zanik/state/game-update-status.json")
+        raw = self._read_file_once(server_id, f"{root}/zanik/state/game-update-status.json")
         report = json.loads(raw.decode("utf-8"))
         if report.get("schemaVersion") != 1 or not isinstance(report.get("status"), str):
             raise RuntimeError("The cached game-update report is invalid")
@@ -1495,7 +1518,7 @@ class PterodactylProvider(ServerProvider):
             report = None; deadline = time.monotonic() + 960
             while time.monotonic() < deadline:
                 try:
-                    candidate = json.loads(self.client.read_file(
+                    candidate = json.loads(self._read_file_once(
                         server_id, f"{root}/zanik/state/game-update-result.json"))
                     if candidate.get("operationId") == journal.operation_id and candidate.get("status"):
                         report = candidate
@@ -1557,10 +1580,10 @@ class PterodactylProvider(ServerProvider):
         raw = None
         while time.monotonic() < deadline:
             try:
-                raw = self.client.read_file(server_id, report_path)
+                raw = self._read_file_once(server_id, report_path)
                 break
             except PterodactylError as error:
-                if error.status != 404:
+                if error.status not in {404, *TRANSIENT_STATUSES}:
                     raise
                 time.sleep(1)
         if raw is None:

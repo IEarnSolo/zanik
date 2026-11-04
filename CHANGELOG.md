@@ -2,6 +2,14 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.78] - 2026-11-03
+
+### Fixed
+
+- Prevent Zanik Manager's advisory post-update checks and pending server-report polls from trapping completed Zanik, website-asset, or Dragonwilds update operations in the operation-wide 60-second Pterodactyl retry loop when Wings reports a not-yet-created result file as HTTP 500; transient validation failures now produce a clear retry-later warning, and future retry messages identify the sanitized request category that failed.
+- Stop the Admin Sessions page from rebuilding its player dropdown every two seconds; session data now refreshes only on explicit page actions or when returning to the tab, while preserving the selected player.
+- Verify large server-payload files through Pterodactyl's signed download route so development and full-install staging cannot fail on Wings' file-editor size limit.
+
 ## [0.2.77] - 2026-11-03
 
 ### Changed

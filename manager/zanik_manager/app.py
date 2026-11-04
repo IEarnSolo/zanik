@@ -1325,7 +1325,7 @@ class MainWindow(QMainWindow):
         return self.profile_box.currentData()
 
     def provider(self, profile: ServerProfile | None = None, *, background: bool = False,
-                 silent: bool = False) -> PterodactylProvider:
+                 silent: bool = False, transient_retry_limit: int | None = None) -> PterodactylProvider:
         profile = profile or self.active()
         if not profile: raise RuntimeError("Add and select a server first")
         token = self.vault.read(profile.credential_target)
@@ -1333,7 +1333,9 @@ class MainWindow(QMainWindow):
         status = ((lambda _message: None) if silent else
                   (lambda message: self.activity_signal.emit(message)) if background else
                   (lambda message: self.operation_progress_signal.emit(message, -1)))
-        return PterodactylProvider(PterodactylClient(profile.panel_origin, token, status=status),
+        return PterodactylProvider(PterodactylClient(
+            profile.panel_origin, token, status=status,
+            max_transient_retries=transient_retry_limit),
                                    JournalStore(self.paths["journals"]))
 
     def reload_profiles(self):
@@ -2129,8 +2131,16 @@ class MainWindow(QMainWindow):
     def post_update_checks(self, profile: ServerProfile):
         contract = expected_asset_contract(resource_path("asset-tools"))
         def action():
-            provider = self.provider(profile)
-            config = provider.read_configuration(profile.server_id, profile.server_root)
+            # The managed installation and rollback boundary are already complete here. These are advisory
+            # follow-up reads, so one transient Wings response must become a retryable warning instead of
+            # holding the completed update dialog in the operation-wide 60-second retry loop forever.
+            provider = self.provider(profile, background=True, transient_retry_limit=0)
+            warnings = []
+            try:
+                config = provider.read_configuration(profile.server_id, profile.server_root)
+            except Exception as error:
+                config = {"exists": False, "data": None}
+                warnings.append("Website configuration could not be rechecked: " + str(error))
             configured = False; config_reason = "The server configuration is unavailable."
             if config.get("exists") and config.get("data"):
                 try:
@@ -2141,8 +2151,21 @@ class MainWindow(QMainWindow):
                 except Exception as error:
                     config_reason = f"The preserved configuration is invalid: {error}"
             assets = provider.asset_contract_status(profile.server_id, profile.server_root, contract)
-            return {"websiteConfigured": configured, "websiteReason": config_reason, "assets": assets}
+            if assets.get("validationUnavailable"):
+                warnings.append("Website assets could not be rechecked: " + str(assets.get("detail") or "temporary panel error"))
+            return {"websiteConfigured": configured, "websiteReason": config_reason,
+                    "assets": assets, "validationWarnings": warnings}
         def checked(result):
+            if result.get("validationWarnings"):
+                details = "\n".join(f"• {warning}" for warning in result["validationWarnings"][:4])
+                self.log("Update completed, but final advisory validation was temporarily unavailable: " +
+                         " | ".join(result["validationWarnings"]))
+                QMessageBox.warning(
+                    self, "Update complete; validation can be retried",
+                    "Zanik was installed and the server restarted successfully. A temporary panel or node error "
+                    "prevented one or more final read-only checks. Do not rerun the update. Refresh the server "
+                    "status or run Doctor after the panel recovers.\n\n" + details)
+                return
             def continue_assets(): self.offer_update_assets(profile, result["assets"])
             if result["websiteConfigured"]:
                 self.log(f"Website configuration is already set up on {profile.name}.")

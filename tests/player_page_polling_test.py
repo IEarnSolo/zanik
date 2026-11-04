@@ -21,6 +21,10 @@ assert "const std::string pollingScript" in source
 assert "window.ZanikPolling" in source
 assert "ZanikPolling.add('global-live-status',2000,refreshLive)" in source
 assert "if(!liveLoaded||count!==liveCount)" in source
+assert "ZanikPolling.add('admin-sessions'" not in source
+assert "refreshSessions.onclick=load" in source
+assert "document.visibilityState==='visible'" in source
+assert "renderPlayers(selected)" in source
 assert "ZanikPolling.add('player-storage',2000" in source
 assert "ZanikPolling.add('player-gravestones',2000" in source
 assert "if(graveLoading){if(force)graveRefreshPending=true;return}" in source

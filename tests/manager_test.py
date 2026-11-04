@@ -1018,6 +1018,33 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(client.servers(), [])
         self.assertEqual(len(calls), 6)
 
+    def test_pterodactyl_bounded_advisory_request_does_not_enter_retry_loop(self):
+        calls = []
+        def transport(*args):
+            calls.append(args)
+            return Response(500, b'{"errors":[{"detail":"node unavailable"}]}', {})
+        client = PterodactylClient(
+            "https://panel.example", "secret", transport,
+            retry_seconds=0, max_transient_retries=0)
+        with self.assertRaises(PterodactylError) as raised:
+            client.servers()
+        self.assertEqual(raised.exception.status, 500)
+        self.assertEqual(len(calls), 1)
+
+    def test_pterodactyl_retry_message_identifies_sanitized_request_type(self):
+        calls, messages = [], []
+        def transport(*args):
+            calls.append(args)
+            return (Response(500, b'', {}) if len(calls) == 1 else
+                    Response(200, b'{"attributes":{"current_state":"running"}}', {}))
+        client = PterodactylClient(
+            "https://panel.example", "secret", transport,
+            retry_seconds=0, max_transient_retries=1, status=messages.append)
+        self.assertEqual(client.resources("dev")["current_state"], "running")
+        self.assertEqual(len(calls), 2)
+        self.assertIn("while reading server status", messages[0])
+        self.assertNotIn("dev", messages[0])
+
     def test_pterodactyl_explicit_cancellation_stops_temporary_retry(self):
         client = PterodactylClient("https://panel.example", "secret", lambda *args: Response(504, b'', {}),
                                    retry_seconds=0, cancelled=lambda: True)
@@ -1257,6 +1284,38 @@ class ManagerTests(unittest.TestCase):
         self.assertFalse(missing["valid"])
         self.assertTrue(any("recipe-unlocks.json" in reason for reason in missing["reasons"]))
 
+    def test_asset_contract_status_marks_transient_critical_read_as_validation_unavailable(self):
+        payload = b"map"
+        manifest = {"compatibility": "compatible", "extractionStage": "validated-and-packaged",
+                    "missingRequired": [], "extractionRecipeVersion": 5,
+                    "extractionRecipeSha256": "a" * 64,
+                    "compatibilityProfile": {"version": "reviewed-5"},
+                    "generatedFileCount": 1,
+                    "files": [{"path": "world-map.jpg", "sha256": content_hash(payload),
+                               "size": len(payload)}]}
+        class Client:
+            def read_file(self, _server, path): return json.dumps(manifest).encode()
+            def download_file(self, _server, path): raise PterodactylError("node unavailable", 500)
+        contract = {"extractionRecipeVersion": 5, "compatibilityProfileVersion": "reviewed-5",
+                    "extractionRecipeSha256": "a" * 64, "criticalFiles": ["world-map.jpg"]}
+        with tempfile.TemporaryDirectory() as temporary:
+            result = PterodactylProvider(Client(), JournalStore(Path(temporary))).asset_contract_status(
+                "dev", "/home/container", contract)
+        self.assertFalse(result["valid"])
+        self.assertTrue(result["installed"])
+        self.assertTrue(result["validationUnavailable"])
+
+    def test_post_update_validation_is_bounded_and_does_not_offer_reextraction_on_transient_failure(self):
+        source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
+        start = source.index("    def post_update_checks")
+        end = source.index("    def offer_update_assets", start)
+        implementation = source[start:end]
+        self.assertIn("transient_retry_limit=0", implementation)
+        self.assertIn("Update complete; validation can be retried", implementation)
+        self.assertIn("Do not rerun the update", implementation)
+        self.assertLess(implementation.index('if result.get("validationWarnings")'),
+                        implementation.index("def continue_assets"))
+
     def test_release_payload_manifest_and_traversal(self):
         with tempfile.TemporaryDirectory() as temporary:
             archive = Path(temporary) / "server.zip"
@@ -1336,6 +1395,24 @@ class ManagerTests(unittest.TestCase):
                                                             lambda current,total,path:progress.append((current,total,path)))
             self.assertEqual(progress,[(1,1,"world-map.jpg")])
 
+    def test_large_server_payload_verification_uses_signed_download_route(self):
+        class Client:
+            def download_file(self, server, path): return b"large-payload"
+            def read_file(self, server, path): raise AssertionError("large payload must bypass the editor route")
+        with tempfile.TemporaryDirectory() as temporary:
+            provider = PterodactylProvider(Client(), JournalStore(Path(temporary)))
+            entry = mock.Mock(size=2 * 1024 * 1024)
+            self.assertEqual(provider._read_payload_entry("dev", "/large", entry), b"large-payload")
+
+    def test_small_server_payload_verification_uses_contents_route(self):
+        class Client:
+            def download_file(self, server, path): raise AssertionError("small payload should use contents route")
+            def read_file(self, server, path): return b"small-payload"
+        with tempfile.TemporaryDirectory() as temporary:
+            provider = PterodactylProvider(Client(), JournalStore(Path(temporary)))
+            entry = mock.Mock(size=1024)
+            self.assertEqual(provider._read_payload_entry("dev", "/small", entry), b"small-payload")
+
     def test_deep_asset_verification_uses_one_server_report(self):
         manifest = {"files": [
             {"path": "world-map.jpg", "sha256": "a" * 64},
@@ -1344,7 +1421,8 @@ class ManagerTests(unittest.TestCase):
         manifest_raw = json.dumps(manifest, sort_keys=True).encode()
         canonical = "".join(f"{entry['sha256']}\t{entry['path']}\n" for entry in manifest["files"]).encode()
         class Client:
-            def __init__(self): self.request_id = None; self.deleted = False; self.reads = []
+            def __init__(self):
+                self.request_id = None; self.deleted = False; self.reads = []; self.report_attempts = 0
             def command(self, server, command): self.request_id = command.rsplit(" ", 1)[-1]
             def read_file(self, server, path):
                 self.reads.append(path)
@@ -1353,14 +1431,28 @@ class ManagerTests(unittest.TestCase):
                                    "expected": 2, "checked": 2, "missing": 0, "mismatches": 0,
                                    "aggregateSha256": content_hash(canonical),
                                    "manifestSha256": content_hash(manifest_raw)}).encode()
+            def read_file_once(self, server, path):
+                self.report_attempts += 1
+                if self.report_attempts == 1:
+                    raise PterodactylError("Wings reports a pending file as unavailable", 500)
+                return self.read_file(server, path)
             def delete(self, server, root, files): self.deleted = True
         client = Client()
         with tempfile.TemporaryDirectory() as temporary:
             provider = PterodactylProvider(client, JournalStore(Path(temporary)))
-            report = provider._server_asset_audit("dev", "/home/container", manifest, timeout=0.1)
+            with mock.patch("manager.zanik_manager.lifecycle.time.sleep", return_value=None):
+                report = provider._server_asset_audit("dev", "/home/container", manifest, timeout=0.1)
         self.assertEqual(report["method"], "server-side-aggregate")
         self.assertEqual(len(client.reads), 2)
+        self.assertEqual(client.report_attempts, 2)
         self.assertTrue(client.deleted)
+
+    def test_pending_server_reports_never_use_the_operation_wide_file_retry(self):
+        asset_source = (ROOT / "manager" / "zanik_manager" / "assets.py").read_text(encoding="utf-8")
+        lifecycle_source = (ROOT / "manager" / "zanik_manager" / "lifecycle.py").read_text(encoding="utf-8")
+        self.assertIn("self.provider._read_file_once(server_id, report_path)", asset_source)
+        self.assertIn("candidate = json.loads(self._read_file_once(", lifecycle_source)
+        self.assertIn("raw = self._read_file_once(server_id, report_path)", lifecycle_source)
 
     def test_game_update_check_rejects_stale_report_and_matches_request(self):
         class Client:
