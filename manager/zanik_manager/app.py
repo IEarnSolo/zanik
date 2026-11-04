@@ -406,8 +406,12 @@ class MainWindow(QMainWindow):
         self.doctor_results: dict[str, dict] = {}
         self.doctor_generations: dict[str, int] = {}
         self.doctor_pending_refresh: dict[str, str] = {}
+        self.doctor_foreground_profiles: set[str] = set()
         self.files_caches: dict[str, FileIndex] = {}
         self.files_generations: dict[str, int] = {}
+        self.files_pending_refresh: set[str] = set()
+        self.files_active_folder: dict[str, tuple[int, str]] = {}
+        self.files_pending_folder: dict[str, tuple[int, str]] = {}
         self.files_location = None
         self.files_back_history = []
         self.files_forward_history = []
@@ -722,7 +726,12 @@ class MainWindow(QMainWindow):
     def start_files_index(self, profile: ServerProfile | None = None):
         profile = profile or self.active()
         if not profile:
-            return
+            return False
+        key = f"files-index-{profile.id}"
+        if any(item[0] == key for item in self.background_threads):
+            self.files_pending_refresh.add(profile.id)
+            return False
+        self.files_pending_refresh.discard(profile.id)
         generation = self.files_generations.get(profile.id, 0) + 1
         self.files_generations[profile.id] = generation
         roots = virtual_roots(profile.server_root, self.installation_states.get(profile.id))
@@ -740,6 +749,10 @@ class MainWindow(QMainWindow):
                 lambda update: self.files_progress_signal.emit(update))
 
         def done(result, error):
+            if profile.id in self.files_pending_refresh:
+                self.files_pending_refresh.discard(profile.id)
+                QTimer.singleShot(0, lambda p=profile: self.start_files_index(p))
+                return
             if error:
                 if self.active() and self.active().id == profile.id and self.files_generations.get(profile.id) == generation:
                     self.files_status.setText(f"File index unavailable: {error}")
@@ -751,7 +764,7 @@ class MainWindow(QMainWindow):
             self.files_caches[profile.id] = result
             if self.active() and self.active().id == profile.id:
                 self.render_files_location()
-        self.run_background(f"files-index-{profile.id}-{generation}", action, done)
+        return self.run_background(key, action, done)
 
     def merge_files_progress(self, update: dict):
         profile_id = update.get("profileId")
@@ -874,18 +887,32 @@ class MainWindow(QMainWindow):
 
     def fetch_files_folder(self, profile: ServerProfile, cache: FileIndex, directory: str):
         generation = cache.generation
+        key = f"files-folder-{profile.id}"
+        requested = (generation, directory)
+        if any(item[0] == key for item in self.background_threads):
+            if self.files_active_folder.get(profile.id) != requested:
+                self.files_pending_folder[profile.id] = requested
+            return False
+        self.files_active_folder[profile.id] = requested
         def done(entries, error):
+            self.files_active_folder.pop(profile.id, None)
             current = self.files_caches.get(profile.id)
             if error or not current or current.generation != generation:
                 if error and self.active() and self.active().id == profile.id:
                     self.files_status.setText(f"This folder is unavailable: {error}")
-                return
-            current.directories[directory] = entries
-            if self.active() and self.active().id == profile.id and self.files_physical_path(self.files_location) == directory:
-                self.render_files_location()
-        self.run_background(f"files-folder-{profile.id}-{generation}-{directory}",
-                            lambda: list_directory(self.provider(profile, background=True).client,
-                                                   profile.server_id, directory), done)
+            else:
+                current.directories[directory] = entries
+                if (self.active() and self.active().id == profile.id and
+                        self.files_physical_path(self.files_location) == directory):
+                    self.render_files_location()
+            pending = self.files_pending_folder.pop(profile.id, None)
+            current = self.files_caches.get(profile.id)
+            if pending and current and current.generation == pending[0]:
+                QTimer.singleShot(0, lambda p=profile, c=current, d=pending[1]:
+                                  self.fetch_files_folder(p, c, d))
+        return self.run_background(key,
+                                   lambda: list_directory(self.provider(profile, background=True).client,
+                                                          profile.server_id, directory), done)
 
     def navigate_files(self, location, record: bool = True):
         if record and self.files_location != location:
@@ -989,13 +1016,16 @@ class MainWindow(QMainWindow):
     def start_background_doctor(self, profile: ServerProfile, reason: str = "automatic") -> bool:
         profile_id = profile.id
         key = f"doctor-{profile_id}"
+        if profile_id in self.doctor_foreground_profiles:
+            self.doctor_pending_refresh[profile_id] = reason
+            return False
         if any(item[0] == key for item in self.background_threads):
             return False
         generation = self.doctor_generations.get(profile_id, 0) + 1
         self.doctor_generations[profile_id] = generation
 
         def action():
-            result = self.provider(profile, silent=True).diagnose(
+            result = self.provider(profile, background=True, silent=True).diagnose(
                 profile.server_id, profile.server_root, False)
             result.setdefault("storageAndBackups", {})["local"] = self.local_storage_status()
             result["storageAndBackups"]["remote"] = result.get("backupRetention", {})
@@ -1330,6 +1360,8 @@ class MainWindow(QMainWindow):
         if not profile: raise RuntimeError("Add and select a server first")
         token = self.vault.read(profile.credential_target)
         if not token: raise RuntimeError("The API key is missing from Windows Credential Manager")
+        if background and transient_retry_limit is None:
+            transient_retry_limit = 0
         status = ((lambda _message: None) if silent else
                   (lambda message: self.activity_signal.emit(message)) if background else
                   (lambda message: self.operation_progress_signal.emit(message, -1)))
@@ -1865,6 +1897,11 @@ class MainWindow(QMainWindow):
         profile = self.active()
         if not profile: return
         selected_id = profile.id
+        background_key = f"doctor-{selected_id}"
+        if any(item[0] == background_key for item in self.background_threads):
+            self.doctor_pending_refresh[selected_id] = "manual-refresh"
+            self.log(f"A health refresh is already running for {profile.name}; one follow-up refresh was queued.")
+            return
         generation = self.doctor_generations.get(selected_id, 0) + 1
         self.doctor_generations[selected_id] = generation
         def action():
@@ -1885,7 +1922,15 @@ class MainWindow(QMainWindow):
             self.log("Doctor reports a healthy installation." if result.get("healthy") else
                      "Doctor found installation problems; review the Doctor tab.")
             self.check_installation_state(profile.id)
-        self.run_async(action, done, title="Running deep Doctor…" if deep else "Running Doctor…")
+        def settled():
+            self.doctor_foreground_profiles.discard(selected_id)
+            pending_reason = self.doctor_pending_refresh.pop(selected_id, None)
+            if pending_reason:
+                QTimer.singleShot(0, lambda p=profile, r=pending_reason: self.start_background_doctor(p, r))
+        self.doctor_foreground_profiles.add(selected_id)
+        if not self.run_async(action, done, title="Running deep Doctor…" if deep else "Running Doctor…",
+                              settled=settled):
+            self.doctor_foreground_profiles.discard(selected_id)
 
     def local_storage_status(self) -> dict:
         assets = self.paths["assets"]

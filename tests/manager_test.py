@@ -240,6 +240,34 @@ class ManagerTests(unittest.TestCase):
         fresh = FileIndex("profile", 1, root, complete=True, completed_at=100.0)
         self.assertTrue(fresh.fresh(100.0 + 365 * 24 * 60 * 60))
 
+    def test_passive_file_index_does_not_retry_transient_panel_errors(self):
+        calls = []
+        def transport(*args):
+            calls.append(args)
+            return Response(500, b'{"errors":[{"detail":"node unavailable"}]}', {})
+        client = PterodactylClient("https://panel.example", "secret", transport,
+                                   retry_seconds=0, max_transient_retries=0)
+        root = virtual_roots("/home/container")[:1]
+        index = RemoteFileIndexer(client, "dev", "profile", 1, root).run()
+        self.assertTrue(index.complete)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("unavailable", index.warnings[0].lower())
+
+    def test_passive_manager_refreshes_are_bounded_and_single_flight(self):
+        source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('key = f"files-index-{profile.id}"', source)
+        self.assertNotIn('f"files-index-{profile.id}-{generation}"', source)
+        self.assertIn("self.files_pending_refresh.add(profile.id)", source)
+        self.assertIn('key = f"files-folder-{profile.id}"', source)
+        self.assertNotIn('f"files-folder-{profile.id}-{generation}-{directory}"', source)
+        self.assertIn("self.files_pending_folder[profile.id] = requested", source)
+        self.assertIn("if background and transient_retry_limit is None:", source)
+        self.assertIn("transient_retry_limit = 0", source)
+        for key in ("manager-update-check", "game-update-check", "installation-state-",
+                    "asset-contract-state-", "config-load-", "doctor-"):
+            self.assertIn(key, source)
+        self.assertIn("self.doctor_foreground_profiles", source)
+
     def test_file_index_persists_per_profile_until_explicit_invalidation(self):
         roots = virtual_roots("/home/container")
         entry = FileEntry("VERSION", "/home/container/zanik/VERSION", True, 7,

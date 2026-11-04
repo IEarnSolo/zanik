@@ -2,6 +2,12 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.79] - 2026-11-03
+
+### Fixed
+
+- Keep Zanik Manager's passive server refreshes single-flight and bounded: file indexing now coalesces invalidations behind one worker per server, stale generations cannot continue alongside replacements, manual and automatic Doctor runs do not overlap, and background file, game-update, installation, asset, configuration, and health checks no longer inherit operation-wide infinite Pterodactyl retries.
+
 ## [0.2.78] - 2026-11-03
 
 ### Fixed
