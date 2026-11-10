@@ -1,9 +1,18 @@
 #include "../tools/compatibility_checks.h"
+#include "../src/engine/storage_compatibility_policy.h"
 
 #include <cassert>
 #include <vector>
 
 int main() {
+    using namespace DomEngine::StorageCompatibilityPolicy;
+    assert(IsProductionReviewed(CurrentReviewedSha));
+    assert(IsProductionReviewed(PreviousReviewedSha));
+    assert(!IsProductionReviewed(LegacyCandidateSha));
+    assert(IsCandidateOnly(LegacyCandidateSha));
+    assert(!IsCandidateOnly(CurrentReviewedSha));
+    assert(!IsProductionReviewed("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"));
+
     const unsigned char signature[] = {0x55, 0x48, 0x89, 0xE5, 0x41, 0x57};
     std::vector<unsigned char> binary(32, 0x90);
     std::copy(std::begin(signature), std::end(signature), binary.begin() + 8);

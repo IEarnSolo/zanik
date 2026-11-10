@@ -31,7 +31,10 @@ assert "0x0A65B160" in storage_reader
 assert "0x0A65DBE0" in storage_reader
 
 storage = (root / "src" / "engine" / "admin_storage.cpp").read_text()
-assert f'PreviousSha="{server_sha}"' in storage
+policy = (root / "src" / "engine" / "storage_compatibility_policy.h").read_text()
+assert server_sha in policy
+assert "PreviousReviewedSha" in policy
+assert "StorageCompatibilityPolicy::PreviousReviewedSha" in storage
 for offset in (
     "0x0A653CD0", "0x0A654570", "0x0A655DA0", "0x0A657880",
     "0x0A655230", "0x0A660090", "0x0A3DA9D0", "0x04A89480",

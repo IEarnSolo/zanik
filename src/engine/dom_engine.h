@@ -520,6 +520,8 @@ bool QueueAdminHomeTeleport(const std::string& characterGuid, const std::string&
 AdminTeleportDiagnostics GetAdminTeleportDiagnostics();
 struct AdminStorageDiagnostics {
     int compatibility = 0;
+    int productionCompatibility = 0;
+    bool candidateOverride = false;
     int dispatcherCompatibility = 0;
     int mutationCompatibility = 0;
     int nativeMutationCaptureCompatibility = 0;

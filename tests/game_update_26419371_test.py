@@ -32,7 +32,10 @@ assert "0x0A672840" in storage_reader
 assert "0x0A675820" in storage_reader
 
 storage = (root / "src" / "engine" / "admin_storage.cpp").read_text()
-assert f'CurrentSha="{server_sha}"' in storage
+policy = (root / "src" / "engine" / "storage_compatibility_policy.h").read_text()
+assert server_sha in policy
+assert "IsProductionReviewed" in policy
+assert "StorageCompatibilityPolicy::CurrentReviewedSha" in storage
 for offset in (
     "0x0A669830", "0x0A66A3C0", "0x0A66BF00", "0x0A66EF90",
     "0x0A66B390", "0x0A677D60", "0x0A3E9980", "0x04A94480",
@@ -58,6 +61,8 @@ assert "{0xA779780,0xA586460,0xA586A40,17" in teleport
 
 analyzer = (root / "tools" / "compat_analyzer.cpp").read_text()
 assert server_sha in analyzer
+assert "--require-storage-production" in analyzer
+assert "storage mutation production promotion is pending" in analyzer
 assert "admin delayed teleport capture signature changed" in analyzer
 assert "admin delayed teleport wrapper signature changed" in analyzer
 assert "admin delayed teleport wrapper call relationship changed" in analyzer

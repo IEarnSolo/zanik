@@ -211,6 +211,15 @@ controls remain disabled while the read-only storage view stays available.
 The analyzer also requires the rename setter, setter identity getter, native
 `FText` constructor, and `FUniqueNetIdRepl` destructor.
 
+Storage mutation has a separate production-promotion contract in addition to
+those native checks. The runtime and analyzer consume the same reviewed-hash
+policy. A newly analyzed build remains candidate-only until reversible live
+mutation, naming, rollback, and timing validation is complete; release
+validation must run the analyzer's `--require-storage-production` gate and
+must observe `adminStorageProductionCompatibility=1` with no candidate
+override. Read-only storage remains independent when that promotion is
+pending.
+
 ## Admin compatibility closure
 
 Build `25630937` adds analyzer and runtime gates for the native delayed

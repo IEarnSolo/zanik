@@ -18,7 +18,7 @@ OUT = dist/libdwstatus.so
 
 all: $(OUT) dist/zanik-compat-analyzer
 
-dist/zanik-compat-analyzer: tools/compat_analyzer.cpp
+dist/zanik-compat-analyzer: tools/compat_analyzer.cpp src/engine/storage_compatibility_policy.h
 	mkdir -p dist
 	$(CXX) -std=c++17 -O2 $< -o $@ -static
 

@@ -21,9 +21,7 @@ assert "GNames_25991736   = 0x0DBDBFF8" in header
 assert "GWorld_25991736   = 0x0DDB35F8" in header
 
 dispatcher = (root / "src" / "engine" / "admin_storage.cpp").read_text()
-assert server_sha in dispatcher
 assert f'ExpectedSha(hash){{return hash=="{server_sha}"' not in dispatcher
-assert "Keep mutation compatibility closed" in dispatcher
 assert "currentDispatcher?0x07ABFE00" in dispatcher
 for offset in (
     "0x0A653420", "0x0A653CC0", "0x0A6554F0", "0x0A656FD0",
@@ -32,6 +30,13 @@ for offset in (
     "0x079D0710", "0x04A1F9F0", "0x0A3B5970",
 ):
     assert offset in dispatcher
+
+policy = (root / "src" / "engine" / "storage_compatibility_policy.h").read_text()
+assert "LegacyCandidateSha" in policy and server_sha in policy
+assert "IsCandidateOnly" in policy
+assert "IsProductionReviewed" in policy
+assert "return hash == LegacyCandidateSha" in policy
+assert "hash == LegacyCandidateSha" not in policy.split("IsProductionReviewed", 1)[1].split("IsCandidateOnly", 1)[0]
 
 gravestones = (root / "src" / "engine" / "admin_gravestone.cpp").read_text()
 assert server_sha in gravestones
@@ -74,6 +79,8 @@ assert "RefreshAdminNodestoneTeleportCompatibility();" in nodestone_reader
 
 analyzer = (root / "tools" / "compat_analyzer.cpp").read_text()
 assert "--native-offsets" in analyzer
+assert "--require-storage-production" in analyzer
+assert "storage mutation production promotion is pending" in analyzer
 assert 'field("graveGetInventory",graveGetInventoryAt,first)' in analyzer
 assert "ASwitchableTeleporter::PerformTeleport" in analyzer
 assert "UTeleportationSubsystem::TeleportToNamedLocation" in analyzer

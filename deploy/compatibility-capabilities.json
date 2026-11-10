@@ -184,14 +184,14 @@
     {
       "id": "storage-mutations",
       "category": "native-and-assets",
-      "staticChecks": ["inventory mutation ABIs", "dispatcher hook", "rollback callables"],
-      "runtimeStatusFields": ["adminStorageCompatibility", "adminStorageDispatcherCompatibility", "adminStorageSnapshotCompatibility", "adminStorageSingleItemCompatibility", "adminStorageSlotMovementCompatibility", "adminStorageBatchAdditionCompatibility", "adminStorageBatchMovementCompatibility", "adminStorageDeletionCompatibility", "adminStorageRollbackCompatibility"],
+      "staticChecks": ["inventory mutation ABIs", "dispatcher hook", "rollback callables", "explicit analyzer-checked production promotion policy"],
+      "runtimeStatusFields": ["adminStorageCompatibility", "adminStorageProductionCompatibility", "adminStorageDispatcherCompatibility", "adminStorageSnapshotCompatibility", "adminStorageSingleItemCompatibility", "adminStorageSlotMovementCompatibility", "adminStorageBatchAdditionCompatibility", "adminStorageBatchMovementCompatibility", "adminStorageDeletionCompatibility", "adminStorageRollbackCompatibility"],
       "diagnosticsEndpoint": "/api/admin/storage-diagnostics",
       "persistence": ["zanik-data/admin-audit.log"],
       "assets": ["building-catalog.tsv", "storage-plan-items.tsv"],
       "failureBoundary": "only the failed storage operation family",
-      "liveValidation": ["perform reversible single-item and batch development-server storage mutations"],
-      "tests": ["tests/storage_mutation_pipeline_test.py", "tests/storage_teleport_compatibility_test.py"]
+      "liveValidation": ["run the analyzer production-promotion gate", "perform reversible single-item and batch development-server storage mutations", "verify production compatibility is 1 without a candidate override"],
+      "tests": ["tests/compatibility_checks_test.cpp", "tests/game_update_26419371_test.py", "tests/storage_mutation_pipeline_test.py", "tests/storage_teleport_compatibility_test.py"]
     },
     {
       "id": "storage-naming",

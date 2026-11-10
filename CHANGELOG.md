@@ -2,6 +2,14 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.82] - 2026-11-10
+
+### Fixed
+
+- Promote storage mutation and naming on the reviewed current and previous Dragonwilds builds out of the development-only performance-candidate gate, so an enabled production server can mutate and rename storage after the same native, timing, and rollback validation already used on development.
+- Make the compatibility analyzer expose a release-blocking storage production-promotion check, publish production-versus-candidate status through runtime diagnostics, and require that status in capability reports and development validation so a reviewed build cannot be released while silently dependent on a development override.
+- Ship the corrected server payload through Zanik Manager; Manager behavior and generated website-asset contracts are unchanged.
+
 ## [0.2.81] - 2026-11-10
 
 ### Changed
