@@ -28,7 +28,10 @@ verify-release-tag:
   rules:
     - if: $CI_COMMIT_TAG
   script:
-    - git fetch --no-tags --depth=1000000 origin main:refs/remotes/origin/release-main
+    # The runner may reuse a checkout whose private verification ref points at
+    # an unrelated older main history.  This ref is disposable CI state, so
+    # refresh it explicitly before proving the immutable tag is contained.
+    - git fetch --no-tags --depth=1000000 origin +main:refs/remotes/origin/release-main
     - python3 tools/release_contract.py --tag "$CI_COMMIT_TAG" --require-clean --require-annotated-tag --require-ref refs/remotes/origin/release-main --commit "$CI_COMMIT_SHA"
 
 build-linux:

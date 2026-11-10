@@ -2,7 +2,7 @@
 
 All notable changes to Zanik are documented here.
 
-## [0.2.80] - 2026-11-10
+## [0.2.81] - 2026-11-10
 
 ### Changed
 
@@ -55,6 +55,12 @@ All notable changes to Zanik are documented here.
 - Distinguish absent optional server locations from real empty folders in Zanik Manager's Files tab: missing release-upload and incoming-asset roots now appear as disabled “Not present” entries, genuine listing failures appear as “Unavailable,” and one top-level discovery request avoids probing each nonexistent path.
 - Slim server releases and installations to operational files by excluding the repository README, changelog, and documentation tree while retaining required legal notices; identify IEarnSolo as the copyright holder for Zanik's MIT-licensed original work and preserve RSDWServerAPI's MIT attribution separately; also restore the standalone installer's omitted version file, runtime activity catalogs, and asset filesystem helper.
 - Sanitize public documentation, examples, research instructions, and validation reports so they retain reproducible compatibility evidence without exposing operator-specific server identifiers, character identities, local paths, GitLab infrastructure, or exact recovery locations; add automated tracked-file privacy and credential-shape checks.
+
+## [0.2.80] - 2026-11-10
+
+### Reserved
+
+- Reserve immutable tag `v0.2.80` after its pre-publication tag-verification job encountered a stale reusable CI remote-tracking ref; no packages or releases were published, the verification fetch is corrected in `0.2.81`, and the complete `0.2.80` candidate changes ship in `0.2.81`.
 
 ## [0.2.79] - 2026-11-03
 

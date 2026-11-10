@@ -28,6 +28,7 @@ assert "zanik-manager-windows-x86_64-$VERSION.zip" in package_script
 assert "zanik-asset-tools-linux-x86_64-$VERSION.tar.gz" in package_script
 assert "prohibited_archive_path(name)" in release_validator
 assert "--require-annotated-tag" in ci and "--require-ref refs/remotes/origin/release-main" in ci
+assert "origin +main:refs/remotes/origin/release-main" in ci
 assert "expire_in: 7 days" in ci and "Branch artifacts expire after 7 days." in release_guide
 for tag in (current_version, "v0.1", "v1.2.3-rc1", "v9.9.9"):
     try:
