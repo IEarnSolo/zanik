@@ -22,9 +22,7 @@
   "productionNpcMaximumSliceMicroseconds": 698,
   "productionNpcSlowSlices": 0,
   "productionNpcDutyCycleBasisPoints": 65,
-  "developmentRollback": "/home/container/zanik-backups/game-update/20261024T033146Z-01ef866e",
-  "developmentPackageBackup": "/home/container/zanik-backups/manager/20261024T034142Z-b31b023b",
-  "productionRollback": "/home/container/zanik-backups/game-update/20261024T041111Z-3f068f7b",
-  "productionPackageBackup": "/home/container/zanik-backups/manager/20261024T041320Z-a31897f0",
-  "liveGameplayValidationWaivedByOperator": true
+  "developmentManagedRecoveryPointCreated": true,
+  "productionManagedRecoveryPointCreated": true,
+  "liveGameplayValidationPerformed": false
 }

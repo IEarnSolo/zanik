@@ -276,6 +276,8 @@ class ManagerTests(unittest.TestCase):
                           directories={"/home/container/zanik": [entry]},
                           directory_totals={"/home/container/zanik": 7},
                           root_totals={root.key: (7 if root.key == "installation" else 0) for root in roots},
+                          root_states={root.key: ("present" if root.key == "installation" else "missing")
+                                       for root in roots},
                           file_count=1, directory_count=1, total_size=7, complete=True,
                           completed_at=1_799_000_000.0)
         with tempfile.TemporaryDirectory() as temporary:
@@ -290,6 +292,28 @@ class ManagerTests(unittest.TestCase):
             self.assertIsNone(load_file_index(cache_root, "other-profile", "/home/container", 1))
             delete_file_index(cache_root, "stable-profile")
             self.assertIsNone(load_file_index(cache_root, "stable-profile", "/home/container", 10))
+
+    def test_file_index_marks_absent_virtual_roots_without_probing_them(self):
+        calls = []
+        listings = {
+            "/home/container": [{"name": "zanik", "is_file": False}],
+            "/home/container/zanik": [],
+        }
+        class Client:
+            def list_files(self, _server, path):
+                calls.append(path)
+                return listings[path]
+        index = RemoteFileIndexer(Client(), "dev", "profile", 1,
+                                  virtual_roots("/home/container")).run()
+        self.assertEqual(index.root_states["installation"], "present")
+        self.assertEqual(index.root_states["releases"], "missing")
+        self.assertEqual(index.root_states["incoming"], "missing")
+        self.assertNotIn("/home/container/zanik-release", calls)
+        self.assertNotIn("/home/container/zanik-assets-incoming", calls)
+        self.assertFalse(index.warnings)
+        source = (ROOT / "manager" / "zanik_manager" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('"Not present" if root_state == "missing"', source)
+        self.assertIn("item.setDisabled(not available)", source)
 
     def test_folder_sizes_are_recursive_without_content_reads(self):
         directories = {
@@ -409,8 +433,8 @@ class ManagerTests(unittest.TestCase):
                                      credential_target="one", server_id="aaa")
         second = ServerProfile.create(name="Second", panel_origin="https://panel.example", account_id="1",
                                       credential_target="one", server_id="bbb")
-        profiles = rename_profile([first, second], second.id, "  Main Server  ")
-        self.assertEqual([profile.name for profile in profiles], ["First", "Main Server"])
+        profiles = rename_profile([first, second], second.id, "  Survival Server  ")
+        self.assertEqual([profile.name for profile in profiles], ["First", "Survival Server"])
         profiles = move_profile(profiles, second.id, -1)
         self.assertEqual([profile.id for profile in profiles], [second.id, first.id])
         profiles = remove_profile(profiles, first.id)
@@ -914,7 +938,7 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(contract["compatibilityProfileVersion"], recipe["catalogProfile"]["version"])
         self.assertEqual(contract["extractionRecipeSha256"], hashlib.sha256(
             (ROOT / "asset-tools/extraction-recipes.json").read_bytes()).hexdigest())
-        self.assertEqual(contract["extractionRecipeVersion"], 16)
+        self.assertEqual(contract["extractionRecipeVersion"], 19)
         self.assertNotEqual(contract["extractionRecipeSha256"], recipe12["sha256"])
         stale = asset_contract_presentation({
             "installed": True,
@@ -936,6 +960,8 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(prior["state"], "available")
         self.assertIn("Refresh available", prior["text"])
         self.assertIn("world-map.jpg", contract["criticalFiles"])
+        self.assertIn("world-map-1024.jpg", contract["criticalFiles"])
+        self.assertIn("world-map-2048.jpg", contract["criticalFiles"])
 
     def test_journal_persistence_and_incomplete_filter(self):
         with tempfile.TemporaryDirectory() as temporary:

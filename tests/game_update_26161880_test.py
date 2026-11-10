@@ -31,7 +31,7 @@ assert "0x0A65B160" in storage_reader
 assert "0x0A65DBE0" in storage_reader
 
 storage = (root / "src" / "engine" / "admin_storage.cpp").read_text()
-assert f'CurrentSha="{server_sha}"' in storage
+assert f'PreviousSha="{server_sha}"' in storage
 for offset in (
     "0x0A653CD0", "0x0A654570", "0x0A655DA0", "0x0A657880",
     "0x0A655230", "0x0A660090", "0x0A3DA9D0", "0x04A89480",
@@ -41,7 +41,7 @@ for offset in (
     assert offset in storage
 
 graves = (root / "src" / "engine" / "admin_gravestone.cpp").read_text()
-assert f'CurrentSha="{server_sha}"' in graves
+assert f'PreviousSha="{server_sha}"' in graves
 for offset in (
     "0x0A655DA0", "0x0A657880", "0x0A654570", "0x0A655230",
     "0x0A655E00", "0x0A650680", "0x0A64F1D0", "0x0A64F800",

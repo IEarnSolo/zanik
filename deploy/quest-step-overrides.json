@@ -1477,10 +1477,10 @@
       "questId": "yrRZnkmro-IvH_OmZ3f-5A",
       "objectiveKey": "Find and hunt a deer",
       "destinationMode": "multiple",
-      "note": "Hunt any standard deer for an antler, then return it to the Wise Old Man. All current standard-deer spawns remain visible because the objective does not require one specific animal.",
-      "reason": "The walkthrough confirms the antler is obtained from ordinary deer in Bramblemead. Current-build deer spawns provide the resource locations and the exact quest-owned Wise Old Man target provides the hand-in.",
+      "note": "Hunt any accessible standard deer for an antler, then return it to the Wise Old Man. The two Dowdun Reach deer placements are omitted because that region is inaccessible during this objective.",
+      "reason": "The walkthrough confirms the antler is obtained from ordinary deer in Bramblemead. Current-build accessible deer spawns provide the resource locations, two stable Dowdun Reach placements are excluded because the region is unavailable during this quest, and the exact quest-owned Wise Old Man target provides the hand-in.",
       "targets": [
-        {"kind": "npc", "reference": "deer", "allowMultiple": true, "displayName": "Deer spawn", "role": "hunt"},
+        {"kind": "npc", "reference": "deer", "allowMultiple": true, "excludeOpaqueIds": ["d29d5432b0a5a7228b7e", "e9da49602273872fa973"], "displayName": "Deer spawn", "role": "hunt"},
         {"kind": "quest_marker", "reference": "WiseOldManObjectiveDS", "displayName": "Wise Old Man — antler hand-in", "role": "return"}
       ]
     },

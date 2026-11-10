@@ -81,14 +81,14 @@ The baseline is extracted read-only with:
 
 ```powershell
 python .\tools\extract_recipe_baseline_from_spud.py <save> `
-  --character-name Testdude `
-  --character-guid ADD3B8504FCAB14CBC9E2B8ADA268927 `
-  --output .\reference\recipe-unlock-testdude-baseline.json
+  --character-name <test-character-name> `
+  --character-guid <test-character-guid> `
+  --output .\reference\recipe-unlock-test-character-baseline.json
 ```
 
 Both identity fields are guards. A mismatch aborts without writing output.
 
-`reference/recipe-unlock-testdude-t1-observation.json` is a second, read-only observation captured after `Testdude` picked up Stone and Ash Logs, built the Crafting Table, and opened its UI. Its `BuildingsUnlocked` set contains every GUID in progression row `T1_BuildPieces_BasicBuilding_Bundle_Ash`, proving that the bundle is granted by interaction with `BP_Crafting_StartingBench_C`.
+`reference/recipe-unlock-test-character-t1-observation.json` is a second, ignored read-only observation captured after the designated test character picked up Stone and Ash Logs, built the Crafting Table, and opened its UI. Its `BuildingsUnlocked` set contains every GUID in progression row `T1_BuildPieces_BasicBuilding_Bundle_Ash`, proving that the bundle is granted by interaction with `BP_Crafting_StartingBench_C`. Never commit the observation or its character identity.
 
 The bedroll also appears in the independent row `T1_Furniture_Bed_BedRoll`, whose condition is `ALL ITEMS[ Ash Logs, Coarse Animal Fur ]`. These are alternative grant rows, not one combined condition. Human-readable output therefore joins multiple `unlockPaths` with **OR**.
 
@@ -130,13 +130,13 @@ The JSON preserves the quest internal name, localized name, asset path, mileston
 
 ## Runtime validation protocol
 
-Static ambiguity may be tested only on development server `0f95b34b` and only after backing up the relevant save state.
+Static ambiguity may be tested only on an explicitly selected development server and only after backing up the relevant save state.
 
-1. Resolve the selected character name and persistent ID before every write; abort unless the name is exactly `Testdude`.
-2. Treat `I Earn Solo` as read-only. Never mutate its inventory, quests, recipes, buildings, location, or save.
-3. Capture a clean `Testdude` recipe/building baseline.
+1. Resolve the selected character name and persistent ID before every write; abort unless both match the explicitly designated test character.
+2. Treat every non-designated character as read-only. Never mutate another character's inventory, quests, recipes, buildings, location, or save.
+3. Capture a clean test-character recipe/building baseline.
 4. Apply one action (item pickup, station interaction, vestige study, quest reward, or skill/perk) and diff persistent IDs.
 5. Restore the baseline before testing the next independent action.
 6. Record the before/after evidence alongside the corresponding catalog row.
 
-Production server `ef68362b` is never used for this research.
+Production servers are never used for this research.

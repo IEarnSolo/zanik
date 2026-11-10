@@ -19,6 +19,8 @@ from .lifecycle import PterodactylProvider, safe_archive_name, sha256
 CRITICAL_REMOTE_ASSETS = {
     "asset-manifest.json",
     "world-map.jpg",
+    "world-map-1024.jpg",
+    "world-map-2048.jpg",
     "buildings/catalog.json",
     "npc-catalog.json",
     "npc-identities.tsv",

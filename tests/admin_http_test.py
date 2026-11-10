@@ -74,6 +74,7 @@ with tempfile.TemporaryDirectory() as temporary:
     anonymous = urllib.request.build_opener()
     first = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
     second = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    logout_client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
     try:
         for _ in range(50):
             try:
@@ -85,6 +86,17 @@ with tempfile.TemporaryDirectory() as temporary:
             raise AssertionError("Admin HTTP listener did not start")
 
         expect_http(anonymous, base + "/admin/sessions", 401)
+        with anonymous.open(base + "/admin/claim", timeout=3) as response:
+            claim_page = response.read()
+            assert b'id="browserChoice"' in claim_page
+            assert b'id="copyForApp"' in claim_page
+            assert b'id="continueBrowser"' in claim_page
+            assert b'id="appClaim"' in claim_page
+            assert b'id="pasteToken"' in claim_page
+            assert b"display-mode:standalone" in claim_page
+            assert b"navigator.standalone===true" in claim_page
+            assert b"More \xe2\x86\x92 Admin login" in claim_page
+            assert b'class="site-admin-login-link" href="/admin/claim">Admin login</a>' in claim_page
         console_request = urllib.request.Request(
             base + "/api/admin/console-claim",
             data=first_id.encode(),
@@ -102,6 +114,9 @@ with tempfile.TemporaryDirectory() as temporary:
             assert b'id="refreshSessions"' in admin_page
             assert b"ZanikPolling.add('admin-sessions'" not in admin_page
             assert b"renderPlayers(selected)" in admin_page
+            assert b'class="site-scale-select"' in admin_page
+            assert b'class="site-admin-state"' in admin_page
+            assert b"location.pathname.startsWith('/admin/')" in admin_page
         with first.open(base + "/api/admin/link-manager", timeout=3) as response:
             manager = json.loads(response.read())
         assert manager["players"]["count"] == 2
@@ -124,6 +139,15 @@ with tempfile.TemporaryDirectory() as temporary:
             assert json.loads(response.read()) == {"revoked": True, "current": False}
         expect_http(second, base + "/api/admin/session", 401)
         expect_http(first, base + "/api/admin/create-link", 403, body={"csrf": "wrong", "playerId": second_id})
+
+        with request(first, base + "/api/admin/create-link", body={"csrf": csrf, "playerId": second_id}) as response:
+            logout_claim = json.loads(response.read())["url"].split("#token=", 1)[1]
+        with request(logout_client, base + "/api/admin/claim", body={"token": logout_claim}) as response:
+            logout_csrf = json.loads(response.read())["csrf"]
+        expect_http(logout_client, base + "/api/admin/logout", 403, body={"csrf": "wrong"})
+        with request(logout_client, base + "/api/admin/logout", body={"csrf": logout_csrf}) as response:
+            assert json.loads(response.read()) == {"authenticated": False}
+        expect_http(logout_client, base + "/api/admin/session", 401)
 
         with first.open(base + "/api/admin/link-manager", timeout=3) as response:
             current = next(row for row in json.loads(response.read())["sessions"] if row["current"])

@@ -54,4 +54,4 @@ NPC diagnostics report scan progress, generation wall time, accumulated scanner 
 - Private NPC exclusion and extraction reports remain in the local asset workspace and are never deployed or packaged.
 
 Compatibility validation treats the private identity catalog as a versioned artifact. Its declared node count and catalog fingerprint must be present, every opaque ID and persistent state key must be unique, and the parsed row count must match exactly. At runtime, the reflected `AActor.RootComponent` and `USceneComponent.RelativeLocation` offsets must also match the offsets used by the bounded scanner. A failure disables NPC tracking only and is reported by `/api/diagnostics/npcs` and `/api/update-status`.
-Validate on development server `0f95b34b`. Production server `ef68362b` must not be changed without separate explicit authorization.
+Validate on an explicitly selected development server. Every production target remains read-only without separate explicit authorization.

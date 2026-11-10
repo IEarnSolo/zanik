@@ -506,6 +506,153 @@
           }
         }
       }
+    },
+    {
+      "sha256": "971eb1bb9b286fd9b3ef1437b3051a24a010e7e31ca63f3c2f491d49a4287ccc",
+      "jsonTargets": [
+        "/Maps/World/L_World(?:/|\\.(?:uasset|umap)$)",
+        "/Gameplay/(?:AI|BaseBuilding|BaseBuilding_New|Character/Player|Items|NPCs|Progress|Quests|Recipes|World)",
+        "/UI/JournalData/",
+        "/GameFeatures/[^/]+/Content/(?:Gameplay|World)/",
+        "DA_BuildPieceCatalogue_Default",
+        "DT_CraftingStationsDataTable",
+        "DT_ProcessingStationDataTable"
+      ],
+      "recipe": {
+        "schemaVersion": 17,
+        "engine": "GAME_UE5_6",
+        "jsonFilter": "(?:/Maps/World/L_World(?:/|\\.(?:uasset|umap)$)|/Gameplay/(?:AI|BaseBuilding|BaseBuilding_New|Character/Player|Items|NPCs|Progress|Quests|Recipes|World)|/UI/JournalData/|/GameFeatures/[^/]+/Content/(?:Gameplay|World)/|DA_BuildPieceCatalogue_Default|DT_CraftingStationsDataTable|DT_ProcessingStationDataTable)",
+        "textureFilter": "(?:/Art/UI/Map/T_WorldMap_Landmass\\.uasset$|/UI/(?:Icons|JournalData)/|/Art/UI/Icons/|T_Icon_(?:SkillTree_|Tag_Skill_|Lodestone|Gravestone|Plans))",
+        "fontFilter": "/UI/Fonts/Jancient\\.ufont$",
+        "requiredTextureAssets": [
+          "T_WorldMap_Landmass",
+          "package:RSDragonwilds/Content/Art/UI/Icons/T_LodestoneMapIcon",
+          "package:RSDragonwilds/Content/Art/UI/Icons/T_Icons_Journal_Cat_Knowledge_Places_Selected",
+          "package:RSDragonwilds/Content/Art/UI/Map/QuestList/T_Icon_Quest_Primary",
+          "package:RSDragonwilds/Content/Art/UI/Map/QuestList/T_Icon_Quest_Secondary",
+          "T_Icon_Gravestone",
+          "T_Icon_Plans"
+        ],
+        "catalogProfile": {
+          "version": "client-25812671-reviewed-8",
+          "clientBuild": "25812671",
+          "exportCounts": {
+            "jsonFiles": 17249,
+            "worldPartitionCells": 1104
+          },
+          "catalogCounts": {
+            "buildings/catalog.json:pieces": 827,
+            "npc-catalog.json:nodes": 2964,
+            "npc-catalog.json:types": 171,
+            "quest-catalog.json:objectives": 219,
+            "quest-catalog.json:quests": 41,
+            "quest-step-locations.json:markers": 693,
+            "quest-step-locations.json:quests": 41,
+            "quest-step-locations.json:steps": 230,
+            "recipe-unlocks.json:entries": 1576,
+            "resource-catalog.json:nodes": 31910,
+            "resource-catalog.json:types": 26
+          }
+        }
+      }
+    },
+    {
+      "sha256": "4c4c8317dfd92d2883a9bc4f929dcaf6fc5034740a56ee146e7ca77e4a6338d5",
+      "jsonTargets": [
+        "/Maps/World/L_World(?:/|\\.(?:uasset|umap)$)",
+        "/Gameplay/(?:AI|BaseBuilding|BaseBuilding_New|Character/Player|Items|NPCs|Progress|Quests|Recipes|World)",
+        "/UI/JournalData/",
+        "/GameFeatures/[^/]+/Content/(?:Gameplay|World)/",
+        "DA_BuildPieceCatalogue_Default",
+        "DT_CraftingStationsDataTable",
+        "DT_ProcessingStationDataTable"
+      ],
+      "recipe": {
+        "schemaVersion": 18,
+        "engine": "GAME_UE5_6",
+        "jsonFilter": "(?:/Maps/World/L_World(?:/|\\.(?:uasset|umap)$)|/Gameplay/(?:AI|BaseBuilding|BaseBuilding_New|Character/Player|Items|NPCs|Progress|Quests|Recipes|World)|/UI/JournalData/|/GameFeatures/[^/]+/Content/(?:Gameplay|World)/|DA_BuildPieceCatalogue_Default|DT_CraftingStationsDataTable|DT_ProcessingStationDataTable)",
+        "textureFilter": "(?:/Art/UI/Map/T_WorldMap_Landmass\\.uasset$|/UI/(?:Icons|JournalData)/|/Art/UI/Icons/|T_Icon_(?:SkillTree_|Tag_Skill_|Lodestone|Gravestone|Plans))",
+        "fontFilter": "/UI/Fonts/Jancient\\.ufont$",
+        "requiredTextureAssets": [
+          "T_WorldMap_Landmass",
+          "package:RSDragonwilds/Content/Art/UI/Icons/T_LodestoneMapIcon",
+          "package:RSDragonwilds/Content/Art/UI/Icons/T_Icons_Journal_Cat_Knowledge_Places_Selected",
+          "package:RSDragonwilds/Content/Art/UI/Map/QuestList/T_Icon_Quest_Primary",
+          "package:RSDragonwilds/Content/Art/UI/Map/QuestList/T_Icon_Quest_Secondary",
+          "T_Icon_Gravestone",
+          "T_Icon_Plans"
+        ],
+        "catalogProfile": {
+          "version": "client-25812671-reviewed-9",
+          "clientBuild": "25812671",
+          "exportCounts": {
+            "jsonFiles": 17249,
+            "worldPartitionCells": 1104
+          },
+          "catalogCounts": {
+            "buildings/catalog.json:pieces": 827,
+            "npc-catalog.json:nodes": 2964,
+            "npc-catalog.json:types": 171,
+            "quest-catalog.json:objectives": 219,
+            "quest-catalog.json:quests": 41,
+            "quest-step-locations.json:markers": 693,
+            "quest-step-locations.json:quests": 41,
+            "quest-step-locations.json:steps": 230,
+            "recipe-unlocks.json:entries": 1576,
+            "resource-catalog.json:nodes": 31910,
+            "resource-catalog.json:types": 26
+          }
+        }
+      }
+    },
+    {
+      "sha256": "1cafd1cc6fd564e339aeb63c32f42fea740e12b556a303ab8bdb7b75747bcb83",
+      "jsonTargets": [
+        "/Maps/World/L_World(?:/|\\.(?:uasset|umap)$)",
+        "/Gameplay/(?:AI|BaseBuilding|BaseBuilding_New|Character/Player|Items|NPCs|Progress|Quests|Recipes|World)",
+        "/UI/JournalData/",
+        "/GameFeatures/[^/]+/Content/(?:Gameplay|World)/",
+        "DA_BuildPieceCatalogue_Default",
+        "DT_CraftingStationsDataTable",
+        "DT_ProcessingStationDataTable"
+      ],
+      "recipe": {
+        "schemaVersion": 19,
+        "engine": "GAME_UE5_6",
+        "jsonFilter": "(?:/Maps/World/L_World(?:/|\\.(?:uasset|umap)$)|/Gameplay/(?:AI|BaseBuilding|BaseBuilding_New|Character/Player|Items|NPCs|Progress|Quests|Recipes|World)|/UI/JournalData/|/GameFeatures/[^/]+/Content/(?:Gameplay|World)/|DA_BuildPieceCatalogue_Default|DT_CraftingStationsDataTable|DT_ProcessingStationDataTable)",
+        "textureFilter": "(?:/Art/UI/Map/T_WorldMap_Landmass\\.uasset$|/UI/(?:Icons|JournalData)/|/Art/UI/Icons/|T_Icon_(?:SkillTree_|Tag_Skill_|Lodestone|Gravestone|Plans))",
+        "fontFilter": "/UI/Fonts/Jancient\\.ufont$",
+        "requiredTextureAssets": [
+          "T_WorldMap_Landmass",
+          "package:RSDragonwilds/Content/Art/UI/Icons/T_LodestoneMapIcon",
+          "package:RSDragonwilds/Content/Art/UI/Icons/T_Icons_Journal_Cat_Knowledge_Places_Selected",
+          "package:RSDragonwilds/Content/Art/UI/Map/QuestList/T_Icon_Quest_Primary",
+          "package:RSDragonwilds/Content/Art/UI/Map/QuestList/T_Icon_Quest_Secondary",
+          "T_Icon_Gravestone",
+          "T_Icon_Plans"
+        ],
+        "catalogProfile": {
+          "version": "client-26420214-reviewed-10",
+          "clientBuild": "26420214",
+          "exportCounts": {
+            "jsonFiles": 18279,
+            "worldPartitionCells": 1731
+          },
+          "catalogCounts": {
+            "buildings/catalog.json:pieces": 850,
+            "npc-catalog.json:nodes": 2964,
+            "npc-catalog.json:types": 171,
+            "quest-catalog.json:objectives": 223,
+            "quest-catalog.json:quests": 42,
+            "quest-step-locations.json:markers": 702,
+            "quest-step-locations.json:quests": 42,
+            "quest-step-locations.json:steps": 235,
+            "recipe-unlocks.json:entries": 1615,
+            "resource-catalog.json:nodes": 31910,
+            "resource-catalog.json:types": 26
+          }
+        }
+      }
     }
   ]
 }

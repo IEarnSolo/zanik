@@ -23,19 +23,19 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
-        if self.path.startswith("/api/v4/projects/dragonwilds%2Fzanik/pipelines?"):
+        if self.path.startswith("/api/v4/projects/namespace%2Fzanik/pipelines?"):
             body = [{"id": 42, "status": "running", "ref": "main", "sha": SHA,
                      "web_url": "https://gitlab.example/pipelines/42"}]
             self.respond(body)
-        elif self.path == "/api/v4/projects/dragonwilds%2Fzanik/pipelines/42":
+        elif self.path == "/api/v4/projects/namespace%2Fzanik/pipelines/42":
             status = "failed" if self.failed else "success"
             self.respond({"id": 42, "status": status, "ref": "main", "sha": SHA,
                           "web_url": "https://gitlab.example/pipelines/42"})
-        elif self.path.startswith("/api/v4/projects/dragonwilds%2Fzanik/pipelines/42/jobs?"):
+        elif self.path.startswith("/api/v4/projects/namespace%2Fzanik/pipelines/42/jobs?"):
             status = "failed" if self.failed else "success"
             self.respond([{"id": 99, "status": status, "stage": "test",
                            "name": "test-core", "duration": 1.25}])
-        elif self.path == "/api/v4/projects/dragonwilds%2Fzanik/jobs/99/trace":
+        elif self.path == "/api/v4/projects/namespace%2Fzanik/jobs/99/trace":
             payload = b"compile output\nintentional failure\n"
             self.send_response(200)
             self.send_header("Content-Type", "text/plain")
@@ -64,7 +64,7 @@ try:
         env_file = Path(temporary) / ".env.gitlab"
         env_file.write_text(
             f"GITLAB_BASE_URL=http://127.0.0.1:{server.server_port}\n"
-            "GITLAB_PROJECT=dragonwilds/zanik\n"
+            "GITLAB_PROJECT=namespace/zanik\n"
             "GITLAB_TOKEN=test-token\n",
             encoding="utf-8",
         )

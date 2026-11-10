@@ -1,8 +1,8 @@
 # Quest step location coverage
 
-Catalog fingerprint: `5b89d5a15671b69c53aa4d7d521eea68681474d957302aedf36c87a47f72f050`
+Catalog fingerprint: `18127d9581d6bfc939045a751c1905b1be6744aeeb316a50e27dd7ed6908f3b8`
 
-This report covers 41 quests and 230 reachable player objectives. 2 blank objective-table records that are never referenced by compiled quest flow remain in the internal analysis but are excluded from the public catalog. A mapped objective has an exact quest-location link, a quest-scoped world-registry landmark, or a dungeon identity linked to its authored overworld entrance. Wiki coordinates are never accepted.
+This report covers 42 quests and 235 reachable player objectives. 2 blank objective-table records that are never referenced by compiled quest flow remain in the internal analysis but are excluded from the public catalog. A mapped objective has an exact quest-location link, a quest-scoped world-registry landmark, or a dungeon identity linked to its authored overworld entrance. Wiki coordinates are never accepted.
 
 The current build contains 16 verified overworld dungeon entrances. Interior steps use those entrances and retain the interior target name as marker metadata.
 
@@ -13,7 +13,6 @@ The current build contains 16 verified overworld dungeon entrances. Interior ste
 | Highlighting the Problem | 4 | 4 | 0 |
 | Restless Ghosts | 2 | 2 | 0 |
 | Scarecrow Scavenging | 0 | 0 | 0 |
-| The Great Body Robbery | 13 | 13 | 0 |
 | Black Knight's Fortress | 22 | 22 | 0 |
 | Biohazard | 5 | 5 | 0 |
 | Wanted! | 5 | 5 | 0 |
@@ -34,8 +33,10 @@ The current build contains 16 verified overworld dungeon entrances. Interior ste
 | Dog Days | 6 | 6 | 0 |
 | Granite Mauled | 3 | 3 | 0 |
 | Heartstrings | 1 | 1 | 0 |
+| The Great Body Robbery | 13 | 13 | 0 |
 | Regicide | 5 | 5 | 0 |
 | Icthlarin's Little Helper | 18 | 18 | 0 |
+| A Reel Downer | 5 | 5 | 0 |
 | Beast in the Sand | 3 | 3 | 0 |
 | Brink of Extinction | 9 | 9 | 0 |
 | Contact! | 10 | 10 | 0 |

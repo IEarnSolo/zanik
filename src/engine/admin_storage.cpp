@@ -33,13 +33,14 @@
 
 namespace DomEngine {
 namespace {
-constexpr const char* PreviousSha="b5017cf67bc6127dbec443e00fed1f818e82afd5d6d17f912d959a1dd87d5687";
-constexpr const char* CurrentSha="45cd13cf24658153f4c53777816ffa38ac893a471ebdf5d9c9768f7e4e74c966";
+constexpr const char* LegacySha="b5017cf67bc6127dbec443e00fed1f818e82afd5d6d17f912d959a1dd87d5687";
+constexpr const char* PreviousSha="45cd13cf24658153f4c53777816ffa38ac893a471ebdf5d9c9768f7e4e74c966";
+constexpr const char* CurrentSha="a350b998ea38955345619b7adde31aa9e29db629e9e9aa32287013957eb41901";
 // The current build's native storage entry points are statically understood and
 // request preparation is now off-thread. Keep mutation compatibility closed in
 // ordinary releases until the bounded dispatcher passes live performance testing.
-bool ExpectedSha(const std::string& hash){const char*candidate=std::getenv("ZANIK_STORAGE_PERFORMANCE_CANDIDATE");struct stat marker{};const std::string markerPath=RuntimePaths::DataFile("storage-performance-candidate");const bool candidateEnabled=(candidate&&std::string(candidate)=="1")||stat(markerPath.c_str(),&marker)==0;return hash=="445f8b65047d208adb04a3cb03bc7706f069306d814172ae29caec16c15bec7e"||hash=="ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac"||(candidateEnabled&&(hash==PreviousSha||hash==CurrentSha));}
-bool ExpectedDispatcherSha(const std::string& hash){return ExpectedSha(hash)||hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"||hash==PreviousSha||hash==CurrentSha;}
+bool ExpectedSha(const std::string& hash){const char*candidate=std::getenv("ZANIK_STORAGE_PERFORMANCE_CANDIDATE");struct stat marker{};const std::string markerPath=RuntimePaths::DataFile("storage-performance-candidate");const bool candidateEnabled=(candidate&&std::string(candidate)=="1")||stat(markerPath.c_str(),&marker)==0;return hash=="445f8b65047d208adb04a3cb03bc7706f069306d814172ae29caec16c15bec7e"||hash=="ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac"||(candidateEnabled&&(hash==LegacySha||hash==PreviousSha||hash==CurrentSha));}
+bool ExpectedDispatcherSha(const std::string& hash){return ExpectedSha(hash)||hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"||hash==LegacySha||hash==PreviousSha||hash==CurrentSha;}
 constexpr std::size_t QueueCapacity=32;
 constexpr uintptr_t AddItemByDataOffset=0x0A6118E0;
 constexpr uintptr_t CanAddItemByDataOffset=0x0A612180;
@@ -67,12 +68,13 @@ struct StorageOffsets {
 };
 StorageOffsets OffsetsFor(const std::string& hash){
     StorageOffsets value;
-    if(hash==PreviousSha)value={0x0A653420,0x0A653CC0,0x0A6554F0,0x0A656FD0,0x0A654980,0x0A65F7E0,0x0A3DAA00,0x04A89480,0x07ABFE00,0x0A0EF130,0x0A0EF3A0,0x0A0EF780,0x04ACFAE0,0x079D0710,0x04A1F9F0,0x0A3B5970};
-    else if(hash==CurrentSha)value={0x0A653CD0,0x0A654570,0x0A655DA0,0x0A657880,0x0A655230,0x0A660090,0x0A3DA9D0,0x04A89480,0x07ABFE00,0x0A0EF090,0x0A0EF300,0x0A0EF6E0,0x04ACFAE0,0x079D0710,0x04A1F9F0,0x0A3B58D0};
+    if(hash==LegacySha)value={0x0A653420,0x0A653CC0,0x0A6554F0,0x0A656FD0,0x0A654980,0x0A65F7E0,0x0A3DAA00,0x04A89480,0x07ABFE00,0x0A0EF130,0x0A0EF3A0,0x0A0EF780,0x04ACFAE0,0x079D0710,0x04A1F9F0,0x0A3B5970};
+    else if(hash==PreviousSha)value={0x0A653CD0,0x0A654570,0x0A655DA0,0x0A657880,0x0A655230,0x0A660090,0x0A3DA9D0,0x04A89480,0x07ABFE00,0x0A0EF090,0x0A0EF300,0x0A0EF6E0,0x04ACFAE0,0x079D0710,0x04A1F9F0,0x0A3B58D0};
+    else if(hash==CurrentSha)value={0x0A669830,0x0A66A3C0,0x0A66BF00,0x0A66EF90,0x0A66B390,0x0A677D60,0x0A3E9980,0x04A94480,0x07ACAF90,0x0A0FDA20,0x0A0FDC90,0x0A0FE070,0x04ADAAE0,0x079DB8A0,0x04A2A9F0,0x0A3C4F00};
     return value;
 }
 std::atomic<uintptr_t> cachedDisplayTextOffset{0};
-uintptr_t DisplayTextOffset(){auto value=cachedDisplayTextOffset.load();if(value)return value;const std::string hash=FileSha256("/proc/self/exe");value=(hash==PreviousSha||hash==CurrentSha)?0x04ACAA80:0x04AA1A80;cachedDisplayTextOffset.store(value);return value;}
+uintptr_t DisplayTextOffset(){auto value=cachedDisplayTextOffset.load();if(value)return value;const std::string hash=FileSha256("/proc/self/exe");value=hash==CurrentSha?0x04AD5A80:((hash==LegacySha||hash==PreviousSha)?0x04ACAA80:0x04AA1A80);cachedDisplayTextOffset.store(value);return value;}
 
 using AddItemByDataFn=bool(*)(void*,void*,int,float,const void*);
 using CanAddItemByDataFn=bool(*)(void*,void*,int);
@@ -224,7 +226,7 @@ const BuildingCatalog& AuthoritativeBuildingCatalog(){
             else if(f[0]=="P"&&f.size()>=7)value.pieces.emplace(f[1],BuildingMeta{f[2],f[3],f[4],f[5],f[6]});}
         size_t sections=0,references=0;bool icons=true;for(const auto&tab:value.tabs)for(const auto&section:tab.sections){++sections;references+=section.pieces.size();}for(const auto&p:value.pieces){struct stat st{};if(stat((base+p.second.icon).c_str(),&st)!=0||st.st_size<1){icons=false;break;}}
         const bool fingerprintValid=value.fingerprint.size()==64&&std::all_of(value.fingerprint.begin(),value.fingerprint.end(),[](unsigned char c){return std::isxdigit(c)!=0;});
-        value.iconsValid=icons;value.valid=value.schema==1&&fingerprintValid&&declaredTabs==8&&declaredSections==63&&value.expectedReferences==844&&value.expectedPieces==827&&value.tabs.size()==size_t(declaredTabs)&&sections==size_t(declaredSections)&&references==size_t(value.expectedReferences)&&value.pieces.size()==size_t(value.expectedPieces);return value;}();return catalog;
+        value.iconsValid=icons;value.valid=value.schema==1&&fingerprintValid&&declaredTabs==8&&declaredSections==64&&value.expectedReferences==867&&value.expectedPieces==850&&value.tabs.size()==size_t(declaredTabs)&&sections==size_t(declaredSections)&&references==size_t(value.expectedReferences)&&value.pieces.size()==size_t(value.expectedPieces);return value;}();return catalog;
 }
 const std::unordered_map<std::string,BuildingMeta>& BuildingMetadata(){
     return AuthoritativeBuildingCatalog().pieces;
@@ -232,7 +234,7 @@ const std::unordered_map<std::string,BuildingMeta>& BuildingMetadata(){
 const PlanCatalog& PlanItemCatalog(){
     static const auto catalog=[](){PlanCatalog value;std::string base=RuntimePaths::WebRoot();std::ifstream input(base+"/plan-items.tsv");std::string line;
         while(std::getline(input,line)){if(!line.empty()&&line.back()=='\r')line.pop_back();auto f=SplitTabs(line);if(f.empty())continue;if(f[0]=="# zanik-plan-items"&&f.size()==4){if(f[1]!="1")return value;value.expected=std::atoi(f[2].c_str());value.fingerprint=f[3];continue;}if(f.size()!=4||f[0].rfind("DA_Consumable_Plan",0)!=0||f[1].rfind("PLAN: ",0)!=0||f[2].size()!=22||f[3]!=f[0]+".png")return PlanCatalog{};struct stat st{};if(stat((base+"/items/"+f[3]).c_str(),&st)!=0||st.st_size<1)return PlanCatalog{};value.keys.insert(f[0]);}
-        const bool fingerprintValid=value.fingerprint.size()==64&&std::all_of(value.fingerprint.begin(),value.fingerprint.end(),[](unsigned char c){return std::isxdigit(c)!=0;});value.valid=value.expected==123&&value.keys.size()==size_t(value.expected)&&fingerprintValid;return value;}();return catalog;
+        const bool fingerprintValid=value.fingerprint.size()==64&&std::all_of(value.fingerprint.begin(),value.fingerprint.end(),[](unsigned char c){return std::isxdigit(c)!=0;});value.valid=value.expected==141&&value.keys.size()==size_t(value.expected)&&fingerprintValid;return value;}();return catalog;
 }
 std::string CleanAssetName(std::string value){for(const char*prefix:{"RECIPE_","BUILDPIECE_","DA_"})if(value.rfind(prefix,0)==0){value.erase(0,std::strlen(prefix));break;}std::replace(value.begin(),value.end(),'_',' ');return value;}
 bool RejectedRecipeKey(const std::string&key){std::string lower=key;std::transform(lower.begin(),lower.end(),lower.begin(),[](unsigned char c){return char(std::tolower(c));});return lower.find("test")!=std::string::npos||lower.find("debug")!=std::string::npos||lower.find("deprecated")!=std::string::npos||lower.find("_old")!=std::string::npos||lower.find("refund")!=std::string::npos||lower.find("journal")!=std::string::npos||lower.find("vendor")!=std::string::npos||lower.find("proxy")!=std::string::npos||lower.find("deriveddata")!=std::string::npos;}
@@ -516,7 +518,10 @@ void HookBuildingEndPlay(void* actor,int reason){
 }
 bool InstallBuildingEndPlayHook(uintptr_t moduleBase,uintptr_t moduleEnd,uintptr_t offset){
     if(originalBuildingEndPlay)return true;if(moduleBase+offset+BuildingEndPlayHookBytes>moduleEnd)return false;auto* target=reinterpret_cast<unsigned char*>(moduleBase+offset);const unsigned char expected[BuildingEndPlayHookBytes]={0x55,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53,0x50,0x89,0xf5,0x49,0x89,0xfe};if(std::memcmp(target,expected,sizeof(expected)))return false;
-    const unsigned char signature[]={0x55,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53,0x50,0x89,0xF5,0x49,0x89,0xFE,0xE8,0x9B,0x05,0x72,0xFD,0x49,0x8D,0x9E,0x80,0x03,0x00,0x00,0x83,0xFD,0x03,0x0F,0x85,0x8B,0x00,0x00,0x00};if(!Mem::Readable(target,sizeof(signature))||std::memcmp(target,signature,sizeof(signature)))return false;
+    // Only the complete instructions replaced by the trampoline belong to the
+    // hook contract.  The following call remains in the original function and
+    // its relative displacement may legitimately move between game builds.
+    if(!Mem::Readable(target,sizeof(expected)))return false;
     auto* trampoline=static_cast<unsigned char*>(mmap(nullptr,64,PROT_READ|PROT_WRITE|PROT_EXEC,MAP_PRIVATE|MAP_ANONYMOUS,-1,0));if(trampoline==MAP_FAILED)return false;std::memcpy(trampoline,target,BuildingEndPlayHookBytes);WriteJump(trampoline+BuildingEndPlayHookBytes,reinterpret_cast<uintptr_t>(target+BuildingEndPlayHookBytes));originalBuildingEndPlay=reinterpret_cast<BuildingEndPlayFn>(trampoline);
     long pageSize=sysconf(_SC_PAGESIZE);uintptr_t page=reinterpret_cast<uintptr_t>(target)&~(uintptr_t(pageSize)-1);if(mprotect(reinterpret_cast<void*>(page),size_t(pageSize),PROT_READ|PROT_WRITE|PROT_EXEC)!=0){originalBuildingEndPlay=nullptr;munmap(trampoline,64);return false;}unsigned char patch[BuildingEndPlayHookBytes];std::memset(patch,0x90,sizeof(patch));WriteJump(patch,reinterpret_cast<uintptr_t>(&HookBuildingEndPlay));std::memcpy(target,patch,sizeof(patch));__builtin___clear_cache(reinterpret_cast<char*>(target),reinterpret_cast<char*>(target+sizeof(patch)));mprotect(reinterpret_cast<void*>(page),size_t(pageSize),PROT_READ|PROT_EXEC);return true;
 }
@@ -597,8 +602,8 @@ int ExecutableBounds(struct dl_phdr_info* info,size_t,void* data){
 
 bool InitializeAdminStorage(uintptr_t moduleBase,uintptr_t moduleEnd){
     const std::string hash=FileSha256("/proc/self/exe");if(!ExpectedSha(hash)){compatibility=-1;return false;}const auto offsets=OffsetsFor(hash);
-    cachedDisplayTextOffset.store((hash==PreviousSha||hash==CurrentSha)?0x04ACAA80:0x04AA1A80);
-    const uintptr_t serverRenameOffset=hash==CurrentSha?0x0A593D70:0;
+    cachedDisplayTextOffset.store(hash==CurrentSha?0x04AD5A80:((hash==LegacySha||hash==PreviousSha)?0x04ACAA80:0x04AA1A80));
+    const uintptr_t serverRenameOffset=hash==CurrentSha?0x0A5A3880:(hash==PreviousSha?0x0A593D70:0);
     if(!earlyHookInstalled.load()||!originalEngineTick){compatibility=-6;return false;}
     for(uintptr_t o:{offsets.addItemByData,offsets.canAddItemByData,offsets.moveItem,offsets.removeFromSlot,offsets.canAddItemsByData,offsets.addItemsByData,offsets.buildingRequirements,offsets.memoryFree,offsets.engineTick,offsets.renameGet,offsets.renameSetter,offsets.renameSet,offsets.textFromString,offsets.uniqueIdDestructor,offsets.textDestructor,offsets.buildingEndPlay})if(moduleBase+o<moduleBase||moduleBase+o+EngineTickHookBytes>moduleEnd){compatibility=-2;return false;}
     if(serverRenameOffset&&(moduleBase+serverRenameOffset<moduleBase||moduleBase+serverRenameOffset+EngineTickHookBytes>moduleEnd)){compatibility=-2;return false;}
@@ -622,8 +627,8 @@ bool InitializeAdminStorage(uintptr_t moduleBase,uintptr_t moduleEnd){
 bool InitializeAdminStorageHookEarly(){
     if(earlyHookInstalled.load())return true;
     std::string hash=FileSha256("/proc/self/exe");if(!ExpectedDispatcherSha(hash)){LogMessage("Admin storage dispatcher fingerprint mismatch: "+hash);return false;}
-    const bool currentDispatcher=hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"||hash==PreviousSha||hash==CurrentSha;
-    const uintptr_t dispatcherOffset=currentDispatcher?0x07ABFE00:EngineTickOffset;
+    const bool currentDispatcher=hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"||hash==LegacySha||hash==PreviousSha||hash==CurrentSha;
+    const uintptr_t dispatcherOffset=hash==CurrentSha?0x07ACAF90:(currentDispatcher?0x07ABFE00:EngineTickOffset);
     uintptr_t bounds[3]={0,0,0};dl_iterate_phdr(&ExecutableBounds,bounds);if(!bounds[2]||bounds[0]+dispatcherOffset+EngineTickHookBytes>bounds[1]){LogMessage("Admin storage dispatcher executable bounds unavailable");return false;}
     auto* target=reinterpret_cast<unsigned char*>(bounds[0]+dispatcherOffset);
     const unsigned char expected[EngineTickHookBytes]={0x53,0x48,0x83,0xEC,0x10,0x8B,0x47,0x08,0xA8,0x10,0x0F,0x85,0x92,0x00,0x00,0x00};

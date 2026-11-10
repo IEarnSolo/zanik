@@ -23,7 +23,7 @@
       "assets": [],
       "failureBoundary": "kill tracking only",
       "liveValidation": ["kill one development-server NPC and verify attribution plus region resolution"],
-      "tests": ["tests/game_update_26161880_test.py", "tests/http_test.py"]
+      "tests": ["tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/http_test.py"]
     },
     {
       "id": "resources",
@@ -35,7 +35,7 @@
       "assets": ["resource-catalog.json", "resources/*"],
       "failureBoundary": "resource tracking and resource map layer",
       "liveValidation": ["collect one resource and verify activity plus bounded resource diagnostics"],
-      "tests": ["tests/game_update_26161880_test.py", "tests/player_discovery_performance_test.py"]
+      "tests": ["tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/player_discovery_performance_test.py"]
     },
     {
       "id": "npc-tracking",
@@ -56,7 +56,7 @@
       "runtimeStatusFields": ["mapProjectionCompatibility", "featureStates.map"],
       "diagnosticsEndpoint": "/api/map-label-diagnostics",
       "persistence": [],
-      "assets": ["world-map.jpg"],
+      "assets": ["world-map.jpg", "world-map-1024.jpg", "world-map-2048.jpg"],
       "failureBoundary": "world map placement and labels only",
       "liveValidation": ["load the development map and verify a known player or object marker projection"],
       "tests": ["tests/map_page_test.js", "tests/http_test.py"]
@@ -107,7 +107,7 @@
       "assets": ["quest-runtime-catalog.tsv", "quest-catalog.json"],
       "failureBoundary": "quest snapshots, active quest card, and quest activity",
       "liveValidation": ["scan an online player and advance one development-server quest step"],
-      "tests": ["tests/compatibility_checks_test.cpp", "tests/game_update_26161880_test.py", "tests/http_test.py"]
+      "tests": ["tests/compatibility_checks_test.cpp", "tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/http_test.py"]
     },
     {
       "id": "region-discovery",
@@ -119,7 +119,7 @@
       "assets": ["region-discovery-icon.png"],
       "failureBoundary": "new region activity entries only",
       "liveValidation": ["discover a previously undiscovered development-server region"],
-      "tests": ["tests/game_update_26161880_test.py", "tests/player_activity_http_test.py"]
+      "tests": ["tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/player_activity_http_test.py"]
     },
     {
       "id": "player-network",
@@ -131,7 +131,7 @@
       "assets": [],
       "failureBoundary": "per-player latency attribution only",
       "liveValidation": ["observe one online player after the join grace period"],
-      "tests": ["tests/game_update_26161880_test.py", "tests/server_performance_store_test.cpp"]
+      "tests": ["tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/server_performance_store_test.cpp"]
     },
     {
       "id": "player-skill-assets",
@@ -203,7 +203,7 @@
       "assets": [],
       "failureBoundary": "storage naming only",
       "liveValidation": ["name in game and rename through the development website"],
-      "tests": ["tests/game_update_26161880_test.py", "tests/storage_mutation_pipeline_test.py"]
+      "tests": ["tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/storage_mutation_pipeline_test.py"]
     },
     {
       "id": "storage-building-catalogs",
@@ -232,7 +232,7 @@
     {
       "id": "gravestones",
       "category": "native-and-persistence",
-      "staticChecks": ["ownership and inventory ABIs", "registry record layout", "register and unregister hooks", "World Partition streaming"],
+      "staticChecks": ["ownership and inventory ABIs", "registry record layout", "register and unregister hooks", "World Partition streaming", "obsolete respawn research capture remains disabled"],
       "runtimeStatusFields": ["adminGravestoneCompatibility", "adminGravestoneRegistryCompatibility", "adminGravestoneStreamingCompatibility", "adminGravestoneRemovalCompatibility", "adminGravestonePersistenceCompatibility"],
       "diagnosticsEndpoint": "/api/admin-diagnostics",
       "persistence": ["zanik-data/gravestone-snapshots.v1", "zanik-data/grave-items.tsv"],
@@ -244,7 +244,7 @@
     {
       "id": "admin-authorization",
       "category": "operational-security",
-      "staticChecks": [],
+      "staticChecks": ["single-use claim routing, installed-app launch handling, and browser-to-app token handoff"],
       "runtimeStatusFields": ["adminAuthorizationStorage", "adminConsoleCompatibility"],
       "diagnosticsEndpoint": "/api/admin-diagnostics",
       "persistence": ["zanik/admins.txt", "zanik-data/admin-sessions.db", "zanik-data/admin-audit.log", "zanik-data/console-admin.key"],

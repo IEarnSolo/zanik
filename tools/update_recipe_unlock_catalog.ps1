@@ -1,6 +1,6 @@
 param(
-    [string]$GameRoot = 'E:\SteamLibrary\steamapps\common\RSDragonwilds',
-    [string]$Python = 'C:\Users\Bill\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe',
+    [string]$GameRoot = $env:RS_DRAGONWILDS_ROOT,
+    [string]$Python = 'python',
     [switch]$AllowUnresolved
 )
 
@@ -12,8 +12,9 @@ $usmap = Join-Path $repo 'dist\RSDragonwilds-current.usmap'
 $assets = Join-Path $repo 'dist\recipe-unlock-all-json-current'
 $previous = Join-Path $repo 'reference\recipe-unlocks.previous.json'
 $current = Join-Path $repo 'reference\recipe-unlocks.json'
-$baseline = Join-Path $repo 'reference\recipe-unlock-testdude-baseline.json'
+$baseline = Join-Path $repo 'reference\recipe-unlock-test-character-baseline.json'
 
+if ([string]::IsNullOrWhiteSpace($GameRoot)) { throw 'Pass -GameRoot or set RS_DRAGONWILDS_ROOT to the Dragonwilds installation directory' }
 if (-not (Test-Path -LiteralPath $uas)) { throw "UnrealAssetScout is missing: $uas" }
 if (-not (Test-Path -LiteralPath $paks)) { throw "Game Paks directory is missing: $paks" }
 if (-not (Test-Path -LiteralPath $usmap)) { throw "Current .usmap is missing: $usmap" }
@@ -25,6 +26,7 @@ if ($LASTEXITCODE -ne 0) { throw "Asset extraction failed with exit code $LASTEX
 
 $arguments = @((Join-Path $repo 'tools\generate_recipe_unlock_catalog.py'), '--assets', $assets,
     '--building-assets', $assets, '--fresh-baseline', $baseline,
+    '--game-exe', (Join-Path $GameRoot 'RSDragonwilds\Binaries\Win64\RSDragonwilds-Win64-Shipping.exe'),
     '--output', $current, '--docs-dir', (Join-Path $repo 'docs'),
     '--web-output', (Join-Path $repo 'web\recipe-unlocks.json'),
     '--runtime-web-output', (Join-Path $repo 'web\recipe-runtime-catalog.tsv'),

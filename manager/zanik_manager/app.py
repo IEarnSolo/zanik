@@ -736,7 +736,8 @@ class MainWindow(QMainWindow):
         self.files_generations[profile.id] = generation
         roots = virtual_roots(profile.server_root, self.installation_states.get(profile.id))
         self.files_caches[profile.id] = FileIndex(profile.id, generation, roots,
-                                                  root_totals={root.key: 0 for root in roots})
+                                                  root_totals={root.key: 0 for root in roots},
+                                                  root_states={root.key: "checking" for root in roots})
         if self.active() and self.active().id == profile.id:
             self.files_status.setText("Indexing Zanik file metadata…")
             self.files_last_updated.setText("Last updated: Updating now…")
@@ -779,6 +780,7 @@ class MainWindow(QMainWindow):
         cache.directory_count = int(update.get("directories", cache.directory_count))
         cache.total_size = int(update.get("bytes", cache.total_size))
         cache.root_totals = dict(update.get("rootTotals", cache.root_totals))
+        cache.root_states = dict(update.get("rootStates", cache.root_states))
         if update.get("directoryTotals"):
             cache.directory_totals = dict(update["directoryTotals"])
         cache.warnings = list(update.get("warnings", cache.warnings))
@@ -830,15 +832,20 @@ class MainWindow(QMainWindow):
                                           else f"Zanik files · {profile.name}")
             for root in cache.roots:
                 size = cache.root_totals.get(root.key, 0)
-                kind = "Zanik-managed file" if root.is_file else "Zanik folder"
+                root_state = cache.root_states.get(root.key, "checking")
+                available = root_state == "present"
+                kind = (("Zanik-managed file" if root.is_file else "Zanik folder") if available else
+                        "Not present" if root_state == "missing" else
+                        "Unavailable" if root_state == "unavailable" else "Checking…")
                 exact = cache.directories.get(root.path, []) if root.is_file else []
                 modified = format_modified(exact[0].modified_at) if exact else ""
                 shown_name = root.path if self.files_raw_paths.isChecked() else root.label
-                item = SortableFileItem([shown_name, modified, kind, format_size(size)])
+                item = SortableFileItem([shown_name, modified, kind, format_size(size) if available else "—"])
                 item.setIcon(0, self.style().standardIcon(QStyle.SP_FileIcon if root.is_file else QStyle.SP_DirIcon))
-                item.setData(0, Qt.UserRole, None if root.is_file else (root.key, ""))
+                item.setData(0, Qt.UserRole, None if root.is_file or not available else (root.key, ""))
                 item.setData(0, Qt.UserRole + 1, (0 if not root.is_file else 1, root.label.lower()))
                 item.setData(3, Qt.UserRole + 1, size)
+                item.setDisabled(not available)
                 self.files_tree.addTopLevelItem(item)
         else:
             root = self.files_root(self.files_location[0])

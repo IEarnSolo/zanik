@@ -4,6 +4,8 @@
 
 Every server archive contains `payload-contract.json`, a deterministic contract over operational binaries, launchers, scripts, tools, configuration, and compatibility metadata. Manager code, documentation, changelogs, licenses, generated assets, and display-version files are excluded. Release validation must prove the Manager, nested server archive, and public release manifest report the same contract. A Manager-only release is expected to retain the prior contract.
 
+Server archives deliberately omit the repository README, changelog, and `docs/` tree. They retain Zanik's `LICENSE`, `THIRD_PARTY_NOTICES.md`, and the separate RSDWServerAPI MIT terms because those notices accompany distributed copies even though they are excluded from the operational payload contract.
+
 `release-manifest.json` also records the Windows extraction asset contract: recipe version, reviewed compatibility-profile version, and exact recipe hash. Manager treats this independently from the server payload so it can explain whether a release requires only a Manager update, a Zanik server update, an asset refresh, or both. Never infer either requirement from the shared release number alone.
 
 ## One-time release configuration
@@ -14,10 +16,10 @@ The release pipeline uses `CI_JOB_TOKEN` for GitLab packages and releases. Do no
 
 Create a fine-grained GitHub personal access token restricted to `IEarnSolo/zanik`, with only **Contents: Read and write** permission and an appropriate expiry. Add it to the GitLab project as `GITHUB_RELEASE_TOKEN`: protected, masked and hidden, variable expansion disabled, and environment scope `github-production`. Protect the `github-production` environment for Maintainers. This scope keeps the token out of ordinary branch and test jobs. Never enable CI debug tracing on a job that receives this token.
 
-For CurseForge, create these project CI/CD variables:
+For CurseForge, protect the `curseforge-production` environment for Maintainers and create these project CI/CD variables with environment scope `curseforge-production`:
 
 - `CURSEFORGE_API_TOKEN`: protected, masked and hidden, variable expansion disabled.
-- `CURSEFORGE_PROJECT_ID`: protected. This identifier is not secret.
+- `CURSEFORGE_PROJECT_ID`: protected. This identifier is not secret, but keeping the account-owned publication target in CI configuration prevents a public fork from inheriting it accidentally.
 
 Never enable CI debug tracing on a job with a release token.
 

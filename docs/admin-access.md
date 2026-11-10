@@ -28,6 +28,14 @@ The browser endpoints, claim exchange, cookies, CSRF validation, logout,
 allowlist reload, revocation storage, destination validation, rate limiting,
 and map controls are implemented.
 
+Every website page uses the shared Zanik header. When the browser has a valid
+session, the header reveals the Admin Sessions link and an
+`Admin: CHARACTER · logout` button. Logout posts the session's CSRF token,
+updates open map administration controls immediately, and redirects protected
+admin pages to the public map. The adjacent UI-size selector is also shared by
+every page; its browser-local preference scales website chrome and typography
+without changing world-map coordinates or marker geometry.
+
 ## Creating a browser session
 
 Enter `zanik-player-id` in the server's Pterodactyl console to list every known
@@ -48,6 +56,17 @@ Creating a link for a player who is not already authorized appends that
 character to `admins.txt`; duplicate names include last-seen timestamps in the
 selector. Each session can be revoked independently, including the current
 browser session. Link creation, authorization, and revocation are audited.
+
+Admin claim links are inside the installed web app's `/` scope and the manifest
+requests existing-app navigation, so supporting Android/Chromium installations
+open the link directly in Zanik and redeem the cookie in that app container.
+Home Screen web apps on iPhone do not expose a reliable browser-to-installed-app
+launch or installation-detection API. When iOS opens a claim in Safari, the
+claim remains unused and the page offers **Copy app login**. Open Zanik from the
+Home Screen, choose **More → Admin login**, paste the private value, and redeem
+it inside the app. **Continue in this browser** remains available when a browser
+session is intended. The copied value is the original five-minute, single-use
+claim secret; it is never placed in a query string or server log.
 
 The bootstrap authenticates to a loopback-only claim endpoint with a random
 secret stored at `/home/container/zanik-data/console-admin.key`. Requests to

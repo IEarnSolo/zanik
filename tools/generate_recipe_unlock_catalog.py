@@ -849,6 +849,10 @@ def render_web_catalog(
 ) -> dict[str, int]:
     """Emit a compact, display-only dependency graph for the public website."""
     recipes = result["recipes"]
+    public_icon_root = output_path.parent / "recipe-icons"
+    if public_icon_root.exists():
+        shutil.rmtree(public_icon_root)
+    public_icon_root.mkdir(parents=True, exist_ok=True)
     labels: dict[str, str] = {}
     buildable_to_piece: dict[str, str] = {}
     station_rows: dict[str, str] = {}
@@ -899,8 +903,13 @@ def render_web_catalog(
     def public_icon(internal: str) -> str:
         icon_internal = buildable_to_piece.get(internal, internal)
         for group in ("items", "buildings"):
-            if (output_path.parent / group / f"{icon_internal}.png").is_file():
-                return f"/assets/{group}/{icon_internal}.png"
+            source = output_path.parent / group / f"{icon_internal}.png"
+            if source.is_file():
+                opaque_name = hashlib.sha256(f"{group}:{icon_internal}".encode()).hexdigest()[:16] + ".png"
+                destination = public_icon_root / opaque_name
+                if not destination.exists():
+                    shutil.copyfile(source, destination)
+                return f"/assets/recipe-icons/{opaque_name}"
         return ""
 
     def target_label(target: dict[str, Any]) -> str:
@@ -1115,7 +1124,8 @@ def main() -> int:
     parser.add_argument("--editor-data", type=Path,
                         help="Optional legacy registry used only as supplemental diagnostics")
     parser.add_argument("--usmap", type=Path, default=Path("dist/RSDragonwilds-current.usmap"))
-    parser.add_argument("--game-exe", type=Path, default=Path(r"E:\SteamLibrary\steamapps\common\RSDragonwilds\RSDragonwilds\Binaries\Win64\RSDragonwilds-Win64-Shipping.exe"))
+    parser.add_argument("--game-exe", type=Path,
+                        help="Optional Dragonwilds executable used only for source fingerprinting")
     parser.add_argument("--fresh-baseline", type=Path,
                         help="Optional clean-character comparison; never required for generation")
     parser.add_argument("--rules", type=Path,

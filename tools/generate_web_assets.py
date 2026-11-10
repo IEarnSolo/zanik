@@ -21,6 +21,7 @@ except ModuleNotFoundError:  # Imported as tools.* by repository tests.
 
 SKILLS = ("agility", "artisan", "attack", "construction", "cooking", "farming", "fishing", "magic", "mining", "ranged", "runecrafting", "woodcutting")
 MAP_SIZE = 4096
+MAP_LOD_SIZES = (1024, 2048)
 # The exported landmass uses transparency for ocean pixels. Some transparent
 # texels contain white RGB values, so saving it directly as JPEG creates white
 # seams. This color matches the ocean used by Zanik's original web map.
@@ -114,12 +115,12 @@ def svg(path: Path, main: bool) -> None:
     path.write_text(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path fill="{color}" stroke="#17241f" stroke-width="2" d="M16 2 29 16 16 30 3 16z"/><circle cx="16" cy="16" r="4" fill="#17241f"/></svg>\n', encoding="utf-8")
 
 
-def convert_map(source: Path, destination: Path) -> None:
+def convert_map(source: Path, destination: Path, size: int = MAP_SIZE) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     command = (
         "Add-Type -AssemblyName System.Drawing; "
         "$source=[System.Drawing.Image]::FromFile($env:ZANIK_MAP_SOURCE); "
-        f"$output=[System.Drawing.Bitmap]::new({MAP_SIZE},{MAP_SIZE},[System.Drawing.Imaging.PixelFormat]::Format24bppRgb); "
+        f"$output=[System.Drawing.Bitmap]::new({size},{size},[System.Drawing.Imaging.PixelFormat]::Format24bppRgb); "
         "$graphics=[System.Drawing.Graphics]::FromImage($output); "
         "try{"
         f"$graphics.Clear([System.Drawing.Color]::FromArgb({MAP_OCEAN_RGB[0]},{MAP_OCEAN_RGB[1]},{MAP_OCEAN_RGB[2]})); "
@@ -127,7 +128,7 @@ def convert_map(source: Path, destination: Path) -> None:
         "$graphics.CompositingQuality=[System.Drawing.Drawing2D.CompositingQuality]::HighQuality; "
         "$graphics.InterpolationMode=[System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic; "
         "$graphics.PixelOffsetMode=[System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality; "
-        f"$graphics.DrawImage($source,[System.Drawing.Rectangle]::new(0,0,{MAP_SIZE},{MAP_SIZE}),0,0,$source.Width,$source.Height,[System.Drawing.GraphicsUnit]::Pixel); "
+        f"$graphics.DrawImage($source,[System.Drawing.Rectangle]::new(0,0,{size},{size}),0,0,$source.Width,$source.Height,[System.Drawing.GraphicsUnit]::Pixel); "
         "$output.Save($env:ZANIK_MAP_DESTINATION,[System.Drawing.Imaging.ImageFormat]::Jpeg)"
         "}finally{$graphics.Dispose();$output.Dispose();$source.Dispose()}"
     )
@@ -176,7 +177,7 @@ def main() -> int:
         item_dir = web / "items"
         for record in records(args.json_root):
             p = record.get("Properties") or {}; key = str(record.get("Name", "")); icon = asset_base(p.get("Icon") or p.get("DisplayIcon"))
-            if key and icon and (record.get("Type") in {"ItemData", "EquippableItemData", "ConsumableItemData"} or key.startswith(("ITEM_", "DA_Consumable_", "SM_"))):
+            if key and icon and (record.get("Type") in {"ItemData", "EquippableItemData", "ConsumableItemData", "ConsumableMountUnlocker"} or key.startswith(("ITEM_", "DA_Consumable_", "SM_"))):
                 copied += int(copy(images, icon, item_dir / f"{key}.png"))
     if "spells-and-perks" in groups:
         progress("Resolving perk and spell artwork", ordered_groups.index("spells-and-perks") + 1, len(ordered_groups))
@@ -243,6 +244,8 @@ def main() -> int:
         map_source = images.get("t_worldmap_landmass")
         if not map_source: raise RuntimeError("the required T_WorldMap_Landmass texture was not exported")
         convert_map(map_source, web / "world-map.jpg")
+        for size in MAP_LOD_SIZES:
+            convert_map(map_source, web / f"world-map-{size}.jpg", size)
     if "font" in groups:
         progress("Extracting the website font", ordered_groups.index("font") + 1, len(ordered_groups))
         extract_font(args.font_root, web / "Jancient-Regular.ttf")

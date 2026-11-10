@@ -258,6 +258,40 @@ const std::string& PlaceholderImage() {
     return value;
 }
 
+std::string DecodeBase64(const char* encoded) {
+    static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string decoded;
+    unsigned int value = 0;
+    int bits = -8;
+    for (const unsigned char character : std::string(encoded)) {
+        if (character == '=') break;
+        const char* position = std::find(std::begin(alphabet), std::end(alphabet) - 1, static_cast<char>(character));
+        if (position == std::end(alphabet) - 1) continue;
+        value = (value << 6) | static_cast<int>(position - alphabet);
+        bits += 6;
+        if (bits >= 0) {
+            decoded.push_back(static_cast<char>((value >> bits) & 0xff));
+            bits -= 8;
+        }
+    }
+    return decoded;
+}
+
+const std::string& PwaIcon180() {
+    static const std::string value = DecodeBase64(kPwaIcon180Base64);
+    return value;
+}
+
+const std::string& PwaIcon192() {
+    static const std::string value = DecodeBase64(kPwaIcon192Base64);
+    return value;
+}
+
+const std::string& PwaIcon512() {
+    static const std::string value = DecodeBase64(kPwaIcon512Base64);
+    return value;
+}
+
 void SendAll(int fd, const std::string& bytes) {
     size_t sent = 0;
     while (sent < bytes.size()) {
@@ -270,6 +304,7 @@ void SendAll(int fd, const std::string& bytes) {
 void Respond(int fd, int status, const char* type, const std::string& body,
              const std::string& extraHeaders={}) {
     const char* reason = status == 200 ? "OK" : status == 400 ? "Bad Request" :
+                         status == 304 ? "Not Modified" :
                          status == 401 ? "Unauthorized" : status == 403 ? "Forbidden" :
                          status == 409 ? "Conflict" : status == 429 ? "Too Many Requests" :
                          status == 503 ? "Service Unavailable" :
@@ -277,9 +312,10 @@ void Respond(int fd, int status, const char* type, const std::string& body,
     std::string response = "HTTP/1.1 " + std::to_string(status) + " " + reason + "\r\n";
     response += "Content-Type: "; response += type; response += "\r\n";
     response += "Content-Length: " + std::to_string(body.size()) + "\r\n";
-    response += "Cache-Control: no-store\r\n";
+    if (extraHeaders.find("Cache-Control:") == std::string::npos)
+        response += "Cache-Control: no-store\r\n";
     response += "X-Content-Type-Options: nosniff\r\n";
-    response += "Content-Security-Policy: default-src 'none'; img-src 'self' data:; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'\r\n";
+    response += "Content-Security-Policy: default-src 'none'; img-src 'self' data:; font-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'\r\n";
     response += extraHeaders;
     response += "Connection: close\r\n\r\n";
     SendAll(fd, response + body);
@@ -288,6 +324,17 @@ void Respond(int fd, int status, const char* type, const std::string& body,
 struct HttpRequest { std::string method,target,path,query,body; std::unordered_map<std::string,std::string> headers; };
 enum class RequestReadResult { Complete, ReceiveTimeout, ClientDisconnected, Malformed, ReceiveError };
 std::string Lower(std::string s){for(char&c:s)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));return s;}
+std::string CacheTag(const std::string& body){
+    std::uint64_t hash=1469598103934665603ULL;
+    for(unsigned char byte:body){hash^=byte;hash*=1099511628211ULL;}
+    std::ostringstream out;out<<'"'<<std::hex<<hash<<'-'<<body.size()<<'"';return out.str();
+}
+void RespondCacheable(int fd,const HttpRequest&request,const char*type,const std::string&body,int maxAge=3600){
+    const std::string tag=CacheTag(body),headers="Cache-Control: public, max-age="+std::to_string(maxAge)+", stale-while-revalidate=86400\r\nETag: "+tag+"\r\n";
+    auto match=request.headers.find("if-none-match");
+    if(match!=request.headers.end()&&match->second==tag)Respond(fd,304,type,"",headers);
+    else Respond(fd,200,type,body,headers);
+}
 RequestReadResult ReceiveResult(ssize_t received){
     if(received==0)return RequestReadResult::ClientDisconnected;
     if(errno==EAGAIN||errno==EWOULDBLOCK)return RequestReadResult::ReceiveTimeout;
@@ -430,6 +477,18 @@ void Handle(int fd,std::string* performanceRoute=nullptr) {
         return;
     }
     const std::string& path=request.path;const std::string& query=request.query;
+    if(request.method=="GET"&&path=="/app.webmanifest"){
+        RespondCacheable(fd,request,"application/manifest+json; charset=utf-8",kPwaManifest);return;
+    }
+    if(request.method=="GET"&&path=="/app-icon-180.png"){
+        RespondCacheable(fd,request,"image/png",PwaIcon180());return;
+    }
+    if(request.method=="GET"&&path=="/app-icon-192.png"){
+        RespondCacheable(fd,request,"image/png",PwaIcon192());return;
+    }
+    if(request.method=="GET"&&path=="/app-icon-512.png"){
+        RespondCacheable(fd,request,"image/png",PwaIcon512());return;
+    }
     if(MaintenanceMode()){
         if(request.method!="GET"){Respond(fd,405,"application/json; charset=utf-8","{\"error\":\"Method not allowed during maintenance\"}");return;}
         if(path=="/api/update-status"){
@@ -481,7 +540,7 @@ void Handle(int fd,std::string* performanceRoute=nullptr) {
     } else if(path=="/admin/sessions"){
         AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(!ZanikConfig::AdminRead()){disabled();return;}Respond(fd,200,"text/html; charset=utf-8",PageWithSiteHeader(kAdminSessionsPage,"admin"),PersistentAdminCookie(raw));
     } else if(path=="/admin/claim"){
-        Respond(fd,200,"text/html; charset=utf-8",PageWithSiteHeader(R"HTML(<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Zanik admin login</title><style>body{font:16px system-ui;background:#101816;color:#eef7f1;display:grid;place-items:center;min-height:100vh}main{max-width:32rem;padding:2rem;background:#1b2925;border:1px solid #789487;border-radius:.8rem}a{color:#9ee8c0}</style><main><h1>Zanik administration</h1><p id="status">Redeeming private login link…</p><p><a href="/map">Open map</a></p></main><script>(async()=>{const s=document.getElementById('status'),p=new URLSearchParams(location.hash.slice(1)),token=p.get('token');history.replaceState(null,'',location.pathname);if(!token){s.textContent='This login link is missing its token.';return}try{const r=await fetch('/api/admin/claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})}),j=await r.json();if(!r.ok)throw Error(j.error||'Login failed');s.textContent='Signed in as '+j.characterName+'. Redirecting to the map…';setTimeout(()=>location.replace('/map'),600)}catch(e){s.textContent=e.message}})()</script>)HTML","map"));
+        Respond(fd,200,"text/html; charset=utf-8",PageWithSiteHeader(kAdminClaimPage,"map"));
     } else if(path=="/api/admin/claim"){
         if(!requirePost())return;if(!ZanikConfig::AdminRead()){disabled();return;}std::string raw;AdminSession s;std::string token=JsonValue(request.body,"token");
         if(token.size()!=64||!adminStore->RedeemClaim(token,raw,s))Respond(fd,401,"application/json; charset=utf-8",Status::ErrorJson("Invalid, expired, or used login link"));
@@ -651,66 +710,68 @@ void Handle(int fd,std::string* performanceRoute=nullptr) {
         const std::string rateKey=adminStore->SessionHashPrefix(raw);const auto now=std::chrono::steady_clock::now();const auto rate=adminTeleportRate.find(rateKey);if(rate!=adminTeleportRate.end()&&now-rate->second<std::chrono::seconds(3)){adminStore->Audit(s,targetId,"home-teleport-rate-limited");Respond(fd,429,"application/json; charset=utf-8",Status::ErrorJson("Please wait before teleporting again"));return;}adminTeleportRate[rateKey]=now;
         if(!DomEngine::QueueAdminHomeTeleport(s.characterGuid,s.publicId,targetPlayer.identity.substr(10),targetId,location,rateKey)){const auto diagnostics=DomEngine::GetAdminTeleportDiagnostics();const bool unavailable=diagnostics.compatibility!=1||diagnostics.groundTraceCompatibility!=1||diagnostics.storagePipelineCompatibility!=1||diagnostics.nativeCaptureCompatibility!=1||diagnostics.nativeTemplateAvailable!=1||diagnostics.storageTransportCompatibility!=1;adminStore->Audit(s,targetId,unavailable?"home-teleport-compatibility-unavailable":"home-teleport-pending");Respond(fd,unavailable?503:409,"application/json; charset=utf-8",Status::ErrorJson(unavailable?"Home teleport compatibility unavailable":"A teleport is already pending"));return;}
         adminStore->Audit(s,targetId,"home-teleport-queued");Respond(fd,202,"application/json; charset=utf-8","{\"accepted\":true,\"status\":\"queued\"}");
-    } else if (path == "/assets/world-map.jpg") {
+    } else if (path == "/assets/world-map.jpg" || path == "/assets/world-map-1024.jpg" ||
+               path == "/assets/world-map-2048.jpg") {
         std::string asset;
-        if(ReadWebAsset("world-map.jpg",asset))Respond(fd,200,"image/jpeg",asset);
+        const std::string name = path.substr(std::string("/assets/").size());
+        if(ReadWebAsset(name,asset))RespondCacheable(fd,request,"image/jpeg",asset);
         else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path == "/assets/lodestone-icon.png") {
         std::string asset;
-        if(ReadWebAsset("lodestone-icon.png",asset))Respond(fd,200,"image/png",asset);
+        if(ReadWebAsset("lodestone-icon.png",asset))RespondCacheable(fd,request,"image/png",asset);
         else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path == "/assets/nodestone-icon.png") {
         std::string asset;
-        if(ReadWebAsset("nodestone-icon.png",asset))Respond(fd,200,"image/png",asset);
+        if(ReadWebAsset("nodestone-icon.png",asset))RespondCacheable(fd,request,"image/png",asset);
         else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path == "/assets/gravestone-icon.png") {
         std::string asset;
-        if(ReadWebAsset("gravestone-icon.png",asset))Respond(fd,200,"image/png",asset);
+        if(ReadWebAsset("gravestone-icon.png",asset))RespondCacheable(fd,request,"image/png",asset);
         else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path == "/assets/region-discovery-icon.png") {
         std::string asset;
-        if(ReadWebAsset("region-discovery-icon.png",asset))Respond(fd,200,"image/png",asset);
+        if(ReadWebAsset("region-discovery-icon.png",asset))RespondCacheable(fd,request,"image/png",asset);
         else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path == "/assets/Jancient-Regular.ttf") {
         std::string asset;
-        if(ReadWebAsset("Jancient-Regular.ttf",asset))Respond(fd,200,"font/ttf",asset);
+        if(ReadWebAsset("Jancient-Regular.ttf",asset))RespondCacheable(fd,request,"font/ttf",asset);
         else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Map font unavailable"));
     } else if (path.rfind("/assets/resources/",0)==0) {
         std::string asset;
-        if(ReadResourceAsset(path.substr(18),asset))Respond(fd,200,"image/png",asset);
+        if(ReadResourceAsset(path.substr(18),asset))RespondCacheable(fd,request,"image/png",asset);
         else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path.rfind("/assets/items/",0)==0) {
         std::string asset;
-        if(ReadItemAsset(path.substr(14),asset))Respond(fd,200,"image/png",asset);
+        if(ReadItemAsset(path.substr(14),asset))RespondCacheable(fd,request,"image/png",asset);
         else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path.rfind("/assets/skills/",0)==0) {
         std::string asset;
-        if(ReadSkillAsset(path.substr(15),asset))Respond(fd,200,"image/png",asset);
+        if(ReadSkillAsset(path.substr(15),asset))RespondCacheable(fd,request,"image/png",asset);
         else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path.rfind("/assets/spells-and-perks/",0)==0) {
         std::string asset;
-        if(ReadSpellAndPerkAsset(path.substr(25),asset))Respond(fd,200,"image/png",asset);
+        if(ReadSpellAndPerkAsset(path.substr(25),asset))RespondCacheable(fd,request,"image/png",asset);
         else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path.rfind("/assets/buildings/",0)==0) {
         std::string asset;
-        if(ReadBuildingAsset(path.substr(18),asset))Respond(fd,200,"image/png",asset);
+        if(ReadBuildingAsset(path.substr(18),asset))RespondCacheable(fd,request,"image/png",asset);
         else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path.rfind("/assets/npcs/",0)==0) {
         std::string asset;
-        if(ReadNpcAsset(path.substr(13),asset))Respond(fd,200,"image/png",asset);
+        if(ReadNpcAsset(path.substr(13),asset))RespondCacheable(fd,request,"image/png",asset);
         else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path.rfind("/assets/recipe-icons/",0)==0) {
         std::string asset;
-        if(ReadRecipeIconAsset(path.substr(21),asset))Respond(fd,200,"image/png",asset);
+        if(ReadRecipeIconAsset(path.substr(21),asset))RespondCacheable(fd,request,"image/png",asset);
         else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path.rfind("/assets/quests/",0)==0) {
-        std::string asset;const std::string name=path.substr(15);if(ReadQuestAsset(name,asset))Respond(fd,200,name.size()>=4&&name.substr(name.size()-4)==".svg"?"image/svg+xml":"image/png",asset);else Respond(fd,200,"image/svg+xml",PlaceholderImage());
+        std::string asset;const std::string name=path.substr(15);if(ReadQuestAsset(name,asset))RespondCacheable(fd,request,name.size()>=4&&name.substr(name.size()-4)==".svg"?"image/svg+xml":"image/png",asset);else Respond(fd,200,"image/svg+xml",PlaceholderImage());
     } else if (path == "/api/quests/catalog") {
-        if(!ZanikConfig::PlayerQuestTracking()){unavailable();return;}std::string asset;if(ReadWebAsset("quest-catalog.json",asset))Respond(fd,200,"application/json; charset=utf-8",asset);else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Quest catalog unavailable"));
+        if(!ZanikConfig::PlayerQuestTracking()){unavailable();return;}std::string asset;if(ReadWebAsset("quest-catalog.json",asset))RespondCacheable(fd,request,"application/json; charset=utf-8",asset);else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Quest catalog unavailable"));
     } else if (path == "/api/map/resources/catalog") {
         if(!ZanikConfig::ResourceTracking()){unavailable();return;}
         std::string asset;
-        if(ReadWebAsset("resource-catalog.json",asset))Respond(fd,200,"application/json; charset=utf-8",asset);
+        if(ReadWebAsset("resource-catalog.json",asset))RespondCacheable(fd,request,"application/json; charset=utf-8",asset);
         else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Resource catalog unavailable"));
     } else if (path == "/api/map/resources/state") {
         if(!ZanikConfig::ResourceTracking()){unavailable();return;}
@@ -720,7 +781,7 @@ void Handle(int fd,std::string* performanceRoute=nullptr) {
     } else if (path == "/api/map/npcs/catalog") {
         if(!ZanikConfig::NpcTracking()){unavailable();return;}
         std::string asset;
-        if(ReadWebAsset("npc-catalog.json",asset))Respond(fd,200,"application/json; charset=utf-8",asset);
+        if(ReadWebAsset("npc-catalog.json",asset))RespondCacheable(fd,request,"application/json; charset=utf-8",asset);
         else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("NPC catalog unavailable"));
     } else if (path == "/api/map/npcs/state") {
         if(!ZanikConfig::NpcTracking()){unavailable();return;}
@@ -769,19 +830,22 @@ void Handle(int fd,std::string* performanceRoute=nullptr) {
     } else if (path == "/api/map/labels") {
         static std::vector<DomEngine::MapLabelInfo> labels;
         static auto lastAttempt=std::chrono::steady_clock::time_point{};
+        static std::int64_t lastUpdate=0;
         auto now=std::chrono::steady_clock::now();
         if(labels.empty()||now-lastAttempt>std::chrono::minutes(5)){
             lastAttempt=now;
             std::vector<DomEngine::MapLabelInfo> discovered;
-            if(DomEngine::ReadMapLabels(discovered))labels=std::move(discovered);
+            if(DomEngine::ReadMapLabels(discovered)){
+                labels=std::move(discovered);
+                lastUpdate=std::chrono::duration_cast<std::chrono::seconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
+            }
         }
         if(labels.empty()){
             Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Map labels unavailable"));
         }else{
-            auto timestamp=std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count();
-            Respond(fd,200,"application/json; charset=utf-8",Status::MapLabelsJson(
-                labels,DomEngine::g_Engine->GetMapAssetVersion(),timestamp));
+            RespondCacheable(fd,request,"application/json; charset=utf-8",Status::MapLabelsJson(
+                labels,DomEngine::g_Engine->GetMapAssetVersion(),lastUpdate),300);
         }
     } else if (path == "/api/player") {
         if(!ZanikConfig::PlayerStatus()){unavailable();return;}
@@ -820,7 +884,7 @@ void Handle(int fd,std::string* performanceRoute=nullptr) {
     } else if (path == "/api/player-recipe-diagnostics") {
         auto d=DomEngine::GetPlayerRecipeDiagnostics();auto dispatcher=DomEngine::GetAdminStorageDiagnostics().dispatcherCompatibility;Respond(fd,200,"application/json; charset=utf-8","{\"compatibility\":"+std::to_string(d.compatibility)+",\"dispatcherCompatibility\":"+std::to_string(dispatcher)+",\"catalogCompatibility\":"+std::to_string(d.catalogCompatibility)+",\"catalogHistoryCompatibility\":"+std::to_string(RecipeCatalogHistoryCompatibility())+",\"progressLayoutCompatibility\":"+std::to_string(d.progressLayoutCompatibility)+",\"queryCompatibility\":"+std::to_string(d.queryCompatibility)+",\"catalogEntries\":"+std::to_string(d.catalogEntries)+",\"resolvedEntries\":"+std::to_string(d.resolvedEntries)+",\"snapshots\":"+std::to_string(d.snapshots)+",\"scansCompleted\":"+std::to_string(d.scansCompleted)+",\"queryFailures\":"+std::to_string(d.queryFailures)+",\"lastScan\":"+std::to_string(d.lastScan)+",\"maximumProgressLookupMicroseconds\":"+std::to_string(d.maximumProgressLookupMicroseconds)+",\"maximumSingleQueryMicroseconds\":"+std::to_string(d.maximumSingleQueryMicroseconds)+",\"slowQueries\":"+std::to_string(d.slowQueries)+",\"queryIntervalMilliseconds\":"+std::to_string(d.queryIntervalMilliseconds)+"}");
     } else if (path == "/api/quests/steps") {
-        std::string asset;if(ReadWebAsset("quest-step-locations.json",asset))Respond(fd,200,"application/json; charset=utf-8",asset);else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Quest step locations unavailable"));
+        std::string asset;if(ReadWebAsset("quest-step-locations.json",asset))RespondCacheable(fd,request,"application/json; charset=utf-8",asset);else Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson("Quest step locations unavailable"));
     } else if (path == "/api/player-quests") {
         if(!ZanikConfig::PlayerQuestTracking()){unavailable();return;}
         const std::string id=QueryValue(query,"id");StoredPlayer player;if(id.empty())Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Player id required"));else if(!playerStore->Find(id,player)||player.identity.rfind("character:",0)!=0)Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Player not found"));else{auto d=DomEngine::GetPlayerQuestDiagnostics();auto dispatcher=DomEngine::GetAdminStorageDiagnostics().dispatcherCompatibility;StoredQuestSnapshot snapshot;bool found=questSnapshotStore&&questSnapshotStore->Find(player.identity.substr(10),snapshot);if(d.compatibility!=1||dispatcher!=1)Respond(fd,503,"application/json; charset=utf-8","{\"error\":\"Player quest tracking is unavailable for this game build\",\"captured\":false,\"online\":"+std::string(player.online?"true":"false")+"}");else if(!found||!snapshot.complete)Respond(fd,503,"application/json; charset=utf-8","{\"error\":\"Quest data has not been captured for this character yet\",\"captured\":false,\"online\":"+std::string(player.online?"true":"false")+"}");else if(snapshot.catalogFingerprint!=DomEngine::GetPlayerQuestCatalogFingerprint())Respond(fd,503,"application/json; charset=utf-8","{\"error\":\"This character's quest snapshot is incompatible with the current catalog\",\"captured\":false,\"online\":"+std::string(player.online?"true":"false")+"}");else{size_t done=0,activeCount=0;for(const auto&q:snapshot.quests){done+=q.status=="completed";activeCount+=q.status=="in_progress";}std::ostringstream out;out<<"{\"captured\":true,\"online\":"<<(player.online?"true":"false")<<",\"capturedAt\":"<<snapshot.capturedAt<<",\"catalogFingerprint\":\""<<JsonEscape(snapshot.catalogFingerprint)<<"\",\"trackedAvailable\":"<<(snapshot.trackedQuestAvailable?"true":"false")<<",\"activeQuest\":";if(snapshot.trackedQuestAvailable&&!snapshot.trackedQuestId.empty()){const auto active=std::find_if(snapshot.quests.begin(),snapshot.quests.end(),[&](const auto&q){return q.id==snapshot.trackedQuestId;});out<<"{\"id\":\""<<JsonEscape(snapshot.trackedQuestId)<<"\",\"objective\":\""<<JsonEscape(active==snapshot.quests.end()?std::string():active->objective)<<"\"}";}else out<<"null";out<<",\"counts\":{\"total\":"<<snapshot.quests.size()<<",\"completed\":"<<done<<",\"inProgress\":"<<activeCount<<",\"notStarted\":"<<(snapshot.quests.size()-done-activeCount)<<"},\"quests\":[";for(size_t i=0;i<snapshot.quests.size();++i){if(i)out<<',';const auto&q=snapshot.quests[i];out<<"{\"id\":\""<<JsonEscape(q.id)<<"\",\"status\":\""<<JsonEscape(q.status)<<"\",\"objective\":\""<<JsonEscape(q.objective)<<"\",\"completedObservedAt\":"<<q.completedObservedAt<<'}';}out<<"]}";Respond(fd,200,"application/json; charset=utf-8",out.str());}}

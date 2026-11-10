@@ -29,9 +29,10 @@
 
 namespace DomEngine {
 namespace {
-constexpr const char* PreviousSha="b5017cf67bc6127dbec443e00fed1f818e82afd5d6d17f912d959a1dd87d5687";
-constexpr const char* CurrentSha="45cd13cf24658153f4c53777816ffa38ac893a471ebdf5d9c9768f7e4e74c966";
-bool ExpectedSha(const std::string& hash){return hash=="445f8b65047d208adb04a3cb03bc7706f069306d814172ae29caec16c15bec7e"||hash=="ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac"||hash==PreviousSha||hash==CurrentSha;}
+constexpr const char* LegacySha="b5017cf67bc6127dbec443e00fed1f818e82afd5d6d17f912d959a1dd87d5687";
+constexpr const char* PreviousSha="45cd13cf24658153f4c53777816ffa38ac893a471ebdf5d9c9768f7e4e74c966";
+constexpr const char* CurrentSha="a350b998ea38955345619b7adde31aa9e29db629e9e9aa32287013957eb41901";
+bool ExpectedSha(const std::string& hash){return hash=="445f8b65047d208adb04a3cb03bc7706f069306d814172ae29caec16c15bec7e"||hash=="ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac"||hash==LegacySha||hash==PreviousSha||hash==CurrentSha;}
 constexpr uintptr_t MoveItemOffset=0x0A6139B0;
 constexpr uintptr_t RemoveFromSlotOffset=0x0A615490;
 constexpr uintptr_t CanAddItemByDataOffset=0x0A612180;
@@ -62,8 +63,9 @@ struct GravestoneOffsets {
 };
 GravestoneOffsets OffsetsFor(const std::string& hash){
     GravestoneOffsets value;
-    if(hash==PreviousSha)value={0x0A6554F0,0x0A656FD0,0x0A653CC0,0x0A654980,0x0A653420,0x0A655550,0x0A64FDD0,0x0A64E920,0x0A64EF50,0x0A64D740,0x0A64B080,0x0A64B360,0x08731130,0x08731180,0x07E66460,0x08731610,0x09E17F00,0x09E0EDB0,0x09E17830,0x07E59100,0x0837ECB0,0x08737420,0x07E6B520};
-    else if(hash==CurrentSha)value={0x0A655DA0,0x0A657880,0x0A654570,0x0A655230,0x0A653CD0,0x0A655E00,0x0A650680,0x0A64F1D0,0x0A64F800,0x0A64DFF0,0x0A64B930,0x0A64BC10,0x08731130,0x08731180,0x07E66460,0x08731610,0x09E17E60,0x09E0ED10,0x09E17790,0x07E59100,0x0837ECB0,0x08737420,0x07E6B520};
+    if(hash==LegacySha)value={0x0A6554F0,0x0A656FD0,0x0A653CC0,0x0A654980,0x0A653420,0x0A655550,0x0A64FDD0,0x0A64E920,0x0A64EF50,0x0A64D740,0x0A64B080,0x0A64B360,0x08731130,0x08731180,0x07E66460,0x08731610,0x09E17F00,0x09E0EDB0,0x09E17830,0x07E59100,0x0837ECB0,0x08737420,0x07E6B520};
+    else if(hash==PreviousSha)value={0x0A655DA0,0x0A657880,0x0A654570,0x0A655230,0x0A653CD0,0x0A655E00,0x0A650680,0x0A64F1D0,0x0A64F800,0x0A64DFF0,0x0A64B930,0x0A64BC10,0x08731130,0x08731180,0x07E66460,0x08731610,0x09E17E60,0x09E0ED10,0x09E17790,0x07E59100,0x0837ECB0,0x08737420,0x07E6B520};
+    else if(hash==CurrentSha)value={0x0A66BF00,0x0A66EF90,0x0A66A3C0,0x0A66B390,0x0A669830,0x0A66BF60,0x0A660D90,0x0A65F990,0x0A65FF70,0x0A65E7B0,0x0A65C0F0,0x0A65C3D0,0x0873C390,0x0873C3E0,0x07E71760,0x0873C870,0x09E23940,0x09E1A7F0,0x09E23270,0x07E64400,0x08389FB0,0x08742680,0x07E76820};
     return value;
 }
 std::atomic<uintptr_t> cachedDisplayTextOffset{0};
@@ -551,7 +553,7 @@ void FlushAdminGravestoneSnapshots(){
     FinalizeCompletedGraveCaptures();static auto nextBackfill=std::chrono::steady_clock::time_point{};const auto now=std::chrono::steady_clock::now();if(!savedItemPersistenceBackfillComplete.load()&&now>=nextBackfill){nextBackfill=now+std::chrono::seconds(2);BackfillSavedItemPersistence();}DrainGraveUnregisterEvents();if(!savedSnapshotsDirty.exchange(false))return;std::string data;{Lock lock(savedSnapshotMutex);data=SerializeSnapshotsLocked();}if(!CommitSnapshotData(data)){savedSnapshotsDirty=true;++snapshotPersistenceFailures;LogMessage("Unable to commit gravestone snapshot store");}
 }
 bool InitializeAdminGravestones(uintptr_t moduleBase,uintptr_t moduleEnd){
-    const std::string hash=FileSha256("/proc/self/exe");if(!ExpectedSha(hash)){compatibility=-1;return false;}cachedDisplayTextOffset.store((hash==PreviousSha||hash==CurrentSha)?0x04ACAA80:0x04AA1A80,std::memory_order_release);const auto offsets=OffsetsFor(hash);for(uintptr_t offset:{offsets.moveItem,offsets.removeFromSlot,offsets.canAddItemByData,offsets.canAddItemsByData,offsets.addItemByData,offsets.moveAllItems,offsets.removeGrave,offsets.getInventory,offsets.getOwner,offsets.getRegistry,offsets.registerGrave,offsets.unregisterGrave,offsets.registerStreaming,offsets.unregisterStreaming,offsets.getStreamingSources,offsets.isStreamingCompleted,offsets.restoreRuntime,offsets.restoreFromLevel,offsets.getStreamingSource,offsets.playerStreamingSources,offsets.streamingSourceCopy,offsets.streamingSourceDestructor})if(moduleBase+offset>=moduleEnd){compatibility=-2;return false;}
+    const std::string hash=FileSha256("/proc/self/exe");if(!ExpectedSha(hash)){compatibility=-1;return false;}cachedDisplayTextOffset.store(hash==CurrentSha?0x04AD5A80:((hash==LegacySha||hash==PreviousSha)?0x04ACAA80:0x04AA1A80),std::memory_order_release);const auto offsets=OffsetsFor(hash);for(uintptr_t offset:{offsets.moveItem,offsets.removeFromSlot,offsets.canAddItemByData,offsets.canAddItemsByData,offsets.addItemByData,offsets.moveAllItems,offsets.removeGrave,offsets.getInventory,offsets.getOwner,offsets.getRegistry,offsets.registerGrave,offsets.unregisterGrave,offsets.registerStreaming,offsets.unregisterStreaming,offsets.getStreamingSources,offsets.isStreamingCompleted,offsets.restoreRuntime,offsets.restoreFromLevel,offsets.getStreamingSource,offsets.playerStreamingSources,offsets.streamingSourceCopy,offsets.streamingSourceDestructor})if(moduleBase+offset>=moduleEnd){compatibility=-2;return false;}
     const unsigned char moveSig[]={0x55,0x53,0x50,0x4c,0x89,0xc0};const unsigned char removeSlotSig[]={0x55,0x41,0x57,0x41,0x56,0x53};
     const unsigned char inventorySig[]={0x53,0x48,0x83,0xec,0x10,0x48,0x89,0xfb};const unsigned char ownerSig[]={0x48,0x8d,0x87,0x10,0x04,0x00,0x00,0xc3};
     const unsigned char registrySig[]={0x55,0x41,0x56,0x53,0x48,0x83,0xec,0x10,0x48,0x89,0xf8,0x80,0xbe,0x30,0x03,0x00,0x00,0x00};

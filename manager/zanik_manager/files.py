@@ -12,7 +12,8 @@ from pathlib import PurePosixPath
 
 MAX_ENTRIES = 100_000
 MAX_DIRECTORIES = 10_000
-FILE_CACHE_SCHEMA_VERSION = 1
+FILE_CACHE_SCHEMA_VERSION = 2
+ROOT_STATES = {"checking", "present", "missing", "unavailable"}
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,7 @@ class FileIndex:
     directories: dict[str, list[FileEntry]] = field(default_factory=dict)
     directory_totals: dict[str, int] = field(default_factory=dict)
     root_totals: dict[str, int] = field(default_factory=dict)
+    root_states: dict[str, str] = field(default_factory=dict)
     file_count: int = 0
     directory_count: int = 0
     total_size: int = 0
@@ -84,6 +86,7 @@ def save_file_index(cache_root: Path, index: FileIndex) -> None:
                         for path, entries in index.directories.items()},
         "directoryTotals": index.directory_totals,
         "rootTotals": index.root_totals,
+        "rootStates": index.root_states,
         "fileCount": index.file_count,
         "directoryCount": index.directory_count,
         "totalSize": index.total_size,
@@ -145,13 +148,20 @@ def load_file_index(cache_root: Path, profile_id: str, server_root: str,
             directories[directory] = entries
         stored_directory_totals = payload.get("directoryTotals", {})
         stored_root_totals = payload.get("rootTotals", {})
+        stored_root_states = payload.get("rootStates", {})
         stored_warnings = payload.get("warnings", [])
         if (not isinstance(stored_directory_totals, dict) or not isinstance(stored_root_totals, dict) or
+                not isinstance(stored_root_states, dict) or
                 not isinstance(stored_warnings, list)):
+            return None
+        root_states = {str(k): str(v) for k, v in stored_root_states.items()}
+        if (set(root_states) != {root.key for root in roots} or
+                any(value not in ROOT_STATES for value in root_states.values())):
             return None
         index = FileIndex(profile_id, generation, roots, directories=directories,
                           directory_totals={str(k): max(0, int(v)) for k, v in stored_directory_totals.items()},
                           root_totals={str(k): max(0, int(v)) for k, v in stored_root_totals.items()},
+                          root_states=root_states,
                           file_count=max(0, int(payload.get("fileCount", 0))),
                           directory_count=max(0, int(payload.get("directoryCount", 0))),
                           total_size=max(0, int(payload.get("totalSize", 0))), complete=True,
@@ -276,15 +286,20 @@ class RemoteFileIndexer:
         self.client = client
         self.server_id = server_id
         self.index = FileIndex(profile_id, generation, roots,
-                               root_totals={root.key: 0 for root in roots})
+                               root_totals={root.key: 0 for root in roots},
+                               root_states={root.key: "checking" for root in roots})
         self.max_entries = max_entries
         self.max_directories = max_directories
         self._entry_count = 0
 
     def run(self, progress=lambda _update: None) -> FileIndex:
+        self._discover_top_level_roots()
         for root in self.index.roots:
             if self.index.partial:
                 break
+            if self.index.root_states[root.key] == "missing":
+                progress(self._update("progress", root.key, root.path, []))
+                continue
             if root.is_file:
                 self._index_file_root(root, progress)
             else:
@@ -295,20 +310,42 @@ class RemoteFileIndexer:
         progress(self._update("complete" if self.index.complete else "partial"))
         return self.index
 
+    def _discover_top_level_roots(self):
+        """Resolve sibling server-root locations once without probing every absent path."""
+        groups: dict[str, list[VirtualRoot]] = {}
+        for root in self.index.roots:
+            if not root.is_file:
+                groups.setdefault(posixpath.dirname(root.path), []).append(root)
+        for parent, roots in groups.items():
+            if len(roots) < 2:
+                continue
+            try:
+                entries = list_directory(self.client, self.server_id, parent)
+            except Exception:
+                continue
+            available = {entry.name for entry in entries if not entry.is_file}
+            for root in roots:
+                self.index.root_states[root.key] = (
+                    "present" if posixpath.basename(root.path) in available else "missing")
+
     def _index_file_root(self, root: VirtualRoot, progress):
         parent, name = posixpath.split(root.path)
         try:
             match = next((item for item in list_directory(self.client, self.server_id, parent)
                           if item.name == name and item.is_file), None)
         except Exception as error:
+            self.index.root_states[root.key] = "unavailable"
             self.index.warnings.append(f"{root.label}: {error}")
             progress(self._update("warning")); return
         if match:
+            self.index.root_states[root.key] = "present"
             self.index.directories[root.path] = [match]
             self._entry_count += 1
             self.index.file_count += 1; self.index.total_size += match.size
             self.index.root_totals[root.key] += match.size
             progress(self._update("progress", root.key, root.path, [match]))
+        else:
+            self.index.root_states[root.key] = "missing"
 
     def _index_directory_root(self, root: VirtualRoot, progress):
         queue = [root.path]
@@ -322,8 +359,11 @@ class RemoteFileIndexer:
                 if directory != root.path:
                     self.index.warnings.append(f"{directory}: {error}")
                 else:
+                    self.index.root_states[root.key] = "unavailable"
                     self.index.warnings.append(f"{root.label} is unavailable.")
                 progress(self._update("warning")); continue
+            if directory == root.path:
+                self.index.root_states[root.key] = "present"
             if self._entry_count + len(entries) > self.max_entries:
                 remaining = max(0, self.max_entries - self._entry_count)
                 entries = entries[:remaining]
@@ -351,6 +391,7 @@ class RemoteFileIndexer:
                 "entries": entries or [], "files": self.index.file_count,
                 "directories": self.index.directory_count, "bytes": self.index.total_size,
                 "rootTotals": dict(self.index.root_totals),
+                "rootStates": dict(self.index.root_states),
                 "directoryTotals": (dict(self.index.directory_totals)
                                     if state in {"complete", "partial"} else {}),
                 "warnings": list(self.index.warnings)}

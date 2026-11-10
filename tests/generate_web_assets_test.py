@@ -33,6 +33,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-web-assets-") as temporary:
     region_discovery_icon.write_bytes(b"selected-places-icon")
     (textures / "T_Arrows_Bone.png").write_bytes(b"fang-arrow")
     (textures / "T_Icon_Cactus_Steak_Raw.png").write_bytes(b"cactus")
+    (textures / "T_Icon_SM_Terro_bird_02_02.png").write_bytes(b"mount")
     (textures / "T_Skill_Attack_Spell_Tempestshield.png").write_bytes(b"tempest-shield")
     primary_quest = (textures / "batch-01" / generator.PRIMARY_QUEST_ICON_PACKAGE).with_suffix(".png")
     secondary_quest = (textures / "batch-01" / generator.SECONDARY_QUEST_ICON_PACKAGE).with_suffix(".png")
@@ -55,6 +56,12 @@ with tempfile.TemporaryDirectory(prefix="zanik-web-assets-") as temporary:
             "AssetPathName": "/Game/UI/T_Skill_Attack_Spell_Tempestshield.T_Skill_Attack_Spell_Tempestshield",
         }},
     }]), encoding="utf-8")
+    (json_root / "mount.json").write_text(json.dumps([{
+        "Name": "DA_Consumabe_Mount_TerrorBird_02_02", "Type": "ConsumableMountUnlocker",
+        "Properties": {"Icon": {
+            "AssetPathName": "/Game/UI/T_Icon_SM_Terro_bird_02_02.T_Icon_SM_Terro_bird_02_02",
+        }},
+    }]), encoding="utf-8")
     (web / "resource-catalog.json").parent.mkdir(parents=True, exist_ok=True)
     (web / "resource-catalog.json").write_text(json.dumps({
         "types": [{"id": "barrel-cactus", "name": "Barrel Cactus"}],
@@ -65,7 +72,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-web-assets-") as temporary:
         encoding="utf-8",
     )
 
-    generator.convert_map = lambda _source, destination: destination.write_bytes(b"jpeg")
+    generator.convert_map = lambda _source, destination, _size=generator.MAP_SIZE: destination.write_bytes(b"jpeg")
     generator.extract_font = lambda _root, destination: destination.write_bytes(b"font")
     sys.argv = [
         "generate_web_assets.py",
@@ -79,10 +86,14 @@ with tempfile.TemporaryDirectory(prefix="zanik-web-assets-") as temporary:
         assert (web / "skills" / f"{skill}.png").read_bytes() == b"tag-skill:" + skill.encode()
     assert (web / "items" / "ITEM_Ammo_Arrows_Bone_Bodkin.png").read_bytes() == b"fang-arrow"
     assert (web / "items" / "ITEM_Ammo_Arrows_Bone_Poison.png").read_bytes() == b"fang-arrow"
+    assert (web / "items" / "DA_Consumabe_Mount_TerrorBird_02_02.png").read_bytes() == b"mount"
     assert (web / "resources" / "barrel-cactus.png").read_bytes() == b"cactus"
     assert (web / "spells-and-perks" / "PerkV2_Attack_TempestShield.png").read_bytes() == b"tempest-shield"
     assert (web / "lodestone-icon.png").read_bytes() == b"correct-map-icon"
     assert (web / "nodestone-icon.png").read_bytes() == generator.NODESTONE_MAP_ICON.read_bytes()
+    assert (web / "world-map.jpg").read_bytes() == b"jpeg"
+    assert (web / "world-map-1024.jpg").read_bytes() == b"jpeg"
+    assert (web / "world-map-2048.jpg").read_bytes() == b"jpeg"
     assert (web / "region-discovery-icon.png").read_bytes() == b"selected-places-icon"
     assert (web / "quests/main-quest.png").read_bytes() == b"primary-quest"
     assert (web / "quests/side-quest.png").read_bytes() == b"secondary-quest"

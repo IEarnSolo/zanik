@@ -92,7 +92,7 @@ def main():
                     'stepId': identity,
                     'quest': quest['name'],
                     'objectiveKey': step['key'],
-                    'objective': step['text'],
+                    'objective': step['text'].strip(),
                     'marker': marker.get('name', ''),
                     'markerIndex': marker_index,
                 })
@@ -107,7 +107,7 @@ def main():
                 'questSubregion': quest.get('subregion', ''),
                 'ordinal': ordinal,
                 'objectiveKey': step['key'],
-                'objective': step['text'],
+                'objective': step['text'].strip(),
                 'destinationMode': step['destinationMode'],
                 'destinationNote': step.get('destinationNote', ''),
                 'reviewedRelationship': step.get('reviewedRelationship', False),

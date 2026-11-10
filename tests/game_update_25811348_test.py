@@ -28,14 +28,16 @@ assert f'ExpectedSha(hash){{return hash=="{server_sha}"' not in dispatcher
 resources = (root / "src" / "engine" / "resources.cpp").read_text()
 assert f'hash=="{server_sha}"' in resources
 
-profile = json.loads((root / "asset-tools" / "extraction-recipes.json").read_text())["catalogProfile"]
-assert profile["version"] == "client-25812671-reviewed-7"
+history = json.loads((root / "asset-tools" / "extraction-recipe-history.json").read_text())["recipes"]
+profile = next(record["recipe"]["catalogProfile"] for record in history
+               if record["recipe"]["catalogProfile"]["version"] == "client-25812671-reviewed-9")
+assert profile["version"] == "client-25812671-reviewed-9"
 assert profile["clientBuild"] == "25812671"
 assert profile["catalogCounts"]["buildings/catalog.json:pieces"] == 827
 assert profile["catalogCounts"]["npc-catalog.json:nodes"] == 2964
 assert profile["catalogCounts"]["recipe-unlocks.json:entries"] == 1576
 assert profile["catalogCounts"]["quest-catalog.json:objectives"] == 219
 assert profile["catalogCounts"]["quest-step-locations.json:steps"] == 230
-assert profile["catalogCounts"]["quest-step-locations.json:markers"] == 695
+assert profile["catalogCounts"]["quest-step-locations.json:markers"] == 693
 
 print("game update 25811348 compatibility checks passed")

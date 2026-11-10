@@ -86,6 +86,10 @@ def actor_location(actor,records):
         if name and name in outer and isinstance(props.get('RelativeLocation'),dict):return props['RelativeLocation']
     return None
 
+def is_actor_definition_path(path):
+    parts={part.casefold() for part in path.parts}
+    return path.stem.startswith('BP_') and bool(parts & {'npcs','interactables'})
+
 def dungeon_entrances():
     result={}
     maps=CONTENT/'RSDragonwilds'
@@ -165,7 +169,7 @@ def main():
     for path in CONTENT.rglob('*.json'):
         is_quest='quest' in str(path).lower()
         is_world_map='Maps' in path.parts and 'World' in path.parts
-        is_actor_definition=path.stem.startswith('BP_') and ('NPCs' in path.parts or 'Interactables' in path.parts)
+        is_actor_definition=is_actor_definition_path(path)
         if not is_quest and not is_world_map and not is_actor_definition:continue
         try:raw=read_asset_text(path)
         except (OSError,UnicodeError) as error:
@@ -245,6 +249,8 @@ def main():
             if not all(identity) or identity in override_by_step:raise ValueError(f'invalid or duplicate override relationship: {identity}')
             for target in row.get('targets',[]):
                 if target.get('kind')=='npc' and target.get('allowMultiple') and row.get('destinationMode')!='multiple':raise ValueError(f'NPC allowMultiple requires destinationMode multiple: {identity}')
+                excluded=target.get('excludeOpaqueIds',[])
+                if not isinstance(excluded,list) or any(not isinstance(value,str) or not value for value in excluded) or len(excluded)!=len(set(excluded)):raise ValueError(f'invalid excluded NPC placement identities: {identity}')
             override_by_step[identity]={**row,'objectiveKey':key}
     reports=[]
     for public in CATALOG['quests']:
@@ -435,6 +441,9 @@ def main():
                         if target.get('actorType'):nodes=[n for n in nodes if n.get('actorType')==target['actorType']]
                         if target.get('stateKey'):nodes=[n for n in nodes if n.get('stateKey')==target['stateKey']]
                         if target.get('opaqueId'):nodes=[n for n in nodes if n.get('id')==target['opaqueId']]
+                        excluded=set(target.get('excludeOpaqueIds',[]));missing=excluded-{n.get('id') for n in nodes}
+                        if missing:raise ValueError(f"excluded NPC placements were not found for {step_identity}: {sorted(missing)}")
+                        nodes=[n for n in nodes if n.get('id') not in excluded]
                         if len(nodes)>1 and not target.get('allowMultiple'):raise ValueError(f"ambiguous NPC override {step_identity}: '{reference}' resolved {len(nodes)} placements; specify actorType/opaqueId or explicitly allowMultiple")
                         resolved=[{'kind':'npc','type':reference,'actorType':n.get('actorType'),'opaqueId':n.get('id'),'name':npc_type['name'],'map':{'x':n['x'],'y':n['y']},'world':{'x':n.get('worldX'),'y':n.get('worldY'),'z':n.get('worldZ')},'source':'web/npc-catalog.json'} for n in nodes]
                 elif kind=='world_actor':

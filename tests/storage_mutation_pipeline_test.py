@@ -136,7 +136,7 @@ assert "if(storageRenameAvailable)renderStorageHeading" in web
 
 # Normal current-build releases remain fail-closed until live validation opts in.
 assert 'ZANIK_STORAGE_PERFORMANCE_CANDIDATE' in storage
-assert "candidateEnabled&&(hash==PreviousSha||hash==CurrentSha)" in storage
+assert "candidateEnabled&&(hash==LegacySha||hash==PreviousSha||hash==CurrentSha)" in storage
 
 # Independent operational diagnostics remain public and bounded.
 for field in (

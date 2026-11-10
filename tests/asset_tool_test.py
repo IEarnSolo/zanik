@@ -8,7 +8,7 @@ from asset_filesystem import extended_path
 REQUIRED = ("buildings/catalog.json", "buildings/catalog.tsv", "npc-catalog.json", "plan-items.tsv",
             "quest-catalog.json", "quest-runtime-catalog.tsv", "quest-step-locations.json",
             "recipe-unlocks.json", "recipe-runtime-catalog.tsv", "resource-catalog.json",
-            "resource-identities.tsv", "npc-identities.tsv", "world-map.jpg", "lodestone-icon.png",
+            "resource-identities.tsv", "npc-identities.tsv", "world-map.jpg", "world-map-1024.jpg", "world-map-2048.jpg", "lodestone-icon.png",
             "nodestone-icon.png", "gravestone-icon.png", "region-discovery-icon.png", "Jancient-Regular.ttf", "skills/attack.png",
             "quests/main-quest.png", "quests/side-quest.png")
 
@@ -25,8 +25,9 @@ with tempfile.TemporaryDirectory() as name:
     (paks / "RSDragonwilds-LinuxServer.utoc").write_bytes(b"container")
     for item in REQUIRED:
         path = generated / item; path.parent.mkdir(parents=True, exist_ok=True)
-        if item == "world-map.jpg":
-            path.write_bytes(fake_jpeg(4096, 4096))
+        if item.startswith("world-map"):
+            size = 1024 if "1024" in item else (2048 if "2048" in item else 4096)
+            path.write_bytes(fake_jpeg(size, size))
         elif path.suffix == ".tsv":
             path.write_text("# schema=1\tid\n")
         else:
@@ -74,6 +75,10 @@ with tempfile.TemporaryDirectory() as name:
     (wrong_map / "world-map.jpg").write_bytes(fake_jpeg(6144, 6144))
     rejected_map = subprocess.run([sys.executable, str(TOOL), "validate", "--generated-root", str(wrong_map)], capture_output=True)
     assert rejected_map.returncode and b"expected 4096x4096" in rejected_map.stderr
+    wrong_lod = root / "wrong-map-lod"; shutil.copytree(generated, wrong_lod)
+    (wrong_lod / "world-map-1024.jpg").write_bytes(fake_jpeg(2048, 2048))
+    rejected_lod = subprocess.run([sys.executable, str(TOOL), "validate", "--generated-root", str(wrong_lod)], capture_output=True)
+    assert rejected_lod.returncode and b"world-map-1024.jpg=2048x2048" in rejected_lod.stderr
     subprocess.run([sys.executable, str(TOOL), "validate", "--bundle", str(first)], check=True)
     with zipfile.ZipFile(first) as archive:
         bundled_manifest = json.loads(archive.read("asset-manifest.json"))

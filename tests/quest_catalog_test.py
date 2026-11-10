@@ -3,10 +3,12 @@ import sys
 from pathlib import Path
 root=Path(__file__).parents[1]
 sys.path.insert(0,str(root/'tools'))
-from analyze_quest_steps import location_update_is_destination,within_authored_area
+from analyze_quest_steps import is_actor_definition_path,location_update_is_destination,within_authored_area
 assert location_update_is_destination({'Revealed':True})
 assert not location_update_is_destination({'Revealed':False})
 assert not location_update_is_destination({})
+assert is_actor_definition_path(Path('RSDragonwilds/Content/Gameplay/NPCS/Example/BP_QuestPickup.json'))
+assert is_actor_definition_path(Path('RSDragonwilds/Content/Gameplay/Interactables/BP_QuestPickup.json'))
 test_area={'world':{'x':100.0,'y':100.0},'radius':25.0}
 assert within_authored_area({'world':{'x':115.0,'y':110.0}},[test_area])
 assert not within_authored_area({'world':{'x':200.0,'y':200.0}},[test_area])
@@ -30,11 +32,11 @@ assert steps['schemaVersion']==2
 assert steps['catalogFingerprint']==catalog['fingerprint']
 assert len(steps['quests'])==len(quests)
 all_steps=[step for quest in steps['quests'] for step in quest['steps']]
-assert len(all_steps)==230 and all(step['text'] for step in all_steps)
+assert len(all_steps)==235 and all(step['text'] for step in all_steps)
 assert all(step['available'] or step['destinationMode'] in ('dynamic','unavailable') for step in all_steps)
 assert all(isinstance(step.get('semanticWarnings'),list) and isinstance(step.get('reviewedRelationship'),bool) for step in all_steps)
 analysis=json.loads((root/'dist/quest-step-analysis.json').read_text(encoding='utf-8'))
-assert analysis['summary']['objectives']==232 and analysis['summary']['excludedTechnicalObjectives']==2
+assert analysis['summary']['objectives']==237 and analysis['summary']['excludedTechnicalObjectives']==2
 overrides=json.loads((root/'deploy/quest-step-overrides.json').read_text(encoding='utf-8'))
 assert overrides['schemaVersion']==2 and len(overrides['relationships'])>=20
 assert not any(any(field in target for field in ('map','world','x','y','z')) for row in overrides['relationships'] for target in row.get('targets',[]))
@@ -232,6 +234,12 @@ assert any(marker.get('actorType')=='BP_SpawnPoint_Zogre' for marker in doric['F
 dragon={step['key']:step for quest in steps['quests'] if quest['id']=='yrRZnkmro-IvH_OmZ3f-5A' for step in quest['steps']}
 assert any(marker.get('actorType')=='BP_MiningRock_Dragon_Tooth' for marker in dragon['Craft the summon horn']['markers'])
 assert any(marker['name']=='Bloodwood Sap — southern Bloodblight ruins' for marker in dragon['Craft the summon horn']['markers'])
+deer_override=next(row for row in overrides['relationships'] if row['questId']=='yrRZnkmro-IvH_OmZ3f-5A' and row.get('objectiveKey')=='Find and hunt a deer')
+deer_target=next(target for target in deer_override['targets'] if target['kind']=='npc')
+assert set(deer_target['excludeOpaqueIds'])=={'d29d5432b0a5a7228b7e','e9da49602273872fa973'}
+assert len(dragon['Find and hunt a deer']['markers'])==35
+assert not any(marker['world']['x'] in (185146.4,187665.08) for marker in dragon['Find and hunt a deer']['markers'])
+assert '/api/quests/steps' in page and 'questStepLocations' in page  # shared map and player-page destination source
 family_rows=[row for row in overrides['relationships'] if row.get('objectiveKeys')]
 assert family_rows and all(len(row['objectiveKeys'])==len(set(row['objectiveKeys'])) for row in family_rows)
 assert any(target.get('kind')=='world_actor_type' for row in overrides['relationships'] for target in row.get('targets',[]))

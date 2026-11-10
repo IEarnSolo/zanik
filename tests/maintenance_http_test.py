@@ -22,6 +22,12 @@ with tempfile.TemporaryDirectory(prefix="zanik-maintenance-") as temporary:
             page=response.read().decode(); assert "waiting for a compatibility update" in page
             assert "AUTO_UPDATE must remain 0" in page and "Update / repair Zanik" in page, page
             assert 'class="site-header"' in page and page.index('class="site-header"') < page.index("<main>")
+            assert '<link rel="manifest" href="/app.webmanifest">' in page
+        with urllib.request.urlopen(base+"/app.webmanifest") as response:
+            manifest=json.loads(response.read()); assert manifest["display"]=="standalone"
+            assert manifest["start_url"]=="/" and manifest["scope"]=="/"
+        with urllib.request.urlopen(base+"/app-icon-192.png") as response:
+            icon=response.read(); assert icon[:8]==b"\x89PNG\r\n\x1a\n"
         with urllib.request.urlopen(base+"/api/update-status") as response:
             status=json.loads(response.read()); assert status["maintenance"] is True
             assert status["nativeRuntimeLoaded"] is False and status["release"]["status"]=="compatible-release-available"

@@ -75,7 +75,9 @@ def build_report(registry, status, provenance):
         })
     counts = {name: sum(item["result"] == name for item in capabilities)
               for name in ("compatible", "pending", "disabled", "not-applicable", "incompatible")}
-    return {"schemaVersion": 1, "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+    # Public reports identify the reviewed candidate date without publishing an
+    # operator-specific deployment timestamp.
+    return {"schemaVersion": 1, "generatedAt": dt.datetime.now(dt.timezone.utc).date().isoformat(),
             "provenance": provenance, "summary": counts, "capabilities": capabilities}
 
 

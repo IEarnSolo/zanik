@@ -17,8 +17,8 @@ assert 'Mem::SafeRead(actor+Offsets::Actor_RootComponent,root)' in npcs
 assert 'Mem::SafeRead(root+Offsets::SceneComp_RelativeLocation,location)' in npcs
 assert 'confirmedRoot!=root' in npcs
 assert 'value.schema==1&&fingerprintValid' in storage
-for check in ('adminBuildingExpectedPieces -eq 827', 'adminBuildingResolvedPieces -eq 827',
-              'adminBuildingUnavailablePieces -eq 0', 'adminBuildingReferences -eq 844'):
+for check in ('adminBuildingExpectedPieces -eq 850', 'adminBuildingResolvedPieces -eq 850',
+              'adminBuildingUnavailablePieces -eq 0', 'adminBuildingReferences -eq 867'):
     assert check in validator
 
 print("recipe/NPC/building compatibility coverage: ok")

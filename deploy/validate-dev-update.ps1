@@ -1,17 +1,25 @@
-param([string]$BaseUrl = 'http://game.mcgalaxy.com:29105', [int]$TimeoutSeconds = 180)
+param([Parameter(Mandatory=$true)][string]$BaseUrl, [int]$TimeoutSeconds = 180)
 $ErrorActionPreference='Stop'
+function Get-HttpStatus([string]$Url) {
+    try {
+        return [int](Invoke-WebRequest $Url -UseBasicParsing -TimeoutSec 5).StatusCode
+    } catch {
+        if ($null -ne $_.Exception.Response) {
+            return [int]$_.Exception.Response.StatusCode
+        }
+        throw
+    }
+}
 $deadline=(Get-Date).AddSeconds($TimeoutSeconds)
 $lastError='validation conditions not yet satisfied'
 do {
     try {
-        & curl.exe -fsS --max-time 5 "$BaseUrl/" -o NUL
-        $pageOk=$LASTEXITCODE -eq 0
+        $pageOk=(Get-HttpStatus "$BaseUrl/") -eq 200
         $players=Invoke-RestMethod "$BaseUrl/api/players" -TimeoutSec 5
         $known=Invoke-RestMethod "$BaseUrl/api/known-players" -TimeoutSec 5
         $leaderboard=Invoke-RestMethod "$BaseUrl/api/kill-leaderboard" -TimeoutSec 5
         $kills=Invoke-RestMethod "$BaseUrl/api/kill-tracker-diagnostics" -TimeoutSec 5
-        & curl.exe -fsS --max-time 5 "$BaseUrl/map" -o NUL
-        $mapOk=$LASTEXITCODE -eq 0
+        $mapOk=(Get-HttpStatus "$BaseUrl/map") -eq 200
         $mapPlayers=Invoke-RestMethod "$BaseUrl/api/map/players" -TimeoutSec 5
         $labels=Invoke-RestMethod "$BaseUrl/api/map/labels" -TimeoutSec 5
         $lodestones=Invoke-RestMethod "$BaseUrl/api/map/lodestones" -TimeoutSec 5
@@ -26,8 +34,8 @@ do {
         $npcDiagnostics=Invoke-RestMethod "$BaseUrl/api/diagnostics/npcs" -TimeoutSec 5
         $npcIconsOk=($npcCatalog.types|Where-Object {$_.icon}).Count -gt 0
         foreach($icon in @('T_Icon_Journal_Black_Knight_Warrior.png','T_Icon_Journal_Lesser_Blue_Dragon.png','T_Icon_Journal_Wise_Old_man.png')){
-            $code=& curl.exe -sS --max-time 5 -o NUL -w '%{http_code}' "$BaseUrl/assets/npcs/$icon"
-            if($code -ne '200'){$npcIconsOk=$false;break}
+            $code=Get-HttpStatus "$BaseUrl/assets/npcs/$icon"
+            if($code -ne 200){$npcIconsOk=$false;break}
         }
         $playerDiagnostics=Invoke-RestMethod "$BaseUrl/api/player-discovery-diagnostics" -TimeoutSec 5
         $playerRecipeDiagnostics=Invoke-RestMethod "$BaseUrl/api/player-recipe-diagnostics" -TimeoutSec 5
@@ -37,13 +45,13 @@ do {
         $planDiagnostics=Invoke-RestMethod "$BaseUrl/api/diagnostics/storage-plans" -TimeoutSec 5
         $update=Invoke-RestMethod "$BaseUrl/api/update-status" -TimeoutSec 5
         $adminDiagnostics=Invoke-RestMethod "$BaseUrl/api/admin-diagnostics" -TimeoutSec 5
-        & curl.exe -sS --max-time 5 -o NUL -w '%{http_code}' "$BaseUrl/admin/claim" | Out-Null
-        $claimPageOk=$LASTEXITCODE -eq 0
-        $unauthorizedCode=& curl.exe -sS --max-time 5 -o NUL -w '%{http_code}' "$BaseUrl/api/admin/storage/catalog"
+        $claimCode=Get-HttpStatus "$BaseUrl/admin/claim"
+        $claimPageOk=$claimCode -eq 200
+        $unauthorizedCode=Get-HttpStatus "$BaseUrl/api/admin/storage/catalog"
         $unlockIconsOk=$true
         foreach($icon in @('DA_Consumable_Vestige_Weapon_Club_Swingslash.png','DA_Consumable_Vestige_Weapon_Longbow_HunterStag.png','DA_Consumable_Vestige_Weapon_Staff_GrievingMoon.png','DA_Consumable_Vestige_Weapon_Staff_ToktzMejTal.png','DA_Consumable_Vestige_Weapon_Whip_Abysmal.png','DA_Consumabe_Mount_TerrorBird_02_04.png','DA_Consumabe_Mount_TerrorBird_02_02.png')){
-            $code=& curl.exe -sS --max-time 5 -o NUL -w '%{http_code}' "$BaseUrl/assets/items/$icon"
-            if($code -ne '200'){$unlockIconsOk=$false;break}
+            $code=Get-HttpStatus "$BaseUrl/assets/items/$icon"
+            if($code -ne 200){$unlockIconsOk=$false;break}
         }
         if($pageOk -and $null -ne $players.count -and $null -ne $known.count -and
            $null -ne $leaderboard.players -and $mapOk -and
@@ -60,7 +68,7 @@ do {
            $questDiagnostics.queryCompatibility -eq 1 -and $questDiagnostics.catalogEntries -eq $questDiagnostics.resolvedEntries -and
            $questDiagnostics.maximumQueryMicroseconds -le 1000 -and $questDiagnostics.slowQueries -eq 0 -and
            $playerSkillDiagnostics.iconCompatibility -eq 1 -and $playerSkillDiagnostics.iconAssets -eq 12 -and $playerSkillDiagnostics.missingIconAssets -eq 0 -and
-           $planDiagnostics.compatibility -eq 1 -and $planDiagnostics.items -eq 123 -and
+           $planDiagnostics.compatibility -eq 1 -and $planDiagnostics.items -eq 141 -and
            ($players.count -eq 0 -or ($playerRecipeDiagnostics.snapshots -gt 0 -and $playerRecipeDiagnostics.scansCompleted -gt 0)) -and
            $npcCatalog.nodes.Count -gt 0 -and $npcState.states.Count -eq $npcCatalog.nodes.Count -and $npcIconsOk -and
            $npcDiagnostics.catalogCompatibility -eq 1 -and $npcDiagnostics.registryCompatibility -eq 1 -and
@@ -81,13 +89,13 @@ do {
            $adminDiagnostics.storageRemovalTrackingCompatibility -eq 1 -and $adminDiagnostics.storageCatalogCompatibility -eq 1 -and $adminDiagnostics.storageUnlockCatalogCompatibility -eq 1 -and $unlockIconsOk -and
            $update.adminBuildingTaxonomyCompatibility -eq 1 -and $update.adminBuildingRequirementsCompatibility -eq 1 -and
            $update.adminBuildingIconsCompatibility -eq 1 -and $update.adminCraftingRecipeCompatibility -eq 1 -and
-           $update.adminBuildingExpectedPieces -eq 827 -and $update.adminBuildingResolvedPieces -eq 827 -and
-           $update.adminBuildingUnavailablePieces -eq 0 -and $update.adminBuildingReferences -eq 844 -and
+           $update.adminBuildingExpectedPieces -eq 850 -and $update.adminBuildingResolvedPieces -eq 850 -and
+           $update.adminBuildingUnavailablePieces -eq 0 -and $update.adminBuildingReferences -eq 867 -and
            $adminDiagnostics.gravestoneCompatibility -eq 1 -and $adminDiagnostics.gravestoneInventoryCompatibility -eq 1 -and $adminDiagnostics.gravestoneRegistryCompatibility -eq 1 -and
-           $adminDiagnostics.gravestoneStreamingCompatibility -eq 1 -and $adminDiagnostics.gravestoneRespawnCaptureCompatibility -eq 1 -and $adminDiagnostics.gravestonePersistenceCompatibility -eq 1 -and
-           $update.website -eq $true -and $update.playerSkillIconCompatibility -eq 1 -and $update.playerSkillIconAssets -eq 12 -and $update.playerSkillMissingIconAssets -eq 0 -and $update.adminStoragePlanCatalogCompatibility -eq 1 -and $update.adminStoragePlanCatalogItems -eq 123 -and $update.adminAuthorizationStorage -eq $true -and $update.adminConsoleCompatibility -eq 1 -and
+           $adminDiagnostics.gravestoneStreamingCompatibility -eq 1 -and $adminDiagnostics.gravestoneRespawnCaptureCompatibility -eq 0 -and $adminDiagnostics.gravestonePersistenceCompatibility -eq 1 -and
+           $update.website -eq $true -and $update.playerSkillIconCompatibility -eq 1 -and $update.playerSkillIconAssets -eq 12 -and $update.playerSkillMissingIconAssets -eq 0 -and $update.adminStoragePlanCatalogCompatibility -eq 1 -and $update.adminStoragePlanCatalogItems -eq 141 -and $update.adminAuthorizationStorage -eq $true -and $update.adminConsoleCompatibility -eq 1 -and
            $update.adminTeleportCompatibility -eq 1 -and $update.adminStorageCompatibility -eq 1 -and $update.adminGravestoneCompatibility -eq 1 -and
-           $claimPageOk -and $unauthorizedCode -eq '401' -and $update.mapProjectionCompatibility -eq $true){
+           $claimPageOk -and $unauthorizedCode -eq 401 -and $update.mapProjectionCompatibility -eq $true){
             $livePlayerCheck=if($players.count -eq 0){'pending-no-online-player'}else{'passed'}
             [pscustomobject]@{website='ok';onlinePlayers=$players.count;knownPlayers=$known.count;livePlayerCheck=$livePlayerCheck;playerDataCompatibility=$update.playerDataCompatibility;killHookCompatibility=$kills.hookCompatibility;regionCompatibility=$kills.regionCompatibility;mapProjectionCompatibility=$update.mapProjectionCompatibility;mapLabels=$labels.labels.Count;lodestones=$lodestones.lodestones.Count;lodestoneCompatibility=$lodestoneDiagnostics.compatibility;nodestones=$nodestones.nodestones.Count;nodestoneCompatibility=$nodestoneDiagnostics.compatibility;resourceCatalogNodes=$resourceCatalog.nodes.Count;resourceCompatibility=$resourceDiagnostics.compatibility;npcCatalogNodes=$npcCatalog.nodes.Count;npcIcons=$npcIconsOk;npcLiveNodes=$npcDiagnostics.matchedLiveNodes;npcCatalogCompatibility=$npcDiagnostics.catalogCompatibility;npcRuntimeCompatibility=$npcDiagnostics.registryCompatibility;npcLifecycleCompatibility=$npcDiagnostics.lifecycleCompatibility;npcCompletedScans=$npcDiagnostics.completedScans;npcLastScanMilliseconds=$npcDiagnostics.lastScanMilliseconds;npcMaximumSliceMicroseconds=$npcDiagnostics.maximumSliceMicroseconds;npcGenerationWorkMicroseconds=$npcDiagnostics.lastGenerationWorkMicroseconds;npcFinalizationMicroseconds=$npcDiagnostics.lastFinalizationMicroseconds;npcLiveRefreshMicroseconds=$npcDiagnostics.lastLiveRefreshMicroseconds;npcDutyCycleBasisPoints=$npcDiagnostics.lastDutyCycleBasisPoints;npcClassCacheHits=$npcDiagnostics.classCacheHits;npcClassCacheMisses=$npcDiagnostics.classCacheMisses;npcInvalidObjectSlots=$npcDiagnostics.invalidObjectSlots;npcChangedObjectSlots=$npcDiagnostics.changedObjectSlots;npcIdleMilliseconds=$npcDiagnostics.idleMilliseconds;adminAuthorizationCompatibility=$adminDiagnostics.authorizationStorage;adminConsoleCompatibility=$adminDiagnostics.consoleCommandCompatibility;adminTeleportCompatibility=$adminDiagnostics.teleportCompatibility;adminTeleportGroundTraceCompatibility=$adminDiagnostics.teleportGroundTraceCompatibility;storageCompatibility=$adminDiagnostics.storageCompatibility;storageMutationCompatibility=$adminDiagnostics.storageMutationCompatibility;storageBatchCompatibility=$adminDiagnostics.storageBatchCompatibility;storageRenameCompatibility=$adminDiagnostics.storageRenameCompatibility;storageUnlockCatalogCompatibility=$adminDiagnostics.storageUnlockCatalogCompatibility;buildingPieces=$adminDiagnostics.resolvedBuildingPieces;buildingReferences=$adminDiagnostics.buildingReferences;unlockIcons=$unlockIconsOk;gravestoneCompatibility=$adminDiagnostics.gravestoneCompatibility;gravestonePersistenceCompatibility=$adminDiagnostics.gravestonePersistenceCompatibility;update=$update.updater}|ConvertTo-Json -Depth 8
             exit 0

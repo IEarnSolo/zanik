@@ -11,6 +11,9 @@
 !/.env.gitlab.example
 /.env.gitlab
 /config/zanik.conf
+/admins.txt
+/zanik-data/
+/manager-profiles.json
 *.key
 *.pem
 *.p12

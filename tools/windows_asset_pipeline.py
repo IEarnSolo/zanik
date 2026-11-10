@@ -23,7 +23,7 @@ except ModuleNotFoundError:  # Imported as tools.* by repository tests.
     from tools.asset_filesystem import extended_path, read_json as read_json_file
 
 
-RECIPE_VERSION = 16
+RECIPE_VERSION = 19
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 EXPORT_CHECKPOINT = "export-checkpoint.json"
 INCREMENTAL_STATE = "incremental-state.json"
@@ -61,6 +61,9 @@ REVIEWED_LEGACY_GENERATION_RECIPES = {
     "3b60bfa9d705491b9eca6378d12cc42eabfd3dbf17fc82d650e7ee621bed0058",  # recipe 14
     "0e4641495656c163750e27ee7e5bcc037b5ffd7d5fa28b0ef7cf0bf08f5f4bcf",  # recipe 15
     "9bfc5332a7b53f5f364cf2781ad6adb8dec6db02c8783fbaee7f754eefe84d3c",  # recipe 16
+    "971eb1bb9b286fd9b3ef1437b3051a24a010e7e31ca63f3c2f491d49a4287ccc",  # recipe 17
+    "4c4c8317dfd92d2883a9bc4f929dcaf6fc5034740a56ee146e7ca77e4a6338d5",  # recipe 18
+    "1cafd1cc6fd564e339aeb63c32f42fea740e12b556a303ab8bdb7b75747bcb83",  # recipe 19
 }
 RETIRED_FRAGMENT_CRYSTAL_TARGET = \
     "package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal"
@@ -81,7 +84,7 @@ GROUP_OUTPUTS = {
     "resource-artwork": ("resources",), "spell-and-perk-artwork": ("spells-and-perks",), "skills": ("skills",),
     "map-icons": ("lodestone-icon.png", "nodestone-icon.png", "gravestone-icon.png", "region-discovery-icon.png",
                   "quests/clipboard-icon.png", "quests/objective-arrow-icon.png"),
-    "world-map": ("world-map.jpg",), "font": ("Jancient-Regular.ttf",),
+    "world-map": ("world-map.jpg", "world-map-1024.jpg", "world-map-2048.jpg"), "font": ("Jancient-Regular.ttf",),
     "quest-badges": ("quests/main-quest.png", "quests/side-quest.png"),
     "recipes": ("recipe-unlocks.json", "recipe-runtime-catalog.tsv", "recipe-runtime-catalog-history.tsv"),
     "quest-destinations": ("quest-step-locations.json",),
@@ -338,6 +341,15 @@ def selective_generation_groups(previous_recipe: dict, recipe: dict, prior_state
         and set(added_textures) == QUEST_BADGE_TARGETS
         and not removed_textures
     )
+    reviewed_recipe_18_migration = (
+        legacy_reviewed
+        and prior_recipe_version == 17
+        and recipe.get("schemaVersion") == 18
+        and {**old, "schemaVersion": None} == {**new, "schemaVersion": None}
+        and old_required == new_required
+        and not added_textures
+        and not removed_textures
+    )
     if old != new:
         dirty.update({"buildings", "plan-items", "npc", "resources", "quests", "recipes",
                       "quest-destinations", "item-artwork", "npc-artwork", "resource-artwork", "spell-and-perk-artwork"})
@@ -383,6 +395,11 @@ def selective_generation_groups(previous_recipe: dict, recipe: dict, prior_state
             migration_groups.add("npc")
         dirty.intersection_update(migration_groups)
         dirty.update(migration_groups)
+    if reviewed_recipe_18_migration:
+        # Recipe 18 adds only resolution-derived outputs to the existing
+        # world-map generation group. Reuse every catalog and raw export.
+        dirty.intersection_update({"world-map"})
+        dirty.add("world-map")
     return dirty
 
 
@@ -655,6 +672,23 @@ def incremental_texture_targets(old_targets: list[str], previous_recipe: dict,
         if not possible_references:
             return sorted((set(old_targets) - removed) | (new_required - old_required), key=str.casefold)
     return referenced_textures(json_root, recipe["requiredTextureAssets"])
+
+
+def updated_texture_targets(old_targets: list[str], previous_recipe: dict,
+                            recipe: dict, json_root: Path, standalone_targets: list[str],
+                            *, game_changed: bool, target_inputs_unchanged: bool) -> list[str]:
+    """Resolve the complete target inventory for an incremental update.
+
+    A new game executable invalidates inferred references even when Zanik's JSON
+    selectors are unchanged. Re-scan the newly exported JSON so removed package
+    references are retired instead of being carried into the new build.
+    """
+    if game_changed:
+        return referenced_textures(json_root, recipe["requiredTextureAssets"])
+    if target_inputs_unchanged:
+        return old_targets
+    return incremental_texture_targets(
+        old_targets, previous_recipe, recipe, json_root, standalone_targets)
 
 
 def load_prior_incremental_state(temporary: Path, recipe: dict,
@@ -1064,8 +1098,10 @@ def extract(args: argparse.Namespace) -> int:
             target_inputs_unchanged = (structural_json and old_json_targets == new_json_targets
                                        and previous_recipe.get("requiredTextureAssets")
                                        == recipe.get("requiredTextureAssets"))
-            new_targets = old_targets if target_inputs_unchanged else incremental_texture_targets(
-                old_targets, previous_recipe, recipe, json_root, sorted(old_standalone))
+            new_targets = updated_texture_targets(
+                old_targets, previous_recipe, recipe, json_root, sorted(old_standalone),
+                game_changed=bool(args.game_changed),
+                target_inputs_unchanged=target_inputs_unchanged)
             new_standalone = ((old_standalone & new_required)
                               | ((new_required - old_required) - set(old_targets)))
             if selective and isinstance(old_targets, list) and texture_root.is_dir():

@@ -12,7 +12,7 @@ RELEASE_TAG=${RELEASE_TAG:-}
 RELEASE_COMMIT=${RELEASE_COMMIT:-}
 rm -rf "$WORK"
 find "$OUT" -maxdepth 1 -type f \( -name 'zanik-*' -o -name SHA256SUMS -o -name release-manifest.json -o -name release-notes.md -o -name assets-links.json -o -name github-release.json -o -name curseforge-upload.json \) -delete
-mkdir -p "$WORK/server/bin" "$WORK/server/lib" "$WORK/server/config" "$WORK/server/compatibility" "$WORK/server/scripts" "$WORK/server/tools" "$WORK/server/docs"
+mkdir -p "$WORK/server/bin" "$WORK/server/lib" "$WORK/server/config" "$WORK/server/compatibility" "$WORK/server/scripts" "$WORK/server/tools" "$WORK/server/LICENSES"
 
 install -m 0755 "$ROOT/dist/libdwstatus.so" "$WORK/server/bin/libzanik.so"
 install -m 0755 "$ROOT/dist/zanik-compat-analyzer" "$WORK/server/bin/zanik-compat-analyzer"
@@ -28,8 +28,8 @@ for file in install update uninstall doctor init-assets compat-launcher verify-a
 install -m 0644 "$ROOT/tools/zanik_assets.py" "$WORK/server/tools/zanik_assets.py"
 install -m 0644 "$ROOT/tools/asset_filesystem.py" "$WORK/server/tools/asset_filesystem.py"
 install -m 0755 "$ROOT/tools/generate_compatibility_report.py" "$WORK/server/tools/generate_compatibility_report.py"
-install -m 0644 "$ROOT/VERSION" "$ROOT/CHANGELOG.md" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/README.md" "$WORK/server/"
-for file in installation.md linux.md pterodactyl.md docker.md upgrades.md uninstall.md configuration.md assets.md security.md hosting.md curseforge.md releasing.md contributor-architecture.md manager.md game-update-safety.md backups.md; do install -m 0644 "$ROOT/docs/$file" "$WORK/server/docs/$file"; done
+install -m 0644 "$ROOT/VERSION" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$WORK/server/"
+install -m 0644 "$ROOT/LICENSES/RSDWServerAPI-MIT.txt" "$WORK/server/LICENSES/RSDWServerAPI-MIT.txt"
 python3 "$ROOT/manager/zanik_manager/payload_contract.py" --root "$WORK/server" --release-version "$VERSION" --output "$WORK/server/payload-contract.json"
 
 normalize(){ find "$1" -type f -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +; find "$1" -type d -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +; }
@@ -108,6 +108,8 @@ cp -p "$SERVER_ZIP" "$WORK/manager/payload/server.zip"
 cp -p "$ROOT/config/zanik-config.schema.json" "$WORK/manager/config/zanik-config.schema.json"
 cp -p "$ROOT/config/server-payload-legacy-contracts.json" "$WORK/manager/config/server-payload-legacy-contracts.json"
 cp -p "$ROOT/manager/README.md" "$ROOT/CHANGELOG.md" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/manager/tools.lock.json" "$WORK/manager/"
+mkdir -p "$WORK/manager/LICENSES"
+cp -p "$ROOT/LICENSES/RSDWServerAPI-MIT.txt" "$WORK/manager/LICENSES/RSDWServerAPI-MIT.txt"
 cp -p "$ROOT/VERSION" "$WORK/manager/VERSION"
 cp -p /usr/share/common-licenses/LGPL-3 "$WORK/manager/LICENSE-LGPL-3.0.txt"
 x86_64-w64-mingw32-gcc -municode -mwindows -Os -s "$ROOT/manager/launcher.c" -o "$WORK/manager/ZanikManager.exe"

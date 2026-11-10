@@ -50,7 +50,7 @@ if [ "$launcher_kind" = official ] && [ -e "$original" ] && ! is_elf "$game"; th
 fi
 install_dir=$server_root/zanik
 data_dir=$server_root/zanik-data
-mkdir -p "$install_dir/bin" "$install_dir/lib" "$install_dir/config" "$install_dir/state" "$install_dir/assets" "$install_dir/docs" "$install_dir/tools" "$install_dir/scripts" "$data_dir"
+mkdir -p "$install_dir/bin" "$install_dir/lib" "$install_dir/config" "$install_dir/state" "$install_dir/assets" "$install_dir/tools" "$install_dir/scripts" "$install_dir/LICENSES" "$data_dir"
 chmod 700 "$data_dir"
 
 if [ "$launcher_kind" = legacy ]; then
@@ -80,12 +80,19 @@ copy_required "$SOURCE_DIR/bin/zanik-server" "$install_dir/bin/zanik-server"
 copy_required "$SOURCE_DIR/lib/zanik-common.sh" "$install_dir/lib/zanik-common.sh"
 copy_required "$SOURCE_DIR/config/zanik.conf.example" "$install_dir/config/zanik.conf.example"
 copy_required "$SOURCE_DIR/config/zanik-config.schema.json" "$install_dir/config/zanik-config.schema.json"
+copy_required "$SOURCE_DIR/config/material-first-pickup-catalog.tsv" "$install_dir/config/material-first-pickup-catalog.tsv"
+copy_required "$SOURCE_DIR/config/player-activity-unlock-catalog.tsv" "$install_dir/config/player-activity-unlock-catalog.tsv"
 copy_required "$SOURCE_DIR/compatibility/compatibility.tsv" "$install_dir/compatibility.tsv"
 copy_required "$SOURCE_DIR/compatibility/capabilities.json" "$install_dir/compatibility-capabilities.json"
 copy_required "$SOURCE_DIR/payload-contract.json" "$install_dir/payload-contract.json"
+copy_required "$SOURCE_DIR/VERSION" "$install_dir/VERSION"
+copy_required "$SOURCE_DIR/LICENSE" "$install_dir/LICENSE"
+copy_required "$SOURCE_DIR/THIRD_PARTY_NOTICES.md" "$install_dir/THIRD_PARTY_NOTICES.md"
+copy_required "$SOURCE_DIR/LICENSES/RSDWServerAPI-MIT.txt" "$install_dir/LICENSES/RSDWServerAPI-MIT.txt"
 for command in install update uninstall doctor init-assets verify-assets check-game-update check-compatible-release update-game apply-asset-delta; do copy_required "$SOURCE_DIR/scripts/$command.sh" "$install_dir/scripts/$command.sh"; done
 copy_required "$SOURCE_DIR/scripts/compat-launcher.sh" "$install_dir/scripts/compat-launcher.sh"
 copy_required "$SOURCE_DIR/tools/zanik_assets.py" "$install_dir/tools/zanik_assets.py"
+copy_required "$SOURCE_DIR/tools/asset_filesystem.py" "$install_dir/tools/asset_filesystem.py"
 copy_required "$SOURCE_DIR/tools/generate_compatibility_report.py" "$install_dir/tools/generate_compatibility_report.py"
 [ -f "$install_dir/config/zanik.conf" ] || cp -p "$install_dir/config/zanik.conf.example" "$install_dir/config/zanik.conf"
 [ -f "$install_dir/admins.txt" ] || { umask 077; : > "$install_dir/admins.txt"; }

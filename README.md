@@ -70,7 +70,7 @@ CI builds and validates server `.tar.gz`/`.zip` archives and separate Linux and 
 
 Stable releases are built from matching `vMAJOR.MINOR.PATCH` tags. GitLab is the authoritative development and package platform; new releases and source refs are also mirrored to the public GitHub repository. See [releasing](docs/releasing.md) and [CurseForge distribution](docs/curseforge.md).
 
-The engine discovery layer is adapted from RSDWServerAPI under MIT terms. See [UPSTREAM.md](UPSTREAM.md), [LICENSE](LICENSE), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The engine discovery layer is adapted from RSDWServerAPI under MIT terms. See [UPSTREAM.md](UPSTREAM.md), [LICENSES/RSDWServerAPI-MIT.txt](LICENSES/RSDWServerAPI-MIT.txt), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Zanik's original work is also available under the [MIT License](LICENSE).
 
 ## Disclaimer
 

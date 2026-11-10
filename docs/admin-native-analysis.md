@@ -4,7 +4,6 @@
 
 - Steam build: `25465077`
 - Executable SHA-256: `d26de80fd01f4b73b726aed855a20377996b7c140ff33f1ec40150c0dd73b259`
-- Server: `0f95b34b`
 
 ## Proven runtime metadata
 
@@ -326,8 +325,8 @@ removed during the same validation attempt.
 
 Recipe mode uses the cooked `DA_BuildPieceCatalogue_Default` asset rather
 than guessing sections from asset names. `tools/generate_building_catalog.py`
-validates the current shape (8 tabs, 63 sections, 844 ordered references, and
-827 unique runtime pieces), exports localized metadata and icons, and writes the
+validates the current shape (8 tabs, 64 sections, 867 ordered references, and
+850 unique runtime pieces), exports localized metadata and icons, and writes the
 runtime index to `web/buildings/catalog.tsv`. The JSON companion is the
 human-readable update artifact. Intentional General-page duplicates remain
 menu memberships pointing to one recipe identity; Favourites remains empty.

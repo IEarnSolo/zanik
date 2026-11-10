@@ -1,5 +1,7 @@
 # Distribution architecture rules
 
+Responsive website work follows [the shared responsive interface architecture](responsive-design.md). Do not add device-specific user-agent branches or solve compact layouts by shrinking desktop controls below the shared touch-target boundary.
+
 ## Live website polling
 
 All recurring website network refreshes register with the shared `ZanikPolling` scheduler. The standard visible-tab cadence is two seconds. The scheduler pauses network work while the document is hidden, prevents a task from overlapping itself, immediately catches up when the tab becomes visible, and slightly staggers task deadlines so a player page does not send every request in the same instant. Local-only clocks and tooltip display updates may keep lightweight timers because they do not contact the server.

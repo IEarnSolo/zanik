@@ -29,6 +29,10 @@ EXTRACTION_RECIPE_VERSION = 4
 DEFAULT_PART_BYTES = 90 * 1024 * 1024
 MAX_ENTRY_BYTES = 64 * 1024 * 1024
 WORLD_MAP_DIMENSIONS = (4096, 4096)
+WORLD_MAP_LOD_DIMENSIONS = {
+    "world-map-1024.jpg": (1024, 1024),
+    "world-map-2048.jpg": (2048, 2048),
+}
 LEGACY_BUILDING_PLACEHOLDER_SHA256 = "04608a9130fcdd8b385f426a95b11f3b1e8fdac39b3bec166c05f65721433c09"
 REQUIRED = (
     "buildings/catalog.json",
@@ -44,6 +48,8 @@ REQUIRED = (
     "resource-identities.tsv",
     "npc-identities.tsv",
     "world-map.jpg",
+    "world-map-1024.jpg",
+    "world-map-2048.jpg",
     "lodestone-icon.png",
     "nodestone-icon.png",
     "gravestone-icon.png",
@@ -71,7 +77,7 @@ CATALOG_MINIMUMS = {
 }
 ALLOWED_TOP_LEVEL = {
     "asset-manifest.json", "buildings", "items", "npcs", "quests", "recipe-icons", "spells-and-perks",
-    "resources", "skills", "world-map.jpg", "lodestone-icon.png", "nodestone-icon.png",
+    "resources", "skills", "world-map.jpg", "world-map-1024.jpg", "world-map-2048.jpg", "lodestone-icon.png", "nodestone-icon.png",
     "gravestone-icon.png", "region-discovery-icon.png", "Jancient-Regular.ttf", "npc-catalog.json", "plan-items.tsv",
     "quest-catalog.json", "quest-runtime-catalog.tsv", "quest-step-locations.json",
     "recipe-unlocks.json", "recipe-runtime-catalog.tsv", "recipe-runtime-catalog-history.tsv",
@@ -221,14 +227,14 @@ def validate_generated(source: Path) -> dict:
                 if isinstance(value, dict):
                     if relative == "buildings/catalog.json":
                         building_icon_sources = value.get("iconSources", {})
-                        if value.get("counts", {}).get("pieces") == 827 and building_icon_sources != {
-                            "authored-texture": 758,
+                        if value.get("counts", {}).get("pieces") == 850 and building_icon_sources != {
+                            "authored-texture": 781,
                             "embedded-build-ui-thumbnail": 68,
                             "procedural-thumbnail": 1,
                         }:
                             errors.append(f"building icon source coverage changed: {building_icon_sources}")
                         pieces = value.get("pieces", [])
-                        if isinstance(pieces, list) and len(pieces) == 827:
+                        if isinstance(pieces, list) and len(pieces) == 850:
                             seen_icons: set[str] = set()
                             for piece in pieces:
                                 icon = str(piece.get("icon", "")) if isinstance(piece, dict) else ""
@@ -303,6 +309,18 @@ def validate_generated(source: Path) -> dict:
                 )
         except (OSError, ValueError) as error:
             errors.append(f"world map is not a valid JPEG: {error}")
+    for name, expected in WORLD_MAP_LOD_DIMENSIONS.items():
+        map_lod = source / name
+        if map_lod.is_file() and not map_lod.is_symlink() and map_lod.stat().st_size:
+            try:
+                dimensions = jpeg_dimensions(map_lod)
+                if dimensions != expected:
+                    errors.append(
+                        f"world map LOD has unexpected dimensions: {name}={dimensions[0]}x{dimensions[1]} "
+                        f"(expected {expected[0]}x{expected[1]})"
+                    )
+            except (OSError, ValueError) as error:
+                errors.append(f"world map LOD is not a valid JPEG: {name}: {error}")
     asset_references: set[str] = set()
     absolute_pattern = re.compile(r"(?:[A-Za-z]:[\\/]|/(?:home|Users|tmp)/)")
     for path in safe_files(source) if source.is_dir() else []:

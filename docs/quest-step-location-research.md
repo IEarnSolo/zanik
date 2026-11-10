@@ -906,9 +906,10 @@ Semantic references:
 After the state-bound pass, the generated audit contains no Low-confidence
 steps. The remaining 18 Medium-confidence rows are intentionally conservative:
 
-- **Dragon Slayer (1):** any ordinary deer can supply the antler. The catalog
-  shows every current standard-deer spawn plus the exact Wise Old Man hand-in;
-  the save objective does not identify a preferred deer.
+- **Dragon Slayer (1):** any accessible ordinary deer can supply the antler.
+  The catalog shows every current standard-deer spawn available during this
+  objective plus the exact Wise Old Man hand-in; two stable Dowdun Reach
+  placements are excluded because that region is inaccessible at this point.
 - **Black Knight's Fortress (13):** the 0/13 through 12/13 objectives store an
   aggregate shard count. All thirteen exact authored shard areas remain valid,
   but the character progress structure does not say which identities were

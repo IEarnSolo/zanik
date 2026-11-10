@@ -21,8 +21,7 @@
   "productionDispatcherSlowCalls": 0,
   "productionNpcMaximumSliceMicroseconds": 529,
   "productionNpcSlowSlices": 0,
-  "developmentRollback": "/home/container/zanik-backups/game-update/20261017T161840Z-25811348-to-latest",
-  "productionRollback": "/home/container/zanik-backups/game-update/20261017T175851Z-25811348-to-latest",
-  "productionPackageBackup": "/home/container/zanik-backups/manager/20261017T180016Z-a173e17c",
-  "liveGameplayValidationWaivedByOperator": true
+  "developmentManagedRecoveryPointCreated": true,
+  "productionManagedRecoveryPointCreated": true,
+  "liveGameplayValidationPerformed": false
 }

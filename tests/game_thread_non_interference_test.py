@@ -15,7 +15,7 @@ trace = (root / "src/performance_trace.h").read_text()
 # research capture from the game thread. The reviewed executable hash is
 # published during compatibility initialization instead.
 assert "std::atomic<uintptr_t> cachedDisplayTextOffset" in graves
-assert "cachedDisplayTextOffset.store((hash==PreviousSha||hash==CurrentSha)" in graves
+assert "cachedDisplayTextOffset.store(hash==CurrentSha?0x04AD5A80:((hash==LegacySha||hash==PreviousSha)" in graves
 assert "grave-respawn-capture.bin" not in graves
 assert "spud-state-index-capture.bin" not in graves
 assert "WriteGraveRespawnCapture" not in graves

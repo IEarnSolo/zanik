@@ -16,6 +16,8 @@ filesystem_spec = importlib.util.spec_from_file_location("asset_filesystem", ROO
 asset_filesystem = importlib.util.module_from_spec(filesystem_spec); filesystem_spec.loader.exec_module(asset_filesystem)
 building_spec = importlib.util.spec_from_file_location("generate_building_catalog", ROOT / "tools/generate_building_catalog.py")
 buildings = importlib.util.module_from_spec(building_spec); building_spec.loader.exec_module(buildings)
+plan_spec = importlib.util.spec_from_file_location("generate_plan_item_catalog", ROOT / "tools/generate_plan_item_catalog.py")
+plans = importlib.util.module_from_spec(plan_spec); plan_spec.loader.exec_module(plans)
 world_spec = importlib.util.spec_from_file_location("generate_world_catalogs", ROOT / "tools/generate_world_catalogs.py")
 world = importlib.util.module_from_spec(world_spec); world_spec.loader.exec_module(world)
 
@@ -38,10 +40,13 @@ assert pattern.search("/GameFeatures/DowdunReach/Content/World/Spawners/AI/Spawn
 assert not pattern.search("/Game/Art/Audio/Music/Unrelated.uasset")
 assert not pattern.search("/Game/Art/Characters/Models/Unrelated.uasset")
 assert buildings.EXPECTED_ICON_SOURCES == {
-    "authored-texture": 758,
+    "authored-texture": 781,
     "embedded-build-ui-thumbnail": 68,
     "procedural-thumbnail": 1,
 }
+assert plans.canonical_plan_name("PLAN: Example") == "PLAN: Example"
+assert plans.canonical_plan_name("Plan: Example") == "PLAN: Example"
+assert plans.canonical_plan_name("Ancient Rug") == "PLAN: Ancient Rug"
 assert world.RESOURCE_ICON_ITEMS == {
     "BP_Cactus_Barrel": "ITEM_Resources_Steak_Cactus",
     "BP_Cactus_Bunny": "ITEM_Resources_Steak_Cactus",
@@ -57,7 +62,7 @@ assert buildings.cooked_package_path("/Game/Art/UI/Icons/GeneratedIcons/SM_Flag.
     "RSDragonwilds/Content/Art/UI/Icons/GeneratedIcons/SM_Flag"
 )
 assert str(asset_filesystem.extended_path(
-    r"C:\Users\Bill\AppData\Local\Zanik Manager\asset-work\hash\pipeline\json", "nt"
+    r"C:\Users\ExampleUser\AppData\Local\Zanik Manager\asset-work\hash\pipeline\json", "nt"
 )).startswith("\\\\?\\C:\\")
 
 with tempfile.TemporaryDirectory() as name:
@@ -172,6 +177,16 @@ with tempfile.TemporaryDirectory() as name:
             raise AssertionError("an unreadable exported JSON file was silently skipped")
         except RuntimeError as error:
             assert "cannot read exported JSON" in str(error)
+    stale_targets = [
+        "package:RSDragonwilds/Content/Art/UI/Icons/Resources_ConceptArt/T_Icon_Rune_Earth",
+        "package:RSDragonwilds/Content/Art/UI/Icons/Resources_ConceptArt/T_Icon_Rune_Earth_IconRemoved",
+    ]
+    with patch.object(pipeline, "referenced_textures", return_value=[stale_targets[0]]) as rescan:
+        refreshed = pipeline.updated_texture_targets(
+            stale_targets, additive_old, additive_new, root / "json", [],
+            game_changed=True, target_inputs_unchanged=False)
+        assert refreshed == [stale_targets[0]]
+        rescan.assert_called_once_with(root / "json", additive_new["requiredTextureAssets"])
     transient = root / "transient"; transient.mkdir(); (transient / "gone.txt").write_text("gone")
     original = pipeline.shutil.rmtree
     def raced(path, onerror=None):
@@ -307,11 +322,15 @@ with tempfile.TemporaryDirectory() as name:
 
     history = json.loads((ROOT / "asset-tools/extraction-recipe-history.json").read_text(encoding="utf-8"))
     by_version = {entry["recipe"]["schemaVersion"]: entry for entry in history["recipes"]}
-    recipe6, recipe7, recipe8, recipe9, recipe10, recipe11, recipe12, recipe13, recipe14, recipe15 = (
-        by_version[index] for index in (6, 7, 8, 9, 10, 11, 12, 13, 14, 15))
-    recipe16 = {"recipe": json.loads((ROOT / "asset-tools/extraction-recipes.json").read_text(encoding="utf-8"))}
+    recipe6, recipe7, recipe8, recipe9, recipe10, recipe11, recipe12, recipe13, recipe14, recipe15, recipe16, recipe17 = (
+        by_version[index] for index in (6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17))
+    recipe18 = by_version[18]
+    recipe18["recipe"]["jsonTargets"] = recipe18["jsonTargets"]
+    recipe18["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
+    recipe19 = {"recipe": json.loads((ROOT / "asset-tools/extraction-recipes.json").read_text(encoding="utf-8"))}
+    recipe19["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
+    recipe19["recipe"]["jsonTargets"] = pipeline.recipe_snapshot(recipe19["recipe"])["jsonTargets"]
     recipe16["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
-    recipe16["recipe"]["jsonTargets"] = pipeline.recipe_snapshot(recipe16["recipe"])["jsonTargets"]
     recipe6["recipe"]["jsonTargets"] = recipe6["jsonTargets"]
     recipe7["recipe"]["jsonTargets"] = recipe7["jsonTargets"]
     recipe7["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
@@ -397,6 +416,31 @@ with tempfile.TemporaryDirectory() as name:
          "contracts": {group: "b" * 64 for group in pipeline.GENERATION_GROUPS}},
         contracts, [region_icon_target], [], True)
     assert dirty == {"map-icons"}, f"recipe-16 region icon migration rebuilt unrelated groups: {dirty}"
+    recipe16["recipe"]["jsonTargets"] = recipe16["jsonTargets"]
+    recipe17["recipe"]["jsonTargets"] = recipe17["jsonTargets"]
+    recipe17["recipe"]["_path"] = str(ROOT / "asset-tools/extraction-recipes.json")
+    prior_contracts = dict(contracts); prior_contracts["quest-destinations"] = "b" * 64
+    dirty = pipeline.selective_generation_groups(
+        recipe16["recipe"], recipe17["recipe"],
+        {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,
+         "contracts": prior_contracts},
+        contracts, [], [], True)
+    assert dirty == {"quest-destinations"}, f"recipe-17 deer-placement migration rebuilt unrelated groups: {dirty}"
+    prior_contracts = dict(contracts); prior_contracts["world-map"] = "b" * 64
+    dirty = pipeline.selective_generation_groups(
+        recipe17["recipe"], recipe18["recipe"],
+        {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,
+         "contracts": prior_contracts},
+        contracts, [], [], True)
+    assert dirty == {"world-map"}, f"recipe-18 map LOD migration rebuilt unrelated groups: {dirty}"
+    dirty = pipeline.selective_generation_groups(
+        recipe18["recipe"], recipe19["recipe"],
+        {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,
+         "contracts": contracts},
+        contracts, [], [], True)
+    assert dirty == set(), f"recipe-19 target-refresh migration rebuilt generated outputs: {dirty}"
+    assert pipeline.GROUP_OUTPUTS["world-map"] == (
+        "world-map.jpg", "world-map-1024.jpg", "world-map-2048.jpg")
     dirty = pipeline.selective_generation_groups(
         recipe7["recipe"], recipe7["recipe"],
         {"schemaVersion": 1, "graphVersion": pipeline.GENERATION_GRAPH_VERSION,

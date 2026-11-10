@@ -51,6 +51,11 @@ constexpr uintptr_t GWorld_25991736   = 0x0DDB35F8;
 constexpr uintptr_t GObjects_26161880 = 0x0DC97510;
 constexpr uintptr_t GNames_26161880   = 0x0DBDBFF8;
 constexpr uintptr_t GWorld_26161880   = 0x0DDB35F8;
+// Build 26419371 shifted the writable image by 0x18000. Static references and
+// runtime structural validation independently gate all three candidates.
+constexpr uintptr_t GObjects_26419371 = 0x0DCAF510;
+constexpr uintptr_t GNames_26419371   = 0x0DBF3FF8;
+constexpr uintptr_t GWorld_26419371   = 0x0DDCB5F8;
 
 // TUObjectArray / FUObjectItem - Source: RSDWSDK/CppSDK/SDK/Basic.hpp
 constexpr uintptr_t ObjArray_Objects     = 0x00;

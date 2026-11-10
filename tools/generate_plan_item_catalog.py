@@ -13,6 +13,15 @@ except ModuleNotFoundError:  # Imported as tools.* by repository tests.
     from tools.asset_filesystem import copy_file, read_bytes, read_json
 
 
+def canonical_plan_name(value: str) -> str:
+    name = str(value or "").strip()
+    if name.casefold().startswith("plan:"):
+        name = name.split(":", 1)[1].strip()
+    if not name:
+        raise ValueError("plan name is empty")
+    return "PLAN: " + name
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--assets", type=Path, default=Path("dist/recipe-unlock-all-json-current"))
@@ -32,10 +41,10 @@ def main() -> None:
         if len(matches) != 1:
             raise ValueError(f"{path}: expected one matching export")
         props = matches[0].get("Properties", {})
-        name = props.get("Name", {}).get("SourceString", "")
+        name = canonical_plan_name(props.get("Name", {}).get("SourceString", ""))
         persistence = props.get("PersistenceID", "")
         icon_asset = props.get("Icon", {}).get("AssetPathName", "")
-        if not name.startswith("PLAN: ") or len(persistence) != 22 or not icon_asset.endswith("/T_Icon_Plans.T_Icon_Plans"):
+        if len(persistence) != 22 or not icon_asset.endswith("/T_Icon_Plans.T_Icon_Plans"):
             raise ValueError(f"{path}: invalid plan metadata")
         records.append((path.stem, name, persistence, f"{path.stem}.png"))
 

@@ -6,7 +6,7 @@ root = pathlib.Path(__file__).resolve().parents[1]
 lines = (root / "web" / "plan-items.tsv").read_text(encoding="utf-8").splitlines()
 header = lines[0].split("\t")
 assert header[:2] == ["# zanik-plan-items", "1"]
-assert int(header[2]) == 123 == len(lines) - 1
+assert int(header[2]) == 141 == len(lines) - 1
 records = [tuple(line.split("\t")) for line in lines[1:]]
 assert all(len(row) == 4 for row in records)
 assert len({row[0] for row in records}) == len(records)

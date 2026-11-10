@@ -24,14 +24,11 @@
   },
   "productionChanged": true,
   "production": {
-    "serverId": "ef68362b",
-    "websitePort": 29103,
     "result": "updated-validated",
-    "knownPlayers": 5,
+    "playerDataPreserved": true,
     "lodestones": 48,
     "nodestones": 18,
     "resourceCatalogNodes": 31910,
-    "databaseBytes": 42288,
     "livePlayerCheck": "pending-no-online-player"
   },
   "postUpdateCorrections": [{

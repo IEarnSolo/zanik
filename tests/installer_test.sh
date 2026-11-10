@@ -3,18 +3,23 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 RELEASE=$TMP/release; SERVER=$TMP/server
-mkdir -p "$RELEASE/bin" "$RELEASE/lib" "$RELEASE/config" "$RELEASE/compatibility" "$RELEASE/scripts" "$RELEASE/tools" "$SERVER/RSDragonwilds/Binaries/Linux"
+mkdir -p "$RELEASE/bin" "$RELEASE/lib" "$RELEASE/config" "$RELEASE/compatibility" "$RELEASE/scripts" "$RELEASE/tools" "$RELEASE/LICENSES" "$SERVER/RSDragonwilds/Binaries/Linux"
 cp "$ROOT/dist/libdwstatus.so" "$RELEASE/bin/libzanik.so"
 cp "$ROOT/dist/zanik-compat-analyzer" "$RELEASE/bin/zanik-compat-analyzer"
 cp "$ROOT/scripts/zanik-server" "$RELEASE/bin/zanik-server"
 cp "$ROOT/scripts/lib/zanik-common.sh" "$RELEASE/lib/zanik-common.sh"
 cp "$ROOT/config/zanik.conf.example" "$RELEASE/config/zanik.conf.example"
 cp "$ROOT/config/zanik-config.schema.json" "$RELEASE/config/zanik-config.schema.json"
+cp "$ROOT/config/material-first-pickup-catalog.tsv" "$RELEASE/config/material-first-pickup-catalog.tsv"
+cp "$ROOT/config/player-activity-unlock-catalog.tsv" "$RELEASE/config/player-activity-unlock-catalog.tsv"
 cp "$ROOT/deploy/compatibility.tsv" "$RELEASE/compatibility/compatibility.tsv"
 cp "$ROOT/deploy/compatibility-capabilities.json" "$RELEASE/compatibility/capabilities.json"
 cp "$ROOT/tools/zanik_assets.py" "$RELEASE/tools/zanik_assets.py"
+cp "$ROOT/tools/asset_filesystem.py" "$RELEASE/tools/asset_filesystem.py"
 cp "$ROOT/tools/generate_compatibility_report.py" "$RELEASE/tools/generate_compatibility_report.py"
 cp "$ROOT/VERSION" "$RELEASE/VERSION"
+cp "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$RELEASE/"
+cp "$ROOT/LICENSES/RSDWServerAPI-MIT.txt" "$RELEASE/LICENSES/RSDWServerAPI-MIT.txt"
 for f in install update uninstall doctor init-assets compat-launcher verify-assets check-game-update check-compatible-release update-game apply-asset-delta; do cp "$ROOT/scripts/$f.sh" "$RELEASE/scripts/$f.sh"; done
 python3 "$ROOT/manager/zanik_manager/payload_contract.py" --root "$RELEASE" --release-version "$(cat "$ROOT/VERSION")" --output "$RELEASE/payload-contract.json" >/dev/null
 GAME=$SERVER/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping
@@ -26,6 +31,16 @@ ORIGINAL=$(sha256sum "$GAME" | awk '{print $1}')
 grep -q '"mode":"wrapper"' "$SERVER/zanik/install-state.json"
 grep -q '"payloadContractSchemaVersion":1' "$SERVER/zanik/install-state.json"
 [ -f "$SERVER/zanik/config/zanik-config.schema.json" ]
+[ -f "$SERVER/zanik/config/material-first-pickup-catalog.tsv" ]
+[ -f "$SERVER/zanik/config/player-activity-unlock-catalog.tsv" ]
+[ -f "$SERVER/zanik/tools/asset_filesystem.py" ]
+[ -f "$SERVER/zanik/VERSION" ]
+[ -f "$SERVER/zanik/LICENSE" ]
+[ -f "$SERVER/zanik/THIRD_PARTY_NOTICES.md" ]
+[ -f "$SERVER/zanik/LICENSES/RSDWServerAPI-MIT.txt" ]
+[ ! -e "$SERVER/zanik/docs" ]
+[ ! -e "$SERVER/zanik/README.md" ]
+[ ! -e "$SERVER/zanik/CHANGELOG.md" ]
 [ "$(stat -c %a "$SERVER/zanik-data/console-admin.key")" = 600 ]
 "$SERVER/zanik/scripts/doctor.sh" --server-root "$SERVER" --json | grep -q '"healthy":true'
 "$RELEASE/scripts/install.sh" --server-root "$SERVER" --mode wrapper

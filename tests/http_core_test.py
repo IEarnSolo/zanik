@@ -95,9 +95,43 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert 'href="/diagnostics"' in page
             assert 'class="site-admin-link" href="/admin/sessions" hidden>Admin</a>' in page
             assert '.site-nav a[hidden]{display:none!important}' in page
+            assert 'class="site-scale-select"' in page
+            assert 'class="site-admin-state"' in page
+            assert "localStorage.getItem('zanik.uiScale')" in page
+            assert "window.addEventListener('storage'" in page
+            assert "applyScale(event.newValue??1,false)" in page
+            assert "document.documentElement.style.fontSize=(value*100)+'%'" in page
+            assert "viewport-fit=cover" in page
+            assert 'id="zanik-responsive"' in page
+            assert "--app-touch-target:44px" in page
+            assert "--site-bottom-nav-h" in page
+            assert 'class="site-more-toggle"' in page
+            assert 'id="siteMorePanel"' in page
+            assert "window.ZanikSiteShell={closeMore}" in page
+            assert "new CustomEvent('zanik:site-surface'" in page
+            assert "new CustomEvent('zanik:admin-session'" in page
+            assert '<link rel="manifest" href="/app.webmanifest">' in page
+            assert '<meta name="apple-mobile-web-app-capable" content="yes">' in page
+            assert '<link rel="apple-touch-icon" sizes="180x180" href="/app-icon-180.png">' in page
+        with get(base, "/app.webmanifest") as response:
+            assert response.headers.get_content_type() == "application/manifest+json"
+            manifest = json.loads(response.read())
+            assert manifest["start_url"] == "/" and manifest["scope"] == "/"
+            assert manifest["display"] == "standalone"
+            assert manifest["id"] == "/" and manifest["prefer_related_applications"] is False
+            assert manifest["launch_handler"] == {"client_mode": "navigate-existing"}
+            assert {icon["sizes"] for icon in manifest["icons"]} == {"192x192", "512x512"}
+        for path, size in (("/app-icon-180.png", 180), ("/app-icon-192.png", 192), ("/app-icon-512.png", 512)):
+            with get(base, path) as response:
+                icon = response.read()
+                assert response.headers.get_content_type() == "image/png"
+                assert icon[:8] == b"\x89PNG\r\n\x1a\n"
+                assert int.from_bytes(icon[16:20], "big") == size
+                assert int.from_bytes(icon[20:24], "big") == size
         with get(base, "/players") as response:
             page = response.read().decode()
             assert "Known players" in page and 'class="site-header"' in page
+            assert '<link rel="manifest" href="/app.webmanifest">' in page
             assert "Last seen " in page and "Online for " in page
             assert "data-online-since" in page and "updateOnlineDurations" in page
             assert "player-online-dot" in page and "box-shadow: 0 0 .5rem #69db8d88" in page
@@ -119,7 +153,12 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             page = response.read().decode()
             assert "Live world map" in page
             assert "/api/map/npcs/state" in page
-            assert page.index('class="site-header"') < page.index('id="headerContent"')
+            assert page.index('class="site-header"') < page.index('id="viewport"')
+            assert 'id="headerContent"' not in page and 'id="adminState"' not in page
+            assert 'id="finderTabs"' in page and 'id="settingsPopover"' in page
+            assert 'data-finder-tab="resources"' in page and 'data-finder-tab="quests"' in page
+            assert 'id="clearResourceSearch"' in page and 'id="clearNpcSearch"' in page
+            assert 'id="clearQuestSearch"' in page and 'trackFocusedQuestTip' in page
         with get(base, "/kills") as response:
             page = response.read().decode()
             assert "Highscores" in page
@@ -177,6 +216,10 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
         with get(base, "/assets/world-map.jpg") as response:
             assert response.headers.get_content_type() == "image/svg+xml"
             assert b"<svg" in response.read()
+        for map_lod in ("world-map-1024.jpg", "world-map-2048.jpg"):
+            with get(base, f"/assets/{map_lod}") as response:
+                assert response.headers.get_content_type() == "image/svg+xml"
+                assert b"<svg" in response.read()
         with get(base, "/assets/skills/attack.png") as response:
             assert response.headers.get_content_type() == "image/svg+xml"
         with get(base, "/assets/spells-and-perks/PerkV2_Attack_TempestShield.png") as response:

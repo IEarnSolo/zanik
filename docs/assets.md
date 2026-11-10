@@ -14,7 +14,7 @@ Extract `zanik-asset-tools-windows-x86_64-VERSION.zip`, open PowerShell in that 
 
 ```powershell
 .\init-assets.ps1 `
-  -GameRoot "E:\SteamLibrary\steamapps\common\RSDragonwilds" `
+  -GameRoot "C:\Games\RSDragonwilds" `
   -OutputDirectory ".\output"
 ```
 
@@ -22,7 +22,7 @@ The standalone command refuses to overwrite an existing UE4SS or proxy-loader in
 
 ```powershell
 .\init-assets.ps1 `
-  -GameRoot "E:\SteamLibrary\steamapps\common\RSDragonwilds" `
+  -GameRoot "C:\Games\RSDragonwilds" `
   -OutputDirectory ".\output" `
   -PreserveExistingLoader `
   -RecoveryDirectory "$env:LOCALAPPDATA\Zanik Manager\mapping-recovery\manual"
@@ -48,9 +48,9 @@ An experienced operator may avoid the temporary loader and use a mapping already
 
 ```powershell
 .\init-assets.ps1 `
-  -GameRoot "E:\SteamLibrary\steamapps\common\RSDragonwilds" `
+  -GameRoot "C:\Games\RSDragonwilds" `
   -OutputDirectory ".\output" `
-  -UsmapPath "C:\private\Mappings.usmap" `
+  -UsmapPath "C:\Path\To\Mappings.usmap" `
   -SkipGameLaunch
 ```
 
@@ -81,6 +81,8 @@ The output contains:
 - `zanik-assets-CLIENT_BUILD-parts/bundle-index.json` and checksum-indexed logical ZIP parts, each below 90 MiB.
 
 The manifest records the client build, container and executable fingerprints, mapping hash, exact tool/recipe versions, extraction stage, raw-export coverage, catalog counts, building-icon source coverage, recipe-route coverage, generation-graph version, per-group input/output digests, every generated file hash, cleanup warnings, and reviewed compatibility profile. Build-ID differences are informational. Raw-export coverage must meet the reviewed floor; structural errors or unreviewed generated-catalog drift mark the candidate incompatible, and the server refuses to activate it.
+
+The world-map generation group produces the canonical 4096×4096 JPEG plus exact 2048×2048 and 1024×1024 derivatives. The browser selects among those files according to the rendered pixel density while retaining one 4096×4096 logical coordinate system, so changing image detail never changes player, resource, NPC, or quest-marker placement. Recipe 18 adds these derivatives as a world-map-only incremental migration; an unchanged client reuses the retained source texture and all unrelated generated groups.
 
 ## Install on a self-hosted Linux server
 

@@ -2,6 +2,7 @@
 """Recipe cards use the authored item icon even for non-ItemData subclasses."""
 
 import json
+import hashlib
 import sys
 import tempfile
 from pathlib import Path
@@ -50,9 +51,15 @@ with tempfile.TemporaryDirectory(prefix="zanik-recipe-icon-") as temporary:
     }, [], output)
     payload = json.loads(output.read_text(encoding="utf-8"))
     icons = {entry["name"]: entry["icon"] for entry in payload["entries"]}
-    assert icons == {
-        "Fang Arrow": "/assets/items/ITEM_Ammo_Arrows_Bone_Bodkin.png",
-        "Poisoned Fang Arrow": "/assets/items/ITEM_Ammo_Arrows_Bone_Poison.png",
+    expected = {
+        name: "/assets/recipe-icons/" + hashlib.sha256(f"items:{internal}".encode()).hexdigest()[:16] + ".png"
+        for name, internal in {
+            "Fang Arrow": "ITEM_Ammo_Arrows_Bone_Bodkin",
+            "Poisoned Fang Arrow": "ITEM_Ammo_Arrows_Bone_Poison",
+        }.items()
     }
+    assert icons == expected
+    assert all((web / icon.removeprefix("/assets/")).read_bytes() == b"authored-fang-arrow"
+               for icon in icons.values())
 
 print("recipe icon resolution tests passed")

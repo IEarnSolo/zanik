@@ -6,7 +6,8 @@ from manager.zanik_manager.payload_contract import validate_contract
 from tools.release_archive_policy import prohibited_archive_path
 
 BANNED_CONTENT=(b'PTERODACTYL_API_KEY=',b'GITLAB_TOKEN=',b'-----BEGIN PRIVATE KEY-----')
-REQUIRED={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','scripts/verify-assets.sh','scripts/check-game-update.sh','scripts/check-compatible-release.sh','scripts/update-game.sh','scripts/apply-asset-delta.sh','config/zanik.conf.example','config/zanik-config.schema.json','compatibility/compatibility.tsv','compatibility/capabilities.json','payload-contract.json','LICENSE','README.md','CHANGELOG.md','docs/releasing.md','tools/asset_filesystem.py','tools/generate_compatibility_report.py'}
+REQUIRED={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','scripts/verify-assets.sh','scripts/check-game-update.sh','scripts/check-compatible-release.sh','scripts/update-game.sh','scripts/apply-asset-delta.sh','config/zanik.conf.example','config/zanik-config.schema.json','config/material-first-pickup-catalog.tsv','config/player-activity-unlock-catalog.tsv','compatibility/compatibility.tsv','compatibility/capabilities.json','payload-contract.json','VERSION','LICENSE','THIRD_PARTY_NOTICES.md','LICENSES/RSDWServerAPI-MIT.txt','tools/zanik_assets.py','tools/asset_filesystem.py','tools/generate_compatibility_report.py'}
+SERVER_NON_RUNTIME={'README.md','CHANGELOG.md'}
 EXECUTABLE={'bin/libzanik.so','bin/zanik-compat-analyzer','bin/zanik-server','scripts/install.sh','scripts/update.sh','scripts/uninstall.sh','scripts/doctor.sh','scripts/init-assets.sh','scripts/verify-assets.sh','scripts/check-game-update.sh','scripts/check-compatible-release.sh','scripts/update-game.sh','scripts/apply-asset-delta.sh','tools/generate_compatibility_report.py'}
 WINDOWS_ASSET_REQUIRED={'init-assets.ps1','runtime/python.exe','runtime/LICENSE.txt','third_party/uas/uas.exe',
     'third_party/uas/LICENSE.txt','third_party/ue4ss/dwmapi.dll','third_party/ue4ss/ue4ss/UE4SS.dll',
@@ -15,7 +16,7 @@ WINDOWS_ASSET_REQUIRED={'init-assets.ps1','runtime/python.exe','runtime/LICENSE.
     'tools/generate_world_catalogs.py','deploy/quest-overrides.json','deploy/quest-step-overrides.json'}
 MANAGER_REQUIRED={'ZanikManager.exe','ZanikManagerUpdater.exe','VERSION','runtime/pythonw.exe','app/zanik_manager/app.py','app/zanik_manager/pterodactyl.py','app/zanik_manager/payload_contract.py',
     'config/zanik-config.schema.json','config/server-payload-legacy-contracts.json','asset-tools/init-assets.ps1','payload/server.zip',
-    'payload/server-payload.json','payload/payloads.json','README.md','CHANGELOG.md','LICENSE','LICENSE-LGPL-3.0.txt','THIRD_PARTY_NOTICES.md','tools.lock.json'}
+    'payload/server-payload.json','payload/payloads.json','README.md','CHANGELOG.md','LICENSE','LICENSE-LGPL-3.0.txt','THIRD_PARTY_NOTICES.md','LICENSES/RSDWServerAPI-MIT.txt','tools.lock.json'}
 MANAGER_RUNTIME_REQUIRED={'runtime/Lib/site-packages/PySide6/QtCore.pyd','runtime/Lib/site-packages/PySide6/QtGui.pyd',
     'runtime/Lib/site-packages/PySide6/QtWidgets.pyd','runtime/Lib/site-packages/PySide6/Qt6Core.dll',
     'runtime/Lib/site-packages/PySide6/Qt6Gui.dll','runtime/Lib/site-packages/PySide6/Qt6Widgets.dll',
@@ -57,6 +58,9 @@ def inspect(path):
     if path.name.startswith('zanik-server-'):
         missing=REQUIRED-entries
         if missing: raise SystemExit(f'{path.name} missing: {sorted(missing)}')
+        unexpected=SERVER_NON_RUNTIME & entries
+        unexpected.update(name for name in entries if name.startswith('docs/'))
+        if unexpected: raise SystemExit(f'{path.name} contains repository-only documentation: {sorted(unexpected)}')
     if path.name.startswith('zanik-asset-tools-windows-'):
         missing=WINDOWS_ASSET_REQUIRED-entries
         if missing: raise SystemExit(f'{path.name} missing portable extractor files: {sorted(missing)}')

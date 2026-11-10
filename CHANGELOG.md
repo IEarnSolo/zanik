@@ -2,6 +2,60 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.80] - 2026-11-10
+
+### Changed
+
+- Restore native and operational compatibility with Dragonwilds dedicated-server build `26419371`, including updated runtime globals, storage and gravestone entry points, resource lifecycle helpers, analyzer signatures, capability inventory, and fail-closed runtime gates.
+- Advance the licensed-client website extraction contract to recipe 19 and client build `26420214`, refreshing the complete NPC, resource, quest, recipe, building, map, and artwork catalogs while retaining incremental extraction and atomic activation.
+- Give recipe artwork opaque public filenames backed by a versioned runtime-catalog history so recipe icons remain stable without exposing private internal identifiers.
+- Establish shared safe-area, dynamic visual-viewport, responsive-mode, coarse-pointer, and 44-pixel touch-target contracts; add compact top and bottom navigation with a shared More surface; begin the map's mobile composition with one coordinated toolbar, exclusive portrait bottom sheets and short-landscape side sheets, consistent SVG controls, reduced-motion handling, and safe-rectangle marker focusing that preserves zoom while cycling destinations.
+- Complete the map's compact detail composition with focus-restoring close controls, expandable secondary details, portrait sheets, short-landscape side sheets, orientation-safe map state, and 44-pixel interactive targets; make representative site layouts tolerate 150% UI scaling without page-level horizontal overflow.
+- Move the compact Players and Map finder launchers directly above bottom navigation, hide the competing launcher while either sheet is open, retain map controls beside open sheets, and reduce map-local launchers, tabs, fields, selectors, chips, quest rows, cycling buttons, and zoom controls to a dedicated 75%-size compact density.
+- Replace the live map's crowded secondary header with a tabbed Resources, NPCs, and Quest Steps finder, wrapping selection chips, and a dedicated map-display popover; move UI scaling and the active administrator logout control into the shared site header so they work consistently across every page, while keeping quest groups expanded when their last selected objective is cleared.
+- Tighten the map finder's width, add dedicated clear controls to each search field, and list each region's alphabetized main-story quests before its side quests.
+- Advance the website-asset recipe so the shared quest-step destination catalog excludes two inaccessible Dowdun Reach deer placements from Dragon Slayer on both the public map and player pages.
+- Synchronize the shared UI-size preference across already-open Zanik tabs so changing it on one page immediately resizes the others without a reload.
+- Tighten the compact map finder tabs and match quest-marker detail typography to the quest-step list; advertise every page as the same installable home-screen web app with standalone display mode, authored icons, full-site scope, and a home-page launch URL.
+- Route supported admin claim links into the installed Zanik app and add a secure five-minute single-use copy/paste handoff for iPhone, whose Safari and Home Screen app sessions are isolated; anonymous compact navigation now exposes an Admin login entry for completing that handoff inside the app.
+- Reduce zoomed-out mobile map work with 1024-, 2048-, and 4096-pixel map-image levels, a matching zoom-aware region-label canvas, and simplified low-detail marker shadows while preserving the map's 4096-coordinate geometry and exact marker placement; advance the website-asset recipe with a world-map-only incremental migration.
+- Cache static map images, icons, fonts, and finder catalogs with browser validators; preload compact map detail and lazy-load the large Resource, NPC, and Quest catalogs only when their active tab or saved selections require them.
+
+### Fixed
+
+- Validate the building-removal hook against exactly the complete instructions replaced by its trampoline, avoiding a false incompatibility when an untouched following call moves between game builds.
+- Include mount-unlock item subclasses in generated website artwork so storage unlock catalogs retain their required mount icons after incremental asset regeneration.
+- Use PowerShell-native HTTP status checks in development validation so noninteractive Manager-driven runs do not depend on an external curl process.
+- Smooth mobile world-map panning and pinching by coalescing pointer updates to one compositor transform per animation frame, caching viewport dimensions during gestures, and flushing the final frame without changing marker coordinates or hit behavior.
+- Rebase the remaining touch pointer when a two-finger map pinch becomes a one-finger pan, preventing the map from jumping to a distant location when one finger lifts slightly before the other.
+- Prevent iOS from terminating the map web app during a drag by keeping image decoding and label-canvas allocation out of active gestures, deferring visual-detail changes until the map is idle, and capping compact devices at the 2048-pixel image and label tier.
+- Stop forcing the complete 4096-pixel map stage into a GPU compositor surface; mobile Safari could exhaust its graphics budget during ordinary panning even with a lower-resolution map image, making the texture disappear before the installed web app entered a repeated reload failure.
+- Render the compact/mobile map on a 1024-pixel CSS surface while retaining marker overlays in their original 4096-coordinate plane through quarter-scale layout, preventing WebKit from rasterizing an oversized moving surface without changing marker placement, hit testing, focusing, or tooltip anchors.
+- Cap compact manual pinch and button zoom at the same 18-times level used by mobile marker focusing, preventing repeated gestures from expanding the small-phone map to a 12,000-pixel visual span.
+- Restore sharp compact marker artwork by removing quarter-scale CSS `zoom` from complete overlay planes, and render region labels as resolution-independent SVG text without restoring the crash-prone 4096-pixel mobile canvas.
+- Prevent background renders and unused catalog/state requests from repeatedly postponing the compact map's 2048-pixel upgrade when a visitor begins zooming before the page finishes its initial load.
+- Keep compact region labels sharp and visually stable both during and after mobile pan and pinch gestures by replacing Safari's inconsistently cached SVG with independent two-times-resolution screen-space text; zoom now scales each already-shaped label as a small unit instead of repeatedly re-hinting and morphing its font and outline at fractional sizes.
+- Preserve full-quality compact resource icons while removing their per-marker CSS drop shadows at every zoom tier, avoiding hundreds of simultaneous WebKit filter surfaces when dense resource types fill the middle-zoom viewport.
+- Preserve compact NPC classification and runtime-state colors with inexpensive radial marker glows while removing per-image filter chains and no-icon box shadows, reducing dense NPC drag cost without lowering icon quality or changing marker interactions.
+- Keep a selected quest-step tooltip anchored to its marker during animated map focusing, and keep it open while its previous and next controls move between multiple destinations.
+- Let map dragging begin over non-interactive quest-tooltip content, while preserving the tooltip's previous and next marker buttons, and release the hidden search-clear button's reserved padding so the empty Quest Steps placeholder is no longer truncated.
+- Preserve the open map detail, selected destination, center, and relative zoom when mobile orientation or visible browser height changes, and prevent compact Diagnostics cards, headings, and pagination from widening the page at large UI scales.
+- Keep compact map launcher labels readable without truncation, reserve a useful portion of the map above open sheets on iPhone SE-sized viewports, and prevent Finder sheets from colliding with zoom or display controls.
+- Let touch swipes scroll an open quest-marker detail sheet without dismissing it or starting a map drag, while retaining mouse dragging through non-interactive tooltip content.
+- Keep compact Finder and Online Players headers anchored above their sole scrolling list, eliminating the narrow quest-text bleed above the tabs; let their header handles resize the sheet with a slow drag or close it with a full or fast downward swipe while preserving tap-to-close.
+- Restore native vertical touch panning inside the compact Finder and Online Players lists after separating their fixed drag headers from their scrolling content.
+- Give compact Finder and Online Players content an explicit top-and-bottom-bounded scroll viewport instead of relying on flex sizing inside Safari's native details element.
+- Tighten the short-landscape bottom navigator around its labels and anchor the compact map-settings popover to open left of its gear button in both orientations instead of covering the Finder launcher.
+- Reduce repeated quest-destination previous and next controls in both Finder rows and marker details, and restore explicit desktop sizing and centering for the map control SVG icons.
+- Anchor the Finder title, opaque tab boundary, and sole list scroller in short landscape as well as portrait, and normalize every compact map-control row gap to the existing gear-to-zoom spacing.
+- Add a compact Back action to mobile quest-marker details that restores the Quest Steps Finder, and reduce the separate detail close button so it no longer dominates the card.
+- Remove the redundant swipe indicator from mobile quest details so their top row contains only Back and close controls.
+- Tighten portrait bottom navigation to a normal touch row plus the device safe area, and mask the sticky Finder tabs above their visible border so scrolled text cannot bleed through the landscape seam.
+- Remove swipe handles from fixed-height landscape map modals and reclaim their unused handle space with a tighter title row.
+- Distinguish absent optional server locations from real empty folders in Zanik Manager's Files tab: missing release-upload and incoming-asset roots now appear as disabled “Not present” entries, genuine listing failures appear as “Unavailable,” and one top-level discovery request avoids probing each nonexistent path.
+- Slim server releases and installations to operational files by excluding the repository README, changelog, and documentation tree while retaining required legal notices; identify IEarnSolo as the copyright holder for Zanik's MIT-licensed original work and preserve RSDWServerAPI's MIT attribution separately; also restore the standalone installer's omitted version file, runtime activity catalogs, and asset filesystem helper.
+- Sanitize public documentation, examples, research instructions, and validation reports so they retain reproducible compatibility evidence without exposing operator-specific server identifiers, character identities, local paths, GitLab infrastructure, or exact recovery locations; add automated tracked-file privacy and credential-shape checks.
+
 ## [0.2.79] - 2026-11-03
 
 ### Fixed

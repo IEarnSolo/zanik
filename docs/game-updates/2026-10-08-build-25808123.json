@@ -5,7 +5,7 @@
   "executableSize": 229652480,
   "developmentValidation": "passed",
   "productionValidation": "passed",
+  "managedRecoveryPointCreated": true,
   "buildingPieces": 822,
-  "buildingReferences": 839,
-  "productionBackup": "/home/container/zanik-data/update-history/20261008T223426Z-25630937-to-25808123"
+  "buildingReferences": 839
 }

@@ -1,5 +1,11 @@
 # Third-party notices
 
+Portions of Zanik's engine discovery and memory utilities are adapted from
+[RSDWServerAPI](https://github.com/dkoz/RSDWServerAPI), copyright Kozejin,
+under the MIT License. The complete upstream terms are preserved in
+`LICENSES/RSDWServerAPI-MIT.txt`, and the pinned source revision is recorded
+in `UPSTREAM.md`.
+
 Zanik's Windows asset-tool bundle contains:
 
 - [UnrealAssetScout](https://github.com/AndrewSav/UnrealAssetScout), copyright

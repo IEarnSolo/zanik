@@ -1,11 +1,13 @@
 import json
 import hashlib
 import re
+import sys
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 
 class RecipeUnlockCatalogTests(unittest.TestCase):
@@ -43,9 +45,12 @@ class RecipeUnlockCatalogTests(unittest.TestCase):
         self.assertFalse(active_ids & excluded_ids)
 
     def test_fresh_baseline_is_identity_guarded(self):
-        baseline = json.loads((ROOT / "reference" / "recipe-unlock-testdude-baseline.json").read_text(encoding="utf-8"))
-        self.assertEqual("Testdude", baseline["character"]["name"])
-        self.assertEqual("ADD3B8504FCAB14CBC9E2B8ADA268927", baseline["character"]["persistentId"])
+        path = ROOT / "reference" / "recipe-unlock-test-character-baseline.json"
+        if not path.is_file():
+            self.skipTest("private clean-character research evidence is not present")
+        baseline = json.loads(path.read_text(encoding="utf-8"))
+        self.assertTrue(baseline["character"]["name"])
+        self.assertRegex(baseline["character"]["persistentId"], r"^[0-9A-F]{32}$")
         self.assertEqual(64, len(baseline["source"]["sha256"]))
 
     def test_recent_t7_t8_recipe_families_are_active_with_expected_triggers(self):
@@ -87,9 +92,12 @@ class RecipeUnlockCatalogTests(unittest.TestCase):
         for entry in self.data["recipes"]:
             self.assertNotIn("Unlock perk in ", {path["action"] for path in entry["unlockPaths"]})
 
-    def test_observed_starting_bench_bundle_matches_testdude_unlocks(self):
-        observation = json.loads((ROOT / "reference" / "recipe-unlock-testdude-t1-observation.json").read_text(encoding="utf-8"))
-        self.assertEqual("Testdude", observation["character"]["name"])
+    def test_observed_starting_bench_bundle_matches_test_character_unlocks(self):
+        path = ROOT / "reference" / "recipe-unlock-test-character-t1-observation.json"
+        if not path.is_file():
+            self.skipTest("private starting-bench observation is not present")
+        observation = json.loads(path.read_text(encoding="utf-8"))
+        self.assertTrue(observation["character"]["name"])
         observed = set(observation["buildingsUnlocked"])
         expected = {
             entry["persistentId"] for entry in self.data["recipes"]
@@ -212,7 +220,7 @@ class RecipeUnlockCatalogTests(unittest.TestCase):
         npc_paths = [
             path for entry in self.data["recipes"] for path in entry["unlockPaths"] if path.get("npc")
         ]
-        self.assertEqual(10, len(npc_paths))
+        self.assertEqual(12, len(npc_paths))
         for path in npc_paths:
             npc = path["npc"]
             self.assertIn(f"Talk to {npc['displayName']}", path["action"])
@@ -301,7 +309,9 @@ class RecipeUnlockCatalogTests(unittest.TestCase):
 
         active_crafting = [entry for entry in self.data["recipes"] if entry["kind"] == "crafting"]
         self.assertTrue(active_crafting)
-        for entry in active_crafting:
+        station_recipes = [entry for entry in active_crafting
+                           if entry["obtainableStatus"] != "reviewed-unknown"]
+        for entry in station_recipes:
             self.assertNotEqual("Crafting Bench", entry["station"], entry["internalName"])
             self.assertTrue(entry["stationCandidates"], entry["internalName"])
             self.assertIn("cookedStationCatalog", entry["activeSources"], entry["internalName"])
@@ -456,8 +466,8 @@ class RecipeUnlockCatalogTests(unittest.TestCase):
         rules = json.loads((ROOT / "asset-tools" / "catalog-rules.json").read_text(encoding="utf-8"))
         self.assertNotIn('"type": "default"', source)
         self.assertNotIn("Available from the start", source)
-        self.assertEqual(41, len(rules["reviewedUnknownRecipeTriggers"]))
-        self.assertEqual(41, len(set(rules["reviewedUnknownRecipeTriggers"])))
+        self.assertEqual(49, len(rules["reviewedUnknownRecipeTriggers"]))
+        self.assertEqual(49, len(set(rules["reviewedUnknownRecipeTriggers"])))
         self.assertIn('"type": "unknown_trigger"', source)
         self.assertIn('reviewed_unknown_drift["missing"]', source)
 
@@ -490,7 +500,8 @@ class RecipeUnlockCatalogTests(unittest.TestCase):
         self.assertIn("recipe-runtime-catalog-history.tsv", main)
         self.assertIn('path == "/api/player-recipes"', main)
         self.assertIn("Player recipe tracking is unavailable for this game build", main)
-        self.assertIn("ZanikConfig::PlayerRecipeTracking()||ZanikConfig::PlayerQuestTracking()", main)
+        self.assertIn("ZanikConfig::PlayerRecipeTracking()||", main)
+        self.assertIn("ZanikConfig::PlayerQuestTracking()||ZanikConfig::AdminTeleport()", main)
         self.assertIn("dispatcherCompatibility", main)
         self.assertIn("playerRecipeDispatcherCompatibility", main)
         self.assertIn("playerQuestDispatcherCompatibility", main)
@@ -531,7 +542,7 @@ class RecipeUnlockCatalogTests(unittest.TestCase):
         for name in ("Torch", "Blue Torch", "Green Torch", "Purple Torch", "Red Torch", "Yellow Torch"):
             self.assertIn("items", by_name[name])
             self.assertNotIn("weapons", by_name[name])
-        for name in ("Glass Owl", "Wooden Club", "Challenge Horn Mouthpiece"):
+        for name in ("Glass Owl", "Wooden Club"):
             self.assertEqual(set(), by_name[name])
 
     def test_new_compost_recipes_are_farming(self):

@@ -88,7 +88,7 @@ try:
 
     with urllib.request.urlopen(base + "/api/diagnostics/storage-plans", timeout=3) as response:
         plan_diagnostics = json.loads(response.read())
-        assert plan_diagnostics["items"] == 123
+        assert plan_diagnostics["items"] == 141
         assert "compatibility" in plan_diagnostics
 
     try:
@@ -136,7 +136,24 @@ try:
 
     with urllib.request.urlopen(base + "/assets/world-map.jpg", timeout=3) as response:
         assert response.headers.get_content_type() == "image/jpeg"
+        assert "max-age=3600" in response.headers.get("Cache-Control", "")
+        map_etag = response.headers.get("ETag", "")
+        assert map_etag.startswith('"')
         assert len(response.read()) > 100000
+    conditional = urllib.request.Request(base + "/assets/world-map.jpg",
+                                         headers={"If-None-Match": map_etag})
+    try:
+        urllib.request.urlopen(conditional, timeout=3)
+        raise AssertionError("matching map ETag did not return 304")
+    except urllib.error.HTTPError as error:
+        assert error.code == 304
+        assert error.read() == b""
+    for map_lod, minimum_size in (("world-map-1024.jpg", 100000), ("world-map-2048.jpg", 500000)):
+        with urllib.request.urlopen(base + "/assets/" + map_lod, timeout=3) as response:
+            assert response.headers.get_content_type() == "image/jpeg"
+            assert "max-age=3600" in response.headers.get("Cache-Control", "")
+            assert response.headers.get("ETag", "").startswith('"')
+            assert len(response.read()) > minimum_size
 
     with urllib.request.urlopen(base + "/assets/lodestone-icon.png", timeout=3) as response:
         assert response.headers.get_content_type() == "image/png"
