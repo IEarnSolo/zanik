@@ -38,6 +38,7 @@ namespace {
 constexpr const char* LegacySha=StorageCompatibilityPolicy::LegacyCandidateSha.data();
 constexpr const char* PreviousSha=StorageCompatibilityPolicy::PreviousReviewedSha.data();
 constexpr const char* CurrentSha=StorageCompatibilityPolicy::CurrentReviewedSha.data();
+constexpr const char* LatestSha=StorageCompatibilityPolicy::LatestReviewedSha.data();
 bool CandidateEnabled(){const char*candidate=std::getenv("ZANIK_STORAGE_PERFORMANCE_CANDIDATE");struct stat marker{};const std::string markerPath=RuntimePaths::DataFile("storage-performance-candidate");return (candidate&&std::string(candidate)=="1")||stat(markerPath.c_str(),&marker)==0;}
 bool ExpectedSha(const std::string& hash){return StorageCompatibilityPolicy::IsProductionReviewed(hash)||(CandidateEnabled()&&StorageCompatibilityPolicy::IsCandidateOnly(hash));}
 bool ExpectedDispatcherSha(const std::string& hash){return ExpectedSha(hash)||hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"||hash==LegacySha||hash==PreviousSha||hash==CurrentSha;}
@@ -73,10 +74,11 @@ StorageOffsets OffsetsFor(const std::string& hash){
     if(hash==LegacySha)value={0x0A653420,0x0A653CC0,0x0A6554F0,0x0A656FD0,0x0A654980,0x0A65F7E0,0x0A3DAA00,0x04A89480,0x07ABFE00,0x0A0EF130,0x0A0EF3A0,0x0A0EF780,0x04ACFAE0,0x079D0710,0x04A1F9F0,0x0A3B5970,0x0A678C00};
     else if(hash==PreviousSha)value={0x0A653CD0,0x0A654570,0x0A655DA0,0x0A657880,0x0A655230,0x0A660090,0x0A3DA9D0,0x04A89480,0x07ABFE00,0x0A0EF090,0x0A0EF300,0x0A0EF6E0,0x04ACFAE0,0x079D0710,0x04A1F9F0,0x0A3B58D0,0x0A6794B0};
     else if(hash==CurrentSha)value={0x0A669830,0x0A66A3C0,0x0A66BF00,0x0A66EF90,0x0A66B390,0x0A677D60,0x0A3E9980,0x04A94480,0x07ACAF90,0x0A0FDA20,0x0A0FDC90,0x0A0FE070,0x04ADAAE0,0x079DB8A0,0x04A2A9F0,0x0A3C4F00,0x0A68B9D0};
+    else if(hash==LatestSha)value={0x0A6698D0,0x0A66A460,0x0A66BFA0,0x0A66F030,0x0A66B430,0x0A677E00,0x0A3E9A20,0x04A94480,0x07ACAF90,0x0A0FDAC0,0x0A0FDD30,0x0A0FE110,0x04ADAAE0,0x079DB8A0,0x04A2A9F0,0x0A3C4FA0,0x0A68BA70};
     return value;
 }
 std::atomic<uintptr_t> cachedDisplayTextOffset{0};
-uintptr_t DisplayTextOffset(){auto value=cachedDisplayTextOffset.load();if(value)return value;const std::string hash=FileSha256("/proc/self/exe");value=hash==CurrentSha?0x04AD5A80:((hash==LegacySha||hash==PreviousSha)?0x04ACAA80:0x04AA1A80);cachedDisplayTextOffset.store(value);return value;}
+uintptr_t DisplayTextOffset(){auto value=cachedDisplayTextOffset.load();if(value)return value;const std::string hash=FileSha256("/proc/self/exe");value=(hash==CurrentSha||hash==LatestSha)?0x04AD5A80:((hash==LegacySha||hash==PreviousSha)?0x04ACAA80:0x04AA1A80);cachedDisplayTextOffset.store(value);return value;}
 
 using AddItemByDataFn=bool(*)(void*,void*,int,float,const void*);
 using CanAddItemByDataFn=bool(*)(void*,void*,int);
@@ -615,7 +617,7 @@ bool InitializeAutofillRpcCapture(const std::string&hash,uintptr_t moduleBase,ui
     // pointers at +0/+16 (or one at +0 for an in-place split). Restrict this
     // fallback to the exact reviewed executable; every later build must either
     // expose valid reflection metadata or receive a new compatibility review.
-    if(!(moveLayout&&splitPutLayout&&splitLayout)){if(hash!=CurrentSha)return false;moveSource=0;moveDestination=16;splitPutSource=0;splitPutDestination=16;splitSource=0;}
+    if(!(moveLayout&&splitPutLayout&&splitLayout)){if(hash!=CurrentSha&&hash!=LatestSha)return false;moveSource=0;moveDestination=16;splitPutSource=0;splitPutDestination=16;splitSource=0;}
     if(!EnsurePlayerProcessEventCapture(moduleBase,moduleEnd))return false;
     autofillMoveSourceOffset=moveSource;autofillMoveDestinationOffset=moveDestination;autofillSplitPutSourceOffset=splitPutSource;autofillSplitPutDestinationOffset=splitPutDestination;autofillSplitSourceOffset=splitSource;
     autofillMoveRpc.store(move,std::memory_order_release);autofillSplitPutRpc.store(splitPut,std::memory_order_release);autofillSplitRpc.store(split,std::memory_order_release);return true;
@@ -720,8 +722,8 @@ int ExecutableBounds(struct dl_phdr_info* info,size_t,void* data){
 
 bool InitializeAdminStorage(uintptr_t moduleBase,uintptr_t moduleEnd){
     const std::string hash=FileSha256("/proc/self/exe");const bool productionReviewed=StorageCompatibilityPolicy::IsProductionReviewed(hash);productionCompatibility=productionReviewed?1:-1;candidateOverride=!productionReviewed&&CandidateEnabled()&&StorageCompatibilityPolicy::IsCandidateOnly(hash);if(!ExpectedSha(hash)){compatibility=-1;return false;}const auto offsets=OffsetsFor(hash);
-    cachedDisplayTextOffset.store(hash==CurrentSha?0x04AD5A80:((hash==LegacySha||hash==PreviousSha)?0x04ACAA80:0x04AA1A80));
-    const uintptr_t serverRenameOffset=hash==CurrentSha?0x0A5A3880:(hash==PreviousSha?0x0A593D70:0);
+    cachedDisplayTextOffset.store((hash==CurrentSha||hash==LatestSha)?0x04AD5A80:((hash==LegacySha||hash==PreviousSha)?0x04ACAA80:0x04AA1A80));
+    const uintptr_t serverRenameOffset=hash==LatestSha?0x0A5A3920:(hash==CurrentSha?0x0A5A3880:(hash==PreviousSha?0x0A593D70:0));
     if(!earlyHookInstalled.load()||!originalEngineTick){compatibility=-6;return false;}
     for(uintptr_t o:{offsets.addItemByData,offsets.canAddItemByData,offsets.moveItem,offsets.removeFromSlot,offsets.canAddItemsByData,offsets.addItemsByData,offsets.buildingRequirements,offsets.memoryFree,offsets.engineTick,offsets.renameGet,offsets.renameSetter,offsets.renameSet,offsets.textFromString,offsets.uniqueIdDestructor,offsets.textDestructor,offsets.buildingEndPlay,offsets.setStackSize})if(moduleBase+o<moduleBase||moduleBase+o+EngineTickHookBytes>moduleEnd){compatibility=-2;return false;}
     if(serverRenameOffset&&(moduleBase+serverRenameOffset<moduleBase||moduleBase+serverRenameOffset+EngineTickHookBytes>moduleEnd)){compatibility=-2;return false;}
@@ -746,8 +748,8 @@ bool InitializeAdminStorage(uintptr_t moduleBase,uintptr_t moduleEnd){
 bool InitializeAdminStorageHookEarly(){
     if(earlyHookInstalled.load())return true;
     std::string hash=FileSha256("/proc/self/exe");if(!ExpectedDispatcherSha(hash)){LogMessage("Admin storage dispatcher fingerprint mismatch: "+hash);return false;}
-    const bool currentDispatcher=hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"||hash==LegacySha||hash==PreviousSha||hash==CurrentSha;
-    const uintptr_t dispatcherOffset=hash==CurrentSha?0x07ACAF90:(currentDispatcher?0x07ABFE00:EngineTickOffset);
+    const bool currentDispatcher=hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"||hash==LegacySha||hash==PreviousSha||hash==CurrentSha||hash==LatestSha;
+    const uintptr_t dispatcherOffset=(hash==CurrentSha||hash==LatestSha)?0x07ACAF90:(currentDispatcher?0x07ABFE00:EngineTickOffset);
     uintptr_t bounds[3]={0,0,0};dl_iterate_phdr(&ExecutableBounds,bounds);if(!bounds[2]||bounds[0]+dispatcherOffset+EngineTickHookBytes>bounds[1]){LogMessage("Admin storage dispatcher executable bounds unavailable");return false;}
     auto* target=reinterpret_cast<unsigned char*>(bounds[0]+dispatcherOffset);
     const unsigned char expected[EngineTickHookBytes]={0x53,0x48,0x83,0xEC,0x10,0x8B,0x47,0x08,0xA8,0x10,0x0F,0x85,0x92,0x00,0x00,0x00};

@@ -653,6 +653,55 @@
           }
         }
       }
+    },
+    {
+      "sha256": "9f349ec06fc1a7be4c074e6eac23d8c1a97e024d2884686b318f3b5a3eeaee13",
+      "jsonTargets": [
+        "/Maps/World/L_World(?:/|\\.(?:uasset|umap)$)",
+        "/Gameplay/(?:AI|BaseBuilding|BaseBuilding_New|Character/Player|Items|NPCs|Progress|Quests|Recipes|World)",
+        "/UI/JournalData/",
+        "/GameFeatures/[^/]+/Content/(?:Gameplay|World)/",
+        "DA_BuildPieceCatalogue_Default",
+        "DT_CraftingStationsDataTable",
+        "DT_ProcessingStationDataTable"
+      ],
+      "recipe": {
+        "schemaVersion": 20,
+        "engine": "GAME_UE5_6",
+        "jsonFilter": "(?:/Maps/World/L_World(?:/|\\.(?:uasset|umap)$)|/Gameplay/(?:AI|BaseBuilding|BaseBuilding_New|Character/Player|Items|NPCs|Progress|Quests|Recipes|World)|/UI/JournalData/|/GameFeatures/[^/]+/Content/(?:Gameplay|World)/|DA_BuildPieceCatalogue_Default|DT_CraftingStationsDataTable|DT_ProcessingStationDataTable)",
+        "textureFilter": "(?:/Art/UI/Map/T_WorldMap_Landmass\\.uasset$|/UI/(?:Icons|JournalData)/|/Art/UI/Icons/|T_Icon_(?:SkillTree_|Tag_Skill_|Lodestone|Gravestone|Plans))",
+        "fontFilter": "/UI/Fonts/Jancient\\.ufont$",
+        "requiredTextureAssets": [
+          "T_WorldMap_Landmass",
+          "package:RSDragonwilds/Content/Art/UI/Icons/T_LodestoneMapIcon",
+          "package:RSDragonwilds/Content/Art/UI/Icons/T_Icons_Journal_Cat_Knowledge_Places_Selected",
+          "package:RSDragonwilds/Content/Art/UI/Map/QuestList/T_Icon_Quest_Primary",
+          "package:RSDragonwilds/Content/Art/UI/Map/QuestList/T_Icon_Quest_Secondary",
+          "T_Icon_Gravestone",
+          "T_Icon_Plans"
+        ],
+        "catalogProfile": {
+          "version": "client-26574764-reviewed-11",
+          "clientBuild": "26574764",
+          "exportCounts": {
+            "jsonFiles": 18279,
+            "worldPartitionCells": 1731
+          },
+          "catalogCounts": {
+            "buildings/catalog.json:pieces": 850,
+            "npc-catalog.json:nodes": 2964,
+            "npc-catalog.json:types": 171,
+            "quest-catalog.json:objectives": 223,
+            "quest-catalog.json:quests": 42,
+            "quest-step-locations.json:markers": 702,
+            "quest-step-locations.json:quests": 42,
+            "quest-step-locations.json:steps": 235,
+            "recipe-unlocks.json:entries": 1615,
+            "resource-catalog.json:nodes": 31910,
+            "resource-catalog.json:types": 26
+          }
+        }
+      }
     }
   ]
 }

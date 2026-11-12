@@ -192,13 +192,14 @@ assert "storageRenameAvailable=Boolean(capabilities.storageRename)" in web
 assert "renderStorageHeading(card,chest,heading)" in web
 assert "if(storageRenameAvailable)" in web
 
-# Reviewed builds are production-enabled explicitly; the development override
-# remains limited to the older build that never completed promotion evidence.
+# Reviewed builds are production-enabled explicitly; development overrides
+# remain limited to named candidate hashes awaiting live promotion evidence.
 policy = (root / "src" / "engine" / "storage_compatibility_policy.h").read_text()
 assert 'ZANIK_STORAGE_PERFORMANCE_CANDIDATE' in storage
 assert "StorageCompatibilityPolicy::IsProductionReviewed(hash)" in storage
 assert "CandidateEnabled()&&StorageCompatibilityPolicy::IsCandidateOnly(hash)" in storage
 assert 'CurrentReviewedSha' in policy and 'PreviousReviewedSha' in policy
+assert 'LatestReviewedSha' in policy
 assert 'return hash == LegacyCandidateSha;' in policy
 assert 'candidateEnabled&&(hash==LegacySha||hash==PreviousSha||hash==CurrentSha)' not in storage
 assert 'storageProductionCompatibility' in main

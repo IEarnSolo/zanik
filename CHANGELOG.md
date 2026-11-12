@@ -2,6 +2,20 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.85] - 2026-11-12
+
+### Changed
+
+- Restore native and operational compatibility with Dragonwilds dedicated-server build `26574459`, including updated runtime globals, storage, gravestone, resource, teleport, and dispatcher entry points plus exact analyzer coverage for the generated full-stack and split-stack withdrawal RPC parameter layouts.
+- Advance the licensed-client website extraction contract to recipe 20 and client build `26574764`, validating and atomically activating the complete 4,513-file generated bundle without catalog drift or missing assets.
+- Promote the reviewed game fingerprint from the development-only storage gate after managed development deployment, strict live diagnostics, production-only analyzer validation, and independent negative signature tests.
+- Update Zanik Manager's embedded server payload and compatibility metadata so managed installs and game updates carry the exact reviewed runtime.
+
+### Fixed
+
+- Keep instant storage autofill withdrawal capture armed when the updated Linux server strips reflected RPC parameter metadata by binding the fallback layout to the exact reviewed executable and complete generated-wrapper instruction prefixes.
+- Select the reviewed build's correct display-text implementation for gravestone item rendering instead of falling back to an older ABI.
+
 ## [0.2.84] - 2026-11-12
 
 ### Added

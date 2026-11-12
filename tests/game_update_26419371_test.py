@@ -72,7 +72,9 @@ assert "admin delayed teleport wrapper signature changed" in analyzer
 assert "admin delayed teleport wrapper call relationship changed" in analyzer
 assert "binary[delayedWrapperFile+0x26]!=0xe8" in analyzer
 
-profile = json.loads((root / "asset-tools" / "extraction-recipes.json").read_text())["catalogProfile"]
+history = json.loads((root / "asset-tools" / "extraction-recipe-history.json").read_text())["recipes"]
+profile = next(entry["recipe"]["catalogProfile"] for entry in history
+               if entry["recipe"]["schemaVersion"] == 19)
 assert profile["version"] == "client-26420214-reviewed-10"
 assert profile["clientBuild"] == "26420214"
 assert profile["exportCounts"] == {"jsonFiles": 18279, "worldPartitionCells": 1731}

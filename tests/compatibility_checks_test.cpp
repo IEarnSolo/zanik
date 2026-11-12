@@ -8,9 +8,11 @@ int main() {
     using namespace DomEngine::StorageCompatibilityPolicy;
     assert(IsProductionReviewed(CurrentReviewedSha));
     assert(IsProductionReviewed(PreviousReviewedSha));
+    assert(IsProductionReviewed(LatestReviewedSha));
     assert(!IsProductionReviewed(LegacyCandidateSha));
     assert(IsCandidateOnly(LegacyCandidateSha));
     assert(!IsCandidateOnly(CurrentReviewedSha));
+    assert(!IsCandidateOnly(LatestReviewedSha));
     assert(!IsProductionReviewed("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"));
 
     const unsigned char signature[] = {0x55, 0x48, 0x89, 0xE5, 0x41, 0x57};

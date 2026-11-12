@@ -56,6 +56,12 @@ constexpr uintptr_t GWorld_26161880   = 0x0DDB35F8;
 constexpr uintptr_t GObjects_26419371 = 0x0DCAF510;
 constexpr uintptr_t GNames_26419371   = 0x0DBF3FF8;
 constexpr uintptr_t GWorld_26419371   = 0x0DDCB5F8;
+// Build 26574459 retains the same writable ELF sections and independently
+// verified RIP-relative references. Runtime structural validation still gates
+// the object array, name pool, and world candidates before publication.
+constexpr uintptr_t GObjects_26574459 = 0x0DCAF510;
+constexpr uintptr_t GNames_26574459   = 0x0DBF3FF8;
+constexpr uintptr_t GWorld_26574459   = 0x0DDCB5F8;
 
 // TUObjectArray / FUObjectItem - Source: RSDWSDK/CppSDK/SDK/Basic.hpp
 constexpr uintptr_t ObjArray_Objects     = 0x00;

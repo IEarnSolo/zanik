@@ -1,0 +1,1279 @@
+{
+  "capabilities": [
+    {
+      "assets": [],
+      "category": "native-and-persistence",
+      "diagnosticsEndpoint": "/api/player-discovery-diagnostics",
+      "failureBoundary": "player presence, identity, status, and session views",
+      "id": "player-status",
+      "liveValidation": [
+        "join and leave with one development-server character and verify session state"
+      ],
+      "persistence": [
+        "zanik-data/players.db"
+      ],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "playerDataCompatibility",
+          "result": "compatible",
+          "value": true
+        },
+        {
+          "path": "featureStates.playerStatus",
+          "result": "compatible",
+          "value": "compatible"
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "player identity and reflected status layouts"
+      ],
+      "tests": [
+        "tests/http_test.py",
+        "tests/player_discovery_performance_test.py"
+      ]
+    },
+    {
+      "assets": [],
+      "category": "native",
+      "diagnosticsEndpoint": "/api/kill-tracker-diagnostics",
+      "failureBoundary": "kill tracking only",
+      "id": "kills",
+      "liveValidation": [
+        "kill one development-server NPC and verify attribution plus region resolution"
+      ],
+      "persistence": [
+        "zanik-data/players.db"
+      ],
+      "result": "pending",
+      "runtimeChecks": [
+        {
+          "path": "killHookCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "regionCompatibility",
+          "result": "pending",
+          "value": 0
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "OnAIKilled hook signature and uniqueness",
+        "OnDeath direct-call relationship"
+      ],
+      "tests": [
+        "tests/game_update_26574459_test.py",
+        "tests/game_update_26419371_test.py",
+        "tests/game_update_26161880_test.py",
+        "tests/http_test.py"
+      ]
+    },
+    {
+      "assets": [
+        "resource-catalog.json",
+        "resources/*"
+      ],
+      "category": "native-and-assets",
+      "diagnosticsEndpoint": "/api/resource-diagnostics",
+      "failureBoundary": "resource tracking and resource map layer",
+      "id": "resources",
+      "liveValidation": [
+        "collect one resource and verify activity plus bounded resource diagnostics"
+      ],
+      "persistence": [],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "resourceCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "resource interaction and respawn symbols",
+        "bounded registry layouts"
+      ],
+      "tests": [
+        "tests/game_update_26574459_test.py",
+        "tests/game_update_26419371_test.py",
+        "tests/game_update_26161880_test.py",
+        "tests/player_discovery_performance_test.py"
+      ]
+    },
+    {
+      "assets": [
+        "npc-catalog.json",
+        "npcs/*"
+      ],
+      "category": "native-and-assets",
+      "diagnosticsEndpoint": "/api/diagnostics/npcs",
+      "failureBoundary": "NPC map and lifecycle tracking only",
+      "id": "npc-tracking",
+      "liveValidation": [
+        "observe and kill one development-server NPC and verify lifecycle refresh"
+      ],
+      "persistence": [],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "npcCatalogCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "npcRegistryCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "npcIdentityCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "npcTransformCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "npcLifecycleCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "npcRespawnCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "npcDungeonExclusionCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "npcIconCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "NPC registry, identity, transform, lifecycle, respawn, and dungeon contracts"
+      ],
+      "tests": [
+        "tests/npc_catalog_test.py",
+        "tests/game_thread_non_interference_test.py"
+      ]
+    },
+    {
+      "assets": [
+        "world-map.jpg",
+        "world-map-1024.jpg",
+        "world-map-2048.jpg"
+      ],
+      "category": "native-and-assets",
+      "diagnosticsEndpoint": "/api/map-label-diagnostics",
+      "failureBoundary": "world map placement and labels only",
+      "id": "map-projection",
+      "liveValidation": [
+        "load the development map and verify a known player or object marker projection"
+      ],
+      "persistence": [],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "mapProjectionCompatibility",
+          "result": "compatible",
+          "value": true
+        },
+        {
+          "path": "featureStates.map",
+          "result": "compatible",
+          "value": "compatible"
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "world-to-map projection and label anchor contracts"
+      ],
+      "tests": [
+        "tests/map_page_test.js",
+        "tests/http_test.py"
+      ]
+    },
+    {
+      "assets": [
+        "lodestone-icon.png"
+      ],
+      "category": "native-and-assets",
+      "diagnosticsEndpoint": "/api/lodestone-diagnostics",
+      "failureBoundary": "lodestone map markers only",
+      "id": "lodestone-map",
+      "liveValidation": [
+        "load a development-server world containing a lodestone and verify its marker"
+      ],
+      "persistence": [],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "lodestoneCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "lodestone registry and record layout"
+      ],
+      "tests": [
+        "tests/storage_teleport_compatibility_test.py",
+        "tests/map_page_test.js"
+      ]
+    },
+    {
+      "assets": [
+        "nodestone-icon.png"
+      ],
+      "category": "native-and-assets",
+      "diagnosticsEndpoint": "/api/nodestone-diagnostics",
+      "failureBoundary": "nodestone markers and nodestone teleport only",
+      "id": "nodestones",
+      "liveValidation": [
+        "observe and use one development-server nodestone destination"
+      ],
+      "persistence": [],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "nodestoneCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "nodestoneTeleportCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "nodestone actor layout, destination identity, and teleport ABI"
+      ],
+      "tests": [
+        "tests/storage_teleport_compatibility_test.py",
+        "tests/admin_http_test.py"
+      ]
+    },
+    {
+      "assets": [
+        "recipe-runtime-catalog.tsv",
+        "recipe-unlocks.json"
+      ],
+      "category": "native-and-assets",
+      "diagnosticsEndpoint": "/api/player-recipe-diagnostics",
+      "failureBoundary": "player recipe snapshots and recipe activity",
+      "id": "player-recipes",
+      "liveValidation": [
+        "unlock or inspect a recipe for an online development-server player"
+      ],
+      "persistence": [
+        "zanik-data/player-recipe-snapshots.db"
+      ],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "playerRecipeCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "playerRecipeDispatcherCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "playerRecipeCatalogCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "playerRecipeProgressLayoutCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "playerRecipeQueryCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "ProcessEvent and recipe progress query symbols",
+        "catalog fingerprint"
+      ],
+      "tests": [
+        "tests/recipe_npc_building_compatibility_test.py",
+        "tests/http_test.py"
+      ]
+    },
+    {
+      "assets": [
+        "quest-runtime-catalog.tsv",
+        "quest-catalog.json"
+      ],
+      "category": "native-and-assets",
+      "diagnosticsEndpoint": "/api/quest-tracker-diagnostics",
+      "failureBoundary": "quest snapshots, active quest card, and quest activity",
+      "id": "player-quests",
+      "liveValidation": [
+        "scan an online player and advance one development-server quest step"
+      ],
+      "persistence": [
+        "zanik-data/player-quest-snapshots.db"
+      ],
+      "result": "pending",
+      "runtimeChecks": [
+        {
+          "path": "playerQuestCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "playerQuestDispatcherCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "playerQuestCatalogCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "playerQuestComponentCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "playerQuestQueryCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "playerQuestObjectiveCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "playerQuestTrackedQuestCompatibility",
+          "result": "pending",
+          "value": 0
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "quest state and objective symbols",
+        "exact ProcessEvent+14 hook instructions",
+        "quest notification contracts"
+      ],
+      "tests": [
+        "tests/compatibility_checks_test.cpp",
+        "tests/game_update_26574459_test.py",
+        "tests/game_update_26419371_test.py",
+        "tests/game_update_26161880_test.py",
+        "tests/http_test.py"
+      ]
+    },
+    {
+      "assets": [
+        "region-discovery-icon.png"
+      ],
+      "category": "log-contract-and-assets",
+      "diagnosticsEndpoint": "/api/player-activity-diagnostics",
+      "failureBoundary": "new region activity entries only",
+      "id": "region-discovery",
+      "liveValidation": [
+        "discover a previously undiscovered development-server region"
+      ],
+      "persistence": [
+        "zanik-data/player-activity.db"
+      ],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "playerActivityRegionCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "playerActivityCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "LogMapRegions category",
+        "exact first-discovery format contract"
+      ],
+      "tests": [
+        "tests/game_update_26574459_test.py",
+        "tests/game_update_26419371_test.py",
+        "tests/game_update_26161880_test.py",
+        "tests/player_activity_http_test.py"
+      ]
+    },
+    {
+      "assets": [],
+      "category": "native-and-host",
+      "diagnosticsEndpoint": "/api/player-discovery-diagnostics",
+      "failureBoundary": "per-player latency attribution only",
+      "id": "player-network",
+      "liveValidation": [
+        "observe one online player after the join grace period"
+      ],
+      "persistence": [
+        "zanik-data/server-performance.db"
+      ],
+      "result": "pending",
+      "runtimeChecks": [
+        {
+          "path": "playerPingCompatibility",
+          "result": "pending",
+          "value": 0
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "CompressedPing reflection contract",
+        "GetPingInMilliseconds offset relationship"
+      ],
+      "tests": [
+        "tests/game_update_26574459_test.py",
+        "tests/game_update_26419371_test.py",
+        "tests/game_update_26161880_test.py",
+        "tests/server_performance_store_test.cpp"
+      ]
+    },
+    {
+      "assets": [
+        "skills/*"
+      ],
+      "category": "asset-contract",
+      "diagnosticsEndpoint": "/api/diagnostics/player-skills",
+      "failureBoundary": "player skill artwork only",
+      "id": "player-skill-assets",
+      "liveValidation": [
+        "load a development-server player skill card and verify its icons"
+      ],
+      "persistence": [],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "playerSkillIconCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "skill icon catalog and manifest coverage"
+      ],
+      "tests": [
+        "tests/generate_web_assets_test.py",
+        "tests/http_test.py"
+      ]
+    },
+    {
+      "assets": [
+        "recipe-unlocks.json"
+      ],
+      "category": "assets-and-configuration",
+      "diagnosticsEndpoint": "/api/update-status",
+      "failureBoundary": "recipe unlock routes and visibility settings only",
+      "id": "recipe-unlock-catalog",
+      "liveValidation": [
+        "load recipe routes and change one reversible development-server visibility setting"
+      ],
+      "persistence": [
+        "zanik-data/recipe-unlock-settings.db"
+      ],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "recipeUnlockCatalogCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "recipeUnlockSettingsCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "recipe route catalog, dependency graph, and settings schema"
+      ],
+      "tests": [
+        "tests/recipe_npc_building_compatibility_test.py",
+        "tests/admin_http_test.py"
+      ]
+    },
+    {
+      "assets": [],
+      "category": "native",
+      "diagnosticsEndpoint": "/api/admin-diagnostics",
+      "failureBoundary": "admin player and coordinate teleport actions",
+      "id": "admin-teleport",
+      "liveValidation": [
+        "perform one approved development-server teleport and verify destination"
+      ],
+      "persistence": [
+        "zanik-data/admin-audit.log"
+      ],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "adminTeleportCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminTeleportGroundTraceCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "player tick hook",
+        "delayed teleport call family",
+        "ground trace reflected layout"
+      ],
+      "tests": [
+        "tests/storage_teleport_compatibility_test.py",
+        "tests/admin_http_test.py"
+      ]
+    },
+    {
+      "assets": [
+        "spells-and-perks/PerkV2_Runecraftng_HomeTeleport.png"
+      ],
+      "category": "native-and-persistence",
+      "diagnosticsEndpoint": "/api/player-home",
+      "failureBoundary": "home card destination and home teleport only",
+      "id": "home-teleport",
+      "liveValidation": [
+        "capture a home, restart, verify persistence, and teleport on the development server"
+      ],
+      "persistence": [
+        "zanik-data/home-locations.db"
+      ],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "adminHomeLocationCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminHomePersistenceCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "bed respawn accessor signature",
+        "reflected parameter layout"
+      ],
+      "tests": [
+        "tests/home_teleport_test.py",
+        "tests/home_location_persistence_test.cpp"
+      ]
+    },
+    {
+      "assets": [
+        "building-catalog.tsv",
+        "storage-plan-items.tsv"
+      ],
+      "category": "native-and-assets",
+      "diagnosticsEndpoint": "/api/admin/storage-diagnostics",
+      "failureBoundary": "only the failed storage operation family",
+      "id": "storage-mutations",
+      "liveValidation": [
+        "run the analyzer production-promotion gate",
+        "perform reversible single-item and batch development-server storage mutations",
+        "verify production compatibility is 1 without a candidate override"
+      ],
+      "persistence": [
+        "zanik-data/admin-audit.log"
+      ],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "adminStorageCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminStorageProductionCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminStorageDispatcherCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminStorageSnapshotCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminStorageSingleItemCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminStorageSlotMovementCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminStorageBatchAdditionCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminStorageBatchMovementCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminStorageDeletionCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminStorageRollbackCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "inventory mutation ABIs",
+        "dispatcher hook",
+        "rollback callables",
+        "explicit analyzer-checked production promotion policy"
+      ],
+      "tests": [
+        "tests/compatibility_checks_test.cpp",
+        "tests/game_update_26574459_test.py",
+        "tests/game_update_26419371_test.py",
+        "tests/storage_mutation_pipeline_test.py",
+        "tests/storage_teleport_compatibility_test.py"
+      ]
+    },
+    {
+      "assets": [],
+      "category": "native",
+      "diagnosticsEndpoint": "/api/admin/storage-diagnostics",
+      "failureBoundary": "storage naming only",
+      "id": "storage-naming",
+      "liveValidation": [
+        "name in game and rename through the development website"
+      ],
+      "persistence": [],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "adminStorageRenameCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "renameable interface",
+        "authoritative server caller and argument order",
+        "FText and unique-ID lifetimes"
+      ],
+      "tests": [
+        "tests/game_update_26574459_test.py",
+        "tests/game_update_26419371_test.py",
+        "tests/game_update_26161880_test.py",
+        "tests/storage_mutation_pipeline_test.py"
+      ]
+    },
+    {
+      "assets": [],
+      "category": "native-and-persistence",
+      "diagnosticsEndpoint": "/api/diagnostics/storage-autofill-latency",
+      "failureBoundary": "storage snapshot autofill only",
+      "id": "storage-autofill",
+      "liveValidation": [
+        "enable a development storage snapshot",
+        "remove partial and full stacks in game",
+        "verify the native mutation signal uses the targeted chest refresh before the fallback interval",
+        "verify matching partial stacks normalize before the storage update is published",
+        "verify every matching snapshotted slot returns to its saved quantity",
+        "place an unrelated item into a snapshotted slot and verify it is preserved",
+        "restart and verify the template remains active"
+      ],
+      "persistence": [
+        "zanik-data/storage-autofill.db"
+      ],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "adminStorageAutofillCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminStorageAutofillPersistenceCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminStorageAutofillRpcCaptureCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [
+        {
+          "path": "adminStorageAutofillTemplates",
+          "value": 2
+        },
+        {
+          "path": "adminStorageAutofillChecks",
+          "value": 119
+        },
+        {
+          "path": "adminStorageAutofillQueued",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillItemsAdded",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillMutationSignals",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillRpcCaptureCalls",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillRpcFullStackCalls",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillRpcSplitStackCalls",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillRpcCaptureDrops",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillRpcCaptureMaximumMicroseconds",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillLatencySamples",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillCaptureToDrainLastMicroseconds",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillCaptureToDrainMaximumMicroseconds",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillDrainToReconcileLastMicroseconds",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillDrainToReconcileMaximumMicroseconds",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillReconcileToDispatchLastMicroseconds",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillReconcileToDispatchMaximumMicroseconds",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillDispatchToRefillLastMicroseconds",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillDispatchToRefillMaximumMicroseconds",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillCaptureToRefillLastMicroseconds",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillCaptureToRefillMaximumMicroseconds",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillPriorityChecks",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillPriorityMatches",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillPriorityDrops",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillTargetedRefreshes",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillTargetedRefreshFallbacks",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillTargetedRefreshMaximumMicroseconds",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillNormalizations",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillMaximumMicroseconds",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillProtectedSkips",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillFailures",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillMalformedRecords",
+          "value": 0
+        }
+      ],
+      "staticChecks": [
+        "reviewed storage add, move, and stack-size ABIs",
+        "authoritative full-stack, split-and-put, and in-place split withdrawal RPC symbols",
+        "shared ProcessEvent hook signature",
+        "identity-bound storage snapshots",
+        "slot-exact protected-item planner",
+        "baseline preservation for matching stacks in snapshot-empty slots",
+        "bounded same-tick add-and-normalize transaction",
+        "identity-bound single-chest mutation refresh",
+        "bounded mutation-signal priority queue with 500 ms fallback",
+        "authenticated occupied-slot snapshot classification for matched and protected foreign items",
+        "bounded selective slot merge and removal preserving unrelated snapshot entries"
+      ],
+      "tests": [
+        "tests/storage_autofill_store_test.cpp",
+        "tests/storage_autofill_test.py",
+        "tests/storage_mutation_pipeline_test.py"
+      ]
+    },
+    {
+      "assets": [],
+      "category": "native-reflection",
+      "diagnosticsEndpoint": "/api/diagnostics/storage-autofill-replication",
+      "failureBoundary": "immediate post-autofill client replication only; autofill and ordinary actor replication continue",
+      "id": "storage-autofill-replication-wake",
+      "liveValidation": [
+        "remove full and split stacks after the storage has been idle",
+        "verify one wake call and zero failures per completed autofill",
+        "verify the client observes the restored slot without the prior dormancy-scale delay"
+      ],
+      "persistence": [],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "adminStorageAutofillReplicationWakeCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [
+        {
+          "path": "adminStorageAutofillReplicationWakeCalls",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillReplicationWakeFailures",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillReplicationWakeMaximumMicroseconds",
+          "value": 0
+        }
+      ],
+      "staticChecks": [
+        "reflected AActor FlushNetDormancy and ForceNetUpdate functions",
+        "shared reviewed ProcessEvent trampoline",
+        "identity-bound owning storage actor",
+        "post-normalization invocation order"
+      ],
+      "tests": [
+        "tests/storage_mutation_pipeline_test.py",
+        "tests/game_update_26574459_test.py",
+        "tests/game_update_26419371_test.py"
+      ]
+    },
+    {
+      "assets": [
+        "building-catalog.tsv",
+        "storage-plan-items.tsv",
+        "buildings/*"
+      ],
+      "category": "assets-and-operational-data",
+      "diagnosticsEndpoint": "/api/diagnostics/storage-plans",
+      "failureBoundary": "storage planning and building catalog views only",
+      "id": "storage-building-catalogs",
+      "liveValidation": [
+        "load storage planning and representative building requirements on the development website"
+      ],
+      "persistence": [],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "adminStoragePlanCatalogCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminBuildingTaxonomyCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminBuildingRequirementsCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminBuildingIconsCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminCraftingRecipeCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "storage plan, building taxonomy, requirements, icon, and crafting-recipe catalogs"
+      ],
+      "tests": [
+        "tests/recipe_npc_building_compatibility_test.py",
+        "tests/storage_mutation_pipeline_test.py"
+      ]
+    },
+    {
+      "assets": [],
+      "category": "native-observer",
+      "diagnosticsEndpoint": "/api/diagnostics/native-inventory-mutations",
+      "failureBoundary": "in-game inventory timing attribution only",
+      "id": "native-inventory-attribution",
+      "liveValidation": [
+        "move one item in game and verify attributed timing with zero drops"
+      ],
+      "persistence": [
+        "zanik-data/server-performance.db"
+      ],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "adminNativeInventoryMutationCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "complete MoveItem trampoline instructions",
+        "complete RemoveFromSlot trampoline instructions"
+      ],
+      "tests": [
+        "tests/compatibility_checks_test.cpp",
+        "tests/storage_mutation_pipeline_test.py"
+      ]
+    },
+    {
+      "assets": [
+        "gravestone-icon.png",
+        "items/*"
+      ],
+      "category": "native-and-persistence",
+      "diagnosticsEndpoint": "/api/admin-diagnostics",
+      "failureBoundary": "gravestone website operations only",
+      "id": "gravestones",
+      "liveValidation": [
+        "create, partially claim, fully retire, restart, and restore a development-server gravestone"
+      ],
+      "persistence": [
+        "zanik-data/gravestone-snapshots.v1",
+        "zanik-data/grave-items.tsv"
+      ],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "adminGravestoneCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminGravestoneRegistryCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminGravestoneStreamingCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminGravestoneRemovalCompatibility",
+          "result": "compatible",
+          "value": 1
+        },
+        {
+          "path": "adminGravestonePersistenceCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "ownership and inventory ABIs",
+        "registry record layout",
+        "register and unregister hooks",
+        "World Partition streaming",
+        "obsolete respawn research capture remains disabled"
+      ],
+      "tests": [
+        "tests/storage_teleport_compatibility_test.py",
+        "tests/game_thread_non_interference_test.py"
+      ]
+    },
+    {
+      "assets": [],
+      "category": "operational-security",
+      "diagnosticsEndpoint": "/api/admin-diagnostics",
+      "failureBoundary": "all authenticated administration actions",
+      "id": "admin-authorization",
+      "liveValidation": [
+        "verify anonymous denial, authenticated access, session persistence, and revocation"
+      ],
+      "persistence": [
+        "zanik/admins.txt",
+        "zanik-data/admin-sessions.db",
+        "zanik-data/admin-audit.log",
+        "zanik-data/console-admin.key"
+      ],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "adminAuthorizationStorage",
+          "result": "compatible",
+          "value": true
+        },
+        {
+          "path": "adminConsoleCompatibility",
+          "result": "compatible",
+          "value": 1
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "single-use claim routing, installed-app launch handling, and browser-to-app token handoff"
+      ],
+      "tests": [
+        "tests/admin_store_test.cpp",
+        "tests/admin_http_test.py"
+      ]
+    },
+    {
+      "assets": [
+        "SERVER_ROOT/zanik/assets/current",
+        "SERVER_ROOT/zanik-assets-incoming"
+      ],
+      "category": "operational-layout",
+      "diagnosticsEndpoint": "/api/update-status",
+      "failureBoundary": "installation, persistence, generated assets, diagnostics, and lifecycle operations under the selected server root",
+      "id": "runtime-root-layout",
+      "liveValidation": [
+        "install under a non-default temporary root locally and verify all exported runtime paths",
+        "verify the selected development-server root and configuration health after managed deployment"
+      ],
+      "persistence": [
+        "SERVER_ROOT/zanik-data",
+        "SERVER_ROOT/.zanik-manager",
+        "SERVER_ROOT/zanik-backups"
+      ],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "configuration.valid",
+          "result": "compatible",
+          "value": true
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "validated absolute SERVER_ROOT",
+        "launcher-exported runtime, data, asset, save, log, and official-executable paths",
+        "case-insensitive archive operator-file exclusions"
+      ],
+      "tests": [
+        "tests/runtime_paths_test.cpp",
+        "tests/config_test.sh",
+        "tests/installer_test.sh",
+        "tests/release_automation_test.py"
+      ]
+    },
+    {
+      "assets": [],
+      "category": "operational-lifecycle",
+      "diagnosticsEndpoint": "/api/update-status",
+      "failureBoundary": "Dragonwilds update orchestration and unsupported-build maintenance startup only",
+      "id": "game-update-lifecycle",
+      "liveValidation": [
+        "on an authorized development target, verify the selected mode, expected build, managed recovery point, launcher state, unchanged save fingerprint, maintenance or normal startup result, transient-file cleanup, and running state"
+      ],
+      "persistence": [
+        "SERVER_ROOT/zanik/install-state.json",
+        "SERVER_ROOT/zanik-backups/game-update",
+        "local Manager operation journal"
+      ],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "configuration.installMode",
+          "result": "compatible",
+          "value": "replace-executable"
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "mode-specific Pterodactyl permissions",
+        "operation-bound request, backup, launcher, result, and cleanup",
+        "save-tree non-mutation fingerprint",
+        "unsupported-build maintenance boundary",
+        "no compatibility analyzer in the end-user updater"
+      ],
+      "tests": [
+        "tests/game_update_safety_test.py",
+        "tests/game_update_lifecycle_test.py",
+        "tests/launcher_game_update_test.sh",
+        "tests/maintenance_http_test.py",
+        "tests/server_game_update_test.sh"
+      ]
+    },
+    {
+      "assets": [
+        "all manifest-described generated website assets"
+      ],
+      "category": "asset-contract",
+      "diagnosticsEndpoint": "/api/update-status",
+      "failureBoundary": "only pages or layers requiring the unavailable asset group",
+      "id": "website-assets",
+      "liveValidation": [
+        "load representative map, player, activity, recipe, quest, storage, and gravestone assets"
+      ],
+      "persistence": [
+        "zanik/assets",
+        "zanik-assets-previous"
+      ],
+      "result": "compatible",
+      "runtimeChecks": [
+        {
+          "path": "assets.compatibility",
+          "result": "compatible",
+          "value": "compatible"
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "extraction recipe",
+        "generation profile",
+        "manifest hashes and reviewed coverage"
+      ],
+      "tests": [
+        "tests/windows_asset_pipeline_test.py",
+        "tests/asset_delta_test.py",
+        "tests/generate_web_assets_test.py"
+      ]
+    },
+    {
+      "assets": [],
+      "category": "optional-native",
+      "diagnosticsEndpoint": "/api/update-status",
+      "failureBoundary": "optional automatic compost behavior only",
+      "id": "qol-auto-compost",
+      "liveValidation": [
+        "when enabled, process one development-server compost cycle and verify safe fallback"
+      ],
+      "persistence": [],
+      "result": "disabled",
+      "runtimeChecks": [
+        {
+          "path": "featureStates.qolAutoCompost",
+          "result": "disabled",
+          "value": "disabled"
+        }
+      ],
+      "runtimeDiagnostics": [],
+      "staticChecks": [
+        "compost patch signatures when the feature is enabled"
+      ],
+      "tests": [
+        "qol/compost_test.cpp",
+        "tests/feature_gate_http_test.py"
+      ]
+    }
+  ],
+  "generatedAt": "2026-11-12",
+  "provenance": {
+    "analyzerManifest": "compatibility-tsv-sha256:c4f189e5a3093f1bc5da14389656c5fb55b4faeb6cbde68d70d5c60186562e0d",
+    "assetContract": "manifest-sha256:0a8a10f6d13685978041ddc23409f9c765a63e912069c166b11a644a44141afe",
+    "candidate": "server-archive-sha256:5c5a1f85432393ca71e1b326b6f56c4ba34345cba6e1bc7cedbd224c847eea7e",
+    "executableSha256": "1b779665120e8d0df8c5d481969cdb2d1a4df52441cd5569ad2309ec62da1d26",
+    "gameBuild": "26574459",
+    "payloadContract": "sha256:9c03d405fd0b5a30a06cb9739a21dbeade424bb617e81ba933324a764fe12d41"
+  },
+  "schemaVersion": 1,
+  "summary": {
+    "compatible": 23,
+    "disabled": 1,
+    "incompatible": 0,
+    "not-applicable": 0,
+    "pending": 3
+  }
+}

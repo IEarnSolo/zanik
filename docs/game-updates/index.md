@@ -2,6 +2,7 @@
 
 | Date | Steam build | Result | Report |
 | --- | --- | --- | --- |
+| 2026-11-12 | 26574459 | Development validation passed; client assets refreshed to 26574764; player-presence checks pending | [Report](2026-11-12-build-26574459.md) |
 | 2026-11-10 | 26419371 | Development validation passed; client assets refreshed to 26420214; player-presence checks pending | [Report](2026-11-10-build-26419371.md) |
 | 2026-10-24 | 26161880 | Development and production automated validation passed; client assets refreshed to 26162923; gameplay validation waived | [Report](2026-10-24-build-26161880.md) |
 | 2026-10-17 | 25991736 | Development read-only compatibility passed; gameplay validation pending | [Report](2026-10-17-build-25991736.md) |

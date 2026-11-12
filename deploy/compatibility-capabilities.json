@@ -23,7 +23,7 @@
       "assets": [],
       "failureBoundary": "kill tracking only",
       "liveValidation": ["kill one development-server NPC and verify attribution plus region resolution"],
-      "tests": ["tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/http_test.py"]
+      "tests": ["tests/game_update_26574459_test.py", "tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/http_test.py"]
     },
     {
       "id": "resources",
@@ -35,7 +35,7 @@
       "assets": ["resource-catalog.json", "resources/*"],
       "failureBoundary": "resource tracking and resource map layer",
       "liveValidation": ["collect one resource and verify activity plus bounded resource diagnostics"],
-      "tests": ["tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/player_discovery_performance_test.py"]
+      "tests": ["tests/game_update_26574459_test.py", "tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/player_discovery_performance_test.py"]
     },
     {
       "id": "npc-tracking",
@@ -107,7 +107,7 @@
       "assets": ["quest-runtime-catalog.tsv", "quest-catalog.json"],
       "failureBoundary": "quest snapshots, active quest card, and quest activity",
       "liveValidation": ["scan an online player and advance one development-server quest step"],
-      "tests": ["tests/compatibility_checks_test.cpp", "tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/http_test.py"]
+      "tests": ["tests/compatibility_checks_test.cpp", "tests/game_update_26574459_test.py", "tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/http_test.py"]
     },
     {
       "id": "region-discovery",
@@ -119,7 +119,7 @@
       "assets": ["region-discovery-icon.png"],
       "failureBoundary": "new region activity entries only",
       "liveValidation": ["discover a previously undiscovered development-server region"],
-      "tests": ["tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/player_activity_http_test.py"]
+      "tests": ["tests/game_update_26574459_test.py", "tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/player_activity_http_test.py"]
     },
     {
       "id": "player-network",
@@ -131,7 +131,7 @@
       "assets": [],
       "failureBoundary": "per-player latency attribution only",
       "liveValidation": ["observe one online player after the join grace period"],
-      "tests": ["tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/server_performance_store_test.cpp"]
+      "tests": ["tests/game_update_26574459_test.py", "tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/server_performance_store_test.cpp"]
     },
     {
       "id": "player-skill-assets",
@@ -191,7 +191,7 @@
       "assets": ["building-catalog.tsv", "storage-plan-items.tsv"],
       "failureBoundary": "only the failed storage operation family",
       "liveValidation": ["run the analyzer production-promotion gate", "perform reversible single-item and batch development-server storage mutations", "verify production compatibility is 1 without a candidate override"],
-      "tests": ["tests/compatibility_checks_test.cpp", "tests/game_update_26419371_test.py", "tests/storage_mutation_pipeline_test.py", "tests/storage_teleport_compatibility_test.py"]
+      "tests": ["tests/compatibility_checks_test.cpp", "tests/game_update_26574459_test.py", "tests/game_update_26419371_test.py", "tests/storage_mutation_pipeline_test.py", "tests/storage_teleport_compatibility_test.py"]
     },
     {
       "id": "storage-naming",
@@ -203,7 +203,7 @@
       "assets": [],
       "failureBoundary": "storage naming only",
       "liveValidation": ["name in game and rename through the development website"],
-      "tests": ["tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/storage_mutation_pipeline_test.py"]
+      "tests": ["tests/game_update_26574459_test.py", "tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/storage_mutation_pipeline_test.py"]
     },
     {
       "id": "storage-autofill",
@@ -229,7 +229,7 @@
       "assets": [],
       "failureBoundary": "immediate post-autofill client replication only; autofill and ordinary actor replication continue",
       "liveValidation": ["remove full and split stacks after the storage has been idle", "verify one wake call and zero failures per completed autofill", "verify the client observes the restored slot without the prior dormancy-scale delay"],
-      "tests": ["tests/storage_mutation_pipeline_test.py", "tests/game_update_26419371_test.py"]
+      "tests": ["tests/storage_mutation_pipeline_test.py", "tests/game_update_26574459_test.py", "tests/game_update_26419371_test.py"]
     },
     {
       "id": "storage-building-catalogs",
