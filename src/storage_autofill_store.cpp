@@ -138,6 +138,26 @@ StorageAutofillPlan PlanStorageAutofill(const StorageAutofillTemplate& desired,
     return {};
 }
 
+bool ApplyStorageAutofillSelection(StorageAutofillTemplate& desired,
+                                   const std::vector<StorageAutofillItem>& selected,
+                                   bool enabled) {
+    StorageAutofillTemplate candidate = desired;
+    std::vector<bool> seen(std::size_t(std::max(candidate.totalSlots, 0)), false);
+    for (const auto& item : selected) {
+        if (item.slot < 0 || item.slot >= candidate.totalSlots || seen[std::size_t(item.slot)]) return false;
+        seen[std::size_t(item.slot)] = true;
+        const auto saved = std::find_if(candidate.items.begin(), candidate.items.end(),
+                                        [&](const auto& value){ return value.slot == item.slot; });
+        if (enabled) {
+            if (saved == candidate.items.end()) candidate.items.push_back(item);
+            else *saved = item;
+        } else if (saved != candidate.items.end()) candidate.items.erase(saved);
+    }
+    if (!ValidTemplate(candidate)) return false;
+    desired = std::move(candidate);
+    return true;
+}
+
 StorageAutofillStore::StorageAutofillStore(std::string path) : path_(std::move(path)) {}
 
 bool StorageAutofillStore::Load() {

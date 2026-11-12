@@ -23,6 +23,9 @@ assert '"/api/admin/storage/autofill"' in main[main.index("postRoutes"):main.ind
 route = main[main.index('path=="/api/admin/storage/autofill"'):main.index('path=="/api/admin/storage/mutation-status"')]
 assert route.index("authenticate(s,raw)") < route.index("QolStorageAutofill()") < route.index('JsonValue(request.body,"csrf")')
 assert "SetAdminStorageAutofill" in route and "JsonBoolean" in route and "adminStore->Audit" in route
+assert 'scope=="selection"' in route
+assert 'JsonStringArray(request.body,"itemIds")' in route
+assert "selection?!itemIds.empty():itemIds.empty()" in route
 
 reconcile = storage[storage.index("void ReconcileAdminStorageAutofill()"):storage.index("std::string GetAdminStorageMutationStatus")]
 assert 'request->operation="autofill"' in reconcile
@@ -53,6 +56,16 @@ assert "ActionKind::Remove" not in reconcile
 assert "familyCircuitBroken[size_t(OperationFamily::Autofill)]" in reconcile
 assert "plan.sourceSlot" in reconcile and "plan.destinationSlot" in reconcile
 
+settings = storage[storage.index("bool SetAdminStorageAutofill("):storage.index("void ReconcileAdminStorageAutofill()")]
+assert "const std::vector<std::string>&itemIds" in settings
+assert "autofillStore->Find(characterGuid,chestId,value)" in settings
+assert "SnapshotFindItem(*chest,id)" in settings
+assert "ApplyStorageAutofillSelection(value,replacements,enabled)" in settings
+assert "!enabled&&value.items.empty()" in settings
+assert "autofillStore->Remove(characterGuid,chestId)" in settings
+assert "Selected items added to the autofill snapshot" in settings
+assert "Selected items removed from the autofill snapshot" in settings
+
 for token in ("storage-autofill.db", "ConfigureAdminStorageAutofill", "ReconcileAdminStorageAutofill", "adminStorageAutofillCompatibility", "adminStorageAutofillProtectedSkips"):
     assert token in main or token in header
 for token in ("adminStorageAutofillMutationSignals", "adminStorageAutofillPriorityChecks", "adminStorageAutofillPriorityMatches", "adminStorageAutofillPriorityDrops"):
@@ -63,6 +76,13 @@ assert "HasPendingAdminStorageAutofillMutation" in main and "urgentStorageAutofi
 assert "std::chrono::milliseconds(500)" in main
 for token in ("Autofill from snapshot", "snapshotted slot", "never overwritten or removed", "/api/admin/storage/autofill", "storageAutofillAvailable"):
     assert token in web
+for token in ("updateStorageAutofill", "scope='selection'", "Disable autofill", "mixed selection", "storage-context-disabled"):
+    assert token in web
+assert "enabledCount>0&&enabledCount<entries.length" in web
+assert "autofill.disabled=true" in web
+assert "entries.map(value=>value.id)" in web
+context_menu = web[web.index("function showStorageContext("):web.index("async function moveSelectedStorageStacks(")]
+assert context_menu.index("addGroup('Organize'") < context_menu.index("if(storageAutofillAvailable)") < context_menu.index("remove.textContent='Delete'")
 
 # The authenticated storage response classifies only occupied slots that were
 # non-empty in the durable template. Exact item matches and protected foreign

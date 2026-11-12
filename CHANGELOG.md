@@ -2,6 +2,18 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.84] - 2026-11-12
+
+### Added
+
+- Let administrators select one or multiple storage stacks and use the context menu to add only those live slots to an existing autofill snapshot or remove only those slots, automatically enabling the storage snapshot when adding the first entries and disabling it after removing the last entry.
+- Disable the Autofill context action for mixed enabled and non-enabled selections, with pointer and keyboard-accessible guidance explaining how to make a uniform selection.
+
+### Changed
+
+- Place the contextual Autofill or Disable autofill action directly below Organize and above Delete, keeping mutation and destructive actions in a predictable order.
+- Ship selective autofill through Zanik Manager's verified server payload while preserving the existing persistence format, saved templates, feature configuration, and generated website-asset contract.
+
 ## [0.2.83] - 2026-11-12
 
 ### Added

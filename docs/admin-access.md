@@ -115,6 +115,12 @@ boundaries independently:
   restore badge and foreign replacements with an amber warning badge. Their
   accessible hover details show the saved item and quantity; empty slots and
   items in slots that were empty when captured remain unmarked;
+  an administrator may select one or more uniformly enabled or disabled item
+  stacks and use the context menu to add only those live slots to the durable
+  snapshot or remove only those slots. Adding merges with the existing
+  snapshot and enables the storage toggle when necessary; removing the final
+  saved slot disables the now-empty snapshot. A mixed selection is rejected in
+  the interface with an explanatory disabled action;
   a failed final verification circuit-breaks only autofill before another
   automatic mutation can be attempted;
   it never removes or overwrites an unexpected occupied item;

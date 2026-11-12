@@ -47,6 +47,9 @@ struct StorageAutofillPlan {
 
 StorageAutofillPlan PlanStorageAutofill(const StorageAutofillTemplate& desired,
                                         const std::vector<StorageAutofillItem>& current);
+bool ApplyStorageAutofillSelection(StorageAutofillTemplate& desired,
+                                   const std::vector<StorageAutofillItem>& selected,
+                                   bool enabled);
 
 class StorageAutofillStore {
 public:

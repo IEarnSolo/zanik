@@ -666,6 +666,8 @@ bool SetAdminStorageAutofill(const std::string& characterGuid,
                              const std::string& chestId,
                              const std::string& administratorCharacterGuid,
                              bool enabled,
+                             const std::vector<std::string>& itemIds,
+                             bool& active,
                              std::string& result);
 void ReconcileAdminStorageAutofill();
 AdminStorageDiagnostics GetAdminStorageDiagnostics();
