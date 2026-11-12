@@ -2,6 +2,25 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.83] - 2026-11-12
+
+### Added
+
+- Add an off-by-default administrator storage-autofill capability that captures each occupied slot's item and quantity, persists templates across restarts, restores exact saved stacks, and never overwrites or removes an unexpected item occupying a snapshotted slot.
+- Expose the storage-autofill gate through Zanik Manager's schema-driven server configuration while preserving existing installations and saved templates through managed payload updates.
+- Mark exact snapshot matches in the authenticated player storage grid with teal restore badges and protected foreign replacements with amber warning badges; pointer and keyboard tooltips explain each state and show the item and quantity expected in that slot.
+- Publish focused autofill persistence, withdrawal-capture, queue-latency, targeted-refresh, normalization, protection, and replication-wake diagnostics through the compatibility inventory and runtime status APIs.
+
+### Changed
+
+- Show same-day and previous-day player activity as “Today at” and “Yesterday at” on both the known-players page and individual player pages while retaining the existing localized date and time for older activity.
+- Prioritize identity-verified storage reconciliation directly from authoritative full-stack and split-stack withdrawal RPCs, reread only the affected chest, and wake dormant storage replication after a successful refill; the independent 500-millisecond reconciliation remains as a fail-safe.
+
+### Fixed
+
+- Complete autofill additions and exact per-slot normalization in one bounded game-thread transaction so native stack consolidation is corrected before the updated storage state is published.
+- Preserve matching stacks placed in slots that were empty when snapshotted at their pre-refill quantities, while continuing to protect any different item occupying a saved slot.
+
 ## [0.2.82] - 2026-11-10
 
 ### Fixed

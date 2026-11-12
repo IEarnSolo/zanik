@@ -32,6 +32,10 @@ assert "0x0A672840" in storage_reader
 assert "0x0A675820" in storage_reader
 
 storage = (root / "src" / "engine" / "admin_storage.cpp").read_text()
+analyzer = (root / "tools" / "compat_analyzer.cpp").read_text()
+assert "AActor::FlushNetDormancy()" in analyzer
+assert "AActor::ForceNetUpdate()" in analyzer
+assert "storage autofill replication wake symbols missing" in analyzer
 policy = (root / "src" / "engine" / "storage_compatibility_policy.h").read_text()
 assert server_sha in policy
 assert "IsProductionReviewed" in policy

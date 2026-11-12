@@ -88,6 +88,11 @@ void HookProcessEvent(void*object,void*function,void*params){
         const auto elapsed=static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-started).count());Max(processEventMaximumUs,elapsed);if(elapsed>=1000)++processEventSlowCalls;
     }
     originalProcessEvent(object,function,params);
+    // Storage withdrawal RPCs mutate their inventories inside ProcessEvent and
+    // bypass the public MoveItem/RemoveFromSlot entries on the dedicated
+    // server. Observe them only after the authoritative game call returns so
+    // autofill never races the withdrawal it is responding to.
+    ObserveAdminStorageProcessEvent(object,function,params);
 }
 void DrainTrackedQuestCaptures(){
     auto read=trackedQuestRead.load(std::memory_order_relaxed);const auto write=trackedQuestWrite.load(std::memory_order_acquire);
@@ -211,5 +216,10 @@ bool EnsurePlayerProcessEventCapture(uintptr_t moduleBase,uintptr_t moduleEnd){
     uintptr_t a=0,b=0,processOffset=0,c=0,d=0;
     return GetAdminTeleportOffsets(a,b,processOffset,c,d)&&moduleBase+processOffset<moduleEnd&&
         InstallTrackedQuestCapture(moduleBase,moduleEnd,processOffset);
+}
+bool InvokeSharedProcessEvent(void*object,void*function,void*params){
+    if(!object||!function||!originalProcessEvent)return false;
+    originalProcessEvent(object,function,params);
+    return true;
 }
 }

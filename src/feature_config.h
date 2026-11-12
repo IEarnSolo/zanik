@@ -26,6 +26,7 @@ inline bool AdminRecipeSettings() { return Flag("ZANIK_FEATURE_ADMIN_RECIPE_SETT
 inline bool AdminTeleport() { return Flag("ZANIK_FEATURE_ADMIN_TELEPORT", false); }
 inline bool AdminStorageMutation() { return Flag("ZANIK_FEATURE_ADMIN_STORAGE_MUTATION", false); }
 inline bool AdminGravestoneMutation() { return Flag("ZANIK_FEATURE_ADMIN_GRAVESTONE_MUTATION", false); }
+inline bool QolStorageAutofill() { return Flag("ZANIK_FEATURE_QOL_STORAGE_AUTOFILL", false); }
 // Reserved until a deployable native integration and its safety gates exist.
 inline bool QolAutoCompost() { return false; }
 
@@ -49,6 +50,7 @@ inline std::string Json() {
         ",\"adminTeleport\":"+boolean(AdminTeleport())+
         ",\"adminStorageMutation\":"+boolean(AdminStorageMutation())+
         ",\"adminGravestoneMutation\":"+boolean(AdminGravestoneMutation())+
+        ",\"qolStorageAutofill\":"+boolean(QolStorageAutofill())+
         ",\"qolAutoCompost\":"+boolean(QolAutoCompost())+"}";
 }
 
@@ -67,6 +69,7 @@ inline std::string StateJson() {
         ",\"adminTeleport\":"+state(AdminTeleport())+
         ",\"adminStorageMutation\":"+state(AdminStorageMutation())+
         ",\"adminGravestoneMutation\":"+state(AdminGravestoneMutation())+
+        ",\"qolStorageAutofill\":"+state(QolStorageAutofill())+
         ",\"qolAutoCompost\":"+state(QolAutoCompost())+"}";
 }
 

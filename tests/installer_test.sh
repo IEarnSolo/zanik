@@ -59,15 +59,17 @@ cp "$RELEASE/config/zanik.conf.example" "$SERVER/zanik/config/zanik.conf"
 # while preserving the installation and official-server startup.
 mkdir -p "$SERVER/zanik/assets/current"
 printf 'preserved-player-data\n' > "$SERVER/zanik-data/players.db"
+printf '# zanik-storage-autofill\t1\n' > "$SERVER/zanik-data/storage-autofill.db"
+chmod 600 "$SERVER/zanik-data/storage-autofill.db"
 printf 'preserved-asset\n' > "$SERVER/zanik/assets/current/master-gate-test.asset"
 printf 'preserved-admin\n' > "$SERVER/zanik/admins.txt"
-PRESERVED_BEFORE=$(sha256sum "$SERVER/zanik-data/players.db" "$SERVER/zanik/assets/current/master-gate-test.asset" "$SERVER/zanik/admins.txt")
+PRESERVED_BEFORE=$(sha256sum "$SERVER/zanik-data/players.db" "$SERVER/zanik-data/storage-autofill.db" "$SERVER/zanik/assets/current/master-gate-test.asset" "$SERVER/zanik/admins.txt")
 sed -i 's/^ZANIK_ENABLED=true$/ZANIK_ENABLED=false/' "$SERVER/zanik/config/zanik.conf"
 ZANIK_ENABLED=true LD_PRELOAD=/definitely/not/a/library.so \
   "$SERVER/zanik/bin/zanik-server" --server-root "$SERVER" -- disabled > /dev/null 2> "$TMP/disabled.log"
 grep -q '^|disabled$' "$GAME.ran"
 grep -q 'disabled by configuration' "$TMP/disabled.log"
-[ "$PRESERVED_BEFORE" = "$(sha256sum "$SERVER/zanik-data/players.db" "$SERVER/zanik/assets/current/master-gate-test.asset" "$SERVER/zanik/admins.txt")" ]
+[ "$PRESERVED_BEFORE" = "$(sha256sum "$SERVER/zanik-data/players.db" "$SERVER/zanik-data/storage-autofill.db" "$SERVER/zanik/assets/current/master-gate-test.asset" "$SERVER/zanik/admins.txt")" ]
 [ ! -e "$SERVER/zanik/state/runtime-game.json" ]
 "$SERVER/zanik/scripts/doctor.sh" --server-root "$SERVER" --json | grep -q '"zanikEnabled":false'
 sed -i 's/^ZANIK_ENABLED=false$/ZANIK_ENABLED=true/' "$SERVER/zanik/config/zanik.conf"

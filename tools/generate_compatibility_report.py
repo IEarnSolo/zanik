@@ -55,6 +55,13 @@ def build_report(registry, status, provenance):
             except KeyError as error:
                 raise ValueError(f"{capability_id} is missing required update-status field {path}") from error
             checks.append({"path": path, "value": value, "result": evaluate(value, spec)})
+        diagnostics = []
+        for path in source.get("runtimeDiagnosticFields", []):
+            try:
+                value = nested(status, path)
+            except KeyError as error:
+                raise ValueError(f"{capability_id} is missing required update-status field {path}") from error
+            diagnostics.append({"path": path, "value": value})
         results = {item["result"] for item in checks}
         result = ("incompatible" if "incompatible" in results else
                   "pending" if "pending" in results else
@@ -65,6 +72,7 @@ def build_report(registry, status, provenance):
             "category": source.get("category", "unspecified"),
             "result": result,
             "runtimeChecks": checks,
+            "runtimeDiagnostics": diagnostics,
             "staticChecks": source.get("staticChecks", []),
             "diagnosticsEndpoint": source.get("diagnosticsEndpoint", ""),
             "persistence": source.get("persistence", []),
@@ -91,6 +99,9 @@ def markdown(report):
               "|---|---|---|---|"]
     for capability in report["capabilities"]:
         checks = ", ".join(f"`{item['path']}`={json.dumps(item['value'])}" for item in capability["runtimeChecks"])
+        diagnostics = ", ".join(f"`{item['path']}`={json.dumps(item['value'])}" for item in capability.get("runtimeDiagnostics", []))
+        if diagnostics:
+            checks += "; diagnostics: " + diagnostics
         lines.append(f"| `{capability['id']}` | {capability['result']} | {checks} | {capability['failureBoundary']} |")
     summary = report["summary"]
     lines += ["", (f"Compatible: {summary['compatible']} · Pending: {summary['pending']} · "

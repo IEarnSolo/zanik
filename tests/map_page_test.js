@@ -45,9 +45,17 @@ if(!playerPage[1].includes("value==='/assets/region-discovery-icon.png'?'/assets
 const playersPage=source.match(/constexpr const char\* kPlayersPage = R"DWHTML\(([\s\S]*?)\)DWHTML";/);
 if(!playersPage)throw new Error('known players page not found');
 for(const script of [...playersPage[1].matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match=>match[1]))new Function(script);
-for(const token of ['player-presence','player-online-dot','data-online-since','Online for ','Last seen ','updateOnlineDurations',"ZanikPolling.add('known-players',2000,refresh)"]){
+for(const token of ['player-presence','player-online-dot','data-online-since','Online for ','Last seen ','formatLastSeen(player.lastSeen)','updateOnlineDurations',"ZanikPolling.add('known-players',2000,refresh)"]){
   if(!playersPage[1].includes(token))throw new Error('missing known-players token: '+token);
 }
+if(!playerPage[1].includes('formatLastSeen(data.lastSeen)'))throw new Error('focused player page does not use the relative last-seen formatter');
+const lastSeenFormatters=[...source.matchAll(/function formatLastSeen\(timestamp,now=new Date\(\)\)\{[^\n]+\}/g)];
+if(lastSeenFormatters.length!==2)throw new Error('last-seen formatter must be available on both player pages');
+const formatLastSeen=new Function(lastSeenFormatters[0][0]+';return formatLastSeen')();
+const now=new Date(2026,10,11,12,0),today=new Date(2026,10,11,8,5),yesterday=new Date(2026,10,10,18,30),older=new Date(2026,10,9,18,30);
+if(!formatLastSeen(today.getTime()/1000,now).startsWith('Today at '))throw new Error('same-day last-seen time is not labeled Today');
+if(!formatLastSeen(yesterday.getTime()/1000,now).startsWith('Yesterday at '))throw new Error('previous-day last-seen time is not labeled Yesterday');
+if(formatLastSeen(older.getTime()/1000,now)!==older.toLocaleString())throw new Error('older last-seen time no longer uses the existing localized date and time');
 const killsPage=source.match(/constexpr const char\* kKillsPage = R"DWHTML\(([\s\S]*?)\)DWHTML";/);
 if(!killsPage)throw new Error('kills page not found');
 const killsScripts=[...killsPage[1].matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match=>match[1]);

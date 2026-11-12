@@ -100,6 +100,31 @@ boundaries independently:
   organization, naming, catalog metadata, the cooked `ITEM_*`, vestige, and
   mount-unlock asset families and their inventory icons, and immediate
   building-removal tracking;
+- storage autofill has its own off-by-default gate, restrictive durable
+  template store, malformed-record diagnostics, slot-exact planner, and
+  protected-item behavior. It may add a snapshot deficit, rebalance matching
+  items only between slots that expected that item in the snapshot, and reset
+  a recognized matching stack to its saved quantity;
+  missing items are added and all affected matching stacks are normalized in
+  one bounded game-thread transaction before the storage snapshot is published;
+  matching stacks placed in slots that were empty in the snapshot participate
+  at their pre-refill quantities and are restored to that baseline in the same
+  transaction, while a different item in a snapshotted occupied slot remains
+  protected;
+  the authenticated storage grid marks exact live snapshot matches with a teal
+  restore badge and foreign replacements with an amber warning badge. Their
+  accessible hover details show the saved item and quantity; empty slots and
+  items in slots that were empty when captured remain unmarked;
+  a failed final verification circuit-breaks only autofill before another
+  automatic mutation can be attempted;
+  it never removes or overwrites an unexpected occupied item;
+- successful in-game storage moves and removals invalidate the cached storage
+  view and prioritize that exact container for reconciliation. The native hook
+  publishes only fixed-size evidence; preparation stays off the hook and the
+  priority path rereads only the already identity-bound affected chest rather
+  than repeating whole-object discovery, and the refill still runs through the
+  bounded game-thread dispatcher. Whole-object discovery and the 500 ms
+  round-robin check remain recovery paths for stale, missed, or dropped events;
 - gravestone ownership, inventory, registry layout and record size, native
   transfer and removal, World Partition streaming, SPUD restoration, and the
   passive respawn capture hook used for restart-persistent remote operations;

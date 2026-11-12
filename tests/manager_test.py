@@ -890,6 +890,7 @@ class ManagerTests(unittest.TestCase):
         values = model.parse((ROOT / "config/zanik.conf.example").read_text())
         self.assertTrue(values["ZANIK_ENABLED"])
         self.assertFalse(values["FEATURE_ADMIN_TELEPORT"])
+        self.assertFalse(values["FEATURE_QOL_STORAGE_AUTOFILL"])
         self.assertEqual(model.parse(model.render(values)), values)
         with self.assertRaises(ConfigError): model.parse("UNKNOWN=true\n")
         with self.assertRaises(ConfigError): model.parse("STATUS_PORT=99999\n")
@@ -904,6 +905,7 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(values["STATUS_PORT"], 30123)
         self.assertEqual(values["PUBLIC_BASE_URL"], "https://play.example.test:30123")
         self.assertTrue(values["FEATURE_MAP"])
+        self.assertFalse(values["FEATURE_QOL_STORAGE_AUTOFILL"])
         self.assertFalse(values["FEATURE_QOL_AUTO_COMPOST"])
 
     def test_website_configuration_requires_non_loopback_public_url(self):

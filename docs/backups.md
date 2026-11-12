@@ -17,7 +17,7 @@ A fresh installation does not create an empty recovery backup. Wrapper-mode game
 
 Each new managed backup contains `.zanik-backup.json`. After an operation verifies successfully, Zanik removes older successful copies in that family. Failed or interrupted recovery data remains protected until it is rolled back, resumed, or superseded by a later verified equivalent operation. Completed staging directories and transaction reports are removed.
 
-`SERVER_ROOT/zanik-data/` is persistent application state, not disposable backup data. Zanik never automatically removes Dragonwilds saves, Pterodactyl panel backups, `zanik-release`, `zanik-assets-incoming`, support archives, or unrecognized directories.
+`SERVER_ROOT/zanik-data/` is persistent application state, not disposable backup data. This includes storage-autofill snapshots in `storage-autofill.db`; payload updates and the master-off path preserve that file byte-for-byte. Zanik never automatically removes Dragonwilds saves, Pterodactyl panel backups, `zanik-release`, `zanik-assets-incoming`, support archives, or unrecognized directories.
 
 ## Assets and Windows storage
 

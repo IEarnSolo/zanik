@@ -590,11 +590,53 @@ struct AdminStorageDiagnostics {
     std::uint64_t nativeMutationDrops = 0;
     std::uint64_t nativeMutationMaximumMicroseconds = 0;
     std::uint64_t nativeMutationCaptureMaximumMicroseconds = 0;
+    int autofillRpcCaptureCompatibility = 0;
+    std::uint64_t autofillRpcCaptureCalls = 0;
+    std::uint64_t autofillRpcFullStackCalls = 0;
+    std::uint64_t autofillRpcSplitStackCalls = 0;
+    std::uint64_t autofillRpcCaptureDrops = 0;
+    std::uint64_t autofillRpcCaptureMaximumMicroseconds = 0;
+    int autofillReplicationWakeCompatibility = 0;
+    std::uint64_t autofillReplicationWakeCalls = 0;
+    std::uint64_t autofillReplicationWakeFailures = 0;
+    std::uint64_t autofillReplicationWakeMaximumMicroseconds = 0;
+    int autofillCompatibility = 0;
+    int autofillPersistenceCompatibility = 0;
+    std::uint64_t autofillTemplates = 0;
+    std::uint64_t autofillChecks = 0;
+    std::uint64_t autofillQueued = 0;
+    std::uint64_t autofillItemsAdded = 0;
+    std::uint64_t autofillMutationSignals = 0;
+    std::uint64_t autofillPriorityChecks = 0;
+    std::uint64_t autofillPriorityMatches = 0;
+    std::uint64_t autofillPriorityDrops = 0;
+    std::uint64_t autofillTargetedRefreshes = 0;
+    std::uint64_t autofillTargetedRefreshFallbacks = 0;
+    std::uint64_t autofillTargetedRefreshMaximumMicroseconds = 0;
+    std::uint64_t autofillProtectedSkips = 0;
+    std::uint64_t autofillFailures = 0;
+    std::uint64_t autofillMalformedRecords = 0;
+};
+struct AdminStorageAutofillLatencyDiagnostics {
+    std::uint64_t samples = 0;
+    std::uint64_t captureToDrainLastMicroseconds = 0;
+    std::uint64_t captureToDrainMaximumMicroseconds = 0;
+    std::uint64_t drainToReconcileLastMicroseconds = 0;
+    std::uint64_t drainToReconcileMaximumMicroseconds = 0;
+    std::uint64_t reconcileToDispatchLastMicroseconds = 0;
+    std::uint64_t reconcileToDispatchMaximumMicroseconds = 0;
+    std::uint64_t dispatchToRefillLastMicroseconds = 0;
+    std::uint64_t dispatchToRefillMaximumMicroseconds = 0;
+    std::uint64_t captureToRefillLastMicroseconds = 0;
+    std::uint64_t captureToRefillMaximumMicroseconds = 0;
 };
 bool InitializeAdminStorage(uintptr_t moduleBase, uintptr_t moduleEnd);
 bool InitializeAdminStorageHookEarly();
 void UpdateAdminStorageMutationPlayers(const std::vector<PlayerInfo>& players);
+void ObserveAdminStorageProcessEvent(void* object, void* function, void* params);
 void DrainAdminStorageMutationTraces();
+bool HasPendingAdminStorageAutofillMutation();
+AdminStorageAutofillLatencyDiagnostics GetAdminStorageAutofillLatencyDiagnostics();
 bool ResolveAdminInventoryMutationCallables(uintptr_t moveEntry, uintptr_t removeEntry,
                                             uintptr_t& moveCallable, uintptr_t& removeCallable);
 void ProcessAdminStorageRequests();
@@ -619,7 +661,16 @@ std::string GetAdminStorageMutationStatus(const std::string& requestId,
 std::string GetAdminPlayerStorageJson(const std::string& characterGuid,
                                       const std::string& administratorCharacterGuid = {});
 void InvalidateAdminStorageSnapshots();
+bool ConfigureAdminStorageAutofill(const std::string& path);
+bool SetAdminStorageAutofill(const std::string& characterGuid,
+                             const std::string& chestId,
+                             const std::string& administratorCharacterGuid,
+                             bool enabled,
+                             std::string& result);
+void ReconcileAdminStorageAutofill();
 AdminStorageDiagnostics GetAdminStorageDiagnostics();
+std::uint64_t GetAdminStorageAutofillNormalizations();
+std::uint64_t GetAdminStorageAutofillMaximumMicroseconds();
 struct PerformanceTickSnapshot {
     int compatibility = 0;
     std::uint64_t frames = 0;
@@ -793,6 +844,7 @@ PlayerQuestDiagnostics GetPlayerQuestDiagnostics();
 std::string GetPlayerQuestCatalogFingerprint();
 void RecordPlayerQuestPersistenceFailure();
 bool EnsurePlayerProcessEventCapture(uintptr_t moduleBase,uintptr_t moduleEnd);
+bool InvokeSharedProcessEvent(void* object,void* function,void* params);
 struct ActivityRegionInfo { std::uint8_t id=0;std::string name; };
 struct NativeRegionDiscovery { std::string characterGuid,name;std::uint8_t id=0;std::int64_t capturedAt=0; };
 struct ActivityMaterialInfo { std::string key,name,icon; };

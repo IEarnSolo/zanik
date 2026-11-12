@@ -9,6 +9,8 @@ storage = (root / "src/engine/admin_storage.cpp").read_text(encoding="utf-8")
 header = (root / "src/engine/dom_engine.h").read_text(encoding="utf-8")
 main = (root / "src/main.cpp").read_text(encoding="utf-8")
 web = (root / "src/web_page.h").read_text(encoding="utf-8")
+quests = (root / "src/engine/player_quests.cpp").read_text(encoding="utf-8")
+analyzer = (root / "tools/compat_analyzer.cpp").read_text(encoding="utf-8")
 
 
 def body(name: str, following: str) -> str:
@@ -33,7 +35,7 @@ assert "engineMicros>=50000" in engine_tick
 # fixed-size evidence into a bounded ring; player matching and diagnostics run
 # later on the service thread. Zanik's grave dispatcher is excluded so website
 # actions are not mislabeled as in-game actions.
-native_hooks = body("void PublishObservedMutation(", "void HookBuildingEndPlay(")
+native_hooks = body("bool PublishObservedMutation(", "uintptr_t FindUniqueStorageFunction(")
 assert "ObservedMutationCapacity=128" in storage
 assert "HookMoveItem" in native_hooks and "HookRemoveFromSlot" in native_hooks
 assert "originalObservedMoveItem(source" in native_hooks
@@ -42,6 +44,12 @@ assert "WriteRegisterPreservingJump(trampoline+bytes" in native_hooks
 assert "std::array<ObservedMutationSlot,ObservedMutationCapacity>" in storage
 assert "UpdateAdminStorageMutationPlayers" in storage
 assert "DrainAdminStorageMutationTraces" in storage
+drain = body("void DrainAdminStorageMutationTraces()", "AdminStorageDiagnostics GetAdminStorageDiagnostics")
+assert "event.succeeded&&storage&&autofillStore" in drain
+assert "autofillMutationTriggers.push_back" in drain
+assert "InvalidateAdminStorageSnapshots()" in drain
+assert "AutofillMutationTriggerCapacity=128" in storage
+assert "HasPendingAdminStorageAutofillMutation" in storage
 assert "suppressObservedMutation=true;ProcessAdminGravestoneRequests();suppressObservedMutation=false" in engine_tick
 for forbidden in ("GetAllPlayers", "LogMessage", "pthread_mutex", "std::string"):
     assert forbidden not in native_hooks, forbidden
@@ -49,6 +57,55 @@ assert "nativeMutationCaptureCompatibility" in header
 assert '"/api/diagnostics/native-inventory-mutations"' in main
 assert "observedMoveEntry.store(moduleBase+offsets.moveItem" in storage
 assert "ResolveAdminInventoryMutationCallables" in storage
+
+# The actual dedicated-server withdrawal routes bypass the public mutation
+# entries. Capture all full and partial stack RPCs after ProcessEvent returns,
+# then feed the same bounded service-thread validation and priority path.
+for rpc in (
+    "Server_MoveItemBetweenInventories",
+    "Server_SplitAndPutStack",
+    "Server_SplitStack",
+):
+    assert rpc in storage
+    assert rpc in analyzer
+assert "storageMoveInventoryRpcMatches!=1" in analyzer
+assert "storageSplitStackRpcMatches!=1" in analyzer
+assert "storageSplitPutRpcMatches!=1" in analyzer
+process_hook = quests[quests.index("void HookProcessEvent("):quests.index("void DrainTrackedQuestCaptures(")]
+assert process_hook.index("originalProcessEvent(object,function,params)") < process_hook.index("ObserveAdminStorageProcessEvent(object,function,params)")
+rpc_observer = body("void ObserveAdminStorageProcessEvent(", "bool ResolveAdminInventoryMutationCallables")
+assert "PublishObservedMutation" in rpc_observer
+assert "GetObjectCount" not in rpc_observer
+assert "LogMessage" not in rpc_observer
+assert "std::string" not in rpc_observer
+assert "autofillRpcCaptureCompatibility" in header
+assert "adminStorageAutofillRpcCaptureCompatibility" in main
+for field in (
+    "adminStorageAutofillLatencySamples",
+    "adminStorageAutofillCaptureToDrainMaximumMicroseconds",
+    "adminStorageAutofillDrainToReconcileMaximumMicroseconds",
+    "adminStorageAutofillReconcileToDispatchMaximumMicroseconds",
+    "adminStorageAutofillDispatchToRefillMaximumMicroseconds",
+    "adminStorageAutofillCaptureToRefillMaximumMicroseconds",
+):
+    assert field in main
+assert '"/api/diagnostics/storage-autofill-latency"' in main
+assert '"/api/diagnostics/storage-autofill-replication"' in main
+assert "autofillObservedAtMicros" in storage
+assert "autofillDrainedAtMicros" in storage
+assert "autofillReconciledAtMicros" in storage
+assert "autofillDispatchedAtMicros" in storage
+
+# Once the final slot-exact refill action succeeds, wake only its verified
+# owning actor and request an immediate replication pass through the shared
+# ProcessEvent trampoline. Failure must not roll back or fail the refill.
+assert 'FindFunction("Actor","FlushNetDormancy")' in storage
+assert 'FindFunction("Actor","ForceNetUpdate")' in storage
+assert storage.index("FlushNetDormancy") < storage.index("ForceNetUpdate")
+assert "InvokeSharedProcessEvent" in storage and "InvokeSharedProcessEvent" in quests
+assert "WakeAutofilledStorageReplication(r,action)" in tick_action
+assert "autofillReplicationWakeCompatibility" in header
+assert "adminStorageAutofillReplicationWakeCompatibility" in main
 
 # The game-thread path consumes an already built action and never performs discovery.
 for forbidden in (
@@ -132,7 +189,8 @@ assert "Storage rename ABI validation failed" in storage
 assert 'if(renameCompatibility.load()!=1){error="Storage naming is unavailable for this game build"' in planner
 assert '\\"storageRename\\"' in main
 assert "storageRenameAvailable=Boolean(capabilities.storageRename)" in web
-assert "if(storageRenameAvailable)renderStorageHeading" in web
+assert "renderStorageHeading(card,chest,heading)" in web
+assert "if(storageRenameAvailable)" in web
 
 # Reviewed builds are production-enabled explicitly; the development override
 # remains limited to the older build that never completed promotion evidence.

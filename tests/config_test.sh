@@ -8,6 +8,7 @@ zanik_defaults
 [ "$CFG_FEATURE_PLAYER_STATUS" = 1 ]
 [ "$CFG_ZANIK_ENABLED" = 1 ]
 [ "$CFG_FEATURE_ADMIN_TELEPORT" = 0 ]
+[ "$CFG_FEATURE_QOL_STORAGE_AUTOFILL" = 0 ]
 [ "$CFG_FEATURE_QOL_AUTO_COMPOST" = 0 ]
 
 (
@@ -21,6 +22,7 @@ zanik_defaults
   [ "$DW_GAME_LOG" = /srv/dragonwilds/RSDragonwilds/Saved/Logs/RSDragonwilds.log ]
   [ "$DW_WORLD_SAVE" = "/srv/dragonwilds/RSDragonwilds/Saved/SaveGames/Emberlands TEST.sav" ]
   [ "$DW_ORIGINAL_EXE" = /srv/dragonwilds/RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping ]
+  [ "$ZANIK_FEATURE_QOL_STORAGE_AUTOFILL" = 0 ]
 )
 (
   unset DW_SERVER_ROOT DW_STATUS_DATA DW_ZANIK_ROOT DW_DATA_ROOT DW_WEB_ROOT DW_GAME_LOG DW_WORLD_SAVE DW_ORIGINAL_EXE
