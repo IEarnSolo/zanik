@@ -602,6 +602,8 @@ struct AdminStorageDiagnostics {
     std::uint64_t autofillRpcSplitStackCalls = 0;
     std::uint64_t autofillRpcCaptureDrops = 0;
     std::uint64_t autofillRpcCaptureMaximumMicroseconds = 0;
+    int autofillNormalizationCompatibility = 0;
+    std::uint64_t autofillNormalizationFailures = 0;
     int autofillReplicationWakeCompatibility = 0;
     std::uint64_t autofillReplicationWakeCalls = 0;
     std::uint64_t autofillReplicationWakeFailures = 0;

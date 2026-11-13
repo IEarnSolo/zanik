@@ -50,8 +50,9 @@ normalize = storage[storage.index("bool NormalizeAutofillAdd"):storage.index("bo
 assert "addItemByData" not in normalize
 assert "moveItem" in normalize and "setStackSize" in normalize
 assert "actualTotal!=desiredTotal" in normalize
-assert "unexpected" in normalize and "controlled" not in normalize
+assert "PlanStorageAutofillRelocation" in normalize
 assert "!NormalizeAutofillAdd" in storage and "familyCircuitBroken[size_t(OperationFamily::Autofill)]=true" in storage
+assert "autofillNormalizationCompatibility=-1" in storage
 assert "ActionKind::Remove" not in reconcile
 assert "familyCircuitBroken[size_t(OperationFamily::Autofill)]" in reconcile
 assert "plan.sourceSlot" in reconcile and "plan.destinationSlot" in reconcile
@@ -68,6 +69,8 @@ assert "Selected items removed from the autofill snapshot" in settings
 
 for token in ("storage-autofill.db", "ConfigureAdminStorageAutofill", "ReconcileAdminStorageAutofill", "adminStorageAutofillCompatibility", "adminStorageAutofillProtectedSkips"):
     assert token in main or token in header
+for token in ("adminStorageAutofillNormalizationCompatibility", "adminStorageAutofillNormalizationFailures"):
+    assert token in main
 for token in ("adminStorageAutofillMutationSignals", "adminStorageAutofillPriorityChecks", "adminStorageAutofillPriorityMatches", "adminStorageAutofillPriorityDrops"):
     assert token in main
 for token in ("adminStorageAutofillTargetedRefreshes", "adminStorageAutofillTargetedRefreshFallbacks", "adminStorageAutofillTargetedRefreshMaximumMicroseconds"):
@@ -76,6 +79,7 @@ assert "HasPendingAdminStorageAutofillMutation" in main and "urgentStorageAutofi
 assert "std::chrono::milliseconds(500)" in main
 for token in ("Autofill from snapshot", "snapshotted slot", "never overwritten or removed", "/api/admin/storage/autofill", "storageAutofillAvailable"):
     assert token in web
+assert "Matching snapshotted stacks may be rebalanced after refilling" not in web
 for token in ("updateStorageAutofill", "scope='selection'", "Disable autofill", "mixed selection", "storage-context-disabled"):
     assert token in web
 assert "enabledCount>0&&enabledCount<entries.length" in web
@@ -99,6 +103,12 @@ assert "badge.textContent=snapshotState==='matched'?'↻':'!'" in web
 
 entry = next(item for item in capabilities["capabilities"] if item["id"] == "storage-autofill")
 assert entry["persistence"] == ["zanik-data/storage-autofill.db"]
+assert "adminStorageAutofillNormalizationCompatibility" in entry["runtimeStatusFields"]
+assert "adminStorageAutofillNormalizationFailures" in entry["runtimeDiagnosticFields"]
 assert "tests/storage_autofill_store_test.cpp" in entry["tests"]
+validator = (root / "deploy/validate-dev-update.ps1").read_text()
+for token in ("adminStorageAutofillCompatibility", "adminStorageAutofillNormalizationCompatibility",
+              "adminStorageAutofillNormalizationFailures", "adminStorageCircuitBreakers"):
+    assert token in validator
 assert "zanik-data/storage-autofill.db" in installer
 assert "storage-autofill.db" in backups and "preserve" in backups

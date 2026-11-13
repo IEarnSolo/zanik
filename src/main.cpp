@@ -1184,6 +1184,8 @@ void Handle(int fd,std::string* performanceRoute=nullptr) {
             ",\"adminStorageRollbackCompatibility\":" + std::to_string(adminStorage.rollbackCompatibility) +
             ",\"adminStorageAutofillCompatibility\":" + std::to_string(adminStorage.autofillCompatibility) +
             ",\"adminStorageAutofillPersistenceCompatibility\":" + std::to_string(adminStorage.autofillPersistenceCompatibility) +
+            ",\"adminStorageAutofillNormalizationCompatibility\":" + std::to_string(adminStorage.autofillNormalizationCompatibility) +
+            ",\"adminStorageAutofillNormalizationFailures\":" + std::to_string(adminStorage.autofillNormalizationFailures) +
             ",\"adminStorageAutofillTemplates\":" + std::to_string(adminStorage.autofillTemplates) +
             ",\"adminStorageAutofillChecks\":" + std::to_string(adminStorage.autofillChecks) +
             ",\"adminStorageAutofillQueued\":" + std::to_string(adminStorage.autofillQueued) +

@@ -6,6 +6,24 @@ from manager.zanik_manager.lifecycle import PterodactylProvider
 from manager.zanik_manager.pterodactyl import PterodactylClient, Response
 
 class StartupSafetyTests(unittest.TestCase):
+    def test_operation_journal_records_bounded_phase_timings_and_loads_legacy_records(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = JournalStore(pathlib.Path(temporary))
+            from manager.zanik_manager.journal import OperationJournal
+            journal = OperationJournal.create("example-profile", "game-update")
+            journal.begin_phase("Checking   build")
+            journal.begin_phase("Installing build")
+            journal.finish_phase("complete")
+            store.save(journal)
+            loaded = store.load(pathlib.Path(temporary) / f"{journal.operation_id}.json")
+            self.assertEqual([item["name"] for item in loaded.phase_timings],
+                             ["Checking build", "Installing build"])
+            self.assertTrue(all(item["durationMilliseconds"] >= 0 for item in loaded.phase_timings))
+            legacy = pathlib.Path(temporary) / "legacy.json"
+            legacy.write_text(json.dumps({"operation_id": "legacy", "profile_id": "example-profile",
+                                          "action": "install", "created_at": "2026-01-01T00:00:00Z"}))
+            self.assertEqual(store.load(legacy).phase_timings, [])
+
     def test_wrapper_update_requires_startup_update_only_when_changing_auto_update(self):
         base = {"control.start", "control.stop", "file.read", "file.read-content",
                 "file.create", "file.update", "startup.read"}

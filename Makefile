@@ -80,6 +80,9 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(PYTHON) tests/game_update_26161880_test.py
 	$(PYTHON) tests/game_update_26419371_test.py
 	$(PYTHON) tests/game_update_26574459_test.py
+	$(PYTHON) tests/dev_update_validator_test.py
+	$(PYTHON) tests/wsl_research_preflight_test.py
+	$(PYTHON) tests/workflow_timing_test.py
 	$(PYTHON) tests/compatibility_report_test.py
 	$(PYTHON) tests/storage_teleport_compatibility_test.py
 	$(PYTHON) tests/home_teleport_test.py

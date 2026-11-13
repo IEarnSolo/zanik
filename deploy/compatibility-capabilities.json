@@ -208,14 +208,14 @@
     {
       "id": "storage-autofill",
       "category": "native-and-persistence",
-      "staticChecks": ["reviewed storage add, move, and stack-size ABIs", "authoritative full-stack, split-and-put, and in-place split withdrawal RPC symbols", "shared ProcessEvent hook signature", "identity-bound storage snapshots", "slot-exact protected-item planner", "baseline preservation for matching stacks in snapshot-empty slots", "bounded same-tick add-and-normalize transaction", "identity-bound single-chest mutation refresh", "bounded mutation-signal priority queue with 500 ms fallback", "authenticated occupied-slot snapshot classification for matched and protected foreign items", "bounded selective slot merge and removal preserving unrelated snapshot entries"],
-      "runtimeStatusFields": ["adminStorageAutofillCompatibility", "adminStorageAutofillPersistenceCompatibility", "adminStorageAutofillRpcCaptureCompatibility"],
-      "runtimeDiagnosticFields": ["adminStorageAutofillTemplates", "adminStorageAutofillChecks", "adminStorageAutofillQueued", "adminStorageAutofillItemsAdded", "adminStorageAutofillMutationSignals", "adminStorageAutofillRpcCaptureCalls", "adminStorageAutofillRpcFullStackCalls", "adminStorageAutofillRpcSplitStackCalls", "adminStorageAutofillRpcCaptureDrops", "adminStorageAutofillRpcCaptureMaximumMicroseconds", "adminStorageAutofillLatencySamples", "adminStorageAutofillCaptureToDrainLastMicroseconds", "adminStorageAutofillCaptureToDrainMaximumMicroseconds", "adminStorageAutofillDrainToReconcileLastMicroseconds", "adminStorageAutofillDrainToReconcileMaximumMicroseconds", "adminStorageAutofillReconcileToDispatchLastMicroseconds", "adminStorageAutofillReconcileToDispatchMaximumMicroseconds", "adminStorageAutofillDispatchToRefillLastMicroseconds", "adminStorageAutofillDispatchToRefillMaximumMicroseconds", "adminStorageAutofillCaptureToRefillLastMicroseconds", "adminStorageAutofillCaptureToRefillMaximumMicroseconds", "adminStorageAutofillPriorityChecks", "adminStorageAutofillPriorityMatches", "adminStorageAutofillPriorityDrops", "adminStorageAutofillTargetedRefreshes", "adminStorageAutofillTargetedRefreshFallbacks", "adminStorageAutofillTargetedRefreshMaximumMicroseconds", "adminStorageAutofillNormalizations", "adminStorageAutofillMaximumMicroseconds", "adminStorageAutofillProtectedSkips", "adminStorageAutofillFailures", "adminStorageAutofillMalformedRecords"],
-      "diagnosticsEndpoint": "/api/diagnostics/storage-autofill-latency",
+      "staticChecks": ["reviewed storage add, move, and stack-size ABIs", "authoritative full-stack, split-and-put, and in-place split withdrawal RPC symbols", "shared ProcessEvent hook signature", "identity-bound storage snapshots", "slot-exact protected-item planner", "baseline preservation for matching stacks in snapshot-empty slots", "bounded same-tick add-and-normalize transaction", "temporary native stack relocation into empty or partial matching snapshotted slots", "identity-bound single-chest mutation refresh", "bounded mutation-signal priority queue with 500 ms fallback", "authenticated occupied-slot snapshot classification for matched and protected foreign items", "bounded selective slot merge and removal preserving unrelated snapshot entries"],
+      "runtimeStatusFields": ["adminStorageAutofillCompatibility", "adminStorageAutofillPersistenceCompatibility", "adminStorageAutofillRpcCaptureCompatibility", "adminStorageAutofillNormalizationCompatibility"],
+      "runtimeDiagnosticFields": ["adminStorageAutofillTemplates", "adminStorageAutofillChecks", "adminStorageAutofillQueued", "adminStorageAutofillItemsAdded", "adminStorageAutofillMutationSignals", "adminStorageAutofillRpcCaptureCalls", "adminStorageAutofillRpcFullStackCalls", "adminStorageAutofillRpcSplitStackCalls", "adminStorageAutofillRpcCaptureDrops", "adminStorageAutofillRpcCaptureMaximumMicroseconds", "adminStorageAutofillNormalizationFailures", "adminStorageAutofillLatencySamples", "adminStorageAutofillCaptureToDrainLastMicroseconds", "adminStorageAutofillCaptureToDrainMaximumMicroseconds", "adminStorageAutofillDrainToReconcileLastMicroseconds", "adminStorageAutofillDrainToReconcileMaximumMicroseconds", "adminStorageAutofillReconcileToDispatchLastMicroseconds", "adminStorageAutofillReconcileToDispatchMaximumMicroseconds", "adminStorageAutofillDispatchToRefillLastMicroseconds", "adminStorageAutofillDispatchToRefillMaximumMicroseconds", "adminStorageAutofillCaptureToRefillLastMicroseconds", "adminStorageAutofillCaptureToRefillMaximumMicroseconds", "adminStorageAutofillPriorityChecks", "adminStorageAutofillPriorityMatches", "adminStorageAutofillPriorityDrops", "adminStorageAutofillTargetedRefreshes", "adminStorageAutofillTargetedRefreshFallbacks", "adminStorageAutofillTargetedRefreshMaximumMicroseconds", "adminStorageAutofillNormalizations", "adminStorageAutofillMaximumMicroseconds", "adminStorageAutofillProtectedSkips", "adminStorageAutofillFailures", "adminStorageAutofillMalformedRecords"],
+      "diagnosticsEndpoint": "/api/update-status",
       "persistence": ["zanik-data/storage-autofill.db"],
       "assets": [],
       "failureBoundary": "storage snapshot autofill only",
-      "liveValidation": ["enable a development storage snapshot", "remove partial and full stacks in game", "verify the native mutation signal uses the targeted chest refresh before the fallback interval", "verify matching partial stacks normalize before the storage update is published", "verify every matching snapshotted slot returns to its saved quantity", "place an unrelated item into a snapshotted slot and verify it is preserved", "restart and verify the template remains active"],
+      "liveValidation": ["enable a development storage snapshot", "remove partial and full stacks in game", "verify the native mutation signal uses the targeted chest refresh before the fallback interval", "force native add to create a temporary stack while the target snapshotted slot remains partially occupied and verify it is merged into that target", "verify matching partial stacks normalize before the storage update is published", "verify every matching snapshotted slot returns to its saved quantity", "place an unrelated item into a snapshotted slot and verify it is preserved", "restart and verify the template remains active"],
       "tests": ["tests/storage_autofill_store_test.cpp", "tests/storage_autofill_test.py", "tests/storage_mutation_pipeline_test.py"]
     },
     {
@@ -294,26 +294,26 @@
     {
       "id": "game-update-lifecycle",
       "category": "operational-lifecycle",
-      "staticChecks": ["mode-specific Pterodactyl permissions", "operation-bound request, backup, launcher, result, and cleanup", "save-tree non-mutation fingerprint", "unsupported-build maintenance boundary", "no compatibility analyzer in the end-user updater"],
+      "staticChecks": ["mode-specific Pterodactyl permissions", "operation-bound request, backup, launcher, result, and cleanup", "save-tree non-mutation fingerprint", "unsupported-build maintenance boundary", "no compatibility analyzer in the end-user updater", "fresh dedicated-server and Windows-client build discovery", "hash-verified WSL research-copy preflight", "candidate-aware and production-only live validation modes", "durable per-phase Manager operation timings"],
       "runtimeStatusFields": [{"path": "configuration.installMode", "acceptedValues": ["wrapper", "replace-executable"]}],
       "diagnosticsEndpoint": "/api/update-status",
       "persistence": ["SERVER_ROOT/zanik/install-state.json", "SERVER_ROOT/zanik-backups/game-update", "local Manager operation journal"],
       "assets": [],
       "failureBoundary": "Dragonwilds update orchestration and unsupported-build maintenance startup only",
       "liveValidation": ["on an authorized development target, verify the selected mode, expected build, managed recovery point, launcher state, unchanged save fingerprint, maintenance or normal startup result, transient-file cleanup, and running state"],
-      "tests": ["tests/game_update_safety_test.py", "tests/game_update_lifecycle_test.py", "tests/launcher_game_update_test.sh", "tests/maintenance_http_test.py", "tests/server_game_update_test.sh"]
+      "tests": ["tests/game_update_safety_test.py", "tests/game_update_lifecycle_test.py", "tests/dev_update_validator_test.py", "tests/wsl_research_preflight_test.py", "tests/workflow_timing_test.py", "tests/launcher_game_update_test.sh", "tests/maintenance_http_test.py", "tests/server_game_update_test.sh"]
     },
     {
       "id": "website-assets",
       "category": "asset-contract",
-      "staticChecks": ["extraction recipe", "generation profile", "manifest hashes and reviewed coverage"],
+      "staticChecks": ["extraction recipe", "generation profile", "manifest hashes and reviewed coverage", "current licensed-client and WSL research-input identity"],
       "runtimeStatusFields": ["assets.compatibility"],
       "diagnosticsEndpoint": "/api/update-status",
       "persistence": ["zanik/assets", "zanik-assets-previous"],
       "assets": ["all manifest-described generated website assets"],
       "failureBoundary": "only pages or layers requiring the unavailable asset group",
       "liveValidation": ["load representative map, player, activity, recipe, quest, storage, and gravestone assets"],
-      "tests": ["tests/windows_asset_pipeline_test.py", "tests/asset_delta_test.py", "tests/generate_web_assets_test.py"]
+      "tests": ["tests/windows_asset_pipeline_test.py", "tests/wsl_research_preflight_test.py", "tests/asset_delta_test.py", "tests/generate_web_assets_test.py"]
     },
     {
       "id": "qol-auto-compost",

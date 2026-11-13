@@ -16,11 +16,44 @@ class OperationJournal:
     state: str = "preparing"
     completed_steps: list[str] = field(default_factory=list)
     rollback: list[dict] = field(default_factory=list)
+    phase_timings: list[dict] = field(default_factory=list)
+    active_phase: dict | None = None
     error: str = ""
 
     @classmethod
     def create(cls, profile_id: str, action: str):
         return cls(str(uuid.uuid4()), profile_id, action, dt.datetime.now(dt.timezone.utc).isoformat())
+
+    @staticmethod
+    def _now() -> dt.datetime:
+        return dt.datetime.now(dt.timezone.utc)
+
+    def begin_phase(self, name: str) -> None:
+        """Close the prior phase and durably begin a bounded, human-readable phase."""
+        value = " ".join(str(name).split())[:160]
+        if not value or (self.active_phase or {}).get("name") == value:
+            return
+        self.finish_phase("complete")
+        self.active_phase = {"name": value, "startedAt": self._now().isoformat()}
+
+    def finish_phase(self, outcome: str) -> None:
+        active = self.active_phase
+        if not active:
+            return
+        finished = self._now()
+        try:
+            started = dt.datetime.fromisoformat(str(active["startedAt"]).replace("Z", "+00:00"))
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=dt.timezone.utc)
+            milliseconds = max(0, int((finished - started).total_seconds() * 1000))
+        except (KeyError, TypeError, ValueError):
+            milliseconds = 0
+        self.phase_timings.append({
+            "name": str(active.get("name", "")), "startedAt": active.get("startedAt"),
+            "finishedAt": finished.isoformat(), "durationMilliseconds": milliseconds,
+            "outcome": " ".join(str(outcome).split())[:40] or "unknown",
+        })
+        self.active_phase = None
 
 
 class JournalStore:

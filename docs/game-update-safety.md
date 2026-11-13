@@ -10,6 +10,14 @@ After validating an exact candidate, run `tools/generate_compatibility_report.py
 
 Native analyzer tests include real altered-byte and truncated-signature fixtures. Operational negative tests cover malformed persistence and unavailable write destinations. Source-code assertions remain useful architecture guards but are not sufficient negative compatibility evidence by themselves.
 
+## Research preflight and timing
+
+Every compatibility workflow begins with fresh public build discovery for both the Linux dedicated server and licensed Windows client. `tools/verify_wsl_research.py` compares those results with the WSL client manifest, the staged server executable fingerprint, the current licensed-client manifest, and the hashes of every client research input selected for analysis. A stale or partially copied reference fails closed. Refreshes are staged into a task-owned sibling, verified, and retained atomically; they never delete or overwrite the last reviewed reference in place.
+
+`tools/workflow_timing.py` maintains the task-scoped ignored wall-clock ledger. Zanik Manager journals additionally record bounded start, finish, duration, and outcome data for every install and game-update progress phase. Interrupted operations retain their active phase; successful and failed exits close it explicitly. Legacy journals without timing fields remain readable.
+
+Development-only executable fingerprints use `deploy/validate-dev-update.ps1 -ValidationMode Candidate`, which accepts only the explicit candidate override combination. Promotion removes the candidate marker and must pass `-ValidationMode Production`, which requires production compatibility with no override. Candidate success is never production evidence.
+
 ## Wrapper mode
 
 Wrapper mode leaves the official executable untouched. `AUTO_UPDATE` may remain enabled, so Pterodactyl can update Dragonwilds normally and then invoke `zanik-server`. A confirmed Manager update requires `startup.read`; `startup.update` is required only when the current value is `0`. Manager then temporarily enables the variable, reads it back, and restores and verifies the prior value afterward.

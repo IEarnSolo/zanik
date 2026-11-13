@@ -2,6 +2,19 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.86] - 2026-11-13
+
+### Changed
+
+- Add fail-closed WSL research-copy preflight for the independently versioned dedicated-server and Windows-client builds, explicit candidate versus production live-validation modes, and durable task plus Manager lifecycle phase timings.
+- Make the native Zanik Manager updater wait for the requested process and every running executable inside the portable installation before swapping, requiring two clear scans and failing without renaming or terminating anything on timeout.
+
+### Fixed
+
+- Restore storage snapshot autofill after a native add creates a temporary stack while its snapshotted destination remains partially occupied, merging only the required quantity into that matching slot before exact per-slot normalization.
+- Expose the autofill normalization subfeature as its own fail-closed compatibility gate and failure counter, and require it in the machine-readable capability report so future game updates cannot report autofill compatible after this path fails.
+- Update Zanik Manager's embedded server payload and compatibility inventory with the reviewed autofill normalization fix; generated website assets are unchanged.
+
 ## [0.2.85] - 2026-11-12
 
 ### Changed

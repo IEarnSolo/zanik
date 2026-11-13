@@ -2,6 +2,7 @@
 #define _UNICODE
 #include <windows.h>
 #include <shellapi.h>
+#include <tlhelp32.h>
 #include <wchar.h>
 #include <stdio.h>
 
@@ -43,6 +44,48 @@ static int move_with_retry(const wchar_t *source, const wchar_t *target, DWORD *
     return 0;
 }
 
+static int path_is_within(const wchar_t *path, const wchar_t *root) {
+    size_t length = wcslen(root);
+    while (length && (root[length - 1] == L'\\' || root[length - 1] == L'/')) --length;
+    if (!length || _wcsnicmp(path, root, length) != 0) return 0;
+    return path[length] == L'\0' || path[length] == L'\\' || path[length] == L'/';
+}
+
+static DWORD running_install_processes(const wchar_t *target, DWORD requested_pid) {
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) return 1;
+    PROCESSENTRY32W entry = {0}; entry.dwSize = sizeof(entry);
+    DWORD count = 0, self = GetCurrentProcessId();
+    if (Process32FirstW(snapshot, &entry)) do {
+        if (!entry.th32ProcessID || entry.th32ProcessID == self) continue;
+        HANDLE process = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION,
+                                     FALSE, entry.th32ProcessID);
+        if (!process) {
+            if (entry.th32ProcessID == requested_pid) ++count;
+            continue;
+        }
+        int running = WaitForSingleObject(process, 0) == WAIT_TIMEOUT;
+        wchar_t image[32768]; DWORD image_length = 32768;
+        int inside = running && QueryFullProcessImageNameW(process, 0, image, &image_length) &&
+                     path_is_within(image, target);
+        if (running && (entry.th32ProcessID == requested_pid || inside)) ++count;
+        CloseHandle(process);
+    } while (Process32NextW(snapshot, &entry));
+    CloseHandle(snapshot);
+    return count;
+}
+
+static int wait_for_install_processes(const wchar_t *target, DWORD requested_pid, DWORD timeout_ms) {
+    int clear_scans = 0;
+    for (DWORD elapsed = 0; elapsed < timeout_ms; elapsed += 100) {
+        if (running_install_processes(target, requested_pid) == 0) {
+            if (++clear_scans >= 2) return 1;
+        } else clear_scans = 0;
+        Sleep(100);
+    }
+    return 0;
+}
+
 static int updater_main(int argc, wchar_t **argv) {
     const wchar_t *pid_text = arg_value(argc, argv, L"--pid");
     const wchar_t *source = arg_value(argc, argv, L"--source");
@@ -51,6 +94,7 @@ static int updater_main(int argc, wchar_t **argv) {
     const wchar_t *handshake = arg_value(argc, argv, L"--handshake");
     const wchar_t *journal = arg_value(argc, argv, L"--journal");
     int smoke = arg_value(argc, argv, L"--smoke-test") != NULL;
+    const wchar_t *timeout_text = arg_value(argc, argv, L"--lock-timeout-ms");
     if (!pid_text || !source || !target || !backup || !handshake || !journal ||
         !recognized(source) || !recognized(target) || _wcsicmp(source, target) == 0) return 2;
 
@@ -67,10 +111,15 @@ static int updater_main(int argc, wchar_t **argv) {
         return 10;
     }
 
-    HANDLE old_process = OpenProcess(SYNCHRONIZE, FALSE, wcstoul(pid_text, NULL, 10));
-    if (old_process) {
-        if (WaitForSingleObject(old_process, 60000) != WAIT_OBJECT_0) { CloseHandle(old_process); return 3; }
-        CloseHandle(old_process);
+    DWORD lock_timeout_ms = 60000;
+    if (timeout_text) {
+        lock_timeout_ms = wcstoul(timeout_text, NULL, 10);
+        if (!smoke || lock_timeout_ms < 100 || lock_timeout_ms > 60000) return 2;
+    }
+    DWORD requested_pid = wcstoul(pid_text, NULL, 10);
+    if (!requested_pid || !wait_for_install_processes(target, requested_pid, lock_timeout_ms)) {
+        journal_status(journal, L"rollback-needed", L"wait-for-portable-processes", WAIT_TIMEOUT);
+        return 3;
     }
     DeleteFileW(handshake);
     if (GetFileAttributesW(backup) != INVALID_FILE_ATTRIBUTES) return 4;

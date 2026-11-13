@@ -44,6 +44,13 @@ class UpdateAwarenessTests(unittest.TestCase):
         self.assertEqual(checker.latest_build(), "25811348")
         self.assertEqual(installed_build(b'"AppState"\n{\n "buildid" "25811348"\n}'), "25811348")
 
+    def test_public_build_checker_supports_independent_client_identity(self):
+        payload = {"data": {"1374490": {"depots": {"branches": {"public": {"buildid": "26574764"}}}}}}
+        checker = PublicSteamBuildChecker(
+            lambda _request, timeout=0: Reply(json.dumps(payload).encode()),
+            app_id="1374490", description="Windows-client")
+        self.assertEqual(checker.latest_build(), "26574764")
+
     def test_public_game_build_metadata_fails_closed(self):
         checker = PublicSteamBuildChecker(lambda _request, timeout=0: Reply(b'{"status":"success"}'))
         with self.assertRaisesRegex(RuntimeError, "did not contain"):
@@ -208,6 +215,12 @@ class UpdateAwarenessTests(unittest.TestCase):
     def test_native_updater_leaves_install_directory_and_retries_rename(self):
         source = (ROOT / "manager" / "updater.c").read_text(encoding="utf-8")
         self.assertIn("SetCurrentDirectoryW(updater_path)", source)
+        self.assertIn("CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS", source)
+        self.assertIn("QueryFullProcessImageNameW", source)
+        self.assertIn("wait_for_install_processes(target, requested_pid, lock_timeout_ms)", source)
+        self.assertIn('L"wait-for-portable-processes"', source)
+        self.assertIn("clear_scans >= 2", source)
+        self.assertIn("if (!smoke || lock_timeout_ms < 100 || lock_timeout_ms > 60000) return 2", source)
         self.assertIn("move_with_retry(target, backup", source)
         self.assertIn('L"move-current-to-backup"', source)
 

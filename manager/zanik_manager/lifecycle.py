@@ -751,6 +751,10 @@ class PterodactylProvider(ServerProvider):
             raise ValueError("Executable replacement requires explicit acknowledgement")
         journal = OperationJournal.create(profile_id, "install")
         self.journals.save(journal)
+        emit_progress = progress
+        def progress(message: str, percent: int, *details) -> None:
+            journal.begin_phase(message); self.journals.save(journal)
+            emit_progress(message, percent, *details)
         root = validate_server_root(server_root)
         stage = f"{root}/.zanik-manager/staging/{journal.operation_id}/release"
         timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -961,7 +965,7 @@ class PterodactylProvider(ServerProvider):
             self.client.write_file(server_id, f"{root}/zanik/install-state.json", (json.dumps(state, separators=(",", ":")) + "\n").encode())
             self.client.chmod(server_id, f"{root}/zanik", [("install-state.json", 0o600)])
             startup_action_required = mode == "wrapper" and not wrapper_adapter
-            journal.state = "complete"; journal.completed_steps.append("installation-verified")
+            journal.finish_phase("complete"); journal.state = "complete"; journal.completed_steps.append("installation-verified")
             if startup_adapter:
                 journal.completed_steps.append("wrapper-startup-configured")
             self.journals.save(journal)
@@ -979,12 +983,13 @@ class PterodactylProvider(ServerProvider):
                 pass
             self.journals.prune()
             progress("Installation complete", 100)
+            journal.finish_phase("complete"); self.journals.save(journal)
             return {"installation": state, "backup": backup if backup_created else None,
                     "operationId": journal.operation_id, "startupActionRequired": startup_action_required,
                     "reconciliation": {"uploaded": len(plan["changed"]), "removed": len(plan["removed"]),
                                        "reused": len(plan["unchanged"]), "serverRestarted": server_stopped}}
         except Exception as error:
-            journal.state = "failed"; journal.error = str(error); self.journals.save(journal)
+            journal.finish_phase("failed"); journal.state = "failed"; journal.error = str(error); self.journals.save(journal)
             if backup_created:
                 try:
                     self._finish_backup(profile_id, "install", server_id, root, backup, "payload",
@@ -1394,6 +1399,10 @@ class PterodactylProvider(ServerProvider):
                        else "wrapper-game-update")
         journal = OperationJournal.create(profile_id, "game-update")
         self.journals.save(journal)
+        emit_progress = progress
+        def progress(message: str, percent: int) -> None:
+            journal.begin_phase(message); self.journals.save(journal)
+            emit_progress(message, percent)
         timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         backup = f"{root}/zanik-backups/game-update/{timestamp}-{journal.operation_id[:8]}"
         backup_created = False
@@ -1467,8 +1476,9 @@ class PterodactylProvider(ServerProvider):
                     self.client.set_startup_variable(server_id, "AUTO_UPDATE", previous_auto)
                     if self._auto_update(server_id)["value"] != previous_auto:
                         raise RuntimeError("Dragonwilds updated, but Manager could not restore the prior AUTO_UPDATE preference")
-                journal.state = "complete"; journal.completed_steps.append("game-updated")
+                journal.finish_phase("complete"); journal.state = "complete"; journal.completed_steps.append("game-updated")
                 self.journals.save(journal); self.journals.prune(); progress("Dragonwilds update complete", 100)
+                journal.finish_phase("complete"); self.journals.save(journal)
                 return {"mode": mode, "installedBuild": installed, "maintenanceExpected": True,
                         "operationId": journal.operation_id}
 
@@ -1547,11 +1557,12 @@ class PterodactylProvider(ServerProvider):
                                    ", ".join(f"{root}/zanik/state/{name}" for name in retained))
             progress("Starting Dragonwilds through the restored Zanik launcher", 92)
             self.client.power(server_id, "start")
-            journal.state = "complete"; journal.completed_steps.append("game-updated")
+            journal.finish_phase("complete"); journal.state = "complete"; journal.completed_steps.append("game-updated")
             self.journals.save(journal)
             self._finish_backup(profile_id, "game-update", server_id, root, backup, "game-update",
                                 journal.operation_id, "complete")
             self.journals.prune(); progress("Dragonwilds update complete", 100)
+            journal.finish_phase("complete"); self.journals.save(journal)
             return {"mode": mode, "installedBuild": report["installedBuild"], "backup": backup,
                     "maintenanceExpected": True, "operationId": journal.operation_id}
         except Exception as error:
@@ -1561,7 +1572,7 @@ class PterodactylProvider(ServerProvider):
                         self.client.set_startup_variable(server_id, "AUTO_UPDATE", previous_auto)
                 except Exception:
                     pass
-            journal.state = "failed"; journal.error = str(error); self.journals.save(journal)
+            journal.finish_phase("failed"); journal.state = "failed"; journal.error = str(error); self.journals.save(journal)
             if backup_created:
                 try:
                     self._finish_backup(profile_id, "game-update", server_id, root, backup, "game-update",

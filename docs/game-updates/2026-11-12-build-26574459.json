@@ -716,13 +716,14 @@
     {
       "assets": [],
       "category": "native-and-persistence",
-      "diagnosticsEndpoint": "/api/diagnostics/storage-autofill-latency",
+      "diagnosticsEndpoint": "/api/update-status",
       "failureBoundary": "storage snapshot autofill only",
       "id": "storage-autofill",
       "liveValidation": [
         "enable a development storage snapshot",
         "remove partial and full stacks in game",
         "verify the native mutation signal uses the targeted chest refresh before the fallback interval",
+        "force native add to create a temporary stack while the target snapshotted slot remains partially occupied and verify it is merged into that target",
         "verify matching partial stacks normalize before the storage update is published",
         "verify every matching snapshotted slot returns to its saved quantity",
         "place an unrelated item into a snapshotted slot and verify it is preserved",
@@ -747,6 +748,11 @@
           "path": "adminStorageAutofillRpcCaptureCompatibility",
           "result": "compatible",
           "value": 1
+        },
+        {
+          "path": "adminStorageAutofillNormalizationCompatibility",
+          "result": "compatible",
+          "value": 1
         }
       ],
       "runtimeDiagnostics": [
@@ -756,7 +762,7 @@
         },
         {
           "path": "adminStorageAutofillChecks",
-          "value": 119
+          "value": 227
         },
         {
           "path": "adminStorageAutofillQueued",
@@ -788,6 +794,10 @@
         },
         {
           "path": "adminStorageAutofillRpcCaptureMaximumMicroseconds",
+          "value": 0
+        },
+        {
+          "path": "adminStorageAutofillNormalizationFailures",
           "value": 0
         },
         {
@@ -887,6 +897,7 @@
         "slot-exact protected-item planner",
         "baseline preservation for matching stacks in snapshot-empty slots",
         "bounded same-tick add-and-normalize transaction",
+        "temporary native stack relocation into empty or partial matching snapshotted slots",
         "identity-bound single-chest mutation refresh",
         "bounded mutation-signal priority queue with 500 ms fallback",
         "authenticated occupied-slot snapshot classification for matched and protected foreign items",
@@ -1263,10 +1274,10 @@
   "provenance": {
     "analyzerManifest": "compatibility-tsv-sha256:c4f189e5a3093f1bc5da14389656c5fb55b4faeb6cbde68d70d5c60186562e0d",
     "assetContract": "manifest-sha256:0a8a10f6d13685978041ddc23409f9c765a63e912069c166b11a644a44141afe",
-    "candidate": "server-archive-sha256:5c5a1f85432393ca71e1b326b6f56c4ba34345cba6e1bc7cedbd224c847eea7e",
+    "candidate": "server-archive-sha256:7f5b94d91aefbc98989372c6b1f3a87b24e4c95914eabe859bfc3fd659a694a7",
     "executableSha256": "1b779665120e8d0df8c5d481969cdb2d1a4df52441cd5569ad2309ec62da1d26",
     "gameBuild": "26574459",
-    "payloadContract": "sha256:9c03d405fd0b5a30a06cb9739a21dbeade424bb617e81ba933324a764fe12d41"
+    "payloadContract": "sha256:03c4833a66fbdd247a3fd486562ba97277b908ad644aad7797fa31f992a59f22"
   },
   "schemaVersion": 1,
   "summary": {

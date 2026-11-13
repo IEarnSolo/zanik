@@ -138,6 +138,30 @@ StorageAutofillPlan PlanStorageAutofill(const StorageAutofillTemplate& desired,
     return {};
 }
 
+StorageAutofillRelocation PlanStorageAutofillRelocation(
+    const std::vector<StorageAutofillItem>& desired,
+    const std::vector<StorageAutofillItem>& current,
+    const std::string& key) {
+    if (key.empty() || desired.empty() || desired.size() > MaximumItems || current.size() > MaximumItems) return {};
+    const auto savedAt = [&](int slot) {
+        return std::find_if(desired.begin(), desired.end(), [&](const auto& item){ return item.slot == slot; });
+    };
+    const auto liveAt = [&](int slot) {
+        return std::find_if(current.begin(), current.end(), [&](const auto& item){ return item.slot == slot; });
+    };
+    for (const auto& source : current) {
+        if (source.key != key || source.quantity < 1 || savedAt(source.slot) != desired.end()) continue;
+        for (const auto& target : desired) {
+            if (target.key != key || target.quantity < 1) continue;
+            const auto live = liveAt(target.slot);
+            if (live != current.end() && live->key != key) continue;
+            const int quantity = live == current.end() ? target.quantity : target.quantity - live->quantity;
+            if (quantity > 0) return {true, source.slot, target.slot, std::min(source.quantity, quantity)};
+        }
+    }
+    return {};
+}
+
 bool ApplyStorageAutofillSelection(StorageAutofillTemplate& desired,
                                    const std::vector<StorageAutofillItem>& selected,
                                    bool enabled) {

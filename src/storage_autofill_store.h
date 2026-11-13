@@ -45,8 +45,19 @@ struct StorageAutofillPlan {
     int destinationSlot = -1;
 };
 
+struct StorageAutofillRelocation {
+    bool available = false;
+    int sourceSlot = -1;
+    int destinationSlot = -1;
+    int quantity = 0;
+};
+
 StorageAutofillPlan PlanStorageAutofill(const StorageAutofillTemplate& desired,
                                         const std::vector<StorageAutofillItem>& current);
+StorageAutofillRelocation PlanStorageAutofillRelocation(
+    const std::vector<StorageAutofillItem>& desired,
+    const std::vector<StorageAutofillItem>& current,
+    const std::string& key);
 bool ApplyStorageAutofillSelection(StorageAutofillTemplate& desired,
                                    const std::vector<StorageAutofillItem>& selected,
                                    bool enabled);

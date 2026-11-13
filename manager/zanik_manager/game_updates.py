@@ -7,7 +7,6 @@ import urllib.request
 
 
 APP_ID = "4019830"
-PUBLIC_INFO_URL = f"https://api.steamcmd.net/v1/info/{APP_ID}"
 USER_AGENT = "Zanik-Manager-Game-Update-Checker"
 INTERVAL_SECONDS = 10 * 60
 
@@ -22,12 +21,16 @@ def installed_build(appmanifest: bytes) -> str:
 class PublicSteamBuildChecker:
     """Read the public SteamCMD metadata mirror without credentials."""
 
-    def __init__(self, opener=None):
+    def __init__(self, opener=None, app_id: str = APP_ID, description: str = "dedicated-server"):
+        if not str(app_id).isdigit() or not description:
+            raise ValueError("Steam application identity is invalid")
         self.opener = opener or urllib.request.urlopen
+        self.app_id = str(app_id)
+        self.description = str(description)
 
     def latest_build(self) -> str:
         request = urllib.request.Request(
-            PUBLIC_INFO_URL,
+            f"https://api.steamcmd.net/v1/info/{self.app_id}",
             headers={"Accept": "application/json", "User-Agent": USER_AGENT},
         )
         try:
@@ -38,9 +41,9 @@ class PublicSteamBuildChecker:
         except (urllib.error.URLError, TimeoutError, OSError, ValueError, UnicodeDecodeError) as error:
             raise RuntimeError("Public Steam metadata is temporarily unavailable") from error
         try:
-            build = str(payload["data"][APP_ID]["depots"]["branches"]["public"]["buildid"])
+            build = str(payload["data"][self.app_id]["depots"]["branches"]["public"]["buildid"])
         except (KeyError, TypeError) as error:
-            raise RuntimeError("Public Steam metadata did not contain the dedicated-server branch") from error
+            raise RuntimeError(f"Public Steam metadata did not contain the {self.description} branch") from error
         if not build.isdigit():
             raise RuntimeError("Public Steam metadata returned an invalid build ID")
         return build
