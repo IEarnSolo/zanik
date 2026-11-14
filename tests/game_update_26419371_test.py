@@ -40,6 +40,10 @@ policy = (root / "src" / "engine" / "storage_compatibility_policy.h").read_text(
 assert server_sha in policy
 assert "IsProductionReviewed" in policy
 assert "StorageCompatibilityPolicy::CurrentReviewedSha" in storage
+assert "0x0A688410" in storage
+assert "InstallNativeBuildingConsumptionCapture" in storage
+assert "nativeCompleteBuildingTarget" in analyzer and "nativePartialBuildingTarget" in analyzer
+assert "0x0A688400" in storage
 for offset in (
     "0x0A669830", "0x0A66A3C0", "0x0A66BF00", "0x0A66EF90",
     "0x0A66B390", "0x0A677D60", "0x0A3E9980", "0x04A94480",

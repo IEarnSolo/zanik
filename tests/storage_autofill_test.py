@@ -49,7 +49,8 @@ assert "NormalizeAutofillAdd" in storage
 normalize = storage[storage.index("bool NormalizeAutofillAdd"):storage.index("bool RunNativeAction")]
 assert "addItemByData" not in normalize
 assert "moveItem" in normalize and "setStackSize" in normalize
-assert "actualTotal!=desiredTotal" in normalize
+assert normalize.count("actualTotal!=desiredTotal") == 1
+assert normalize.index("setStackSize") < normalize.index("actualTotal!=desiredTotal")
 assert "PlanStorageAutofillRelocation" in normalize
 assert "!NormalizeAutofillAdd" in storage and "familyCircuitBroken[size_t(OperationFamily::Autofill)]=true" in storage
 assert "autofillNormalizationCompatibility=-1" in storage
@@ -106,9 +107,14 @@ assert entry["persistence"] == ["zanik-data/storage-autofill.db"]
 assert "adminStorageAutofillNormalizationCompatibility" in entry["runtimeStatusFields"]
 assert "adminStorageAutofillNormalizationFailures" in entry["runtimeDiagnosticFields"]
 assert "tests/storage_autofill_store_test.cpp" in entry["tests"]
+building_capture = next(item for item in capabilities["capabilities"] if item["id"] == "storage-autofill-building-consumption-capture")
+assert building_capture["runtimeStatusFields"] == ["adminStorageAutofillBuildingCaptureCompatibility"]
+assert "adminStorageAutofillBuildingCaptureDrops" in building_capture["runtimeDiagnosticFields"]
+assert any("native thunks plus trampoline-safe implementation-entry prologues" in value for value in building_capture["staticChecks"])
 validator = (root / "deploy/validate-dev-update.ps1").read_text()
 for token in ("adminStorageAutofillCompatibility", "adminStorageAutofillNormalizationCompatibility",
-              "adminStorageAutofillNormalizationFailures", "adminStorageCircuitBreakers"):
+              "adminStorageAutofillNormalizationFailures", "adminStorageAutofillBuildingCaptureCompatibility",
+              "adminStorageAutofillBuildingCaptureDrops", "adminStorageCircuitBreakers"):
     assert token in validator
 assert "zanik-data/storage-autofill.db" in installer
 assert "storage-autofill.db" in backups and "preserve" in backups

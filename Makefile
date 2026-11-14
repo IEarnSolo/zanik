@@ -110,6 +110,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	sh tests/server_asset_delta_helper_test.sh
 	sh tests/server_game_update_test.sh
 	$(NODE) tests/map_page_test.js
+	$(NODE) tests/player_mobile_ui_test.js
 	$(PYTHON) tests/http_core_test.py
 	$(PYTHON) tests/admin_http_test.py
 	$(PYTHON) tests/player_activity_http_test.py

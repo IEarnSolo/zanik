@@ -638,6 +638,13 @@ struct AdminStorageAutofillLatencyDiagnostics {
     std::uint64_t captureToRefillLastMicroseconds = 0;
     std::uint64_t captureToRefillMaximumMicroseconds = 0;
 };
+struct AdminStorageAutofillBuildingCaptureDiagnostics {
+    int compatibility = 0;
+    std::uint64_t calls = 0;
+    std::uint64_t inventories = 0;
+    std::uint64_t drops = 0;
+    std::uint64_t maximumMicroseconds = 0;
+};
 bool InitializeAdminStorage(uintptr_t moduleBase, uintptr_t moduleEnd);
 bool InitializeAdminStorageHookEarly();
 void UpdateAdminStorageMutationPlayers(const std::vector<PlayerInfo>& players);
@@ -645,6 +652,7 @@ void ObserveAdminStorageProcessEvent(void* object, void* function, void* params)
 void DrainAdminStorageMutationTraces();
 bool HasPendingAdminStorageAutofillMutation();
 AdminStorageAutofillLatencyDiagnostics GetAdminStorageAutofillLatencyDiagnostics();
+AdminStorageAutofillBuildingCaptureDiagnostics GetAdminStorageAutofillBuildingCaptureDiagnostics();
 bool ResolveAdminInventoryMutationCallables(uintptr_t moveEntry, uintptr_t removeEntry,
                                             uintptr_t& moveCallable, uintptr_t& removeCallable);
 void ProcessAdminStorageRequests();

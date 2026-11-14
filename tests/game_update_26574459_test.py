@@ -64,6 +64,8 @@ teleport = (root / "src" / "engine" / "admin_teleport.cpp").read_text()
 assert "{0xA779820,0xA586500,0xA586AE0,17" in teleport
 
 analyzer = (root / "tools" / "compat_analyzer.cpp").read_text()
+for token in ("Server_ConsumeItemsFromCompletingBuilding", "Server_ConsumeItemsFromPartiallyCompletingBuilding"):
+    assert token in storage and token in analyzer
 assert server_sha in analyzer
 assert "--require-storage-production" in analyzer
 assert "storage mutation production promotion is pending" in analyzer
@@ -71,6 +73,10 @@ assert "storage withdrawal RPC parameter ABI changed" in analyzer
 assert "moveInventoryRpcLayout" in analyzer
 assert "splitPutRpcLayout" in analyzer
 assert "splitRpcLayout" in analyzer
+assert "0x0A6884B0" in storage
+assert "InstallNativeBuildingConsumptionCapture" in storage
+assert "nativeCompleteBuildingTarget" in analyzer and "nativePartialBuildingTarget" in analyzer
+assert "0x0A6884A0" in storage
 
 recipe = json.loads((root / "asset-tools" / "extraction-recipes.json").read_text())
 assert recipe["schemaVersion"] == 20

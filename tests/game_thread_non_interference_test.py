@@ -32,7 +32,8 @@ assert "records.Num" not in unregister
 assert "pthread_mutex_lock" not in unregister
 
 # Slow naming/persistence remains worker-side, request handoff is non-blocking,
-# and the shared dispatcher rotates one latency-sensitive consumer per frame.
+# and the shared dispatcher executes at most one latency-sensitive consumer per
+# frame while pending storage work preempts the background rotation.
 execute = graves.split("bool Execute(", 1)[1].split("void FlushAdminGravestoneSnapshots", 1)[0]
 assert "LearnSavedItemMetadata" not in execute
 assert "PlayerInventory(" not in execute
@@ -66,6 +67,9 @@ assert "pthread_mutex_trylock(&queueMutex)" in graves
 assert "pthread_mutex_trylock(&emptyRemovalMutex)" in graves
 assert "const auto selected=phase++%4" in storage
 assert "Exactly one latency-sensitive consumer" in storage
+assert "if(pendingCount.load(std::memory_order_acquire))" in storage
+assert storage.index("if(pendingCount.load(std::memory_order_acquire))") < storage.index("}else if(selected==0)")
+assert "Pending storage work preempts the background rotation" in storage
 performance = (root / "src" / "server_performance_store.cpp").read_text()
 assert 'ReadNetworkCounters()' in performance
 assert 'std::ifstream input("/proc/net/dev")' in performance

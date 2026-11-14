@@ -12,6 +12,8 @@ int main(){
     plan=PlanStorageAutofill(desired,{{0,100,100,"ITEM_AshLogs"},{1,1,1,"ITEM_PlayerWeapon"}});assert(plan.kind==StorageAutofillPlanKind::None);
     plan=PlanStorageAutofill(desired,{{0,1,1,"ITEM_PlayerWeapon"},{1,1,1,"ITEM_PlayerArmour"},{2,1,1,"ITEM_Other"},{3,1,1,"ITEM_Other2"}});assert(plan.kind==StorageAutofillPlanKind::None);
     plan=PlanStorageAutofill(desired,{{0,125,100,"ITEM_AshLogs"},{1,100,100,"ITEM_AshPlanks"}});assert(plan.kind==StorageAutofillPlanKind::None);
+    plan=PlanStorageAutofill(desired,{});assert(plan.kind==StorageAutofillPlanKind::Add&&plan.key=="ITEM_AshLogs"&&plan.quantity==100);
+    plan=PlanStorageAutofill(desired,{{0,100,100,"ITEM_AshLogs"}});assert(plan.kind==StorageAutofillPlanKind::Add&&plan.key=="ITEM_AshPlanks"&&plan.quantity==100);
     StorageAutofillTemplate berries;berries.ownerGuid=desired.ownerGuid;berries.chestId=desired.chestId;berries.capturedAt=100;berries.totalSlots=2;berries.items={{0,99,100,"ITEM_Redberries"},{1,97,100,"ITEM_Redberries"}};
     plan=PlanStorageAutofill(berries,{{1,97,100,"ITEM_Redberries"}});assert(plan.kind==StorageAutofillPlanKind::Add&&plan.quantity==99);
     plan=PlanStorageAutofill(berries,{{0,97,100,"ITEM_Redberries"},{1,99,100,"ITEM_Redberries"}});assert(plan.kind==StorageAutofillPlanKind::Move&&plan.quantity==2&&plan.sourceSlot==1&&plan.destinationSlot==0);

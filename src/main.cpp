@@ -1046,6 +1046,7 @@ void Handle(int fd,std::string* performanceRoute=nullptr) {
         auto adminTeleport = DomEngine::GetAdminTeleportDiagnostics();
         auto adminStorage = DomEngine::GetAdminStorageDiagnostics();
         auto autofillLatency = DomEngine::GetAdminStorageAutofillLatencyDiagnostics();
+        auto autofillBuildingCapture = DomEngine::GetAdminStorageAutofillBuildingCaptureDiagnostics();
         auto adminGraves = DomEngine::GetAdminGravestoneDiagnostics();
         auto adminAuth = adminStore->Diagnostics();
         bool adminAuthorizationCompatible = adminAuth.allowlistReadable && adminAuth.sessionStorageReadable && adminAuth.sessionStorageWritable && adminAuth.sessionStorageRestricted && adminAuth.lastSaveSucceeded && adminAuth.malformedSessionRecords == 0;
@@ -1197,6 +1198,11 @@ void Handle(int fd,std::string* performanceRoute=nullptr) {
             ",\"adminStorageAutofillRpcSplitStackCalls\":" + std::to_string(adminStorage.autofillRpcSplitStackCalls) +
             ",\"adminStorageAutofillRpcCaptureDrops\":" + std::to_string(adminStorage.autofillRpcCaptureDrops) +
             ",\"adminStorageAutofillRpcCaptureMaximumMicroseconds\":" + std::to_string(adminStorage.autofillRpcCaptureMaximumMicroseconds) +
+            ",\"adminStorageAutofillBuildingCaptureCompatibility\":" + std::to_string(autofillBuildingCapture.compatibility) +
+            ",\"adminStorageAutofillBuildingCaptureCalls\":" + std::to_string(autofillBuildingCapture.calls) +
+            ",\"adminStorageAutofillBuildingCaptureInventories\":" + std::to_string(autofillBuildingCapture.inventories) +
+            ",\"adminStorageAutofillBuildingCaptureDrops\":" + std::to_string(autofillBuildingCapture.drops) +
+            ",\"adminStorageAutofillBuildingCaptureMaximumMicroseconds\":" + std::to_string(autofillBuildingCapture.maximumMicroseconds) +
             ",\"adminStorageAutofillReplicationWakeCompatibility\":" + std::to_string(adminStorage.autofillReplicationWakeCompatibility) +
             ",\"adminStorageAutofillReplicationWakeCalls\":" + std::to_string(adminStorage.autofillReplicationWakeCalls) +
             ",\"adminStorageAutofillReplicationWakeFailures\":" + std::to_string(adminStorage.autofillReplicationWakeFailures) +

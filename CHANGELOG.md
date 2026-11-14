@@ -2,6 +2,26 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.87] - 2026-11-14
+
+### Added
+
+- Add responsive mobile layouts for the known-players and individual-player pages, including eight-column storage and gravestone grids, compact portrait and landscape actions, 100-entry recipe pagination, non-dragging mobile maps, and touch-friendly long-press storage menus.
+- Capture linked-storage consumption from both partial and completed building actions through exact reviewed native implementation hooks, with independent compatibility, drop, inventory, and end-to-end latency diagnostics.
+
+### Changed
+
+- Give queued storage autofill work one bounded action on the next game tick ahead of background dispatcher rotation, restoring linked-building materials in approximately one server tick without increasing the per-frame native-work budget.
+- Keep installed-app same-origin navigation inside the standalone window and apply the shared safe-area and browser-surface behavior across player pages while leaving external links under normal browser control.
+- Ship the reviewed native hooks, compatibility inventory, and player-page runtime through Zanik Manager's exact server payload; generated website assets remain unchanged.
+
+### Fixed
+
+- Restore whole-stack autofill quantities after linked building consumption rebalances or clamps matching controlled stacks, retaining exact final readback as the fail-closed boundary.
+- Prevent iOS and Android selection, drag, and callout UI from competing with storage long-press actions; consume a mobile dismissal tap so it cannot activate controls beneath the menu.
+- Restore desktop click-away dismissal for storage context menus without consuming the underlying desktop pointer action.
+- Keep player-page maps from intercepting mobile scrolling and normalize compact-landscape map and section typography.
+
 ## [0.2.86] - 2026-11-13
 
 ### Changed

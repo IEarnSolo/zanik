@@ -2,16 +2,32 @@
 const fs=require('fs');
 const source=fs.readFileSync(require('path').join(__dirname,'..','src','web_page.h'),'utf8');
 const sharedScripts={};
-for(const name of ['scaleBootstrap','responsiveScript','shellScript']){
+for(const name of ['scaleBootstrap','responsiveScript','appBehaviorScript','shellScript']){
   const match=source.match(new RegExp('const std::string '+name+' = R"DWHTML\\(<script(?:[^>]*)>([\\s\\S]*?)<\\/script>\\)DWHTML";'));
   if(!match)throw new Error('missing shared site script: '+name);
   sharedScripts[name]=match[1];
   new Function(match[1]);
 }
+{
+  const listeners={},root={dataset:{}},modes={fullscreen:{matches:true},standalone:{matches:false}},assigned=[];
+  const documentMock={documentElement:root,addEventListener:(name,handler)=>{listeners[name]=handler}};
+  const matchMediaMock=query=>modes[query.includes('fullscreen')?'fullscreen':'standalone'];
+  const locationMock={href:'https://example.test/player?id=1',origin:'https://example.test'};
+  const windowMock={location:{set href(value){assigned.push(value)}}};
+  const navigatorMock={standalone:false};
+  new Function('document','matchMedia','navigator','location','window',sharedScripts.appBehaviorScript)(documentMock,matchMediaMock,navigatorMock,locationMock,windowMock);
+  if(root.dataset.appDisplayMode!=='fullscreen'||typeof listeners.click!=='function')throw new Error('installed app mode was not initialized');
+  let prevented=false;
+  listeners.click({defaultPrevented:false,button:0,metaKey:false,ctrlKey:false,shiftKey:false,altKey:false,preventDefault:()=>{prevented=true},target:{closest:()=>({href:'/recipe-unlocks?q=food',target:'',hasAttribute:()=>false})}});
+  if(!prevented||assigned[0]!=='/recipe-unlocks?q=food')throw new Error('same-origin app navigation escaped into a browser window');
+  prevented=false;
+  listeners.click({defaultPrevented:false,button:0,metaKey:false,ctrlKey:false,shiftKey:false,altKey:false,preventDefault:()=>{prevented=true},target:{closest:()=>({href:'https://external.example/wiki',target:'_blank',hasAttribute:()=>false})}});
+  if(prevented||assigned.length!==1)throw new Error('external navigation was incorrectly captured by the app shell');
+}
 for(const token of ['site-scale-select','site-admin-state','zanik.uiScale','dragonwilds.map.uiScale','zanik:admin-session','zanik:ui-scale',"window.addEventListener('storage'","event.key==='zanik.uiScale'","applyScale(event.newValue??1,false)",'--app-safe-top','--app-touch-target','visualViewport',"root.dataset.responsiveMode=mode","new CustomEvent('zanik:responsive'"]){
   if(!source.includes(token))throw new Error('missing shared site-shell token: '+token);
 }
-for(const token of ['--site-bottom-nav-h','site-more-toggle','siteMorePanel','window.ZanikSiteShell={closeMore}',"new CustomEvent('zanik:site-surface'",'grid-template-columns:repeat(5,1fr)','bottom:var(--app-safe-bottom)','data-responsive-mode="compact-portrait"','--site-bottom-nav-h:calc(max(var(--app-touch-target),2.75rem) + var(--app-safe-bottom))','data-responsive-mode="compact-landscape"','--site-bottom-nav-h:calc(2rem + var(--app-safe-bottom))','app.webmanifest','apple-mobile-web-app-capable','app-icon-180.png']){
+for(const token of ['--site-bottom-nav-h','site-more-toggle','siteMorePanel','window.ZanikSiteShell={closeMore}',"new CustomEvent('zanik:site-surface'",'grid-template-columns:repeat(5,1fr)','bottom:var(--app-safe-bottom)','data-responsive-mode="compact-portrait"','--site-bottom-nav-h:calc(max(var(--app-touch-target),2.75rem) + var(--app-safe-bottom))','data-responsive-mode="compact-landscape"','--site-bottom-nav-h:calc(2rem + var(--app-safe-bottom))','app.webmanifest','apple-mobile-web-app-capable','black-translucent','app-icon-180.png','zanik-app-behavior','overscroll-behavior:none']){
   if(!source.includes(token))throw new Error('missing compact site-shell token: '+token);
 }
 {

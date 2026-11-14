@@ -108,6 +108,7 @@ do {
            $update.adminTeleportCompatibility -eq 1 -and $update.adminStorageCompatibility -eq 1 -and $update.adminGravestoneCompatibility -eq 1 -and
            $update.adminStorageAutofillCompatibility -eq 1 -and $update.adminStorageAutofillNormalizationCompatibility -eq 1 -and
            $update.adminStorageAutofillPersistenceCompatibility -eq 1 -and $update.adminStorageAutofillRpcCaptureCompatibility -eq 1 -and
+           $update.adminStorageAutofillBuildingCaptureCompatibility -eq 1 -and $update.adminStorageAutofillBuildingCaptureDrops -eq 0 -and
            $update.adminStorageAutofillReplicationWakeCompatibility -eq 1 -and $update.adminStorageAutofillNormalizationFailures -eq 0 -and
            $update.adminStorageCircuitBreakers -eq 0 -and
            $storageModeOk -and $claimPageOk -and $unauthorizedCode -eq 401 -and $update.mapProjectionCompatibility -eq $true){

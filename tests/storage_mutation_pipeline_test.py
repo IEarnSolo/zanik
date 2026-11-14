@@ -80,6 +80,30 @@ assert "LogMessage" not in rpc_observer
 assert "std::string" not in rpc_observer
 assert "autofillRpcCaptureCompatibility" in header
 assert "adminStorageAutofillRpcCaptureCompatibility" in main
+for token in (
+    'FindStorageRpc("Server_ConsumeItemsFromCompletingBuilding")',
+    'FindStorageRpc("Server_ConsumeItemsFromPartiallyCompletingBuilding")',
+    "ResolveInventoryArrayParameterOffset",
+    "ObservedMutationKind::BuildingConsume",
+    "autofillBuildingCaptureCompatibility",
+    "InstallNativeBuildingConsumptionCapture",
+    "HookCompleteBuildingConsumption",
+    "HookPartialBuildingConsumption",
+    "BuildingConsumptionHookBytes",
+    "autofillCompleteBuildingNativeTarget",
+):
+    assert token in storage
+for token in ("linked-building native consumption thunk or target changed", "storageCompleteBuildingRpcAt", "storagePartialBuildingRpcAt", "nativeCompleteBuildingTarget", "nativePartialBuildingTarget"):
+    assert token in analyzer
+for field in (
+    "adminStorageAutofillBuildingCaptureCompatibility",
+    "adminStorageAutofillBuildingCaptureCalls",
+    "adminStorageAutofillBuildingCaptureInventories",
+    "adminStorageAutofillBuildingCaptureDrops",
+    "adminStorageAutofillBuildingCaptureMaximumMicroseconds",
+):
+    assert field in main
+assert "AdminStorageAutofillBuildingCaptureDiagnostics" in header
 for field in (
     "adminStorageAutofillLatencySamples",
     "adminStorageAutofillCaptureToDrainMaximumMicroseconds",

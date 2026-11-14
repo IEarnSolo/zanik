@@ -112,12 +112,19 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert "new CustomEvent('zanik:admin-session'" in page
             assert '<link rel="manifest" href="/app.webmanifest">' in page
             assert '<meta name="apple-mobile-web-app-capable" content="yes">' in page
+            assert '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">' in page
+            assert 'id="zanik-app-behavior"' in page
+            assert "root.dataset.appDisplayMode" in page
+            assert "url.origin===location.origin&&(!sameDocument||link.target==='_blank')" in page
+            assert "window.location.href=url.pathname+url.search+url.hash" in page
+            assert "html{overscroll-behavior:none}" in page
             assert '<link rel="apple-touch-icon" sizes="180x180" href="/app-icon-180.png">' in page
         with get(base, "/app.webmanifest") as response:
             assert response.headers.get_content_type() == "application/manifest+json"
             manifest = json.loads(response.read())
             assert manifest["start_url"] == "/" and manifest["scope"] == "/"
             assert manifest["display"] == "standalone"
+            assert manifest["display_override"] == ["fullscreen", "standalone"]
             assert manifest["id"] == "/" and manifest["prefer_related_applications"] is False
             assert manifest["launch_handler"] == {"client_mode": "navigate-existing"}
             assert {icon["sizes"] for icon in manifest["icons"]} == {"192x192", "512x512"}
