@@ -23,8 +23,12 @@ for quest in quests:
     if quest['map'] is not None: assert 0<=quest['map']['x']<=1 and 0<=quest['map']['y']<=1
 runtime=(root/'web/quest-runtime-catalog.tsv').read_text(encoding='utf-8').splitlines()
 assert f'count={len(quests)}' in runtime[0] and catalog['fingerprint'] in runtime[0]
-assert len([line for line in runtime if line and not line.startswith('#')])==len(quests)
-assert {line.split('\t',1)[0] for line in runtime if line and not line.startswith('#')}=={q['id'] for q in quests}
+quest_runtime_rows=[line for line in runtime if line and not line.startswith(('#','O\t'))]
+objective_runtime_rows=[line for line in runtime if line.startswith('O\t')]
+assert 'schema=2' in runtime[0] and f'objectiveCount={len(objective_runtime_rows)}' in runtime[0] and 'objectiveFingerprint=' in runtime[0]
+assert len(quest_runtime_rows)==len(quests)
+assert {line.split('\t',1)[0] for line in quest_runtime_rows}=={q['id'] for q in quests}
+assert objective_runtime_rows and all(len(line.split('\t'))==4 for line in objective_runtime_rows)
 page=(root/'src/web_page.h').read_text(encoding='utf-8')
 for token in ('data-player-panel="quests"','<h2>Quests</h2>','/api/player-quests','/api/quests/catalog','questRegion','questSort','questHideCompleted','zanik-quests-hide-completed',"ZanikPolling.add('player-quests',2000"): assert token in page
 steps=json.loads((root/'web/quest-step-locations.json').read_text(encoding='utf-8'))

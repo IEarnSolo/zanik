@@ -8,6 +8,7 @@ namespace Mem {
 void Init();
 bool Readable(const void* addr, size_t size);
 bool SafeCopy(uintptr_t addr, void* out, size_t size);
+bool SafeWrite(uintptr_t addr, const void* value, size_t size);
 void Refresh();
 
 bool InImage(const void* addr);
@@ -25,6 +26,11 @@ inline bool Read(uintptr_t addr, T& out) {
 template <typename T>
 inline bool SafeRead(uintptr_t addr, T& out) {
     return SafeCopy(addr, &out, sizeof(T));
+}
+
+template <typename T>
+inline bool SafeWrite(uintptr_t addr, const T& value) {
+    return SafeWrite(addr, &value, sizeof(T));
 }
 
 inline uintptr_t ReadPtr(uintptr_t addr) {

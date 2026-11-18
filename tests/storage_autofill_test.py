@@ -68,6 +68,29 @@ assert "autofillStore->Remove(characterGuid,chestId)" in settings
 assert "Selected items added to the autofill snapshot" in settings
 assert "Selected items removed from the autofill snapshot" in settings
 
+destruction = storage[storage.index("void CleanupDestroyedStorageAutofill"):storage.index("bool HookMoveItem")]
+assert "knownAutofillStorages" in destruction
+assert "snapshotCache" in destruction and "entry.second->targetGuid" in destruction
+assert "autofillStore->Remove(known.ownerGuid,known.chestId)" in destruction
+assert 'entry.second->operation=="autofill"' in destruction and "entry.second->cancelled=true" in destruction
+hook = storage[storage.index("void HookBuildingEndPlay"):storage.index("bool InstallBuildingEndPlayHook")]
+assert "ObservedMutationKind::BuildingDestroyed" in hook
+assert hook.index("PublishObservedMutation") < hook.index("originalBuildingEndPlay")
+drain = storage[storage.index("void DrainAdminStorageMutationTraces"):storage.index("bool HasPendingAdminStorageAutofillMutation")]
+assert "CleanupDestroyedStorageAutofill(event.source,event.identity)" in drain
+
+ownership = storage[storage.index("void FinalizeAdminStorageOwnershipTransfers"):storage.index("std::string NewRequestId")]
+assert "autofillStore->Transfer" in ownership
+assert "ownershipSnapshotMigrations" in ownership
+assert "JobState::RollingBack" in ownership
+assert "StorageAutofillStore::Transfer" in (root / "src/storage_autofill_store.cpp").read_text(encoding="utf-8")
+ownership_capability = next(item for item in capabilities["capabilities"] if item["id"] == "storage-ownership-transfer")
+assert "zanik-data/storage-autofill.db" in ownership_capability["persistence"]
+for token in ("adminStorageAutofillDestructionCompatibility", "adminStorageAutofillDestructionSignals",
+              "adminStorageAutofillDestructionDrops", "adminStorageAutofillDestroyedSnapshots",
+              "adminStorageAutofillDestructionFailures", "adminStorageAutofillDestructionMaximumMicroseconds"):
+    assert token in main
+
 for token in ("storage-autofill.db", "ConfigureAdminStorageAutofill", "ReconcileAdminStorageAutofill", "adminStorageAutofillCompatibility", "adminStorageAutofillProtectedSkips"):
     assert token in main or token in header
 for token in ("adminStorageAutofillNormalizationCompatibility", "adminStorageAutofillNormalizationFailures"):

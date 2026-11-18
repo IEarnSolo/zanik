@@ -25,6 +25,8 @@ def strings(value):
     elif isinstance(value,list):
         for child in value: out+=strings(child)
     return list(dict.fromkeys(x for x in out if x))
+def tsv(value):
+    return str(value).replace('\t',' ').replace('\r',' ').replace('\n',' ')
 def region(value,path):
     key=str(value or '').split('::')[-1]
     if key in REGIONS:return REGIONS[key]
@@ -52,12 +54,14 @@ def main():
             p=export.get('Properties') or {};qid=p.get('PersistenceID');name=text(p.get('QuestName'))
             marker=(str(path)+' '+export.get('Name','')+' '+name).lower()
             if not qid or not name or any(word in marker for word in EXCLUDE):continue
-            objectives=[]
+            objectives=[];objective_entries=[]
             for item in objective_rows(p):
+                key=str((item or {}).get('Key') or '')
                 value=text((item or {}).get('Value'))
-                if value and value not in objectives:objectives.append(value)
+                if key and value and value not in objectives:
+                    objectives.append(value);objective_entries.append({'key':key,'text':value})
             override=overrides.get(qid,{})
-            entry={'id':qid,'name':name,'internal':export.get('Name',''),'type':'main' if p.get('bIsMainQuest') else 'side','region':override.get('region') or region(p.get('QuestRegion'),str(path)),'subregion':override.get('subregion',''),'starter':override.get('starter','Unknown'),'description':text(p.get('QuestDescription')),'objectives':objectives,'requirements':override.get('requirements',strings(p.get('QuestRequirements'))),'rewards':override.get('rewards',strings(p.get('QuestRewards'))),'icon':'/assets/quests/main-quest.png' if p.get('bIsMainQuest') else '/assets/quests/side-quest.png','map':override.get('map')}
+            entry={'id':qid,'name':name,'internal':export.get('Name',''),'objectiveEntries':objective_entries,'type':'main' if p.get('bIsMainQuest') else 'side','region':override.get('region') or region(p.get('QuestRegion'),str(path)),'subregion':override.get('subregion',''),'starter':override.get('starter','Unknown'),'description':text(p.get('QuestDescription')),'objectives':objectives,'requirements':override.get('requirements',strings(p.get('QuestRequirements'))),'rewards':override.get('rewards',strings(p.get('QuestRewards'))),'icon':'/assets/quests/main-quest.png' if p.get('bIsMainQuest') else '/assets/quests/side-quest.png','map':override.get('map')}
             quests.append(entry)
     by_id={}
     for quest in quests:
@@ -66,14 +70,17 @@ def main():
         by_id[quest['id']]=quest
     quests=sorted(by_id.values(),key=lambda q:(q['region'],q['type']!='main',q['name']))
     if not quests:raise SystemExit('no playable QuestData assets found')
-    canonical=json.dumps(quests,ensure_ascii=False,separators=(',',':'),sort_keys=True).encode()
+    canonical=json.dumps([{k:v for k,v in q.items() if k!='objectiveEntries'} for q in quests],ensure_ascii=False,separators=(',',':'),sort_keys=True).encode()
     fingerprint=hashlib.sha256(canonical).hexdigest()
+    objective_rows_runtime=[(q['id'],o['key'],o['text']) for q in quests for o in q['objectiveEntries']]
+    objective_fingerprint=hashlib.sha256(json.dumps(objective_rows_runtime,ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
     public_quests=[]
     for quest in quests:
-        quest=dict(quest);quest.pop('internal');public_quests.append(quest)
+        quest=dict(quest);quest.pop('internal');quest.pop('objectiveEntries');public_quests.append(quest)
     args.public.parent.mkdir(parents=True,exist_ok=True)
     args.public.write_text(json.dumps({'schemaVersion':1,'fingerprint':fingerprint,'quests':public_quests},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-    lines=[f'# schema=1 fingerprint={fingerprint} count={len(quests)}']+[f"{q['id']}\t{q['name']}\t{q['internal']}" for q in quests]
+    lines=[f'# schema=2 fingerprint={fingerprint} count={len(quests)} objectiveFingerprint={objective_fingerprint} objectiveCount={len(objective_rows_runtime)}']+[f"{q['id']}\t{q['name']}\t{q['internal']}" for q in quests]
+    lines += [f"O\t{tsv(quest_id)}\t{tsv(key)}\t{tsv(text)}" for quest_id,key,text in objective_rows_runtime]
     args.runtime.write_text('\n'.join(lines)+'\n',encoding='utf-8')
     print(f'generated {len(quests)} playable quests ({fingerprint})')
 if __name__=='__main__':main()

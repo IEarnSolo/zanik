@@ -19,6 +19,8 @@ header = (root / "src" / "engine" / "dom_engine.h").read_text()
 assert "GObjects_26574459 = 0x0DCAF510" in header
 assert "GNames_26574459   = 0x0DBF3FF8" in header
 assert "GWorld_26574459   = 0x0DDCB5F8" in header
+assert "DomPlayerChar_AttributesComponent = 0x1498" in header
+assert "DomPlayerChar_HealthComponent = 0x14A8" in header
 
 resources = (root / "src" / "engine" / "resources.cpp").read_text()
 assert f'hash=="{server_sha}"' in resources
@@ -41,7 +43,7 @@ for offset in (
     "0x0A6698D0", "0x0A66A460", "0x0A66BFA0", "0x0A66F030",
     "0x0A66B430", "0x0A677E00", "0x0A3E9A20", "0x04A94480",
     "0x07ACAF90", "0x0A0FDAC0", "0x0A0FDD30", "0x0A0FE110",
-    "0x04ADAAE0", "0x079DB8A0", "0x04A2A9F0", "0x0A3C4FA0", "0x0A68BA70",
+    "0x04ADAAE0", "0x079DB8A0", "0x04A2A9F0", "0x0A3C4FA0", "0x0A68BA70", "0x0AAD4450",
 ):
     assert offset in storage
 assert "hash==CurrentSha||hash==LatestSha" in storage
@@ -77,6 +79,36 @@ assert "0x0A6884B0" in storage
 assert "InstallNativeBuildingConsumptionCapture" in storage
 assert "nativeCompleteBuildingTarget" in analyzer and "nativePartialBuildingTarget" in analyzer
 assert "0x0A6884A0" in storage
+for token in (
+    "activityHealthGetter", "activityAttributesGetter", "activityIsDead",
+    "activitySkillGetter", "activitySkillXp", "activityRecipeQuery",
+    "activityMaterialQuery", "activityPerkQuery", "activityRegionGetter",
+    "activityRegionReveal", "recent activity player component layout changed",
+    "activityRegionBitmapQuery", "recent activity revealed-region bitmap ABI changed",
+    "adminActivityReflection", "admin activity test reflection symbols missing",
+):
+    assert token in analyzer
+
+capabilities = json.loads((root / "deploy" / "compatibility-capabilities.json").read_text())
+fields = {entry["id"]: entry for entry in capabilities["capabilities"]}
+for capability in (
+    "recent-activity-core", "activity-skill-level", "activity-death",
+    "activity-recipe-unlocked", "activity-quest-started", "activity-quest-progressed", "activity-quest-completed",
+    "region-discovery", "activity-material-discovered",
+    "activity-perk-unlocked", "activity-spell-unlocked",
+    "admin-recent-activity-testing",
+):
+    assert capability in fields
+
+unlock_catalog = (root / "config" / "player-activity-unlock-catalog.tsv").read_text().splitlines()
+assert "schema=2" in unlock_catalog[0] and "count=203" in unlock_catalog[0]
+unlock_rows = {row.split("\t")[0]: row.split("\t") for row in unlock_catalog[1:]}
+assert len(unlock_rows) == 203
+assert unlock_rows["PerkV2_Agility_GreaterBreakfall"][1:5] == [
+    "perk", "PerkV2_Agility_GreaterBreakfall", "Greater Breakfall",
+    "/assets/spells-and-perks/PerkV2_Agility_GreaterBreakfall.png",
+]
+assert unlock_rows["PerkV2_Agility_GreaterBreakfall"][6:] == ["SKILL_Agility", "54"]
 
 recipe = json.loads((root / "asset-tools" / "extraction-recipes.json").read_text())
 assert recipe["schemaVersion"] == 20

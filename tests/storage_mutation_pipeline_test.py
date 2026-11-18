@@ -174,10 +174,27 @@ for operation in (
     'operation=="add_existing"',
     'operation=="take"',
     'operation=="rename"',
+    'operation=="transfer_ownership"',
 ):
     assert operation in planner, operation
 assert "JobState::RollingBack" in tick_action
+assert "JobState::Persisting" in tick_action
 assert "familyCircuitBroken" in tick_action
+
+# Ownership transfer is independently gated, uses the authoritative replicated
+# setter with readback, and migrates persistence off the game thread. A failed
+# durable migration queues the prebuilt native rollback.
+for token in ("SetOwningCharacterGuid", "ActionKind::OwnershipSet", "ActionKind::OwnershipVerify", "OperationFamily::Ownership", "ParseCharacterGuid", "a.source+0x168", "Mem::SafeWrite"):
+    assert token in storage
+assert "FinalizeAdminStorageOwnershipTransfers" in storage and "FinalizeAdminStorageOwnershipTransfers" in main
+assert "autofillStore->Transfer" in storage
+assert "request->rollbackIndex=request->rollback.size()" in storage
+assert "storageSetOwningCharacterGuid" in analyzer
+assert "ownershipChangeGate" in analyzer
+assert "storage ownership setter ABI, owner GUID field, or ownership-change gate changed" in analyzer
+assert "const int code=r.resultCode.load();FinishJob(r,false,code?code:-2)" in storage
+for token in ("storageOwnership", "transfer_ownership", "newOwnerId", "Transfer ownership", "autofill snapshot will move"):
+    assert token in main or token in web
 assert "micros>=1000" in tick_action
 assert "renameTextConstructed" in tick_action
 assert "finishAsFailure" in tick_action

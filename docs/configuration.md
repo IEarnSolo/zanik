@@ -10,6 +10,8 @@ Malformed configuration logs the exact non-secret key/line error and launches th
 
 Read-only player/status, kills, map/catalog, resource/NPC, recipe/quest, and authenticated read administration default on. All teleport, mutation, recipe-unlock administration, and QoL gameplay options default off. A disabled admin operation authenticates first, then returns HTTP 403 with `Feature disabled by server operator`; its UI control is hidden.
 
+`FEATURE_ADMIN_ACTIVITY_TESTING` enables the Recent Activity test laboratory. It is dangerous and defaults off. It mutates and saves an explicitly selected online character through reflected game functions: depending on the selected test, preparation can reset an entire skill, all progress, all quests, or one region discovery bit. Keep it disabled outside deliberate testing, use expendable test characters, and review the warnings and exact-name confirmation shown by the administration page.
+
 `FEATURE_ADMIN_TELEPORT` controls every authenticated teleport action: teleports between players, player-built lodestones, fixed nodestones, storage, and gravestones. Its independently validated compatibility gates can still disable only an unsafe destination family while leaving the others available.
 
 `FEATURE_QOL_AUTO_COMPOST` is reserved for an incomplete feature with no deployable server integration. The launcher, Manager, and native runtime enforce `false`; it is not currently a supported opt-in capability.

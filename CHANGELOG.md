@@ -2,6 +2,25 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.88] - 2026-11-18
+
+### Added
+
+- Add authenticated website transfer of an individual storage to another known character, including authoritative native owner readback and automatic migration of any autofill snapshot to the recipient-derived storage ID.
+- Add an off-by-default authenticated recent-activity test laboratory for selected online test characters, with explicit destructive confirmation, bounded native triggers, persistence coordination, and diagnostics for all ten activity types.
+
+### Changed
+
+- Split Recent Activity health into independent per-event compatibility gates and strengthen authoritative health, skill, region, quest-objective, perk, and spell discovery contracts across the runtime, analyzer, API, and UI.
+- Extend the reviewed unlock catalog with skill and level requirements and keep quest objective keys in the private runtime catalog so test preparation can target exact native records without publishing game-derived data.
+- Ship the reviewed native runtime and compatibility inventory through Zanik Manager's exact embedded server payload; the independently versioned generated website asset contract remains unchanged.
+
+### Fixed
+
+- Allow the authenticated storage-transfer action to temporarily open a placed container's native ownership-change gate, restore it immediately after the authoritative setter, and retain precise failure details after rollback.
+- Delete a storage's durable autofill snapshot after authoritative in-game destruction, cancelling pending refills and preventing a replacement at the same location from inheriting the destroyed container's template.
+- Refresh the authoritative revealed-region component after character save or reload instead of retaining a still-live but stale object.
+
 ## [0.2.87] - 2026-11-14
 
 ### Added

@@ -68,6 +68,9 @@ public:
     bool Load();
     bool Replace(const StorageAutofillTemplate& value);
     bool Remove(const std::string& ownerGuid, const std::string& chestId);
+    bool Transfer(const std::string& oldOwnerGuid, const std::string& oldChestId,
+                  const std::string& newOwnerGuid, const std::string& newChestId,
+                  bool& transferred);
     bool Find(const std::string& ownerGuid, const std::string& chestId,
               StorageAutofillTemplate& value) const;
     std::vector<StorageAutofillTemplate> All() const;

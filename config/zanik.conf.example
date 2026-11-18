@@ -27,6 +27,9 @@ FEATURE_ADMIN_RECIPE_SETTINGS=false
 FEATURE_ADMIN_TELEPORT=false
 FEATURE_ADMIN_STORAGE_MUTATION=false
 FEATURE_ADMIN_GRAVESTONE_MUTATION=false
+# Destructive testing laboratory for resetting and retriggering recent-activity
+# events on explicitly selected online test characters. Keep disabled normally.
+FEATURE_ADMIN_ACTIVITY_TESTING=false
 # Allows administrators to snapshot selected storage containers and safely refill missing quantities.
 FEATURE_QOL_STORAGE_AUTOFILL=false
 # Incomplete and not deployable yet. Keep this false.

@@ -273,6 +273,26 @@ bool StorageAutofillStore::Remove(const std::string& ownerGuid, const std::strin
     return true;
 }
 
+bool StorageAutofillStore::Transfer(const std::string& oldOwnerGuid, const std::string& oldChestId,
+                                    const std::string& newOwnerGuid, const std::string& newChestId,
+                                    bool& transferred) {
+    transferred = false;
+    if (newOwnerGuid.empty() || newOwnerGuid.size() > 128 || newChestId.size() != 16 ||
+        newChestId.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos) return false;
+    Lock lock(mutex_);
+    if (!loaded_) return false;
+    auto source = std::find_if(templates_.begin(), templates_.end(), [&](const auto& item){ return item.ownerGuid == oldOwnerGuid && item.chestId == oldChestId; });
+    if (source == templates_.end()) return true;
+    const auto collision = std::find_if(templates_.begin(), templates_.end(), [&](const auto& item){ return item.ownerGuid == newOwnerGuid && item.chestId == newChestId; });
+    if (collision != templates_.end() && collision != source) return false;
+    const auto previous = templates_;
+    source->ownerGuid = newOwnerGuid;
+    source->chestId = newChestId;
+    if (!SaveLocked()) { templates_ = previous; return false; }
+    transferred = true;
+    return true;
+}
+
 bool StorageAutofillStore::Find(const std::string& ownerGuid, const std::string& chestId, StorageAutofillTemplate& value) const {
     Lock lock(mutex_);
     const auto found = std::find_if(templates_.begin(), templates_.end(), [&](const auto& item){ return item.ownerGuid == ownerGuid && item.chestId == chestId; });

@@ -11,7 +11,15 @@ for (const token of [
   '@media(max-width:640px)',
   '.storage-grid{grid-template-columns:repeat(8,minmax(0,1fr));width:100%',
   '.grave-grid{grid-template-columns:repeat(8,minmax(0,1fr));width:100%',
-  '.storage-slot{box-sizing:border-box;width:100%;height:auto;min-width:0;aspect-ratio:1',
+  '.storage-slot{box-sizing:border-box;width:100%;height:auto;min-width:0;min-height:0;aspect-ratio:1/1;overflow:hidden',
+  '.storage-slot>img{position:absolute;inset:7%;width:86%;height:86%',
+  '.storage-drag-toggle { display:none; }',
+  'id="storageSelectionTip"',
+  '.storage-selection-tip-title',
+  'bottom:calc(var(--site-bottom-nav-h) + .4rem)',
+  'max-height:min(7rem,22dvh)',
+  '.storage-grid .storage-slot{touch-action:pan-y}',
+  '.storage-grid.touch-drag-enabled .storage-slot{touch-action:none}',
   'id="recipePagination"',
   'recipeMobilePageSize=100',
   "matchMedia('(max-width:760px)').matches",
@@ -33,6 +41,24 @@ for (const token of [
   "event.pointerType!=='touch'||!mobilePlayerUi()",
   'Math.hypot(event.clientX-startX,event.clientY-startY)>5',
   'Long-press a slot for actions',
+  "dragToggle.textContent=dragEnabled?'Disable drag':'Enable drag'",
+  "if(event.pointerType==='touch'&&mobileStorageDragUi()&&storageTouchDragChestId!==chest.id)return",
+  "if(view!=='storage'){if(storageTouchDragChestId!==null)disableStorageTouchDrag();storageSelectionTip.hidden=true}",
+  "window.addEventListener('pagehide',disableStorageTouchDrag)",
+  "document.addEventListener('visibilitychange',()=>{if(document.hidden)disableStorageTouchDrag()})",
+  "document.addEventListener('zanik:responsive',()=>{if(!mobileStorageDragUi())disableStorageTouchDrag();else{syncStorageTouchDragUi();updateStorageSelectionTip()}})",
+  'function storageSelectionTipContent(entry)',
+  "if(!mobileStorageDragUi()||activePlayerView!=='storage'||storageDrag||entries.length!==1)",
+  "if(mobileStorageDragUi())return",
+  'hideStorageSelectionTip();closeStorageContext()',
+  'updateMoveQueueStatus(chest.id);updateStorageSelectionTip()',
+  'function extendStorageSelectionBackward(slots,clickedIndex,selected)',
+  "if((event.ctrlKey||event.metaKey)&&event.shiftKey){extendStorageSelectionBackward(chest.slots||[],index,selected)}",
+  "preserve=event.ctrlKey||event.metaKey||card.classList.contains('storage-multi-select')",
+  'const storageMouseDragArmMs=150',
+  'function storageMouseDragBlocked(drag,event,readyAt,now=performance.now())',
+  "slot._storageDragReadyAt=performance.now()+storageMouseDragArmMs",
+  "storageMouseDragBlocked(storageDrag,event,Number(slot._storageDragReadyAt)||0)",
   'bindStorageLongPress(slot,event=>showStorageContext(event,chest,entry,allChests))',
   'bindStorageLongPress(slot,event=>showEmptyStorageContext(event,chest))',
   'function dismissStorageContextOnly(event)',
@@ -40,6 +66,22 @@ for (const token of [
   "document.addEventListener('click',event=>{if(Date.now()<storageContextDismissUntil)",
 ]) {
   if (!playerPage[1].includes(token)) throw new Error(`missing mobile player UI contract: ${token}`);
+}
+
+const storageTipSource = playerPage[1].match(/function storageTooltipText\([\s\S]*?\n    function hideStorageSelectionTip/);
+if (!storageTipSource) throw new Error('storage selection-tip content helper not found');
+const storageTipContext = { Number, String };
+vm.createContext(storageTipContext);
+vm.runInContext(storageTipSource[0].replace(/\n    function hideStorageSelectionTip$/, '') + ';this.content=storageSelectionTipContent', storageTipContext);
+let tip = storageTipContext.content({name: 'Oak Logs'});
+if (tip.title !== 'Oak Logs' || tip.detail !== '') throw new Error('ordinary selected item did not produce a name-only mobile detail');
+tip = storageTipContext.content({name: 'Oak Logs', autofillSnapshotState: 'matched', autofillSnapshotQuantity: 50, autofillSnapshotName: 'Oak Logs'});
+if (tip.title !== 'Oak Logs' || tip.detail !== 'Autofill snapshot — restores this slot to 50 × Oak Logs.') {
+  throw new Error('matched autofill snapshot detail was not preserved in the mobile panel');
+}
+tip = storageTipContext.content({name: 'Ash Planks', autofillSnapshotState: 'foreign', autofillSnapshotQuantity: 25, autofillSnapshotName: 'Oak Logs'});
+if (!tip.detail.includes('autofill protects this item') || !tip.detail.includes('Snapshot expects 25 × Oak Logs here.')) {
+  throw new Error('foreign autofill snapshot detail was not preserved in the mobile panel');
 }
 
 if ((playerPage[1].match(/mobilePlayerUi\(\)\|\|!pointers\.has\(event\.pointerId\)/g) || []).length !== 2) {
@@ -128,6 +170,50 @@ if (!desktopDismissalContext.dismiss({target: outside, preventDefault: () => { p
 }
 if (desktopRemoved !== 1 || prevented !== 0 || stopped !== 0 || desktopDismissalContext.storageContextMenu !== null || desktopDismissalContext.storageContextDismissUntil !== 0) {
   throw new Error('desktop click-away dismissal incorrectly consumed the underlying pointer action');
+}
+
+const dragDelaySource = playerPage[1].match(/function storageMouseDragBlocked\([\s\S]*?\n    function syncStorageTouchDragUi/);
+if (!dragDelaySource) throw new Error('mouse drag-delay helper not found');
+const dragDelayContext = { Math, performance: { now: () => 0 } };
+vm.createContext(dragDelayContext);
+vm.runInContext(dragDelaySource[0].replace(/\n    function syncStorageTouchDragUi$/, '') + ';this.blocked=storageMouseDragBlocked', dragDelayContext);
+const dragFixture = { active: false, startX: 10, startY: 10 };
+if (!dragDelayContext.blocked(dragFixture, {clientX: 17, clientY: 10}, 150, 149)) {
+  throw new Error('mouse drag activated before the 150ms arm delay');
+}
+if (dragDelayContext.blocked(dragFixture, {clientX: 17, clientY: 10}, 150, 150)) {
+  throw new Error('mouse drag remained blocked after the 150ms arm delay');
+}
+if (dragDelayContext.blocked(dragFixture, {clientX: 15, clientY: 10}, 150, 100)) {
+  throw new Error('sub-threshold mouse motion was treated as a pending drag');
+}
+if (dragDelayContext.blocked({...dragFixture, active: true}, {clientX: 17, clientY: 10}, 150, 100)) {
+  throw new Error('an active mouse drag was blocked by the arm delay');
+}
+
+const rangeSource = playerPage[1].match(/function extendStorageSelectionBackward\([\s\S]*?\n    function clearStorageSelection/);
+if (!rangeSource) throw new Error('storage range-selection helper not found');
+const rangeContext = {};
+vm.createContext(rangeContext);
+vm.runInContext(rangeSource[0].replace(/\n    function clearStorageSelection$/, '') + ';this.extend=extendStorageSelectionBackward', rangeContext);
+const rangeSlots = [
+  {id: 'a'}, {id: 'b'}, null, {id: 'c'}, {id: 'd'}, null, {id: 'e'}, {id: 'f'},
+];
+let rangeSelected = new Set(['b']);
+if (!rangeContext.extend(rangeSlots, 6, rangeSelected) || [...rangeSelected].join(',') !== 'b,c,d,e') {
+  throw new Error('Ctrl+Shift did not add the occupied row-major range from the nearest prior selection');
+}
+rangeSelected = new Set(['a', 'd']);
+if (!rangeContext.extend(rangeSlots, 7, rangeSelected) || [...rangeSelected].join(',') !== 'a,d,e,f') {
+  throw new Error('Ctrl+Shift did not preserve earlier selections while extending from the nearest prior selection');
+}
+rangeSelected = new Set();
+if (rangeContext.extend(rangeSlots, 7, rangeSelected) || rangeSelected.size !== 0) {
+  throw new Error('Ctrl+Shift selected a range without an earlier selected anchor');
+}
+rangeSelected = new Set(['e']);
+if (rangeContext.extend(rangeSlots, 4, rangeSelected) || [...rangeSelected].join(',') !== 'e') {
+  throw new Error('Ctrl+Shift searched forward instead of backward for its anchor');
 }
 
 for (const token of [

@@ -706,6 +706,17 @@ std::string Engine::GetMapRegionName(uintptr_t context,const FVector3d& location
     return value;
 }
 
+std::string Engine::GetMapRegionObjectName(uintptr_t region)const{
+    if(!moduleBase||!region||!IsObjectLive(region)||!IsA(region,"MapRegion"))return {};
+    if(!activeBuild.mapRegionNameOffset||!activeBuild.fTextDisplayString){BuildCompatibility candidate;if(!LoadCompatibility(ComputeFileSha256("/proc/self/exe"),candidate))return {};activeBuild=std::move(candidate);}
+    const uintptr_t offset=activeBuild.mapRegionNameOffset;
+    if(offset>0x2000||!Mem::Readable(reinterpret_cast<void*>(region+offset),16))return {};
+    using GetDisplayStringFn=const FString* (*)(const void*);
+    auto getDisplayString=reinterpret_cast<GetDisplayStringFn>(moduleBase+activeBuild.fTextDisplayString);
+    const FString* display=getDisplayString(reinterpret_cast<const void*>(region+offset));
+    return display&&Mem::Readable(display,sizeof(FString))?ReadFString(reinterpret_cast<uintptr_t>(display)):std::string{};
+}
+
 uintptr_t Engine::GetDungeonAtLocation(uintptr_t context,const FVector3d& location)const{
     if(!moduleBase||!context||!activeBuild.dungeonAtLocation)return 0;
     // The verified native lookup scans AGameplayObjectRegistry::DungeonData at

@@ -46,6 +46,14 @@ The end-user update path never runs the compatibility analyzer, generates signat
 
 ## Named-storage update gate
 
+Storage ownership transfer is a separate fail-closed gate. It requires the
+exact `UOwnershipComponent::SetOwningCharacterGuid` symbol and reviewed
+prologue, the ownership GUID field and `bOwnershipCanChange` gate contracts,
+identity-bound component
+validation, authoritative native readback, and writable autofill persistence.
+A failure disables ownership transfer without disabling storage reads or the
+unrelated mutation families.
+
 Named-storage compatibility is a required game-update gate, not an optional UI check. For every new dedicated-server build:
 
 1. Run the compatibility analyzer and require the rename getter, setter-identity getter, setter, native value lifetimes, renameable-interface gate, and authoritative server caller/argument-order checks to pass.
@@ -59,6 +67,8 @@ Every rename request uses the authoritative player-controller server path and ve
 Recent Activity follows Dragonwilds' authoritative `LogMapRegions` first-discovery record from the active dedicated-server log. It starts at the end of the current log, matches the controller name in each newly appended record to a live character, and never backfills older discoveries.
 
 For every new dedicated-server build, require the compatibility analyzer to find both the `LogMapRegions` category and the exact `Revealing map region [%s] (Region %d) for player [%s]` format contract. On the development server, enter one genuinely fogged region and verify exactly one Recent Activity entry appears within the shared two-second refresh interval. Return to that region and reconnect the character to confirm neither action creates a duplicate. Do not promote a build if the log contract or live test fails.
+
+The off-by-default Recent Activity test laboratory is part of this workflow when enabled on an authorized development target. Revalidate every reflected reset, trigger, persistence, recipe/build unlock, and region-reveal function and its exact parameter layout before the laboratory can arm. Use only an expendable online test character. For each of the ten activity contracts, prepare the reset, wait for the independent authoritative scanner to report the prepared state, trigger through the game function, verify one new activity row, reconnect, and confirm both character persistence and duplicate suppression. A material or recipe test resets the complete progress component; a perk, spell, or skill test resets the complete related skill; a quest test resets every quest and does not reverse world state or rewards. Record those collateral effects and leave any unexercised family pending with a reason. Never use the laboratory as compatibility proof for its own scanner or bypass its reset-observed gate.
 
 ## Player-network diagnostics update gate
 

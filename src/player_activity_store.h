@@ -49,6 +49,18 @@ public:
     std::string PageJson(const std::string& characterGuid, std::size_t limit,
                          std::uint64_t before = 0) const;
     PlayerActivityDiagnostics Diagnostics() const;
+    // Activity retests are deliberately two phase. BeginRetest permits exactly
+    // one expected authoritative regression; readiness requires either a live
+    // scan or an equivalent native game-query readback from the reset path.
+    bool BeginRetest(const std::string& characterGuid, const std::string& family,
+                     const std::string& key, const std::string& related = {},
+                     int target = 0, const std::string& operation = {});
+    bool RetestReady(const std::string& characterGuid, const std::string& family,
+                     const std::string& key);
+    void ReleaseRetestTrigger(const std::string& characterGuid);
+    bool ConfirmRetestPreparation(const std::string& characterGuid);
+    void CancelRetest(const std::string& characterGuid);
+    std::string RetestJson(const std::string& characterGuid) const;
 
 private:
     struct QuestState {
@@ -62,9 +74,11 @@ private:
         bool recipesInitialized = false;
         std::string recipeFingerprint;
         std::set<std::string> recipeGroups;
+        std::set<std::string> everRecipeGroups;
         bool questsInitialized = false;
         std::string questFingerprint;
         std::map<std::string, QuestState> quests;
+        std::set<std::string> everQuestEvents;
         bool deathInitialized = false;
         bool dead = false;
         std::string lastKnownLocation;
@@ -83,6 +97,16 @@ private:
         std::set<std::string> perks,spells,everPerks,everSpells;
     };
 
+    struct RetestArm {
+        std::string family, key, related, operation;
+        int target = 0;
+        bool preparationConfirmed = false;
+        bool gameResetObserved = false;
+        bool dependentResetObserved = false;
+        bool triggerSubmitted = false;
+        std::int64_t created = 0;
+    };
+
     void Add(const std::string& guid, std::int64_t timestamp, const std::string& type,
              const std::string& title, const std::string& detail = {},
              const std::string& icon = {});
@@ -96,6 +120,7 @@ private:
     std::string path_;
     std::uint64_t nextId_ = 1;
     std::map<std::string, Baseline> baselines_;
+    std::map<std::string, RetestArm> retests_;
     std::vector<PlayerActivityEvent> events_;
     struct QuestMeta { std::string name, icon; };
     std::map<std::string, QuestMeta> quests_;

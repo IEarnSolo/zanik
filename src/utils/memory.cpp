@@ -146,6 +146,18 @@ bool SafeCopy(uintptr_t addr, void* out, size_t size) {
     return copied == static_cast<ssize_t>(size);
 }
 
+bool SafeWrite(uintptr_t addr, const void* value, size_t size) {
+    if (!addr || !value || !size || addr < 0x10000 ||
+        addr >= 0x0000800000000000ULL || addr + size < addr) return false;
+    // Keep an invalid or concurrently released game object from faulting the
+    // dedicated server. The kernel validates the destination mapping and
+    // reports a short write instead.
+    static const int memory = open("/proc/self/mem", O_WRONLY | O_CLOEXEC);
+    if (memory < 0) return false;
+    const ssize_t copied = pwrite(memory, value, size, static_cast<off_t>(addr));
+    return copied == static_cast<ssize_t>(size);
+}
+
 bool InImage(const void* addr) {
     uintptr_t value = (uintptr_t)addr;
     return g_ImageStart && value >= g_ImageStart && value < g_ImageEnd;

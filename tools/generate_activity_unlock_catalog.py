@@ -37,8 +37,8 @@ def asset_name(value: object) -> str:
     return clean(value.get("AssetPathName")).rsplit("/", 1)[-1].split(".", 1)[0]
 
 
-def generate(source: Path) -> list[tuple[str, str, str, str, str, str]]:
-    entries: dict[str, tuple[str, str, str, str, str, str]] = {}
+def generate(source: Path) -> list[tuple[str, str, str, str, str, str, str, str]]:
+    entries: dict[str, tuple[str, str, str, str, str, str, str, str]] = {}
     for path in sorted(source.rglob("*.json")):
         if path.name == ".uas-manifest.json":
             continue
@@ -63,13 +63,18 @@ def generate(source: Path) -> list[tuple[str, str, str, str, str, str]]:
             properties = export.get("Properties") or {}
             name = display_text(properties.get("PerkName"))
             texture = asset_name(properties.get("SkillPerkImage"))
+            unlock_info = properties.get("PerkUnlockInfo") or {}
+            skill = asset_name(unlock_info.get("AssociatedSkill"))
+            required_level = unlock_info.get("RequiredSkillLevel")
             if not key or not name or not texture or key.startswith("Default__"):
                 continue
+            if not skill or not isinstance(required_level, int) or not 1 <= required_level <= 200:
+                skill, required_level = "", 0
             spell = spell_links.get(key)
             kind = "spell" if spell else "perk"
             canonical = spell or key
             icon = f"/assets/spells-and-perks/{key}.png"
-            row = (key, kind, canonical, name, icon, texture)
+            row = (key, kind, canonical, name, icon, texture, skill, str(required_level))
             prior = entries.get(key)
             if prior is not None and prior != row:
                 raise ValueError(f"conflicting unlock metadata for {key}")
@@ -89,7 +94,7 @@ def main() -> None:
     fingerprint = hashlib.sha256(body.encode()).hexdigest()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
-        f"# schema=1 count={len(entries)} fingerprint={fingerprint}\n" + body,
+        f"# schema=2 count={len(entries)} fingerprint={fingerprint}\n" + body,
         encoding="utf-8",
     )
     print(f"wrote {len(entries)} canonical perk/spell unlocks to {args.output}")

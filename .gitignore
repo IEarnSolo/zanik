@@ -59,6 +59,7 @@ node_modules/
 # Server backups, game binaries, symbols, saves, captures, and research dumps
 /backups/
 /reference/
+/docs/dominion-cheat-manager-research.md
 *.debug
 *.sym
 *.bin

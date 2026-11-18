@@ -1182,6 +1182,10 @@ def extract(args: argparse.Namespace) -> int:
                                "--web-root", str(web)]
             for group in selected_artwork: artwork_command.extend(["--group", group])
             run(artwork_command, "Resolving " + ", ".join(selected_artwork).replace("-", " "))
+        if "spell-and-perk-artwork" in dirty:
+            run([py, str(scripts / "generate_activity_unlock_catalog.py"), "--source", str(json_root),
+                 "--output", str(web / "player-activity-unlock-catalog.tsv")],
+                "Generating player activity unlock catalog")
         history_seed = repo / "asset-tools/recipe-runtime-catalog-history.tsv"
         if not history_seed.is_file():
             history_seed = repo / "web/recipe-runtime-catalog-history.tsv"

@@ -40,4 +40,5 @@ std::string ErrorJson(const std::string& message);
 bool ReadPlayers(std::vector<std::string>& names);
 bool ReadPlayer(const std::string& name, DomEngine::PlayerInfo& player, bool& found);
 int SkillLevel(int xp);
+int SkillXpForLevel(int level);
 }

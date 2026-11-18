@@ -13,12 +13,17 @@ def localized(value: str) -> dict[str, str]:
     return {"SourceString": value, "LocalizedString": value}
 
 
-def perk(key: str, name: str, texture: str, spell: str = "") -> list[dict]:
+def perk(key: str, name: str, texture: str, spell: str = "",
+         skill: str = "SKILL_Attack", level: int = 10) -> list[dict]:
     records = [{
         "Type": "SkillPerkData", "Name": key,
         "Properties": {
             "PerkName": localized(name),
             "SkillPerkImage": {"AssetPathName": f"/Game/UI/{texture}.{texture}"},
+            "PerkUnlockInfo": {
+                "AssociatedSkill": {"AssetPathName": f"/Game/Skills/{skill}.{skill}"},
+                "RequiredSkillLevel": level,
+            },
         },
     }]
     if spell:
@@ -46,14 +51,15 @@ class ActivityUnlockCatalogTest(unittest.TestCase):
             ], check=True, capture_output=True, text=True)
             lines = output.read_text(encoding="utf-8").splitlines()
             self.assertIn("count=2", lines[0])
+            self.assertIn("schema=2", lines[0])
             self.assertIn(
                 "PerkV2_Attack_TempestShield\tspell\tUSD_TempestShield\tTempest Shield\t"
-                "/assets/spells-and-perks/PerkV2_Attack_TempestShield.png\tT_Skill_Attack_Spell_Tempestshield",
+                "/assets/spells-and-perks/PerkV2_Attack_TempestShield.png\tT_Skill_Attack_Spell_Tempestshield\tSKILL_Attack\t10",
                 lines,
             )
             self.assertIn(
                 "PerkV2_Attack_Parry\tperk\tPerkV2_Attack_Parry\tPerfect Parry\t"
-                "/assets/spells-and-perks/PerkV2_Attack_Parry.png\tT_Skill_Attack_Parry",
+                "/assets/spells-and-perks/PerkV2_Attack_Parry.png\tT_Skill_Attack_Parry\tSKILL_Attack\t10",
                 lines,
             )
 

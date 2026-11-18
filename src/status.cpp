@@ -66,6 +66,12 @@ int SkillLevel(int xp) {
     return static_cast<int>(it - kLevelXp.begin());
 }
 
+int SkillXpForLevel(int level) {
+    if (level <= 1) return 0;
+    if (level > static_cast<int>(kLevelXp.size())) return -1;
+    return kLevelXp[static_cast<std::size_t>(level - 1)];
+}
+
 std::string PlayersJson(const std::vector<std::string>& names) {
     std::string json = "{\"count\":" + std::to_string(names.size()) + ",\"players\":[";
     for (size_t i = 0; i < names.size(); ++i) {

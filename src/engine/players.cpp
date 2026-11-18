@@ -26,7 +26,9 @@ std::atomic<int> discoveryWorldLocations{0};
 std::atomic<int> discoveryRegionLookupAttempts{0};
 std::atomic<int> discoveryPlayersProduced{0};
 std::atomic<int> discoveryPingCompatibility{0};
+std::atomic<int> discoveryHealthCompatibility{0},discoverySkillCompatibility{0};
 std::atomic<std::uint64_t> discoveryReadablePingSamples{0},discoveryUnavailablePingSamples{0};
+std::atomic<std::uint64_t> discoveryHealthSamples{0},discoverySkillSamples{0};
 
 struct PawnComponents {
     uintptr_t sustenance = 0;
@@ -94,7 +96,9 @@ PlayerDiscoveryDiagnostics GetPlayerDiscoveryDiagnostics() {
             discoveryCharacterNames.load(), discoverySpawnedPawns.load(),
             discoveryWorldLocations.load(), discoveryRegionLookupAttempts.load(),
             discoveryPlayersProduced.load(),discoveryPingCompatibility.load(),
-            discoveryReadablePingSamples.load(),discoveryUnavailablePingSamples.load()};
+            discoveryHealthCompatibility.load(),discoverySkillCompatibility.load(),
+            discoveryReadablePingSamples.load(),discoveryUnavailablePingSamples.load(),
+            discoveryHealthSamples.load(),discoverySkillSamples.load()};
 }
 
 void Engine::ReadAttributeArrays(uintptr_t attributesComponent, uintptr_t attributesOffset,
@@ -127,17 +131,17 @@ void Engine::ReadAttributeArrays(uintptr_t attributesComponent, uintptr_t attrib
     }
 }
 
-void Engine::ReadHealthAndAttributes(PlayerInfo& info) const {
-    if (!IsA(info.pawnPtr, "DominionPlayerCharacter")) return;
+bool Engine::ReadHealthAndAttributes(PlayerInfo& info) const {
+    if (!IsA(info.pawnPtr, "DominionPlayerCharacter")) return false;
 
     uintptr_t health = Mem::ReadPtr(info.pawnPtr + Offsets::DomPlayerChar_HealthComponent);
-    if (!health || !Mem::Readable((void*)health, 0x1B8)) return;
+    if (!health || !Mem::Readable((void*)health, 0x1B8) || !IsA(health,"PlayerHealthComponent")) return false;
 
     info.canDie = Mem::ReadU8(health + Offsets::Health_bCanDie) != 0;
 
     uintptr_t attributesComponent =
         Mem::ReadPtr(info.pawnPtr + Offsets::DomPlayerChar_AttributesComponent);
-    if (!attributesComponent || !Mem::Readable((void*)attributesComponent, 0x1B8)) return;
+    if (!attributesComponent || !Mem::Readable((void*)attributesComponent, 0x1B8) || !IsA(attributesComponent,"DominionAttributesComponent")) return false;
 
     ReadAttributeArrays(attributesComponent, Offsets::Attributes_FloatAttributes,
                         Offsets::Attributes_AttributeValues, false, info.attributes);
@@ -154,18 +158,19 @@ void Engine::ReadHealthAndAttributes(PlayerInfo& info) const {
         }
     }
     info.isDead = info.hasHealth && info.health <= 0.0f;
+    return info.hasHealth;
 }
 
-void Engine::ReadSkills(PlayerInfo& info) const {
-    if (!info.controllerPtr) return;
-    if (!IsA(info.controllerPtr, "DominionPlayerControllerBase")) return;
+bool Engine::ReadSkills(PlayerInfo& info) const {
+    if (!info.controllerPtr) return false;
+    if (!IsA(info.controllerPtr, "DominionPlayerControllerBase")) return false;
 
     uintptr_t skills = Mem::ReadPtr(info.controllerPtr + Offsets::DomPlayerController_SkillComponent);
-    if (!skills || !Mem::Readable((void*)skills, 0x210)) return;
+    if (!skills || !Mem::Readable((void*)skills, 0x210) || !IsA(skills,"SkillComponent")) return false;
 
     FUEArray list = {};
-    if (!ReadArray(skills + Offsets::Skill_Skills, list, 256)) return;
-    if (!Mem::Readable(list.Data, Offsets::FSkill_Size * (size_t)list.Num)) return;
+    if (!ReadArray(skills + Offsets::Skill_Skills, list, 256)) return false;
+    if (!Mem::Readable(list.Data, Offsets::FSkill_Size * (size_t)list.Num)) return false;
 
     for (int32_t i = 0; i < list.Num; i++) {
         uintptr_t entry = (uintptr_t)list.Data + (uintptr_t)i * Offsets::FSkill_Size;
@@ -178,6 +183,7 @@ void Engine::ReadSkills(PlayerInfo& info) const {
         skill.currentXP = Mem::ReadI32(entry + Offsets::FSkill_CurrentXP);
         info.skills.push_back(skill);
     }
+    return !info.skills.empty();
 }
 
 std::vector<PlayerInfo> Engine::GetAllPlayers() const {
@@ -194,6 +200,8 @@ std::vector<PlayerInfo> Engine::GetAllPlayers() const {
     discoveryRegionLookupAttempts = 0;
     discoveryPlayersProduced = 0;
     discoveryPingCompatibility = 0;
+    discoveryHealthCompatibility = 0;
+    discoverySkillCompatibility = 0;
     if (!initialized) return players;
 
     uintptr_t gameState = GetGameState();
@@ -440,11 +448,17 @@ std::vector<PlayerInfo> Engine::GetAllPlayers() const {
         if (pawnComponentCache.size() > 512) pawnComponentCache.clear();
     }
 
+    bool attemptedActivitySources=false,allHealthValid=true,allSkillsValid=true;
     for (PlayerInfo& info : players) {
         if (!info.pawnPtr) continue;
 
-        ReadHealthAndAttributes(info);
-        ReadSkills(info);
+        attemptedActivitySources=true;
+        const bool healthValid=ReadHealthAndAttributes(info);
+        const bool skillsValid=ReadSkills(info);
+        if(healthValid)++discoveryHealthSamples;
+        if(skillsValid)++discoverySkillSamples;
+        allHealthValid=allHealthValid&&healthValid;
+        allSkillsValid=allSkillsValid&&skillsValid;
 
         auto it = byPawn.find(info.pawnPtr);
         if (it == byPawn.end()) continue;
@@ -463,6 +477,7 @@ std::vector<PlayerInfo> Engine::GetAllPlayers() const {
         }
 
     }
+    if(attemptedActivitySources){discoveryHealthCompatibility=allHealthValid?1:-1;discoverySkillCompatibility=allSkillsValid?1:-1;}
 
     return players;
 }

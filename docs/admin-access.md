@@ -1,5 +1,7 @@
 # Character-linked web administration
 
+The administration page begins with the Admin sessions section, which assigns administrator access, creates single-use links, lists valid sessions, and revokes them. When the separate off-by-default activity-testing feature is enabled, the same page also exposes a Recent Activity test laboratory. Every laboratory request requires the authenticated session, CSRF token, an online known character, an exact typed character-name confirmation, and any reset-scope acknowledgements. Preparation and triggering are separate: triggering remains unavailable until the normal authoritative activity scanner has observed and persisted the prepared reset state.
+
 Development authorization is stored in `/home/container/zanik/admins.txt`. Each
 non-comment line contains one stable public character ID. Removing an ID
 invalidates that character's browser sessions the next time the file is read.
@@ -27,6 +29,15 @@ public map and every administrative API indefinitely.
 The browser endpoints, claim exchange, cookies, CSRF validation, logout,
 allowlist reload, revocation storage, destination validation, rate limiting,
 and map controls are implemented.
+
+An administrator can transfer an individual loaded storage to another known
+character from the storage card. The recipient may be offline, but must already
+be present in the known-player registry. The game applies its authoritative
+replicated ownership setter with a bounded admin-only ownership-change gate
+override that is immediately restored, so the storage receives a new Zanik storage ID
+derived from the recipient. Any configured autofill snapshot follows the
+storage to that owner and ID; a persistence failure restores the original owner
+and reports the request as failed.
 
 Every website page uses the shared Zanik header. When the browser has a valid
 session, the header reveals the Admin Sessions link and an
@@ -121,6 +132,10 @@ boundaries independently:
   snapshot and enables the storage toggle when necessary; removing the final
   saved slot disables the now-empty snapshot. A mixed selection is rejected in
   the interface with an explanatory disabled action;
+  authoritative storage destruction publishes a bounded identity-only signal
+  from the native hook, and the website worker cancels pending refill work and
+  durably deletes the matching template. Rebuilding the same storage type at
+  the same location cannot reactivate the destroyed container's snapshot;
   a failed final verification circuit-breaks only autofill before another
   automatic mutation can be attempted;
   it never removes or overwrites an unexpected occupied item;

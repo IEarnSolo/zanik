@@ -177,9 +177,15 @@ constexpr uintptr_t MovementComp_Velocity      = 0xD8;
 constexpr uintptr_t CharMove_MovementMode      = 0x241;
 
 // pointers - Source: RSDWSDK/CppSDK/Assertions.inl. These are real pointers,
-constexpr uintptr_t DomPlayerChar_AttributesComponent = 0x1448; // UDominionAttributesComponent*
-constexpr uintptr_t DomPlayerChar_HealthComponent = 0x1458; // UPlayerHealthComponent*
+// Proven by the generated GetPlayerAttributesComponent/GetHealthComponent
+// wrappers in each reviewed build. These moved by +0x50 in the current ABI.
+constexpr uintptr_t DomPlayerChar_AttributesComponent = 0x1498; // UDominionAttributesComponent*
+constexpr uintptr_t DomPlayerChar_HealthComponent = 0x14A8; // UPlayerHealthComponent*
 constexpr uintptr_t DomPlayerController_SkillComponent = 0x820; // USkillComponent*
+// Proven by URevealedMapFogComponent::IsMapRegionRevealed on every supported
+// build. Shipping strips this field's FProperty, so callers must also require
+// the exact native query signature and perform behavioral readback.
+constexpr uintptr_t RevealedMapFog_RevealedMapRegionsBitmap = 0xE8; // uint32
 
 // UDominionAttributesComponent - Source: RSDWSDK/CppSDK/Assertions.inl.
 constexpr uintptr_t Attributes_FloatAttributes       = 0xD0;
@@ -534,6 +540,7 @@ struct AdminStorageDiagnostics {
     int batchCompatibility = 0;
     int organizationCompatibility = 0;
     int renameCompatibility = 0;
+    int ownershipCompatibility = 0;
     int removalTrackingCompatibility = 0;
     int catalogCompatibility = 0;
     int unlockCatalogCompatibility = 0;
@@ -589,6 +596,10 @@ struct AdminStorageDiagnostics {
     std::uint64_t deletionMaximumMicroseconds = 0;
     std::uint64_t renameMaximumMicroseconds = 0;
     std::uint64_t rollbackMaximumMicroseconds = 0;
+    std::uint64_t ownershipMaximumMicroseconds = 0;
+    std::uint64_t ownershipTransfers = 0;
+    std::uint64_t ownershipFailures = 0;
+    std::uint64_t ownershipSnapshotMigrations = 0;
     std::uint32_t circuitBreakers = 0;
     std::uint64_t nativeMutationCalls = 0;
     std::uint64_t nativeMutationAttributed = 0;
@@ -645,6 +656,14 @@ struct AdminStorageAutofillBuildingCaptureDiagnostics {
     std::uint64_t drops = 0;
     std::uint64_t maximumMicroseconds = 0;
 };
+struct AdminStorageAutofillDestructionDiagnostics {
+    int compatibility = 0;
+    std::uint64_t signals = 0;
+    std::uint64_t drops = 0;
+    std::uint64_t deletedSnapshots = 0;
+    std::uint64_t failures = 0;
+    std::uint64_t maximumMicroseconds = 0;
+};
 bool InitializeAdminStorage(uintptr_t moduleBase, uintptr_t moduleEnd);
 bool InitializeAdminStorageHookEarly();
 void UpdateAdminStorageMutationPlayers(const std::vector<PlayerInfo>& players);
@@ -653,9 +672,11 @@ void DrainAdminStorageMutationTraces();
 bool HasPendingAdminStorageAutofillMutation();
 AdminStorageAutofillLatencyDiagnostics GetAdminStorageAutofillLatencyDiagnostics();
 AdminStorageAutofillBuildingCaptureDiagnostics GetAdminStorageAutofillBuildingCaptureDiagnostics();
+AdminStorageAutofillDestructionDiagnostics GetAdminStorageAutofillDestructionDiagnostics();
 bool ResolveAdminInventoryMutationCallables(uintptr_t moveEntry, uintptr_t removeEntry,
                                             uintptr_t& moveCallable, uintptr_t& removeCallable);
 void ProcessAdminStorageRequests();
+void FinalizeAdminStorageOwnershipTransfers();
 bool SubmitAdminStorageMutation(const std::string& operation,
                                 const std::string& adminCharacterGuid,
                                 const std::string& adminPublicId,
@@ -671,7 +692,8 @@ bool SubmitAdminStorageMutation(const std::string& operation,
                                 const std::string& destinationChestId = {},
                                 int destinationSlot = -1,
                                 const std::vector<std::string>& itemIds = {},
-                                const std::string& customName = {});
+                                const std::string& customName = {},
+                                const std::string& newOwnerCharacterGuid = {});
 std::string GetAdminStorageMutationStatus(const std::string& requestId,
                                           const std::string& sessionPrefix);
 std::string GetAdminPlayerStorageJson(const std::string& characterGuid,
@@ -816,8 +838,12 @@ struct PlayerDiscoveryDiagnostics {
     int regionLookupAttempts = 0;
     int playersProduced = 0;
     int pingCompatibility = 0;
+    int healthCompatibility = 0;
+    int skillCompatibility = 0;
     std::uint64_t readablePingSamples = 0;
     std::uint64_t unavailablePingSamples = 0;
+    std::uint64_t healthSamples = 0;
+    std::uint64_t skillSamples = 0;
 };
 PlayerDiscoveryDiagnostics GetPlayerDiscoveryDiagnostics();
 struct PlayerRecipeSnapshot {
@@ -866,7 +892,7 @@ bool InvokeSharedProcessEvent(void* object,void* function,void* params);
 struct ActivityRegionInfo { std::uint8_t id=0;std::string name; };
 struct NativeRegionDiscovery { std::string characterGuid,name;std::uint8_t id=0;std::int64_t capturedAt=0; };
 struct ActivityMaterialInfo { std::string key,name,icon; };
-struct ActivityUnlockInfo { std::string type,key,name,icon; };
+struct ActivityUnlockInfo { std::string type,key,name,icon,skill;int requiredLevel=0; };
 struct PlayerActivityDiscoverySnapshot {
     std::string characterGuid;
     bool regionsComplete=false;
@@ -885,6 +911,9 @@ struct PlayerActivityDiscoveryDiagnostics {
     std::uint64_t materialCatalogEntries=0,resolvedMaterialEntries=0,perkCatalogEntries=0,spellCatalogEntries=0,resolvedUnlockEntries=0;
     std::uint64_t snapshots=0,droppedSamples=0;
     std::uint64_t queryCalls=0,maximumQueryMicroseconds=0,slowQueries=0,maximumBatchMicroseconds=0;
+    std::uint64_t regionSnapshotComplete=0,regionComponentUnavailable=0,regionBitmapReadFailures=0,regionQueryMismatches=0,regionBitmapReadbackFailures=0;
+    std::uint32_t lastRegionBitmap=0;
+    int lastRegionQueryMismatchBit=-1;
     std::uint64_t regionHookCalls=0,regionHookQueueDepth=0,regionHookQueueDrops=0,regionHookMaximumMicroseconds=0,regionHookSlowCalls=0;
 };
 int PlayerActivitySourceCompatibility(bool queryFound,bool queryValid,bool catalogReady);
@@ -900,6 +929,49 @@ std::vector<NativeRegionDiscovery> DrainNativeRegionDiscoveries();
 std::vector<PlayerActivityDiscoverySnapshot> ReadPlayerActivityDiscoveries();
 PlayerActivityDiscoveryDiagnostics GetPlayerActivityDiscoveryDiagnostics();
 std::string FileSha256(const char* path);
+
+struct AdminActivityTestDiagnostics {
+    int compatibility = 0;
+    int cheatCompatibility = 0;
+    int persistenceCompatibility = 0;
+    int regionCompatibility = 0;
+    int regionReplicationCompatibility = 0;
+    int regionPropertyDirtyCompatibility = 0;
+    std::uint64_t catalogEntries = 0;
+    std::uint64_t resolvedCatalogEntries = 0;
+    std::uint64_t regionCatalogEntries = 0;
+    std::uint64_t resolvedRegionCatalogEntries = 0;
+    std::uint64_t queuedRequests = 0;
+    std::uint64_t completedRequests = 0;
+    std::uint64_t failedRequests = 0;
+    std::uint64_t staleRequests = 0;
+    std::uint64_t maximumExecutionMicroseconds = 0;
+    std::uint64_t regionReplicationWakeCalls = 0;
+    std::uint64_t regionReplicationWakeFailures = 0;
+    std::uint64_t regionPropertyDirtyCalls = 0;
+    std::uint64_t regionPropertyDirtyFailures = 0;
+};
+bool InitializeAdminActivityTesting(const std::string& materialCatalog,
+                                    const std::string& unlockCatalog,
+                                    const std::string& recipeCatalog,
+                                    const std::string& questCatalog,
+                                    uintptr_t moduleBase, uintptr_t moduleEnd);
+void UpdateAdminActivityTestPlayers(const std::vector<PlayerInfo>& players);
+void ProcessAdminActivityTestRequests();
+bool ResolveAdminActivityTestSelection(const std::string& family, const std::string& key,
+                                       std::string& related, int& target);
+bool SubmitAdminActivityTest(const std::string& family, const std::string& phase,
+                             const std::string& characterGuid, const std::string& key,
+                             const std::string& related, int target,
+                             const std::string& operation, const std::string& sessionPrefix,
+                             std::string& requestId, std::string& error);
+std::string GetAdminActivityTestStatus(const std::string& requestId,
+                                       const std::string& sessionPrefix,
+                                       std::string& confirmedPreparationGuid,
+                                       std::string& failedPreparationGuid,
+                                       std::string& failedTriggerGuid);
+std::string GetAdminActivityTestCatalogJson(const std::string& characterGuid);
+AdminActivityTestDiagnostics GetAdminActivityTestDiagnostics();
 
 class Engine {
 private:
@@ -949,6 +1021,7 @@ public:
                                            const std::vector<PlayerInfo>& players) const;
     std::string GetEnemyDisplayName(uintptr_t actor) const;
     std::string GetMapRegionName(uintptr_t context, const FVector3d& location) const;
+    std::string GetMapRegionObjectName(uintptr_t region) const;
     std::string ReadObjectText(uintptr_t object, const char* propertyName) const;
     uintptr_t GetDungeonAtLocation(uintptr_t context, const FVector3d& location) const;
     std::string GetDungeonName(uintptr_t dungeon) const;
@@ -973,8 +1046,8 @@ private:
     void ReadAttributeArrays(uintptr_t attributesComponent, uintptr_t attributesOffset,
                              uintptr_t valuesOffset, bool shared,
                              std::vector<AttributeInfo>& out) const;
-    void ReadHealthAndAttributes(PlayerInfo& info) const;
-    void ReadSkills(PlayerInfo& info) const;
+    bool ReadHealthAndAttributes(PlayerInfo& info) const;
+    bool ReadSkills(PlayerInfo& info) const;
 
 public:
 

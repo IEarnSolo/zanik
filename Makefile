@@ -10,6 +10,7 @@ SRC += src/engine/admin_storage.cpp
 SRC += src/engine/admin_gravestone.cpp
 SRC += src/recipe_snapshot_store.cpp src/engine/player_recipes.cpp src/quest_snapshot_store.cpp src/engine/player_quests.cpp
 SRC += src/player_activity_store.cpp src/engine/player_activity_discovery.cpp
+SRC += src/engine/admin_activity_test.cpp
 SRC += src/server_performance_store.cpp
 SRC += src/home_location_persistence.cpp
 SRC += src/storage_autofill_store.cpp
@@ -47,6 +48,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	src/engine/player_recipes.o \
 	src/engine/player_quests.o \
 	src/engine/player_activity_discovery.o \
+	src/engine/admin_activity_test.o \
 	src/home_location_persistence.o \
 	src/storage_autofill_store.o \
 	src/utils/glibc_compat.o -o dist/status_test -pthread -ldl
@@ -113,6 +115,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(NODE) tests/player_mobile_ui_test.js
 	$(PYTHON) tests/http_core_test.py
 	$(PYTHON) tests/admin_http_test.py
+	$(PYTHON) tests/admin_activity_test.py
 	$(PYTHON) tests/player_activity_http_test.py
 	$(PYTHON) tests/material_activity_catalog_test.py
 	$(PYTHON) tests/activity_unlock_catalog_test.py

@@ -111,17 +111,31 @@ with tempfile.TemporaryDirectory() as temporary:
         with first.open(base + "/admin/sessions", timeout=3) as response:
             admin_page = response.read()
             assert b"Admin sessions" in admin_page
+            assert b'id="adminSessionsSection"' in admin_page
+            assert b'role="tablist" aria-label="Administration tools"' in admin_page
+            assert b'id="sessionsTab"' in admin_page and b'id="activityTab"' in admin_page
+            assert b"table.className='sessions-table'" in admin_page
+            assert b"Recent activity test laboratory" in admin_page
+            assert b"Use test characters only" in admin_page
             assert b'id="refreshSessions"' in admin_page
             assert b"ZanikPolling.add('admin-sessions'" not in admin_page
-            assert b"renderPlayers(selected)" in admin_page
+            assert b"renderPlayers(selectedPlayer)" in admin_page
             assert b'class="site-scale-select"' in admin_page
             assert b'class="site-admin-state"' in admin_page
             assert b"location.pathname.startsWith('/admin/')" in admin_page
         with first.open(base + "/api/admin/link-manager", timeout=3) as response:
             manager = json.loads(response.read())
         assert manager["players"]["count"] == 2
+        assert manager["activityTesting"] is False
         assert manager["authorizedIds"] == [first_id]
         assert len(manager["sessions"]) == 1 and manager["sessions"][0]["current"] is True
+        expect_http(first, base + "/api/admin/activity-test/catalog?playerId=" + first_id, 403)
+        expect_http(
+            first,
+            base + "/api/admin/activity-test",
+            403,
+            body={"csrf": csrf, "playerId": first_id, "family": "death", "key": "death", "phase": "prepare"},
+        )
 
         with request(first, base + "/api/admin/create-link", body={"csrf": csrf, "playerId": second_id}) as response:
             created = json.loads(response.read())

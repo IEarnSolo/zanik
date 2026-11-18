@@ -88,6 +88,17 @@ with tempfile.TemporaryDirectory(prefix="zanik-player-activity-http-") as tempor
         empty = fetch("/api/player-activity?id=public-empty")
         assert empty["events"] == [] and empty["hasMore"] is False and empty["nextBefore"] is None
 
+        diagnostics = fetch("/api/player-activity-diagnostics")
+        expected_sources = {
+            "coreCompatibility", "skillLevelCompatibility", "deathCompatibility",
+            "recipeUnlockedCompatibility", "questStartedCompatibility",
+            "questProgressedCompatibility", "questCompletedCompatibility",
+            "regionCompatibility", "materialCompatibility", "perkCompatibility",
+            "spellCompatibility",
+        }
+        assert expected_sources <= set(diagnostics)
+        assert diagnostics["compatibility"] != 1  # No game runtime: never report a false broad green.
+
         for query in ("limit=0", "limit=-1", "limit=nope", "before=-1", "before=999999999999999999999"):
             try:
                 urllib.request.urlopen(base + "/api/player-activity?id=public-hero&" + query, timeout=3)

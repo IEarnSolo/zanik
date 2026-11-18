@@ -33,6 +33,8 @@ assert "0x0A675820" in storage_reader
 
 storage = (root / "src" / "engine" / "admin_storage.cpp").read_text()
 analyzer = (root / "tools" / "compat_analyzer.cpp").read_text()
+assert "activityRegionBitmapQuery" in analyzer
+assert "recent activity revealed-region bitmap ABI changed" in analyzer
 assert "AActor::FlushNetDormancy()" in analyzer
 assert "AActor::ForceNetUpdate()" in analyzer
 assert "storage autofill replication wake symbols missing" in analyzer
@@ -48,7 +50,7 @@ for offset in (
     "0x0A669830", "0x0A66A3C0", "0x0A66BF00", "0x0A66EF90",
     "0x0A66B390", "0x0A677D60", "0x0A3E9980", "0x04A94480",
     "0x07ACAF90", "0x0A0FDA20", "0x0A0FDC90", "0x0A0FE070",
-    "0x04ADAAE0", "0x079DB8A0", "0x04A2A9F0", "0x0A3C4F00", "0x0A5A3880",
+    "0x04ADAAE0", "0x079DB8A0", "0x04A2A9F0", "0x0A3C4F00", "0x0A5A3880", "0x0AAD44E0",
 ):
     assert offset in storage
 
