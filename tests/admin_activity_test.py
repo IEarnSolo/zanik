@@ -102,11 +102,11 @@ capability = inventory["admin-recent-activity-testing"]
 assert capability["diagnosticsEndpoint"] == "/api/admin/activity-test/diagnostics"
 assert "zanik-data/player-activity.db" in capability["persistence"]
 assert len(capability["assets"]) == 4
-assert "adminActivityTestResolvedRegionCatalogEntries" in capability["runtimeStatusFields"]
+assert "adminActivityTestResolvedRegionCatalogEntries" in capability["runtimeDiagnosticFields"]
 assert "adminActivityTestRegionReplicationCompatibility" in capability["runtimeStatusFields"]
-assert "adminActivityTestRegionReplicationWakeFailures" in capability["runtimeStatusFields"]
+assert "adminActivityTestRegionReplicationWakeFailures" in capability["runtimeDiagnosticFields"]
 assert "adminActivityTestRegionPropertyDirtyCompatibility" in capability["runtimeStatusFields"]
-assert "adminActivityTestRegionPropertyDirtyFailures" in capability["runtimeStatusFields"]
+assert "adminActivityTestRegionPropertyDirtyFailures" in capability["runtimeDiagnosticFields"]
 
 analyzer = (root / "tools/compat_analyzer.cpp").read_text()
 for symbol in (

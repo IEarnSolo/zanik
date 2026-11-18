@@ -184,15 +184,21 @@ assert "familyCircuitBroken" in tick_action
 # Ownership transfer is independently gated, uses the authoritative replicated
 # setter with readback, and migrates persistence off the game thread. A failed
 # durable migration queues the prebuilt native rollback.
-for token in ("SetOwningCharacterGuid", "ActionKind::OwnershipSet", "ActionKind::OwnershipVerify", "OperationFamily::Ownership", "ParseCharacterGuid", "a.source+0x168", "Mem::SafeWrite"):
+for token in ("SetOwningCharacterGuid", "ActionKind::OwnershipSet", "ActionKind::OwnershipVerify", "ActionKind::LinkableSet", "ActionKind::LinkableVerify", "OperationFamily::Ownership", "ParseCharacterGuid", "a.source+0x168", "Mem::SafeWrite", "SetIsLinkable", "linkableSetterSig", "linkedComponentIdentity"):
     assert token in storage
 assert "FinalizeAdminStorageOwnershipTransfers" in storage and "FinalizeAdminStorageOwnershipTransfers" in main
 assert "autofillStore->Transfer" in storage
 assert "request->rollbackIndex=request->rollback.size()" in storage
 assert "storageSetOwningCharacterGuid" in analyzer
+for token in ("storageSetLinkableReflection", "storageSetLinkableNative", "storageRegisterLinked", "storageUnregisterLinked"):
+    assert token in analyzer
+assert "storageSetLinkableSignature" in analyzer
 assert "ownershipChangeGate" in analyzer
 assert "storage ownership setter ABI, owner GUID field, or ownership-change gate changed" in analyzer
 assert "const int code=r.resultCode.load();FinishJob(r,false,code?code:-2)" in storage
+assert "r.transferWasLinked=chest->linked" in storage
+assert "linkAction.linkable=false" in planner and "linkAction.linkable=true" in planner
+assert planner.index("linkAction.linkable=false") < planner.index("action.ownerGuid=newParts") < planner.index("linkAction.linkable=true")
 for token in ("storageOwnership", "transfer_ownership", "newOwnerId", "Transfer ownership", "autofill snapshot will move"):
     assert token in main or token in web
 assert "micros>=1000" in tick_action
@@ -241,6 +247,7 @@ assert "StorageCompatibilityPolicy::IsProductionReviewed(hash)" in storage
 assert "CandidateEnabled()&&StorageCompatibilityPolicy::IsCandidateOnly(hash)" in storage
 assert 'CurrentReviewedSha' in policy and 'PreviousReviewedSha' in policy
 assert 'LatestReviewedSha' in policy
+assert 'hash == LatestReviewedSha || hash == CandidateSha' in policy
 assert 'return hash == LegacyCandidateSha;' in policy
 assert 'candidateEnabled&&(hash==LegacySha||hash==PreviousSha||hash==CurrentSha)' not in storage
 assert 'storageProductionCompatibility' in main

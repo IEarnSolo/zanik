@@ -2,6 +2,22 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.89] - 2026-11-18
+
+### Changed
+
+- Restore native and operational compatibility with Dragonwilds dedicated-server build `26670300`, including reviewed runtime globals, storage, gravestone, resource, teleport, object-layout, dispatcher, and administrator activity-test contracts.
+- Advance licensed-client extraction to recipe 21 and client build `26658295`, validating the complete 4,513-file generated website bundle and its unchanged catalog coverage before atomic development activation.
+- Promote the reviewed executable fingerprint only after exact analyzer verification, managed candidate deployment, fail-closed candidate validation, and a second production-mode deployment and validation on the development server.
+- Update Zanik Manager's embedded server payload, compatibility inventory, and extraction contract so managed installs and game updates carry the exact reviewed runtime and asset tooling.
+
+### Fixed
+
+- Migrate linked-inventory membership during a storage ownership transfer by temporarily unlinking the container, authoritatively changing its owner, and restoring its linked state with exact readback and rollback coverage.
+- Keep the storage transfer action visible for eligible authenticated administrators and move any existing autofill snapshot to the recipient-derived storage identity without leaving the container linked to its former owner.
+- Make administrator Recent Activity test initialization retry-safe after catalog discovery is initially pending, and resolve renamed catalog objects through type-checked, ambiguity-rejecting canonical names.
+- Bind storage stack-size mutation to the reviewed `SetStackSize` entry point instead of the nearby stack-count query on the updated game build.
+
 ## [0.2.88] - 2026-11-18
 
 ### Added

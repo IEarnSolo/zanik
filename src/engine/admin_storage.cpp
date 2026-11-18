@@ -39,6 +39,7 @@ constexpr const char* LegacySha=StorageCompatibilityPolicy::LegacyCandidateSha.d
 constexpr const char* PreviousSha=StorageCompatibilityPolicy::PreviousReviewedSha.data();
 constexpr const char* CurrentSha=StorageCompatibilityPolicy::CurrentReviewedSha.data();
 constexpr const char* LatestSha=StorageCompatibilityPolicy::LatestReviewedSha.data();
+constexpr const char* CandidateSha=StorageCompatibilityPolicy::CandidateSha.data();
 bool CandidateEnabled(){const char*candidate=std::getenv("ZANIK_STORAGE_PERFORMANCE_CANDIDATE");struct stat marker{};const std::string markerPath=RuntimePaths::DataFile("storage-performance-candidate");return (candidate&&std::string(candidate)=="1")||stat(markerPath.c_str(),&marker)==0;}
 bool ExpectedSha(const std::string& hash){return StorageCompatibilityPolicy::IsProductionReviewed(hash)||(CandidateEnabled()&&StorageCompatibilityPolicy::IsCandidateOnly(hash));}
 bool ExpectedDispatcherSha(const std::string& hash){return ExpectedSha(hash)||hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"||hash==LegacySha||hash==PreviousSha||hash==CurrentSha;}
@@ -70,17 +71,19 @@ struct StorageOffsets {
     uintptr_t buildingEndPlay=0x0A37C2D0;
     uintptr_t setStackSize=SetStackSizeOffset;
     uintptr_t setOwningCharacterGuid=0;
+    uintptr_t setIsLinkable=0;
 };
 StorageOffsets OffsetsFor(const std::string& hash){
     StorageOffsets value;
     if(hash==LegacySha)value={0x0A653420,0x0A653CC0,0x0A6554F0,0x0A656FD0,0x0A654980,0x0A65F7E0,0x0A3DAA00,0x04A89480,0x07ABFE00,0x0A0EF130,0x0A0EF3A0,0x0A0EF780,0x04ACFAE0,0x079D0710,0x04A1F9F0,0x0A3B5970,0x0A678C00};
     else if(hash==PreviousSha)value={0x0A653CD0,0x0A654570,0x0A655DA0,0x0A657880,0x0A655230,0x0A660090,0x0A3DA9D0,0x04A89480,0x07ABFE00,0x0A0EF090,0x0A0EF300,0x0A0EF6E0,0x04ACFAE0,0x079D0710,0x04A1F9F0,0x0A3B58D0,0x0A6794B0};
-    else if(hash==CurrentSha)value={0x0A669830,0x0A66A3C0,0x0A66BF00,0x0A66EF90,0x0A66B390,0x0A677D60,0x0A3E9980,0x04A94480,0x07ACAF90,0x0A0FDA20,0x0A0FDC90,0x0A0FE070,0x04ADAAE0,0x079DB8A0,0x04A2A9F0,0x0A3C4F00,0x0A68B9D0,0x0AAD44E0};
-    else if(hash==LatestSha)value={0x0A6698D0,0x0A66A460,0x0A66BFA0,0x0A66F030,0x0A66B430,0x0A677E00,0x0A3E9A20,0x04A94480,0x07ACAF90,0x0A0FDAC0,0x0A0FDD30,0x0A0FE110,0x04ADAAE0,0x079DB8A0,0x04A2A9F0,0x0A3C4FA0,0x0A68BA70,0x0AAD4450};
+    else if(hash==CurrentSha)value={0x0A669830,0x0A66A3C0,0x0A66BF00,0x0A66EF90,0x0A66B390,0x0A677D60,0x0A3E9980,0x04A94480,0x07ACAF90,0x0A0FDA20,0x0A0FDC90,0x0A0FE070,0x04ADAAE0,0x079DB8A0,0x04A2A9F0,0x0A3C4F00,0x0A68B9D0,0x0AAD44E0,0x0A68FAB0};
+    else if(hash==LatestSha)value={0x0A6698D0,0x0A66A460,0x0A66BFA0,0x0A66F030,0x0A66B430,0x0A677E00,0x0A3E9A20,0x04A94480,0x07ACAF90,0x0A0FDAC0,0x0A0FDD30,0x0A0FE110,0x04ADAAE0,0x079DB8A0,0x04A2A9F0,0x0A3C4FA0,0x0A68BA70,0x0AAD4450,0x0A68FB50};
+    else if(hash==CandidateSha)value={0x0A669E70,0x0A66AA00,0x0A66C540,0x0A66F5D0,0x0A66B9D0,0x0A6783A0,0x0A3E99B0,0x04A94480,0x07ACAF90,0x0A0FDA60,0x0A0FDCD0,0x0A0FE0B0,0x04ADAAE0,0x079DB8A0,0x04A2A9F0,0x0A3C4F30,0x0A68C010,0x0AAD4730,0x0A6900F0};
     return value;
 }
 std::atomic<uintptr_t> cachedDisplayTextOffset{0};
-uintptr_t DisplayTextOffset(){auto value=cachedDisplayTextOffset.load();if(value)return value;const std::string hash=FileSha256("/proc/self/exe");value=(hash==CurrentSha||hash==LatestSha)?0x04AD5A80:((hash==LegacySha||hash==PreviousSha)?0x04ACAA80:0x04AA1A80);cachedDisplayTextOffset.store(value);return value;}
+uintptr_t DisplayTextOffset(){auto value=cachedDisplayTextOffset.load();if(value)return value;const std::string hash=FileSha256("/proc/self/exe");value=(hash==CurrentSha||hash==LatestSha||hash==CandidateSha)?0x04AD5A80:((hash==LegacySha||hash==PreviousSha)?0x04ACAA80:0x04AA1A80);cachedDisplayTextOffset.store(value);return value;}
 
 using AddItemByDataFn=bool(*)(void*,void*,int,float,const void*);
 using CanAddItemByDataFn=bool(*)(void*,void*,int);
@@ -101,6 +104,7 @@ using UniqueNetIdDestructorFn=void(*)(void*);
 using FTextDestructorFn=void(*)(void*);
 using SetStackSizeFn=void(*)(void*,int);
 using SetOwningCharacterGuidFn=void(*)(void*,const void*);
+using SetIsLinkableFn=void(*)(void*,bool);
 AddItemByDataFn addItemByData=nullptr;
 CanAddItemByDataFn canAddItemByData=nullptr;
 MoveItemFn moveItem=nullptr;
@@ -121,9 +125,10 @@ UniqueNetIdDestructorFn destroyUniqueNetId=nullptr;
 FTextDestructorFn destroyFText=nullptr;
 SetStackSizeFn setStackSize=nullptr;
 SetOwningCharacterGuidFn setOwningCharacterGuid=nullptr;
+SetIsLinkableFn setIsLinkable=nullptr;
 
 enum class JobState : std::uint8_t { Queued,Running,Persisting,RollingBack,Completed,Failed };
-enum class ActionKind : std::uint8_t { Add,Remove,Move,SetStack,RenameConstruct,RenameSetterIdentity,RenameSet,RenameVerify,RenameDestroyIdentity,RenameDestroyText,OwnershipSet,OwnershipVerify };
+enum class ActionKind : std::uint8_t { Add,Remove,Move,SetStack,RenameConstruct,RenameSetterIdentity,RenameSet,RenameVerify,RenameDestroyIdentity,RenameDestroyText,LinkableSet,LinkableVerify,OwnershipSet,OwnershipVerify };
 enum class OperationFamily : std::uint8_t { SingleItem,SlotMovement,BatchAddition,BatchMovement,Deletion,Rename,Ownership,Rollback,Autofill,Count };
 struct NativeAction {
     ActionKind kind=ActionKind::Add;
@@ -132,6 +137,7 @@ struct NativeAction {
     std::uint64_t sourceIdentity=0,destinationIdentity=0,itemIdentity=0,itemDataIdentity=0,actorIdentity=0,controllerIdentity=0;
     int sourceSlot=-1,destinationSlot=-1,quantity=0,expectedQuantity=0;
     std::array<std::uint32_t,4> ownerGuid{};
+    bool linkable=false;
 };
 struct Request {
     std::string id,operation,session,conflictKey,successMessage,adminId,targetId;
@@ -155,6 +161,7 @@ struct Request {
     bool autofillReplicationWakeRecorded=false;
     bool renameTextConstructed=false;
     bool renameSetterConstructed=false;
+    bool transferWasLinked=false;
     uintptr_t expectedWorld=0;
     std::uint64_t expectedWorldIdentity=0;
     alignas(16) unsigned char renameText[16]{};
@@ -182,7 +189,7 @@ std::atomic<std::uint64_t> maximumStorageTickMicros{0},maximumGravestoneTickMicr
 std::atomic<unsigned> pendingCount{0};
 std::atomic<std::uint64_t> snapshotGenerations{0},snapshotHits{0},snapshotMisses{0},snapshotInvalidations{0},maximumSnapshotMicros{0};
 std::atomic<std::uint64_t> queueDrops{0},runningJobs{0},completedJobs{0},failedJobs{0},staleIdentities{0},worldChanges{0},rollbackAttempts{0},rollbackFailures{0};
-std::atomic<std::uint64_t> ownershipTransfers{0},ownershipFailures{0},ownershipSnapshotMigrations{0};
+std::atomic<std::uint64_t> ownershipTransfers{0},ownershipFailures{0},ownershipSnapshotMigrations{0},ownershipLinkedMigrations{0};
 std::atomic<std::uint64_t> nativeMutationCalls{0},nativeMutationAttributed{0},nativeMutationUnattributed{0},nativeMutationDrops{0},nativeMutationMaximumMicros{0},nativeMutationCaptureMaximumMicros{0};
 std::atomic<int> autofillRpcCaptureCompatibility{0};
 std::atomic<int> autofillBuildingCaptureCompatibility{0};
@@ -360,8 +367,8 @@ struct SnapshotItem {
 };
 struct SnapshotChest {
     std::string id,type,customName;
-    uintptr_t actor=0,inventory=0,ownership=0;
-    std::uint64_t actorIdentity=0,inventoryIdentity=0,ownershipIdentity=0;
+    uintptr_t actor=0,inventory=0,ownership=0,linkedComponent=0;
+    std::uint64_t actorIdentity=0,inventoryIdentity=0,ownershipIdentity=0,linkedComponentIdentity=0;
     FVector3d location{};
     bool linked=false,privateStorage=false,mapValid=false;
     double mapX=0,mapY=0;
@@ -436,6 +443,7 @@ bool RefreshKnownStorageChest(const SnapshotChest&prior,SnapshotChest&chest){
     if(!g_Engine||!prior.actor||!prior.inventory||g_Engine->GetObjectIdentity(prior.actor)!=prior.actorIdentity||
        g_Engine->GetObjectIdentity(prior.inventory)!=prior.inventoryIdentity||
        !prior.ownership||g_Engine->GetObjectIdentity(prior.ownership)!=prior.ownershipIdentity||
+       !prior.linkedComponent||g_Engine->GetObjectIdentity(prior.linkedComponent)!=prior.linkedComponentIdentity||
        !g_Engine->IsObjectLive(prior.actor)||!g_Engine->IsObjectLive(prior.inventory)||
        WasAdminStorageBuildingRemoved(prior.actor))return false;
     bool destroying=false;if(g_Engine->ReadBoolProperty(prior.actor,"bActorIsBeingDestroyed",destroying)&&destroying)return false;
@@ -485,7 +493,7 @@ std::shared_ptr<const StorageSnapshot> BuildStorageSnapshot(const std::string&ta
         if(snapshot->adminFound&&!snapshot->adminInventory&&(actor==snapshot->adminController||actor==snapshot->adminPawn)){const std::string name=g_Engine->GetObjectName(inventory);if(!g_Engine->IsA(inventory,"LinkedInventoryComponent")&&!g_Engine->IsA(inventory,"PersonalInventoryComponent")&&!g_Engine->IsA(inventory,"LoadoutComponent")&&name.find("Inventory")!=std::string::npos){snapshot->adminInventory=inventory;snapshot->adminInventoryIdentity=g_Engine->GetObjectIdentity(inventory);}}
         if(own==owners.end())continue;
         if(link==linked.end()||g_Engine->ReadGuid(own->second+0x158)!=targetGuid||!g_Engine->IsObjectLive(actor)||!g_Engine->IsObjectLive(inventory))continue;bool destroying=false;if(g_Engine->ReadBoolProperty(actor,"bActorIsBeingDestroyed",destroying)&&destroying)continue;
-        SnapshotChest chest;chest.actor=actor;chest.inventory=inventory;chest.ownership=own->second;chest.actorIdentity=g_Engine->GetObjectIdentity(actor);chest.inventoryIdentity=g_Engine->GetObjectIdentity(inventory);chest.ownershipIdentity=g_Engine->GetObjectIdentity(own->second);if(!chest.actorIdentity||!chest.inventoryIdentity||!chest.ownershipIdentity)continue;chest.type=CleanType(g_Engine->GetObjectClassName(actor));chest.id=ChestId(actor,chest.type,targetGuid);chest.customName=ReadCustomNameCached(actor);chest.linked=Mem::ReadU8(link->second+0xF8)!=0;chest.privateStorage=Mem::ReadU8(own->second+0x169)!=0;
+        SnapshotChest chest;chest.actor=actor;chest.inventory=inventory;chest.ownership=own->second;chest.linkedComponent=link->second;chest.actorIdentity=g_Engine->GetObjectIdentity(actor);chest.inventoryIdentity=g_Engine->GetObjectIdentity(inventory);chest.ownershipIdentity=g_Engine->GetObjectIdentity(own->second);chest.linkedComponentIdentity=g_Engine->GetObjectIdentity(link->second);if(!chest.actorIdentity||!chest.inventoryIdentity||!chest.ownershipIdentity||!chest.linkedComponentIdentity)continue;chest.type=CleanType(g_Engine->GetObjectClassName(actor));chest.id=ChestId(actor,chest.type,targetGuid);chest.customName=ReadCustomNameCached(actor);chest.linked=Mem::ReadU8(link->second+0xF8)!=0;chest.privateStorage=Mem::ReadU8(own->second+0x169)!=0;
         uintptr_t root=Mem::ReadPtr(actor+Offsets::Actor_RootComponent);if(root&&Mem::Readable(reinterpret_cast<void*>(root+Offsets::SceneComp_RelativeLocation),sizeof(chest.location)))std::memcpy(&chest.location,reinterpret_cast<void*>(root+Offsets::SceneComp_RelativeLocation),sizeof(chest.location));chest.mapValid=g_Engine->ProjectWorldToMap(chest.location,chest.mapX,chest.mapY)&&std::isfinite(chest.mapX)&&std::isfinite(chest.mapY)&&chest.mapX>=0&&chest.mapX<=1&&chest.mapY>=0&&chest.mapY<=1;
         uintptr_t slots=0;int32_t num=0;if(!ReadSlots(inventory,slots,num))continue;chest.totalSlots=num;for(int32_t slot=0;slot<num;++slot){uintptr_t item=Mem::ReadPtr(slots+uintptr_t(slot)*8);if(!item||!g_Engine->IsA(item,"Item"))continue;uintptr_t data=Mem::ReadPtr(item+0xB0);int quantity=Mem::ReadI32(item+0x58);if(!data||quantity<=0||quantity>1000000)continue;SnapshotItem value;value.slot=slot;value.quantity=quantity;value.object=item;value.data=data;value.objectIdentity=g_Engine->GetObjectIdentity(item);value.dataIdentity=g_Engine->GetObjectIdentity(data);value.key=g_Engine->GetObjectName(data);value.id=ItemId(chest.id,slot,value.key,quantity);value.name=ItemDisplayName(data);value.icon="/assets/items/"+value.key+".png";value.maxStack=MaxStackSize(data);chest.items.push_back(std::move(value));}snapshot->chests.push_back(std::move(chest));}
     std::sort(snapshot->chests.begin(),snapshot->chests.end(),[](const auto&a,const auto&b){return a.id<b.id;});for(const auto&chest:snapshot->chests)RememberAutofillStorage(targetGuid,chest);{std::unique_lock<std::shared_mutex> lock(snapshotMutex);snapshotCache[cacheKey]=snapshot;}++snapshotGenerations;const auto micros=std::uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-started).count());if(micros>maximumSnapshotMicros.load())maximumSnapshotMicros.store(micros);return snapshot;
@@ -595,6 +603,12 @@ bool RunNativeAction(Request&r,const NativeAction&a){
         case ActionKind::RenameVerify:{const auto actual=ReadCustomNameOnGameThread(a.actor);ok=actual==r.renameValue.data();if(ok)PublishCustomName(a.actorIdentity,actual);else r.resultCode=-6;}break;
         case ActionKind::RenameDestroyIdentity:break;
         case ActionKind::RenameDestroyText:break;
+        case ActionKind::LinkableSet:{
+            ok=setIsLinkable;
+            if(ok)setIsLinkable(reinterpret_cast<void*>(a.destination),a.linkable);
+            if(!ok)r.resultCode=-11;
+        }break;
+        case ActionKind::LinkableVerify:ok=(Mem::ReadU8(a.destination+0xF8)!=0)==a.linkable;if(!ok)r.resultCode=-12;break;
         case ActionKind::OwnershipSet:{
             std::uint8_t canChange=0;
             if(!Mem::SafeRead(a.source+0x168,canChange)){r.resultCode=-10;ok=false;break;}
@@ -604,7 +618,9 @@ bool RunNativeAction(Request&r,const NativeAction&a){
             if(!canChange&&!Mem::SafeWrite(a.source+0x168,canChange)){ownershipCompatibility=-1;r.resultCode=-10;ok=false;}
         }break;
         case ActionKind::OwnershipVerify:ok=g_Engine->ReadGuid(a.source+0x158)==[&](){char value[33]{};std::snprintf(value,sizeof(value),"%08X%08X%08X%08X",a.ownerGuid[0],a.ownerGuid[1],a.ownerGuid[2],a.ownerGuid[3]);return std::string(value);}();if(!ok)r.resultCode=-9;break;
-    }return ok;
+    }
+    if(!ok&&r.operation=="transfer_ownership"&&r.state.load()!=JobState::RollingBack)++ownershipFailures;
+    return ok;
 }
 void ProcessOneStorageAction(){
     if(!activeRequest){const auto tail=requestTail.load(std::memory_order_relaxed),head=requestHead.load(std::memory_order_acquire);if(tail==head)return;activeRequest=requestRing[tail%QueueCapacity];requestTail.store(tail+1,std::memory_order_release);if(!activeRequest)return;if(activeRequest->operation=="autofill"&&activeRequest->autofillReconciledAtMicros){activeRequest->autofillDispatchedAtMicros=MonotonicMicros();if(activeRequest->autofillDispatchedAtMicros>=activeRequest->autofillReconciledAtMicros)RecordAutofillLatency(autofillReconcileToDispatchLastMicros,autofillReconcileToDispatchMaximumMicros,activeRequest->autofillDispatchedAtMicros-activeRequest->autofillReconciledAtMicros);}if(activeRequest->state.load()!=JobState::RollingBack)activeRequest->state.store(JobState::Running);activeRequest->updatedUnix.store(UnixNow());++runningJobs;}
@@ -677,7 +693,7 @@ bool InitializeAutofillRpcCapture(const std::string&hash,uintptr_t moduleBase,ui
     // pointers at +0/+16 (or one at +0 for an in-place split). Restrict this
     // fallback to the exact reviewed executable; every later build must either
     // expose valid reflection metadata or receive a new compatibility review.
-    if(!(moveLayout&&splitPutLayout&&splitLayout)){if(hash!=CurrentSha&&hash!=LatestSha)return false;moveSource=0;moveDestination=16;splitPutSource=0;splitPutDestination=16;splitSource=0;}
+    if(!(moveLayout&&splitPutLayout&&splitLayout)){if(hash!=CurrentSha&&hash!=LatestSha&&hash!=CandidateSha)return false;moveSource=0;moveDestination=16;splitPutSource=0;splitPutDestination=16;splitSource=0;}
     if(!EnsurePlayerProcessEventCapture(moduleBase,moduleEnd))return false;
     autofillMoveSourceOffset=moveSource;autofillMoveDestinationOffset=moveDestination;autofillSplitPutSourceOffset=splitPutSource;autofillSplitPutDestinationOffset=splitPutDestination;autofillSplitSourceOffset=splitSource;
     autofillMoveRpc.store(move,std::memory_order_release);autofillSplitPutRpc.store(splitPut,std::memory_order_release);autofillSplitRpc.store(split,std::memory_order_release);return true;
@@ -710,7 +726,7 @@ bool InstallNativeBuildingConsumptionHook(uintptr_t offset,uintptr_t moduleBase,
     const long pageSize=sysconf(_SC_PAGESIZE);const uintptr_t page=target&~(uintptr_t(pageSize)-1);const std::size_t protectedBytes=((target+BuildingConsumptionHookBytes-1)&~(uintptr_t(pageSize)-1))+std::size_t(pageSize)-page;if(mprotect(reinterpret_cast<void*>(page),protectedBytes,PROT_READ|PROT_WRITE|PROT_EXEC)!=0){nativeTarget=0;munmap(trampoline,64);return false;}unsigned char patch[BuildingConsumptionHookBytes];std::memset(patch,0x90,sizeof(patch));WriteJump(patch,hook);std::memcpy(reinterpret_cast<void*>(target),patch,sizeof(patch));__builtin___clear_cache(reinterpret_cast<char*>(target),reinterpret_cast<char*>(target+sizeof(patch)));mprotect(reinterpret_cast<void*>(page),protectedBytes,PROT_READ|PROT_EXEC);return true;
 }
 bool InstallNativeBuildingConsumptionCapture(const std::string&hash,uintptr_t moduleBase,uintptr_t moduleEnd){
-    const uintptr_t completeOffset=hash==CurrentSha?0x0A688410:(hash==LatestSha?0x0A6884B0:0),partialOffset=hash==CurrentSha?0x0A688400:(hash==LatestSha?0x0A6884A0:0);const unsigned char completePrefix[]={0x55,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53,0x48,0x83,0xec,0x58,0x48,0x89,0xf3},partialPrefix[]={0x55,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53,0x48,0x83,0xec,0x18,0x48,0x89,0xcb};
+    const uintptr_t completeOffset=hash==CurrentSha?0x0A688410:(hash==LatestSha?0x0A6884B0:(hash==CandidateSha?0x0A688A50:0)),partialOffset=hash==CurrentSha?0x0A688400:(hash==LatestSha?0x0A6884A0:(hash==CandidateSha?0x0A688A40:0));const unsigned char completePrefix[]={0x55,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53,0x48,0x83,0xec,0x58,0x48,0x89,0xf3},partialPrefix[]={0x55,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53,0x48,0x83,0xec,0x18,0x48,0x89,0xcb};
     return InstallNativeBuildingConsumptionHook(completeOffset,moduleBase,moduleEnd,completePrefix,sizeof(completePrefix),reinterpret_cast<uintptr_t>(&HookCompleteBuildingConsumption),autofillCompleteBuildingNativeTarget)&&InstallNativeBuildingConsumptionHook(partialOffset,moduleBase,moduleEnd,partialPrefix,sizeof(partialPrefix),reinterpret_cast<uintptr_t>(&HookPartialBuildingConsumption),autofillPartialBuildingNativeTarget);
 }
 bool InitializeAutofillBuildingCapture(const std::string&hash,uintptr_t moduleBase,uintptr_t moduleEnd){
@@ -718,7 +734,7 @@ bool InitializeAutofillBuildingCapture(const std::string&hash,uintptr_t moduleBa
     std::size_t completeInventories=0,partialInventories=0;const bool completeLayout=ResolveInventoryArrayParameterOffset(complete,completeInventories),partialLayout=ResolveInventoryArrayParameterOffset(partial,partialInventories);
     // The reviewed Linux builds retain a leading TArray<UInventoryComponent*>
     // parameter even when cooked reflection omits its field metadata.
-    if(!(completeLayout&&partialLayout)){if(hash!=CurrentSha&&hash!=LatestSha)return false;completeInventories=0;partialInventories=0;}
+    if(!(completeLayout&&partialLayout)){if(hash!=CurrentSha&&hash!=LatestSha&&hash!=CandidateSha)return false;completeInventories=0;partialInventories=0;}
     if(!EnsurePlayerProcessEventCapture(moduleBase,moduleEnd)||!InstallNativeBuildingConsumptionCapture(hash,moduleBase,moduleEnd))return false;autofillCompleteBuildingInventoriesOffset=completeInventories;autofillPartialBuildingInventoriesOffset=partialInventories;autofillCompleteBuildingRpc.store(complete,std::memory_order_release);autofillPartialBuildingRpc.store(partial,std::memory_order_release);return true;
 }
 bool InitializeAutofillReplicationWake(uintptr_t moduleBase,uintptr_t moduleEnd){
@@ -823,8 +839,8 @@ int ExecutableBounds(struct dl_phdr_info* info,size_t,void* data){
 
 bool InitializeAdminStorage(uintptr_t moduleBase,uintptr_t moduleEnd){
     const std::string hash=FileSha256("/proc/self/exe");const bool productionReviewed=StorageCompatibilityPolicy::IsProductionReviewed(hash);productionCompatibility=productionReviewed?1:-1;candidateOverride=!productionReviewed&&CandidateEnabled()&&StorageCompatibilityPolicy::IsCandidateOnly(hash);if(!ExpectedSha(hash)){compatibility=-1;return false;}const auto offsets=OffsetsFor(hash);
-    cachedDisplayTextOffset.store((hash==CurrentSha||hash==LatestSha)?0x04AD5A80:((hash==LegacySha||hash==PreviousSha)?0x04ACAA80:0x04AA1A80));
-    const uintptr_t serverRenameOffset=hash==LatestSha?0x0A5A3920:(hash==CurrentSha?0x0A5A3880:(hash==PreviousSha?0x0A593D70:0));
+    cachedDisplayTextOffset.store((hash==CurrentSha||hash==LatestSha||hash==CandidateSha)?0x04AD5A80:((hash==LegacySha||hash==PreviousSha)?0x04ACAA80:0x04AA1A80));
+    const uintptr_t serverRenameOffset=hash==CandidateSha?0x0A5A3EC0:(hash==LatestSha?0x0A5A3920:(hash==CurrentSha?0x0A5A3880:(hash==PreviousSha?0x0A593D70:0)));
     if(!earlyHookInstalled.load()||!originalEngineTick){compatibility=-6;return false;}
     for(uintptr_t o:{offsets.addItemByData,offsets.canAddItemByData,offsets.moveItem,offsets.removeFromSlot,offsets.canAddItemsByData,offsets.addItemsByData,offsets.buildingRequirements,offsets.memoryFree,offsets.engineTick,offsets.renameGet,offsets.renameSetter,offsets.renameSet,offsets.textFromString,offsets.uniqueIdDestructor,offsets.textDestructor,offsets.buildingEndPlay,offsets.setStackSize})if(moduleBase+o<moduleBase||moduleBase+o+EngineTickHookBytes>moduleEnd){compatibility=-2;return false;}
     if(serverRenameOffset&&(moduleBase+serverRenameOffset<moduleBase||moduleBase+serverRenameOffset+EngineTickHookBytes>moduleEnd)){compatibility=-2;return false;}
@@ -849,9 +865,12 @@ bool InitializeAdminStorage(uintptr_t moduleBase,uintptr_t moduleEnd){
     const unsigned char ownershipChangeGate[]={0x41,0x80,0xbf,0x68,0x01,0x00,0x00,0x00};
     const bool ownershipBounds=offsets.setOwningCharacterGuid&&moduleBase+offsets.setOwningCharacterGuid>=moduleBase&&moduleBase+offsets.setOwningCharacterGuid+sizeof(ownershipSig)<=moduleEnd;
     bool ownershipGuidFieldFound=false,ownershipChangeGateFound=false;const uintptr_t ownershipBegin=moduleBase+offsets.setOwningCharacterGuid,ownershipEnd=std::min(moduleEnd,ownershipBegin+uintptr_t(0x100));if(ownershipBounds)for(uintptr_t at=ownershipBegin;at<ownershipEnd;++at){if(at+sizeof(ownershipGuidField)<=ownershipEnd&&!std::memcmp(reinterpret_cast<void*>(at),ownershipGuidField,sizeof(ownershipGuidField)))ownershipGuidFieldFound=true;if(at+sizeof(ownershipChangeGate)<=ownershipEnd&&!std::memcmp(reinterpret_cast<void*>(at),ownershipChangeGate,sizeof(ownershipChangeGate)))ownershipChangeGateFound=true;}
-    ownershipCompatibility=ownershipBounds&&!std::memcmp(reinterpret_cast<void*>(ownershipBegin),ownershipSig,sizeof(ownershipSig))&&ownershipGuidFieldFound&&ownershipChangeGateFound?1:-1;
+    const unsigned char linkableSetterSig[]={0x41,0x56,0x53,0x48,0x83,0xEC,0x18,0x89,0xF3,0x38,0x9F,0xF8,0x00,0x00,0x00,0x0F,0x84,0xAE,0x00,0x00,0x00};
+    const bool linkableSetterReady=offsets.setIsLinkable&&moduleBase+offsets.setIsLinkable>=moduleBase&&moduleBase+offsets.setIsLinkable+sizeof(linkableSetterSig)<=moduleEnd&&!std::memcmp(reinterpret_cast<void*>(moduleBase+offsets.setIsLinkable),linkableSetterSig,sizeof(linkableSetterSig));
+    setIsLinkable=linkableSetterReady?reinterpret_cast<SetIsLinkableFn>(moduleBase+offsets.setIsLinkable):nullptr;
+    ownershipCompatibility=ownershipBounds&&!std::memcmp(reinterpret_cast<void*>(ownershipBegin),ownershipSig,sizeof(ownershipSig))&&ownershipGuidFieldFound&&ownershipChangeGateFound&&linkableSetterReady?1:-1;
     setOwningCharacterGuid=ownershipCompatibility.load()==1?reinterpret_cast<SetOwningCharacterGuidFn>(moduleBase+offsets.setOwningCharacterGuid):nullptr;
-    if(ownershipCompatibility.load()!=1)LogMessage("Storage ownership setter ABI validation failed for this game build; ownership transfer remains disabled");
+    if(ownershipCompatibility.load()!=1)LogMessage("Storage ownership or linked-inventory migration ABI validation failed for this game build; ownership transfer remains disabled");
     autofillBuildingCaptureCompatibility=InitializeAutofillBuildingCapture(hash,moduleBase,moduleEnd)?1:-1;
     if(autofillBuildingCaptureCompatibility.load()!=1)LogMessage("Authoritative linked-building consumption capture unavailable; storage autofill retains its bounded polling fallback");else LogMessage("Authoritative linked-building consumption capture armed for storage autofill");
     catalogCompatibility=1;unlockCatalogCompatibility=UnlockCatalogAssetsValid()?1:-1;const auto& buildCatalog=AuthoritativeBuildingCatalog();buildingTaxonomyCompatibility=buildCatalog.valid?1:-1;buildingIconsCompatibility=buildCatalog.iconsValid?1:-1;buildingRequirementsCompatibility=batchCompatibility.load()==1?1:-1;craftingRecipeCompatibility=batchCompatibility.load()==1?1:-1;if(unlockCatalogCompatibility.load()!=1)LogMessage("Vestige and mount unlock catalog assets unavailable; ordinary item catalog remains enabled");if(buildingTaxonomyCompatibility.load()!=1)LogMessage("Authoritative building catalogue is invalid; crafting recipes remain enabled");if(buildingIconsCompatibility.load()!=1)LogMessage("One or more authoritative building catalogue icons are unavailable");removalTrackingCompatibility=InstallBuildingEndPlayHook(moduleBase,moduleEnd,offsets.buildingEndPlay)?1:-1;if(removalTrackingCompatibility.load()!=1)LogMessage("Immediate storage removal tracking unavailable; storage editing remains enabled with ordinary actor reconciliation");nativeMutationCaptureCompatibility=InstallObservedMutationHooks(moduleBase,moduleEnd,offsets)?1:-1;if(nativeMutationCaptureCompatibility.load()!=1)LogMessage("Native in-game inventory mutation attribution unavailable; website storage editing remains enabled");else LogMessage("Native in-game inventory mutation attribution armed");autofillRpcCaptureCompatibility=InitializeAutofillRpcCapture(hash,moduleBase,moduleEnd)?1:-1;if(autofillRpcCaptureCompatibility.load()!=1)LogMessage("Authoritative full-stack and split-stack withdrawal capture unavailable; storage autofill retains its bounded polling fallback");else LogMessage("Authoritative full-stack and split-stack withdrawal capture armed for storage autofill");autofillNormalizationCompatibility=1;autofillReplicationWakeCompatibility=InitializeAutofillReplicationWake(moduleBase,moduleEnd)?1:-1;if(autofillReplicationWakeCompatibility.load()!=1)LogMessage("Immediate storage replication wake unavailable; autofill retains normal actor replication");else LogMessage("Immediate storage replication wake armed for successful autofills");dispatcherCompatibility=1;compatibility=1;return true;
@@ -859,8 +878,8 @@ bool InitializeAdminStorage(uintptr_t moduleBase,uintptr_t moduleEnd){
 bool InitializeAdminStorageHookEarly(){
     if(earlyHookInstalled.load())return true;
     std::string hash=FileSha256("/proc/self/exe");if(!ExpectedDispatcherSha(hash)){LogMessage("Admin storage dispatcher fingerprint mismatch: "+hash);return false;}
-    const bool currentDispatcher=hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"||hash==LegacySha||hash==PreviousSha||hash==CurrentSha||hash==LatestSha;
-    const uintptr_t dispatcherOffset=(hash==CurrentSha||hash==LatestSha)?0x07ACAF90:(currentDispatcher?0x07ABFE00:EngineTickOffset);
+    const bool currentDispatcher=hash=="49512c0ee933c3ee4dda5fb5c2f0a25e66d7f26e34795c45b91b5c1d12b61b0c"||hash==LegacySha||hash==PreviousSha||hash==CurrentSha||hash==LatestSha||hash==CandidateSha;
+    const uintptr_t dispatcherOffset=(hash==CurrentSha||hash==LatestSha||hash==CandidateSha)?0x07ACAF90:(currentDispatcher?0x07ABFE00:EngineTickOffset);
     uintptr_t bounds[3]={0,0,0};dl_iterate_phdr(&ExecutableBounds,bounds);if(!bounds[2]||bounds[0]+dispatcherOffset+EngineTickHookBytes>bounds[1]){LogMessage("Admin storage dispatcher executable bounds unavailable");return false;}
     auto* target=reinterpret_cast<unsigned char*>(bounds[0]+dispatcherOffset);
     const unsigned char expected[EngineTickHookBytes]={0x53,0x48,0x83,0xEC,0x10,0x8B,0x47,0x08,0xA8,0x10,0x0F,0x85,0x92,0x00,0x00,0x00};
@@ -884,7 +903,7 @@ void FinalizeAdminStorageOwnershipTransfers(){
     bool transferred=false;
     if(autofillStore&&autofillStore->Transfer(request->oldOwnerGuid,request->oldChestId,request->newOwnerGuid,request->newChestId,transferred)){
         if(transferred){++ownershipSnapshotMigrations;std::lock_guard<std::mutex> lock(knownAutofillStorageMutex);for(auto&entry:knownAutofillStorages)if(entry.second.ownerGuid==request->oldOwnerGuid&&entry.second.chestId==request->oldChestId){entry.second.ownerGuid=request->newOwnerGuid;entry.second.chestId=request->newChestId;}}
-        ++ownershipTransfers;FinishJob(*request,true,request->resultCode.load()==2?2:1);return;
+        if(request->transferWasLinked)++ownershipLinkedMigrations;++ownershipTransfers;FinishJob(*request,true,request->resultCode.load()==2?2:1);return;
     }
     autofillPersistenceCompatibility=-1;++ownershipFailures;request->resultCode=-8;request->rollbackIndex=request->rollback.size();request->state=JobState::RollingBack;request->updatedUnix=UnixNow();
     std::lock_guard<std::mutex> lock(jobsMutex);const auto head=requestHead.load(std::memory_order_relaxed),tail=requestTail.load(std::memory_order_acquire);if(head-tail>=QueueCapacity){request->state=JobState::Persisting;return;}requestRing[head%QueueCapacity]=request.get();requestHead.store(head+1,std::memory_order_release);
@@ -900,12 +919,18 @@ bool BuildMutationPlan(const std::string&operation,const std::string&adminGuid,c
     auto snapshot=BuildStorageSnapshot(targetGuid,adminGuid,true);if(!snapshot){error="Storage snapshot preparation failed";return false;}r.expectedWorld=snapshot->world;r.expectedWorldIdentity=snapshot->worldIdentity;const SnapshotChest* chest=SnapshotFindChest(*snapshot,chestId);if(!chest){error="Storage container is no longer available";return false;}const SnapshotChest* destination=destinationChestId.empty()?nullptr:SnapshotFindChest(*snapshot,destinationChestId);auto selected=[&](){std::vector<const SnapshotItem*> out;std::unordered_set<std::string> unique;for(const auto&id:itemIds){if(!unique.insert(id).second)return std::vector<const SnapshotItem*>{};auto* value=SnapshotFindItem(*chest,id);if(!value)return std::vector<const SnapshotItem*>{};out.push_back(value);}return out;};
     if(operation=="rename"){if(renameCompatibility.load()!=1){error="Storage naming is unavailable for this game build";return false;}if(familyCircuitBroken[size_t(OperationFamily::Rename)]){error="Storage naming was disabled after a failed or slow native call";return false;}std::memcpy(r.renameValue.data(),customName.data(),customName.size());NativeAction a=BaseAction(*snapshot,*chest,OperationFamily::Rename);for(ActionKind kind:{ActionKind::RenameConstruct,ActionKind::RenameSetterIdentity,ActionKind::RenameSet,ActionKind::RenameVerify,ActionKind::RenameDestroyIdentity,ActionKind::RenameDestroyText}){a.kind=kind;r.actions.push_back(a);}r.successMessage="Storage renamed";return true;}
     if(operation=="transfer_ownership"){
-        if(ownershipCompatibility.load()!=1||autofillPersistenceCompatibility.load()!=1||!setOwningCharacterGuid){error="Storage ownership transfer is unavailable for this game build";return false;}
+        if(ownershipCompatibility.load()!=1||autofillPersistenceCompatibility.load()!=1||!setOwningCharacterGuid||!setIsLinkable){error="Storage ownership transfer is unavailable for this game build";return false;}
         if(targetGuid==newOwnerGuid){error="The selected character already owns this storage";return false;}
         std::array<std::uint32_t,4> oldParts{},newParts{};if(!ParseCharacterGuid(targetGuid,oldParts)||!ParseCharacterGuid(newOwnerGuid,newParts)){error="The selected owner identity is invalid";return false;}
+        NativeAction linkAction=BaseAction(*snapshot,*chest,OperationFamily::Ownership);linkAction.destination=chest->linkedComponent;linkAction.destinationIdentity=chest->linkedComponentIdentity;
+        if(chest->linked){linkAction.kind=ActionKind::LinkableSet;linkAction.linkable=false;r.actions.push_back(linkAction);linkAction.kind=ActionKind::LinkableVerify;r.actions.push_back(linkAction);}
         NativeAction action=BaseAction(*snapshot,*chest,OperationFamily::Ownership);action.source=chest->ownership;action.sourceIdentity=chest->ownershipIdentity;action.kind=ActionKind::OwnershipSet;action.ownerGuid=newParts;r.actions.push_back(action);action.kind=ActionKind::OwnershipVerify;r.actions.push_back(action);
-        NativeAction restore=action;restore.family=OperationFamily::Rollback;restore.ownerGuid=oldParts;restore.kind=ActionKind::OwnershipVerify;r.rollback.push_back(restore);restore.kind=ActionKind::OwnershipSet;r.rollback.push_back(restore);
-        r.oldOwnerGuid=targetGuid;r.newOwnerGuid=newOwnerGuid;r.oldChestId=chestId;r.newChestId=ChestId(chest->actor,chest->type,newOwnerGuid);r.successMessage="Storage ownership transferred";return true;
+        if(chest->linked){linkAction.kind=ActionKind::LinkableSet;linkAction.linkable=true;r.actions.push_back(linkAction);linkAction.kind=ActionKind::LinkableVerify;r.actions.push_back(linkAction);}
+        NativeAction restore=action;restore.family=OperationFamily::Rollback;restore.ownerGuid=oldParts;
+        if(chest->linked){linkAction.family=OperationFamily::Rollback;linkAction.kind=ActionKind::LinkableVerify;linkAction.linkable=true;r.rollback.push_back(linkAction);linkAction.kind=ActionKind::LinkableSet;r.rollback.push_back(linkAction);}
+        restore.kind=ActionKind::OwnershipVerify;r.rollback.push_back(restore);restore.kind=ActionKind::OwnershipSet;r.rollback.push_back(restore);
+        if(chest->linked){linkAction.kind=ActionKind::LinkableVerify;linkAction.linkable=false;r.rollback.push_back(linkAction);linkAction.kind=ActionKind::LinkableSet;r.rollback.push_back(linkAction);}
+        r.oldOwnerGuid=targetGuid;r.newOwnerGuid=newOwnerGuid;r.oldChestId=chestId;r.newChestId=ChestId(chest->actor,chest->type,newOwnerGuid);r.transferWasLinked=chest->linked;r.successMessage="Storage ownership transferred";return true;
     }
     if(operation=="add"){std::string key;uintptr_t data=FindCatalogData(catalogId,&key);if(!data){error="Selected item is no longer available";return false;}if(!canAddItemByData(reinterpret_cast<void*>(chest->inventory),reinterpret_cast<void*>(data),quantity)){error="The storage does not have enough space";return false;}NativeAction a=BaseAction(*snapshot,*chest,OperationFamily::SingleItem);a.kind=ActionKind::Add;a.destination=chest->inventory;a.destinationIdentity=chest->inventoryIdentity;a.itemData=data;a.itemDataIdentity=g_Engine->GetObjectIdentity(data);a.quantity=quantity;r.actions.push_back(a);}
     else if(operation=="add_recipe"){RecipeRecord recipe;if(!ResolveRecipe(catalogId,recipe)){error="Selected recipe is no longer available";return false;}std::vector<unsigned char> capacity(recipe.ingredients.size()*16);for(size_t i=0;i<recipe.ingredients.size();++i){long long amount=1LL*recipe.ingredients[i].quantity*quantity;if(amount<1||amount>1000000){error="Recipe quantity is too large";return false;}void* data=reinterpret_cast<void*>(recipe.ingredients[i].data);int q=int(amount);std::memcpy(capacity.data()+i*16,&data,8);std::memcpy(capacity.data()+i*16+8,&q,4);}FUEArray values{capacity.data(),int32_t(recipe.ingredients.size()),int32_t(recipe.ingredients.size())};if(!canAddItemsByData(reinterpret_cast<void*>(chest->inventory),&values)){error="The storage does not have enough space for the complete recipe";return false;}for(const auto&ingredient:recipe.ingredients){NativeAction a=BaseAction(*snapshot,*chest,OperationFamily::BatchAddition);a.kind=ActionKind::Add;a.destination=chest->inventory;a.destinationIdentity=chest->inventoryIdentity;a.itemData=ingredient.data;a.itemDataIdentity=g_Engine->GetObjectIdentity(ingredient.data);a.quantity=ingredient.quantity*quantity;r.actions.push_back(a);}}
@@ -968,7 +993,7 @@ std::string GetAdminStorageMutationStatus(const std::string&id,const std::string
         if((state==JobState::Completed||state==JobState::Failed)&&UnixNow()>found->second->updatedUnix.load()+300){jobs.erase(found);return {};}
         r=found->second;
     }
-    const auto state=r->state.load();const char*name=state==JobState::Queued?"queued":state==JobState::Running?"running":state==JobState::Persisting?"persisting":state==JobState::RollingBack?"rolling-back":state==JobState::Completed?"completed":"failed";std::string message;if(state==JobState::Completed)message=r->resultCode.load()==2?r->successMessage+"; this operation was disabled for later requests after exceeding the game-thread limit":r->successMessage;else if(state==JobState::Failed){switch(r->resultCode.load()){case -1:message="A storage object changed before the operation completed";break;case -3:message="The game world changed before the operation completed";break;case -4:message="This storage operation is disabled after exceeding the game-thread limit";break;case -5:message="A delete partially completed; refresh storage immediately";break;case -6:message="This storage type did not preserve the requested name";break;case -7:message="The storage operation was cancelled";break;case -8:message="The autofill snapshot could not be migrated, so storage ownership was restored";break;case -9:message="The game did not preserve the requested storage owner";break;case -10:message="The storage ownership-change gate could not be restored safely";break;default:message="The game rejected the storage operation";}}
+    const auto state=r->state.load();const char*name=state==JobState::Queued?"queued":state==JobState::Running?"running":state==JobState::Persisting?"persisting":state==JobState::RollingBack?"rolling-back":state==JobState::Completed?"completed":"failed";std::string message;if(state==JobState::Completed)message=r->resultCode.load()==2?r->successMessage+"; this operation was disabled for later requests after exceeding the game-thread limit":r->successMessage;else if(state==JobState::Failed){switch(r->resultCode.load()){case -1:message="A storage object changed before the operation completed";break;case -3:message="The game world changed before the operation completed";break;case -4:message="This storage operation is disabled after exceeding the game-thread limit";break;case -5:message="A delete partially completed; refresh storage immediately";break;case -6:message="This storage type did not preserve the requested name";break;case -7:message="The storage operation was cancelled";break;case -8:message="The autofill snapshot could not be migrated, so storage ownership was restored";break;case -9:message="The game did not preserve the requested storage owner";break;case -10:message="The storage ownership-change gate could not be restored safely";break;case -11:message="The game could not refresh the storage's linked-owner membership";break;case -12:message="The game did not preserve the storage's linked state during ownership transfer";break;default:message="The game rejected the storage operation";}}
     const auto progress=state==JobState::RollingBack?r->rollback.size()-r->rollbackIndex.load():r->actionIndex.load();const auto total=state==JobState::RollingBack?r->rollback.size():r->actions.size();
     std::ostringstream out;out<<"{\"id\":\""<<Escape(id)<<"\",\"status\":\""<<name<<"\",\"operation\":\""<<Escape(r->operation)<<"\",\"progress\":"<<progress<<",\"total\":"<<total<<",\"message\":"<<(message.empty()?"null":"\""+Escape(message)+"\"")<<'}';return out.str();
 }

@@ -23,7 +23,7 @@ except ModuleNotFoundError:  # Imported as tools.* by repository tests.
     from tools.asset_filesystem import extended_path, read_json as read_json_file
 
 
-RECIPE_VERSION = 20
+RECIPE_VERSION = 21
 GAME_EXE = Path("RSDragonwilds/Binaries/Win64/RSDragonwilds-Win64-Shipping.exe")
 EXPORT_CHECKPOINT = "export-checkpoint.json"
 INCREMENTAL_STATE = "incremental-state.json"
@@ -65,6 +65,7 @@ REVIEWED_LEGACY_GENERATION_RECIPES = {
     "4c4c8317dfd92d2883a9bc4f929dcaf6fc5034740a56ee146e7ca77e4a6338d5",  # recipe 18
     "1cafd1cc6fd564e339aeb63c32f42fea740e12b556a303ab8bdb7b75747bcb83",  # recipe 19
     "9f349ec06fc1a7be4c074e6eac23d8c1a97e024d2884686b318f3b5a3eeaee13",  # recipe 20
+    "4be9d1e30537aca243a87103d05663262c1b7ce14ae203c16a82ef7fc931eafb",  # recipe 21
 }
 RETIRED_FRAGMENT_CRYSTAL_TARGET = \
     "package:RSDragonwilds/Content/Art/UI/NavIcons/T_DR_Icon_Compass_FragmentCrystal"

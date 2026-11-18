@@ -321,6 +321,11 @@ bool InitializeResourceTracking(uintptr_t moduleBase,uintptr_t moduleEnd){
         getGameTimeOffset=0x0A7A99F0;getTimeProviderOffset=0x0A850A90;
         getRespawnIntervalOffset=0x0AAEE900;getFoliageDepictableOffset=0x0AB0C890;
         setUnavailableOffset=0x0AAC3030;setResourceAmountOffset=0x0AAEDD80;respawnElapsedOffset=0x0AAEF3D0;
+    }else if(hash=="248e13b8f37f052e3591a726c78ee6bc79c2a6df5d22825c11782cd9c950ae11"){
+        timeProviderNeedsSubsystem=true;
+        getGameTimeOffset=0x0A7AA060;getTimeProviderOffset=0x0A851100;
+        getRespawnIntervalOffset=0x0AAEEBE0;getFoliageDepictableOffset=0x0AB0CB70;
+        setUnavailableOffset=0x0AAC35B0;setResourceAmountOffset=0x0AAEE060;respawnElapsedOffset=0x0AAEF6B0;
     }else{compatibility=-2;return false;}
     if(moduleBase+getGameTimeOffset<moduleBase||moduleBase+getGameTimeOffset>=moduleEnd){compatibility=-3;return false;}
     if(!InstallSetUnavailableHook(moduleBase,moduleEnd)||!InstallSetResourceAmountHook(moduleBase,moduleEnd)||!InstallRespawnElapsedHook(moduleBase,moduleEnd)){compatibility=-4;return false;}

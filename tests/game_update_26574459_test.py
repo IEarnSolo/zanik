@@ -43,13 +43,13 @@ for offset in (
     "0x0A6698D0", "0x0A66A460", "0x0A66BFA0", "0x0A66F030",
     "0x0A66B430", "0x0A677E00", "0x0A3E9A20", "0x04A94480",
     "0x07ACAF90", "0x0A0FDAC0", "0x0A0FDD30", "0x0A0FE110",
-    "0x04ADAAE0", "0x079DB8A0", "0x04A2A9F0", "0x0A3C4FA0", "0x0A68BA70", "0x0AAD4450",
+    "0x04ADAAE0", "0x079DB8A0", "0x04A2A9F0", "0x0A3C4FA0", "0x0A68BA70", "0x0AAD4450", "0x0A68FB50",
 ):
     assert offset in storage
 assert "hash==CurrentSha||hash==LatestSha" in storage
 assert "hash==LatestSha?0x0A5A3920" in storage
-assert "(hash==CurrentSha||hash==LatestSha)?0x07ACAF90" in storage
-assert "hash!=CurrentSha&&hash!=LatestSha" in storage
+assert "(hash==CurrentSha||hash==LatestSha||hash==CandidateSha)?0x07ACAF90" in storage
+assert "hash!=CurrentSha&&hash!=LatestSha&&hash!=CandidateSha" in storage
 
 graves = (root / "src" / "engine" / "admin_gravestone.cpp").read_text()
 assert f'LatestSha="{server_sha}"' in graves
@@ -111,10 +111,12 @@ assert unlock_rows["PerkV2_Agility_GreaterBreakfall"][1:5] == [
 assert unlock_rows["PerkV2_Agility_GreaterBreakfall"][6:] == ["SKILL_Agility", "54"]
 
 recipe = json.loads((root / "asset-tools" / "extraction-recipes.json").read_text())
-assert recipe["schemaVersion"] == 20
+assert recipe["schemaVersion"] >= 20
 profile = recipe["catalogProfile"]
-assert profile["version"] == "client-26574764-reviewed-11"
-assert profile["clientBuild"] == "26574764"
+history = json.loads((root / "asset-tools" / "extraction-recipe-history.json").read_text())["recipes"]
+reviewed = [entry["recipe"]["catalogProfile"] for entry in history
+            if entry["recipe"].get("schemaVersion") == 20]
+assert reviewed == [{**profile, "version": "client-26574764-reviewed-11", "clientBuild": "26574764"}]
 assert profile["exportCounts"] == {"jsonFiles": 18279, "worldPartitionCells": 1731}
 assert profile["catalogCounts"] == {
     "buildings/catalog.json:pieces": 850,

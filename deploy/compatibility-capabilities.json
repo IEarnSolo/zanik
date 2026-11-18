@@ -113,13 +113,14 @@
       "id": "region-discovery",
       "category": "log-contract-and-assets",
       "staticChecks": ["LogMapRegions category", "exact first-discovery format contract", "exact IsMapRegionRevealed native bitmap-access ABI"],
-      "runtimeStatusFields": ["playerActivityRegionCompatibility", "playerActivityRegionSnapshotComplete", "playerActivityRegionComponentUnavailable", "playerActivityRegionBitmapReadFailures", "playerActivityRegionQueryMismatches", "playerActivityRegionBitmapReadbackFailures"],
+      "runtimeStatusFields": ["playerActivityRegionCompatibility", {"path": "playerActivityRegionSnapshotComplete", "pendingAllowed": true}],
+      "runtimeDiagnosticFields": ["playerActivityRegionComponentUnavailable", "playerActivityRegionBitmapReadFailures", "playerActivityRegionQueryMismatches", "playerActivityRegionBitmapReadbackFailures"],
       "diagnosticsEndpoint": "/api/player-activity-diagnostics",
       "persistence": ["zanik-data/player-activity.db"],
       "assets": ["region-discovery-icon.png"],
       "failureBoundary": "new region activity entries only",
       "liveValidation": ["discover a previously undiscovered development-server region"],
-      "tests": ["tests/game_update_26574459_test.py", "tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/player_activity_http_test.py"]
+      "tests": ["tests/game_update_26670300_test.py", "tests/game_update_26574459_test.py", "tests/game_update_26419371_test.py", "tests/game_update_26161880_test.py", "tests/player_activity_http_test.py"]
     },
     {
       "id": "recent-activity-core",
@@ -141,7 +142,7 @@
       "diagnosticsEndpoint": "/api/player-activity-diagnostics",
       "persistence": ["zanik-data/player-activity.db"], "assets": ["generated player skill icons"],
       "failureBoundary": "skill-level activity only", "liveValidation": ["gain one skill level on the development server"],
-      "tests": ["tests/game_update_26574459_test.py", "tests/status_test.cpp"]
+      "tests": ["tests/game_update_26670300_test.py", "tests/game_update_26574459_test.py", "tests/status_test.cpp"]
     },
     {
       "id": "activity-death",
@@ -151,7 +152,7 @@
       "diagnosticsEndpoint": "/api/player-activity-diagnostics",
       "persistence": ["zanik-data/player-activity.db"], "assets": [],
       "failureBoundary": "death activity only", "liveValidation": ["observe one development-server death transition"],
-      "tests": ["tests/game_update_26574459_test.py", "tests/status_test.cpp"]
+      "tests": ["tests/game_update_26670300_test.py", "tests/game_update_26574459_test.py", "tests/status_test.cpp"]
     },
     {
       "id": "activity-recipe-unlocked",
@@ -161,7 +162,7 @@
       "diagnosticsEndpoint": "/api/player-activity-diagnostics",
       "persistence": ["zanik-data/player-activity.db", "zanik-data/player-recipe-snapshots.db"], "assets": ["recipe-runtime-catalog.tsv", "recipe-unlocks.json"],
       "failureBoundary": "recipe-unlocked activity only", "liveValidation": ["unlock one development-server recipe"],
-      "tests": ["tests/status_test.cpp", "tests/recipe_npc_building_compatibility_test.py"]
+      "tests": ["tests/game_update_26670300_test.py", "tests/status_test.cpp", "tests/recipe_npc_building_compatibility_test.py"]
     },
     {
       "id": "activity-quest-started",
@@ -170,7 +171,7 @@
       "runtimeStatusFields": ["playerActivityQuestStartedCompatibility"], "diagnosticsEndpoint": "/api/player-activity-diagnostics",
       "persistence": ["zanik-data/player-activity.db", "zanik-data/player-quest-snapshots.db"], "assets": ["quest-runtime-catalog.tsv", "quest-catalog.json"],
       "failureBoundary": "quest-started activity only", "liveValidation": ["start one development-server quest"],
-      "tests": ["tests/status_test.cpp", "tests/game_update_26574459_test.py"]
+      "tests": ["tests/game_update_26670300_test.py", "tests/status_test.cpp", "tests/game_update_26574459_test.py"]
     },
     {
       "id": "activity-quest-progressed",
@@ -179,7 +180,7 @@
       "runtimeStatusFields": ["playerActivityQuestProgressedCompatibility"], "diagnosticsEndpoint": "/api/player-activity-diagnostics",
       "persistence": ["zanik-data/player-activity.db", "zanik-data/player-quest-snapshots.db"], "assets": ["quest-runtime-catalog.tsv", "quest-catalog.json"],
       "failureBoundary": "quest-progressed activity only", "liveValidation": ["advance one development-server quest objective"],
-      "tests": ["tests/status_test.cpp", "tests/game_update_26574459_test.py"]
+      "tests": ["tests/game_update_26670300_test.py", "tests/status_test.cpp", "tests/game_update_26574459_test.py"]
     },
     {
       "id": "activity-quest-completed",
@@ -188,7 +189,7 @@
       "runtimeStatusFields": ["playerActivityQuestCompletedCompatibility"], "diagnosticsEndpoint": "/api/player-activity-diagnostics",
       "persistence": ["zanik-data/player-activity.db", "zanik-data/player-quest-snapshots.db"], "assets": ["quest-runtime-catalog.tsv", "quest-catalog.json"],
       "failureBoundary": "quest-completed activity only", "liveValidation": ["complete one development-server quest"],
-      "tests": ["tests/status_test.cpp", "tests/game_update_26574459_test.py"]
+      "tests": ["tests/game_update_26670300_test.py", "tests/status_test.cpp", "tests/game_update_26574459_test.py"]
     },
     {
       "id": "activity-material-discovered",
@@ -197,7 +198,7 @@
       "runtimeStatusFields": ["playerActivityMaterialCompatibility"], "diagnosticsEndpoint": "/api/player-activity-diagnostics",
       "persistence": ["zanik-data/player-activity.db"], "assets": ["material-first-pickup-catalog.tsv"],
       "failureBoundary": "material-discovered activity only", "liveValidation": ["discover one new development-server material"],
-      "tests": ["tests/status_test.cpp", "tests/player_activity_http_test.py"]
+      "tests": ["tests/game_update_26670300_test.py", "tests/status_test.cpp", "tests/player_activity_http_test.py"]
     },
     {
       "id": "activity-perk-unlocked",
@@ -206,7 +207,7 @@
       "runtimeStatusFields": ["playerActivityPerkCompatibility"], "diagnosticsEndpoint": "/api/player-activity-diagnostics",
       "persistence": ["zanik-data/player-activity.db"], "assets": ["player-activity-unlock-catalog.tsv"],
       "failureBoundary": "perk-unlocked activity only", "liveValidation": ["unlock one development-server perk"],
-      "tests": ["tests/status_test.cpp", "tests/player_activity_http_test.py"]
+      "tests": ["tests/game_update_26670300_test.py", "tests/status_test.cpp", "tests/player_activity_http_test.py"]
     },
     {
       "id": "activity-spell-unlocked",
@@ -215,7 +216,7 @@
       "runtimeStatusFields": ["playerActivitySpellCompatibility"], "diagnosticsEndpoint": "/api/player-activity-diagnostics",
       "persistence": ["zanik-data/player-activity.db"], "assets": ["player-activity-unlock-catalog.tsv"],
       "failureBoundary": "spell-unlocked activity only", "liveValidation": ["unlock one development-server spell"],
-      "tests": ["tests/status_test.cpp", "tests/player_activity_http_test.py"]
+      "tests": ["tests/game_update_26670300_test.py", "tests/status_test.cpp", "tests/player_activity_http_test.py"]
     },
     {
       "id": "player-network",
@@ -304,14 +305,14 @@
     {
       "id": "storage-ownership-transfer",
       "category": "native-and-persistence",
-      "staticChecks": ["exact UOwnershipComponent::SetOwningCharacterGuid symbol", "complete reviewed setter prologue", "owner GUID field at 0x158", "bOwnershipCanChange gate at 0x168", "bounded admin-only gate override with immediate restoration", "identity-bound ownership component", "authoritative native readback", "atomic autofill snapshot owner and storage-ID migration"],
+      "staticChecks": ["exact UOwnershipComponent::SetOwningCharacterGuid symbol", "complete reviewed ownership-setter prologue", "owner GUID field at 0x158", "bOwnershipCanChange gate at 0x168", "bounded admin-only gate override with immediate restoration", "exact ULinkedInventoryComponent::SetIsLinkable symbol and complete reviewed instruction signature", "identity-bound ownership and linked-inventory components", "authoritative owner and linked-state readback", "linked storage unregister before ownership mutation and re-register after mutation", "atomic autofill snapshot owner and storage-ID migration"],
       "runtimeStatusFields": ["adminStorageOwnershipCompatibility", "adminStorageAutofillPersistenceCompatibility"],
       "runtimeDiagnosticFields": ["adminStorageOwnershipTransfers", "adminStorageOwnershipFailures", "adminStorageOwnershipSnapshotMigrations", "adminStorageOwnershipMaximumMicroseconds"],
       "diagnosticsEndpoint": "/api/admin/storage-diagnostics",
       "persistence": ["zanik-data/storage-autofill.db", "zanik-data/admin-audit.log"],
       "assets": [],
-      "failureBoundary": "storage ownership transfer only; a failed autofill migration restores the original native owner",
-      "liveValidation": ["transfer one development storage between two test characters", "verify the storage receives the recipient-derived ID", "verify any autofill snapshot follows the new owner and ID", "restart and verify ownership plus autofill persistence", "transfer the storage back"],
+      "failureBoundary": "storage ownership transfer only; a failed linked-membership or autofill migration restores the original owner and linked state",
+      "liveValidation": ["transfer one linked development storage between two test characters", "verify the former owner can no longer consume its contents through linked building", "verify the recipient can consume its contents through linked building", "verify the storage receives the recipient-derived ID", "verify any autofill snapshot follows the new owner and ID", "restart and verify ownership, linked membership, and autofill persistence", "transfer the storage back"],
       "tests": ["tests/storage_autofill_store_test.cpp", "tests/storage_mutation_pipeline_test.py", "tests/storage_autofill_test.py", "tests/game_update_26574459_test.py", "tests/game_update_26419371_test.py"]
     },
     {
@@ -405,7 +406,8 @@
       "id": "admin-recent-activity-testing",
       "category": "optional-native-and-persistence",
       "staticChecks": ["exact native SkillComponent reset and queued-XP ABIs with complete-instruction signatures for skill, perk, and spell tests", "required reflected Dominion cheat reset and trigger functions", "APlayerController cheat-manager construction slots and configured Dominion Blueprint subclass hierarchy", "exact Unreal static-object construction parameter, construction, and cheat-manager initialization ABIs", "progress recipe/build unlock functions", "quest objective transition function and objective-name catalog", "authoritative player revealed-map component getter, region reveal and replication functions, exact native bitmap-access ABI, reviewed native region-name layout, reflected NetPushModelHelpers property-dirty function, and reflected AActor replication-wake functions", "player persistence save function", "exact reflected parameter layouts", "material, perk/spell, recipe/build, quest, and region catalogs"],
-      "runtimeStatusFields": ["featureStates.adminActivityTesting", "adminActivityTestCompatibility", "adminActivityTestCheatCompatibility", "adminActivityTestPersistenceCompatibility", "adminActivityTestRegionCompatibility", "adminActivityTestRegionReplicationCompatibility", "adminActivityTestRegionPropertyDirtyCompatibility", "adminActivityTestRegionPropertyDirtyCalls", "adminActivityTestRegionPropertyDirtyFailures", "adminActivityTestRegionReplicationWakeCalls", "adminActivityTestRegionReplicationWakeFailures", "adminActivityTestRegionCatalogEntries", "adminActivityTestResolvedRegionCatalogEntries"],
+      "runtimeStatusFields": ["featureStates.adminActivityTesting", "adminActivityTestCompatibility", "adminActivityTestCheatCompatibility", "adminActivityTestPersistenceCompatibility", "adminActivityTestRegionCompatibility", "adminActivityTestRegionReplicationCompatibility", "adminActivityTestRegionPropertyDirtyCompatibility"],
+      "runtimeDiagnosticFields": ["adminActivityTestRegionPropertyDirtyCalls", "adminActivityTestRegionPropertyDirtyFailures", "adminActivityTestRegionReplicationWakeCalls", "adminActivityTestRegionReplicationWakeFailures", "adminActivityTestRegionCatalogEntries", "adminActivityTestResolvedRegionCatalogEntries"],
       "diagnosticsEndpoint": "/api/admin/activity-test/diagnostics",
       "persistence": ["zanik-data/player-activity.db", "game-owned online character persistence"],
       "assets": ["material-first-pickup-catalog.tsv", "player-activity-unlock-catalog.tsv", "recipe-runtime-catalog.tsv", "quest-runtime-catalog.tsv"],

@@ -12,12 +12,14 @@ inline constexpr std::string_view CurrentReviewedSha =
     "a350b998ea38955345619b7adde31aa9e29db629e9e9aa32287013957eb41901";
 inline constexpr std::string_view LatestReviewedSha =
     "1b779665120e8d0df8c5d481969cdb2d1a4df52441cd5569ad2309ec62da1d26";
+inline constexpr std::string_view CandidateSha =
+    "248e13b8f37f052e3591a726c78ee6bc79c2a6df5d22825c11782cd9c950ae11";
 
 inline bool IsProductionReviewed(std::string_view hash) {
     return hash == "445f8b65047d208adb04a3cb03bc7706f069306d814172ae29caec16c15bec7e" ||
            hash == "ef39023c04e1bde785907e13b9b64d72600455f1633bbfe231f639d31d98cfac" ||
            hash == PreviousReviewedSha || hash == CurrentReviewedSha ||
-           hash == LatestReviewedSha;
+           hash == LatestReviewedSha || hash == CandidateSha;
 }
 
 inline bool IsCandidateOnly(std::string_view hash) {
