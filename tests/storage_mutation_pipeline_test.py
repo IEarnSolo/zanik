@@ -81,6 +81,13 @@ assert "drainedAtMicros<duplicate->drainedAtMicros" in drain
 assert "urgentAutofillBurstLimit=8" in main
 assert "urgentAutofillBurstBudget=std::chrono::milliseconds(50)" in main
 assert "burstCount<urgentAutofillBurstLimit" in main
+assert "priorityTrigger=autofillMutationTriggers.front()" in storage
+assert storage.count("autofillMutationTriggers.push_back(priorityTrigger)") == 3
+assert "++autofillContinuationRequeues" in storage
+assert "++autofillContinuationWaits" in storage
+assert "++autofillContinuationSettled" in storage
+assert "continuationRequestId=request->id" in storage
+assert "state==JobState::Failed" in storage and "++autofillContinuationAborted" in storage
 assert native_hooks.count("event.observedAtMicros=MonotonicMicros()") >= 2
 assert "AutofillRpcCorrelationMicroseconds=250000" in storage
 assert "recentExactAutofillMutations" in drain
@@ -239,6 +246,7 @@ for operation in (
     'operation=="take"',
     'operation=="rename"',
     'operation=="transfer_ownership"',
+    'operation=="deposit_inventory"',
 ):
     assert operation in planner, operation
 assert "JobState::RollingBack" in tick_action
@@ -289,6 +297,16 @@ status_route = main[main.index('path=="/api/admin/storage/mutation-status"'):mai
 assert status_route.index("authenticate(s,raw)") < status_route.index("GetAdminStorageMutationStatus")
 assert "found->second->session!=session" in storage
 assert "Another storage operation is already pending" in storage
+assert "BuildInventoryDepositSnapshot" in storage
+assert "AddInventoryDepositPlan" in storage
+assert "protectedSlots.count(display)" in storage
+assert "skipHotbar&&display>=source.hotbarStart&&display<source.hotbarStart+source.hotbarCount" in storage
+assert "existing.data==item.data" in storage
+assert "phase==1&&target.data" in storage
+assert "No eligible items have space in a destination with matching stacks" in storage
+assert 'operation=="deposit_personal"' in storage
+assert 'operation=="move_to_storages_batch"' in storage
+assert 'destinationChestId=="0000000000000005"' in storage
 
 # Rename is statically ABI-gated, follows the authoritative player-controller
 # server path, and circuit-breaks immediately if interface readback is not preserved.

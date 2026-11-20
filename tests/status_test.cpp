@@ -239,9 +239,10 @@ int main() {
     DomEngine::PlayerQuestSnapshot questUpdated=questLive;questUpdated.capturedAt=3000;questUpdated.quests[0].status="completed";
     assert(questRestored.Sync({questUpdated}));assert(questRestored.Find("character-guid",questSaved));
     assert(questSaved.quests[0].completedObservedAt==3000&&questSaved.quests[1].completedObservedAt==2000);
+    assert(questSaved.trackedQuestAvailable&&questSaved.trackedQuestId.empty());
     DomEngine::PlayerQuestSnapshot questTrackedUnavailable=questUpdated;questTrackedUnavailable.capturedAt=3500;questTrackedUnavailable.trackedQuestId.clear();questTrackedUnavailable.trackedQuestAvailable=false;
     assert(questRestored.Sync({questTrackedUnavailable}));assert(questRestored.Find("character-guid",questSaved));
-    assert(questSaved.trackedQuestAvailable&&questSaved.trackedQuestId=="quest-a");
+    assert(questSaved.trackedQuestAvailable&&questSaved.trackedQuestId.empty());
     DomEngine::PlayerQuestSnapshot questPartial=questUpdated;questPartial.complete=false;questPartial.capturedAt=4000;questPartial.quests.clear();
     assert(questRestored.Sync({questPartial}));assert(questRestored.Find("character-guid",questSaved)&&questSaved.capturedAt==3000);
     std::remove(questStorePath);

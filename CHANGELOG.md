@@ -2,6 +2,25 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.91] - 2026-11-20
+
+### Added
+
+- Add administrator Personal Chest viewing and online mutation support with durable offline display snapshots, slot-level autofill snapshots, and the same item actions available for the character backpack.
+- Add inventory Deposit and Deposit to personal chest actions that fill matching stacks before using empty slots in eligible destinations, while excluding hotbar and autofill-protected backpack slots.
+- Add single- and multi-selection Move actions between the backpack and Personal Chest, plus matching-stack moves from either container into owned storages.
+
+### Changed
+
+- Keep priority autofill work active across bounded one-action jobs until every distinct eligible item deficit from the triggering mutation has settled, improving multi-material building refills without bypassing game-thread limits.
+- Extend player-inventory persistence, diagnostics, compatibility reporting, and offline rendering to include the Personal Chest as an independently validated container.
+- Ship the updated native runtime and compatibility inventory through Zanik Manager's exact embedded server payload; Manager behavior and generated website assets are unchanged.
+
+### Fixed
+
+- Clear the tracked quest in the player overview when its active quest completes instead of retaining an unavailable current objective.
+- Preserve partially deposited remainder items and allow a new destination stack only inside a storage or Personal Chest that already contains the same item.
+
 ## [0.2.90] - 2026-11-20
 
 ### Added

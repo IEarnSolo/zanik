@@ -10,6 +10,9 @@ for token in [
     "BuildPlayerInventorySnapshot",
     "FindPlayerInventory(player,&inventories)",
     "FindPlayerLoadout(player,&inventories)",
+    "FindPlayerPersonalInventory(player,&inventories)",
+    'IsA(inventory,"PersonalInventoryComponent")',
+    '"0000000000000005","Personal chest"',
     'PagedSlots(playerInventory,1)',
     'PagedSlots(playerInventory,0)',
     'PagedSlots(playerInventory,2)',
@@ -70,6 +73,7 @@ for token in [
     'adminPlayerRuneInventoryCompatibility',
     'adminPlayerAmmunitionInventoryCompatibility',
     'adminPlayerEquipmentCompatibility',
+    'adminPlayerPersonalChestCompatibility',
     'adminStorageEquipmentMaximumMicroseconds',
     'operation=="equip"||operation=="unequip"',
     'urgentAutofillBurstLimit=8',
@@ -100,6 +104,7 @@ for token in [
     "new Date(captured*1000).toLocaleString()",
     'renderInventoryContainer(data.runes)',
     'renderInventoryContainer(data.ammunition)',
+    'renderInventoryContainer(data.personal)',
     'inventory-hotbar-slot',
     'inventory-hotbar-divider',
     'margin:0 0 -.15rem',
@@ -111,6 +116,12 @@ for token in [
     "snapshotState=entry?.autofillSnapshotState",
     "toggle.setAttribute('aria-label','Autofill from snapshot')",
     "empty or matching slots are restored and foreign items are never overwritten or removed",
+    "deposit.textContent='Deposit'",
+    "mutateGrid('deposit_inventory'",
+    "mutateGrid('deposit_personal'",
+    "mutateGrid('move_to_storages_batch'",
+    "direct.textContent=container.id==='0000000000000001'?'Personal chest':'Inventory'",
+    "filling matching stacks before using empty slots. Hotbar and autofill-snapshotted slots are ignored.",
 ]:
     assert token in web, f"missing player-inventory UI contract: {token}"
 
@@ -124,7 +135,7 @@ for removed in [
     'Ammunition and arrows backpack.',
 ]:
     assert removed not in web
-for token in ["playerInventoryGetter", "playerLoadoutGetter", "playerLoadoutSlot", "playerPagedSlotValid", "playerPagedSlotOffset", "playerPagedSlotCount", "playerLoadoutSlotValid", "player inventory page or eight-slot loadout symbols missing"]:
+for token in ["playerInventoryGetter", "playerPersonalInventoryGetter", "playerLoadoutGetter", "playerLoadoutSlot", "playerPagedSlotValid", "playerPagedSlotOffset", "playerPagedSlotCount", "playerLoadoutSlotValid", "player inventory, personal chest, or eight-slot loadout symbols missing"]:
     assert token in analyzer, f"missing player-inventory analyzer contract: {token}"
 
 print("admin player inventory and equipment regression checks passed")

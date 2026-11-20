@@ -17,6 +17,11 @@ int main(){
     plan=PlanStorageAutofill(tea,{{0,48,100,"ITEM_StrongSweetTea"}});assert(plan.kind==StorageAutofillPlanKind::Add&&plan.quantity==1);
     plan=PlanStorageAutofill(desired,{});assert(plan.kind==StorageAutofillPlanKind::Add&&plan.key=="ITEM_AshLogs"&&plan.quantity==100);
     plan=PlanStorageAutofill(desired,{{0,100,100,"ITEM_AshLogs"}});assert(plan.kind==StorageAutofillPlanKind::Add&&plan.key=="ITEM_AshPlanks"&&plan.quantity==100);
+    StorageAutofillTemplate building;building.ownerGuid=desired.ownerGuid;building.chestId=desired.chestId;building.capturedAt=100;building.totalSlots=3;building.items={{0,32,100,"ITEM_Stone"},{1,20,100,"ITEM_RuneEssence"},{2,1,10,"ITEM_VaultCore"}};
+    plan=PlanStorageAutofill(building,{});assert(plan.kind==StorageAutofillPlanKind::Add&&plan.key=="ITEM_Stone"&&plan.quantity==32);
+    plan=PlanStorageAutofill(building,{{0,32,100,"ITEM_Stone"}});assert(plan.kind==StorageAutofillPlanKind::Add&&plan.key=="ITEM_RuneEssence"&&plan.quantity==20);
+    plan=PlanStorageAutofill(building,{{0,32,100,"ITEM_Stone"},{1,20,100,"ITEM_RuneEssence"}});assert(plan.kind==StorageAutofillPlanKind::Add&&plan.key=="ITEM_VaultCore"&&plan.quantity==1);
+    plan=PlanStorageAutofill(building,{{0,32,100,"ITEM_Stone"},{1,20,100,"ITEM_RuneEssence"},{2,1,10,"ITEM_VaultCore"}});assert(plan.kind==StorageAutofillPlanKind::None);
     StorageAutofillTemplate berries;berries.ownerGuid=desired.ownerGuid;berries.chestId=desired.chestId;berries.capturedAt=100;berries.totalSlots=2;berries.items={{0,99,100,"ITEM_Redberries"},{1,97,100,"ITEM_Redberries"}};
     plan=PlanStorageAutofill(berries,{{1,97,100,"ITEM_Redberries"}});assert(plan.kind==StorageAutofillPlanKind::Add&&plan.quantity==99);
     plan=PlanStorageAutofill(berries,{{0,97,100,"ITEM_Redberries"},{1,99,100,"ITEM_Redberries"}});assert(plan.kind==StorageAutofillPlanKind::Add&&plan.quantity==2);
@@ -33,6 +38,7 @@ int main(){
     StorageAutofillStore store(path);assert(store.Load());assert(store.Replace(desired));StorageAutofillTemplate loaded;assert(store.Find(desired.ownerGuid,desired.chestId,loaded));assert(loaded.items.size()==2&&loaded.items[0].key=="ITEM_AshLogs");struct stat file{};assert(stat(path.c_str(),&file)==0&&(file.st_mode&0077)==0);
     StorageAutofillStore restarted(path);assert(restarted.Load());assert(restarted.Find(desired.ownerGuid,desired.chestId,loaded));assert(restarted.Diagnostics().templates==1);
     StorageAutofillTemplate runes; runes.ownerGuid=desired.ownerGuid;runes.chestId="0000000000000003";runes.capturedAt=200;runes.totalSlots=32;runes.items={{0,250,1000,"ITEM_LawRune"},{4,100,1000,"ITEM_NatureRune"}};assert(restarted.Replace(runes));
+    StorageAutofillTemplate personal;personal.ownerGuid=desired.ownerGuid;personal.chestId="0000000000000005";personal.capturedAt=201;personal.totalSlots=32;personal.items={{0,99,100,"ITEM_Stone"},{5,9,100,"ITEM_VaultCore"}};assert(restarted.Replace(personal));
     StorageAutofillStore playerRestart(path);assert(playerRestart.Load());assert(playerRestart.Find(runes.ownerGuid,runes.chestId,loaded));assert(loaded.items.size()==2&&loaded.items[0].slot==0&&loaded.items[1].slot==4);
     plan=PlanStorageAutofill(loaded,{{0,1,1,"ITEM_Foreign"},{4,100,1000,"ITEM_NatureRune"}});assert(plan.kind==StorageAutofillPlanKind::None);
     plan=PlanStorageAutofill(loaded,{{0,200,1000,"ITEM_LawRune"},{4,100,1000,"ITEM_NatureRune"}});assert(plan.kind==StorageAutofillPlanKind::Add&&plan.key=="ITEM_LawRune"&&plan.quantity==50);

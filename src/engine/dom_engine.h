@@ -639,6 +639,10 @@ struct AdminStorageDiagnostics {
     std::uint64_t autofillPriorityChecks = 0;
     std::uint64_t autofillPriorityMatches = 0;
     std::uint64_t autofillPriorityDrops = 0;
+    std::uint64_t autofillContinuationRequeues = 0;
+    std::uint64_t autofillContinuationWaits = 0;
+    std::uint64_t autofillContinuationSettled = 0;
+    std::uint64_t autofillContinuationAborted = 0;
     std::uint64_t autofillTargetedRefreshes = 0;
     std::uint64_t autofillTargetedRefreshFallbacks = 0;
     std::uint64_t autofillTargetedRefreshMaximumMicroseconds = 0;
@@ -724,6 +728,7 @@ bool SetAdminStorageAutofill(const std::string& characterGuid,
 void ReconcileAdminStorageAutofill();
 AdminStorageDiagnostics GetAdminStorageDiagnostics();
 int GetAdminPlayerInventoryPagesCompatibility();
+int GetAdminPersonalInventoryCompatibility();
 int GetAdminEquipmentSlotCompatibility();
 std::uint64_t GetAdminStorageAutofillNormalizations();
 std::uint64_t GetAdminStorageAutofillMaximumMicroseconds();

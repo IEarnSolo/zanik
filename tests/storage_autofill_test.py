@@ -23,6 +23,9 @@ assert '"/api/admin/storage/autofill"' in main[main.index("postRoutes"):main.ind
 route = main[main.index('path=="/api/admin/storage/autofill"'):main.index('path=="/api/admin/storage/mutation-status"')]
 assert route.index("authenticate(s,raw)") < route.index("QolStorageAutofill()") < route.index('JsonValue(request.body,"csrf")')
 assert "SetAdminStorageAutofill" in route and "JsonBoolean" in route and "adminStore->Audit" in route
+assert 'chestId=="0000000000000005"' in storage
+assert 'signalPage("0000000000000005"' in storage
+assert 'IsA(trigger.inventory,"PersonalInventoryComponent")' in storage
 assert 'scope=="selection"' in route
 assert 'JsonStringArray(request.body,"itemIds")' in route
 assert "selection?!itemIds.empty():itemIds.empty()" in route
@@ -39,6 +42,14 @@ assert "snapshotOccupiedSlots" in reconcile
 assert "request->autofillNormalize.push_back({item.slot,item.quantity,item.maxStack,item.key})" in reconcile
 assert "std::max(saved.quantity,found->quantity)" in reconcile
 assert "autofillMutationTriggers.front()" in reconcile
+assert "priorityTrigger=autofillMutationTriggers.front()" in reconcile
+assert "autofillMutationTriggers.push_back(priorityTrigger)" in reconcile
+assert reconcile.count("autofillMutationTriggers.push_back(priorityTrigger)") == 3
+assert "autofillContinuationRequeues" in reconcile
+assert "autofillContinuationWaits" in reconcile
+assert "autofillContinuationSettled" in reconcile
+assert "continuationRequestId" in reconcile
+assert "autofillContinuationAborted" in reconcile
 assert "candidateChest->inventory==trigger.inventory" in reconcile
 assert "autofillPriorityMatches" in reconcile
 assert "RefreshKnownAutofillStorage(candidate,trigger,candidateKnown)" in reconcile
@@ -97,6 +108,8 @@ for token in ("storage-autofill.db", "ConfigureAdminStorageAutofill", "Reconcile
 for token in ("adminStorageAutofillNormalizationCompatibility", "adminStorageAutofillNormalizationFailures"):
     assert token in main
 for token in ("adminStorageAutofillMutationSignals", "adminStorageAutofillPriorityChecks", "adminStorageAutofillPriorityMatches", "adminStorageAutofillPriorityDrops"):
+    assert token in main
+for token in ("adminStorageAutofillContinuationRequeues", "adminStorageAutofillContinuationWaits", "adminStorageAutofillContinuationSettled", "adminStorageAutofillContinuationAborted"):
     assert token in main
 for token in ("adminStorageAutofillTargetedRefreshes", "adminStorageAutofillTargetedRefreshFallbacks", "adminStorageAutofillTargetedRefreshMaximumMicroseconds"):
     assert token in main

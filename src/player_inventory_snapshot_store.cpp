@@ -13,7 +13,7 @@
 
 namespace {
 constexpr std::size_t MaximumSnapshots = 4096;
-constexpr std::size_t MaximumContainers = 4;
+constexpr std::size_t MaximumContainers = 5;
 constexpr std::size_t MaximumItems = 512;
 constexpr off_t MaximumFileBytes = 64 * 1024 * 1024;
 constexpr std::int64_t TimestampWriteInterval = 60;
@@ -30,7 +30,7 @@ char HexDigit(unsigned value){return value<10?char('0'+value):char('a'+value-10)
 std::string HexEncode(const std::string&value){if(value.empty())return "-";std::string result;result.reserve(value.size()*2);for(unsigned char byte:value){result.push_back(HexDigit(byte>>4));result.push_back(HexDigit(byte&15));}return result;}
 int HexValue(char value){if(value>='0'&&value<='9')return value-'0';if(value>='a'&&value<='f')return value-'a'+10;if(value>='A'&&value<='F')return value-'A'+10;return -1;}
 bool HexDecode(const std::string&encoded,std::string&value,std::size_t maximum=1024){if(encoded=="-"){value.clear();return true;}if(encoded.empty()||encoded.size()%2||encoded.size()>maximum*2)return false;value.clear();value.reserve(encoded.size()/2);for(std::size_t i=0;i<encoded.size();i+=2){const int high=HexValue(encoded[i]),low=HexValue(encoded[i+1]);if(high<0||low<0)return false;const char byte=char((high<<4)|low);if(static_cast<unsigned char>(byte)<32||byte=='\t')return false;value.push_back(byte);}return true;}
-bool ValidContainerId(const std::string&id){return id=="0000000000000001"||id=="0000000000000002"||id=="0000000000000003"||id=="0000000000000004";}
+bool ValidContainerId(const std::string&id){return id=="0000000000000001"||id=="0000000000000002"||id=="0000000000000003"||id=="0000000000000004"||id=="0000000000000005";}
 bool Valid(const PlayerInventoryDisplaySnapshot&value){
     if(value.characterGuid.empty()||value.characterGuid.size()>128||value.capturedAt<0||value.containers.size()>MaximumContainers)return false;
     std::vector<std::string> containers;

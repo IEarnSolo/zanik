@@ -157,6 +157,8 @@ assert 'if(savedValid&&saved.items.empty())continue' in gravestones
 assert "ResolveQuestTeleportDestination" in main
 assert 'active->status!="in_progress"' in main
 assert 'active->objective!=objective' in main
+assert 'q.id==snapshot.trackedQuestId&&q.status=="in_progress"' in main
+assert 'snapshot.trackedQuestAvailable&&active!=snapshot.quests.end()' in main
 assert '"/api/admin/quest/teleport"' in main
 
 # The game thread performs one ground trace and one authoritative native
