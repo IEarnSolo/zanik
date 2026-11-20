@@ -1,0 +1,130 @@
+from pathlib import Path
+
+root = Path(__file__).resolve().parents[1]
+native = (root / "src/engine/admin_storage.cpp").read_text(encoding="utf-8")
+main = (root / "src/main.cpp").read_text(encoding="utf-8")
+web = (root / "src/web_page.h").read_text(encoding="utf-8")
+analyzer = (root / "tools/compat_analyzer.cpp").read_text(encoding="utf-8")
+
+for token in [
+    "BuildPlayerInventorySnapshot",
+    "FindPlayerInventory(player,&inventories)",
+    "FindPlayerLoadout(player,&inventories)",
+    'PagedSlots(playerInventory,1)',
+    'PagedSlots(playerInventory,0)',
+    'PagedSlots(playerInventory,2)',
+    'PagedSlots(playerInventory,3)',
+    'quick.insert(quick.end(),items.begin(),items.end())',
+    'inventory.hotbarCount=hotbarCount',
+    'EquipmentSlots()',
+    'static const std::vector<int> slots{0,1,2,3,4,11,7,8}',
+    'loadoutSlotValid',
+    'pagedSlotValid',
+    'IsPlayerInventoryContainerId',
+    'requiresTargetOnline',
+    'r.actionIndex.load()==0',
+    'OperationFamily::Equipment',
+    'EquipmentGameThreadLimitMicroseconds=10000',
+    'GameThreadLimit(action.family)',
+    'This is already your linked character',
+    'value.canUnequip=container.id!="0000000000000002"||(slot!=7&&slot!=8)',
+    'Held items remain in inventory and cannot be unequipped from the equipment card',
+    'chestId=="0000000000000002"?SnapshotFindChest(*snapshot,"0000000000000001"):chest',
+    'GetAdminPlayerInventoryJson',
+    'ConfigurePlayerInventorySnapshots',
+    'snapshotPersistenceCompatibility',
+    'snapshotCapturedAt',
+    'snapshotAvailable',
+    'snapshotPersisted',
+    'PersistPlayerInventoryDisplaySnapshot',
+    'playerInventorySnapshotOnline',
+    'IsPlayerInventoryAutofillId',
+    'BuildAutofillSnapshot',
+    'value.items.push_back({DisplaySlot(item)',
+    'request->requiresTargetOnline=IsPlayerInventoryAutofillId',
+    'BackingSlot(*chest,plan.destinationSlot)',
+    'Equipment autofill is unavailable',
+    'autofillCapturedAt',
+    'autofillSnapshotState',
+    'event.sourceSlot=sourceSlot',
+    'event.destinationSlot=destinationSlot',
+    'event.observedAtMicros=MonotonicMicros()',
+    'signalPlayer(event.source,event.sourceSlot)',
+    'signalPlayer(event.destination,event.destinationSlot)',
+    'candidate.ownerGuid==trigger.ownerGuid&&candidate.chestId==trigger.chestId',
+    'AutofillGameThreadLimitMicroseconds=10000',
+    'duplicate=std::find_if(autofillMutationTriggers.begin()',
+    'AutofillRpcCorrelationMicroseconds=250000',
+    'rpcWithoutSlot',
+    'BuildTargetedPlayerAutofillSnapshot',
+    'PlayerOwnsInventory(inventory,*player)',
+]:
+    assert token in native, f"missing native player-inventory contract: {token}"
+
+for token in [
+    '\\"inventoryRead\\"',
+    '\\"inventoryMutation\\"',
+    'path=="/api/admin/player-inventory"',
+    'playerInventory&&!target.online',
+    'adminPlayerInventoryCompatibility',
+    'adminPlayerRuneInventoryCompatibility',
+    'adminPlayerAmmunitionInventoryCompatibility',
+    'adminPlayerEquipmentCompatibility',
+    'adminStorageEquipmentMaximumMicroseconds',
+    'operation=="equip"||operation=="unequip"',
+    'urgentAutofillBurstLimit=8',
+    'urgentAutofillBurstBudget=std::chrono::milliseconds(50)',
+    'player-inventory-snapshots.db',
+    'ConfigurePlayerInventorySnapshots',
+]:
+    assert token in main, f"missing authenticated player-inventory API contract: {token}"
+
+for token in [
+    'data-player-view="inventory"',
+    'data-player-panel="inventory"',
+    'function refreshInventory',
+    'function renderInventoryGrid',
+    'function showInventoryContext',
+    "take.textContent='Take…'",
+    "copy.textContent='Copy'",
+    "equip.textContent='Equip'",
+    "unequip.textContent='Unequip'",
+    "remove.textContent='Delete'",
+    "add.textContent='Add…'",
+    "if(!container.equipment)",
+    "if(inventoryMutationAvailable&&!container.equipment)renderAddPanel",
+    "if(!inventoryMutationAvailable)return",
+    "multi.hidden=!inventoryMutationAvailable",
+    "if(inventoryMutationAvailable)slot.onclick",
+    "playerInventory.classList.toggle('offline',!data.online)",
+    "new Date(captured*1000).toLocaleString()",
+    'renderInventoryContainer(data.runes)',
+    'renderInventoryContainer(data.ammunition)',
+    'inventory-hotbar-slot',
+    'inventory-hotbar-divider',
+    'margin:0 0 -.15rem',
+    'entries[0].canUnequip!==false',
+    'center calc(50% - .125rem)',
+    'index<hotbarCount',
+    "ZanikPolling.add('player-inventory',2000",
+    "refresh=()=>chest.playerInventory?refreshInventory(true):refreshStorage(true)",
+    "snapshotState=entry?.autofillSnapshotState",
+    "toggle.setAttribute('aria-label','Autofill from snapshot')",
+    "empty or matching slots are restored and foreign items are never overwritten or removed",
+]:
+    assert token in web, f"missing player-inventory UI contract: {token}"
+
+assert web.index('data-player-view="inventory"') < web.index('data-player-view="storage"')
+assert web.index('data-player-panel="inventory"') < web.index('data-player-panel="storage"')
+assert 'renderInventoryContainer(data.inventory),renderInventoryContainer(data.equipment)' in web
+for removed in [
+    'Backpack and subtly highlighted hotbar · 40 slots',
+    'Eight equipped weapon, shield, armour, cape, jewellery and amulet slots.',
+    'Rune backpack.',
+    'Ammunition and arrows backpack.',
+]:
+    assert removed not in web
+for token in ["playerInventoryGetter", "playerLoadoutGetter", "playerLoadoutSlot", "playerPagedSlotValid", "playerPagedSlotOffset", "playerPagedSlotCount", "playerLoadoutSlotValid", "player inventory page or eight-slot loadout symbols missing"]:
+    assert token in analyzer, f"missing player-inventory analyzer contract: {token}"
+
+print("admin player inventory and equipment regression checks passed")

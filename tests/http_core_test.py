@@ -100,13 +100,23 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert "localStorage.getItem('zanik.uiScale')" in page
             assert "window.addEventListener('storage'" in page
             assert "applyScale(event.newValue??1,false)" in page
-            assert "document.documentElement.style.fontSize=(value*100)+'%'" in page
+            assert "root.style.fontSize=(value*100)+'%'" in page
             assert "viewport-fit=cover" in page
             assert 'id="zanik-responsive"' in page
             assert "--app-touch-target:44px" in page
             assert "--site-bottom-nav-h" in page
             assert 'class="site-more-toggle"' in page
+            assert page.count("@font-face{font-family:'Jancient';src:url('/assets/Jancient-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:block}") == 1
+            assert "font-family:'Jancient',system-ui,sans-serif;font-size:var(--site-brand-font-size)" in page
+            assert ".site-header,.site-header *,.site-header *::before,.site-header *::after{box-sizing:border-box}" in page
+            assert '<link rel="preload" href="/assets/Jancient-Regular.ttf" as="font" type="font/ttf" crossorigin>' in page
+            assert 'aria-label="More menu"' in page
+            assert 'M4 6h16M4 12h16M4 18h16' in page
             assert 'id="siteMorePanel"' in page
+            assert '.site-more-panel [hidden]{display:none!important}' in page
+            assert 'box-sizing:border-box;position:fixed' in page
+            assert 'width:min(18rem' in page
+            assert '.site-scale select{min-height:2rem' in page
             assert "window.ZanikSiteShell={closeMore}" in page
             assert "new CustomEvent('zanik:site-surface'" in page
             assert "new CustomEvent('zanik:admin-session'" in page
@@ -117,7 +127,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert "root.dataset.appDisplayMode" in page
             assert "url.origin===location.origin&&(!sameDocument||link.target==='_blank')" in page
             assert "window.location.href=url.pathname+url.search+url.hash" in page
-            assert "html{overscroll-behavior:none}" in page
+            assert "html{overscroll-behavior:none;-webkit-text-size-adjust:100%;text-size-adjust:100%}" in page
             assert '<link rel="apple-touch-icon" sizes="180x180" href="/app-icon-180.png">' in page
         with get(base, "/app.webmanifest") as response:
             assert response.headers.get_content_type() == "application/manifest+json"
@@ -139,6 +149,8 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             page = response.read().decode()
             assert "Known players" in page and 'class="site-header"' in page
             assert '<link rel="manifest" href="/app.webmanifest">' in page
+            assert page.count("@font-face{font-family:'Jancient'") == 1
+            assert 'href="/assets/Jancient-Regular.ttf" as="font"' in page
             assert "Last seen " in page and "Online for " in page
             assert "data-online-since" in page and "updateOnlineDurations" in page
             assert "player-online-dot" in page and "box-shadow: 0 0 .5rem #69db8d88" in page
@@ -159,6 +171,8 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
         with get(base, "/map") as response:
             page = response.read().decode()
             assert "Live world map" in page
+            assert page.count("@font-face{font-family:'Jancient'") == 1
+            assert 'href="/assets/Jancient-Regular.ttf" as="font"' in page
             assert "/api/map/npcs/state" in page
             assert page.index('class="site-header"') < page.index('id="viewport"')
             assert 'id="headerContent"' not in page and 'id="adminState"' not in page
@@ -191,6 +205,15 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
             assert performance["clientPacketLossAvailable"] is False
             assert performance["insightPage"] == 0 and performance["insightPageSize"] == 10
             assert isinstance(performance["insightTotal"], int)
+            assert len(performance["insightTypes"]) == 14
+            assert {item["id"] for item in performance["insightTypes"]} == {
+                "zanik-game-thread", "dragonwilds-game-operation", "server-startup-engine",
+                "zanik-engine-coincidence", "engine-hitch", "sustained-network-latency",
+                "server-network-interface", "incomplete-web-receive-timeout",
+                "incomplete-web-client-disconnected", "malformed-web-request",
+                "web-receive-error", "web-attribution-contention", "server-startup-web",
+                "slow-web-request",
+            }
             assert isinstance(performance["players"], list)
             assert isinstance(performance["points"], list) and isinstance(performance["insights"], list)
 
@@ -209,6 +232,7 @@ with tempfile.TemporaryDirectory(prefix="zanik-http-core-") as temporary:
         expect_error(base, "/api/server-performance?window=7", 400, "Unsupported performance window")
         expect_error(base, "/api/server-performance?window=3600&sort=unknown", 400, "Unsupported spike sort")
         expect_error(base, "/api/server-performance?window=3600&page=invalid", 400, "Invalid spike page")
+        expect_error(base, "/api/server-performance?window=3600&type=unknown", 400, "Unsupported spike type")
 
         expect_error(base, "/api/quests/catalog", 503, "Quest catalog unavailable")
         expect_error(base, "/api/player-activity?id=missing", 404, "Player not found")

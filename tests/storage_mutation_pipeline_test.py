@@ -11,6 +11,7 @@ main = (root / "src/main.cpp").read_text(encoding="utf-8")
 web = (root / "src/web_page.h").read_text(encoding="utf-8")
 quests = (root / "src/engine/player_quests.cpp").read_text(encoding="utf-8")
 analyzer = (root / "tools/compat_analyzer.cpp").read_text(encoding="utf-8")
+unicode = (root / "src/utils/unicode.h").read_text(encoding="utf-8")
 
 
 def body(name: str, following: str) -> str:
@@ -23,6 +24,25 @@ tick_action = body("void ProcessOneStorageAction()", "void WriteJump")
 planner = body("bool BuildMutationPlan(", "bool SubmitAdminStorageMutation(")
 snapshot = body("std::shared_ptr<const StorageSnapshot> BuildStorageSnapshot", "const SnapshotChest*")
 engine_tick = body("void HookEngineTick(", "bool WasAdminStorageBuildingRemoved")
+
+# Website names remain UTF-8 through HTTP and are converted once to Unreal's
+# UTF-16 TCHAR ABI before FText construction. Readback is compared in UTF-8.
+assert 'FText::FromString(FString const&)' in analyzer
+assert "using FTextFromStringFn=void*(*)(void*,const FString*)" in storage
+assert "r.renameUtf16.data()" in storage
+assert "FString value{r.renameUtf16.data()" in storage
+assert "Unicode::Utf8ToUtf16(customName" in planner
+assert "scalar>=0xd800&&scalar<=0xdfff" in unicode
+assert "fTextUtf16Layout" in analyzer and "fTextUtf16Sig" in storage
+assert "Unicode::IsValidUtf8(customName,64)" in main
+assert "const name=input.value;" in web
+assert "96 UTF-8 bytes" not in web
+assert "if(serverSetObjectCustomName&&a.controller)" in storage
+assert "else executeSetCustomName" in storage
+assert "executeSetCustomName" in storage
+assert "renameableStaticClass()" in storage
+assert "doesImplementInterface(reinterpret_cast<void*>(a.actor),&interfaceClass)" in storage
+assert "This storage actor does not implement the game's rename interface" in storage
 
 # Performance timing is elapsed monotonic execution around the original engine
 # dispatcher, never an assumed meaning or unit for one of its native arguments.
@@ -45,11 +65,31 @@ assert "std::array<ObservedMutationSlot,ObservedMutationCapacity>" in storage
 assert "UpdateAdminStorageMutationPlayers" in storage
 assert "DrainAdminStorageMutationTraces" in storage
 drain = body("void DrainAdminStorageMutationTraces()", "AdminStorageDiagnostics GetAdminStorageDiagnostics")
-assert "event.succeeded&&storage&&autofillStore" in drain
+assert "event.succeeded&&(storage||player)&&autofillStore" in drain
 assert "autofillMutationTriggers.push_back" in drain
+assert "if(sourceStorage)signal(event.source)" in drain
+assert "if(destinationStorage)signal(event.destination)" in drain
+assert "signalPlayer(event.source,event.sourceSlot)" in drain
+assert "signalPlayer(event.destination,event.destinationSlot)" in drain
+assert "autofillStore->Find(player->characterGuid,id,desired)" in drain
 assert "InvalidateAdminStorageSnapshots()" in drain
 assert "AutofillMutationTriggerCapacity=128" in storage
 assert "HasPendingAdminStorageAutofillMutation" in storage
+assert "duplicate=std::find_if(autofillMutationTriggers.begin()" in drain
+assert "event.observedAtMicros<duplicate->observedAtMicros" in drain
+assert "drainedAtMicros<duplicate->drainedAtMicros" in drain
+assert "urgentAutofillBurstLimit=8" in main
+assert "urgentAutofillBurstBudget=std::chrono::milliseconds(50)" in main
+assert "burstCount<urgentAutofillBurstLimit" in main
+assert native_hooks.count("event.observedAtMicros=MonotonicMicros()") >= 2
+assert "AutofillRpcCorrelationMicroseconds=250000" in storage
+assert "recentExactAutofillMutations" in drain
+assert "rpcWithoutSlot" in drain
+assert "difference<=AutofillRpcCorrelationMicroseconds" in drain
+assert "BuildPlayerInventorySnapshot(player->characterGuid" not in drain
+assert "PlayerOwnsInventory(inventory,*player)" in drain
+assert "signalPage(\"0000000000000001\"" in drain
+assert "BuildTargetedPlayerAutofillSnapshot(*found,trigger)" in storage
 assert "suppressObservedMutation=true;ProcessAdminGravestoneRequests();suppressObservedMutation=false" in engine_tick
 for forbidden in ("GetAllPlayers", "LogMessage", "pthread_mutex", "std::string"):
     assert forbidden not in native_hooks, forbidden
@@ -57,6 +97,18 @@ assert "nativeMutationCaptureCompatibility" in header
 assert '"/api/diagnostics/native-inventory-mutations"' in main
 assert "observedMoveEntry.store(moduleBase+offsets.moveItem" in storage
 assert "ResolveAdminInventoryMutationCallables" in storage
+
+# Player inventory autofill persists display-local slots, reconciles only while
+# the owner is online, and translates back to authoritative backing slots.
+for token in (
+    "IsPlayerInventoryAutofillId",
+    "BuildAutofillSnapshot",
+    "current.push_back({DisplaySlot(item)",
+    "request->requiresTargetOnline=IsPlayerInventoryAutofillId",
+    "action.destinationSlot=BackingSlot(*chest,plan.destinationSlot)",
+    "request->autofillNormalize.push_back({BackingSlot(*chest,saved.slot)",
+):
+    assert token in storage
 
 # The actual dedicated-server withdrawal routes bypass the public mutation
 # entries. Capture all full and partial stack RPCs after ProcessEvent returns,
@@ -158,6 +210,18 @@ assert "FindCatalogData" in planner
 assert "ResolveRecipe" in planner
 assert "canAddItemByData" in planner
 assert "canAddItemsByData" in planner
+assert "PlayerOwnsInventory" in storage and "depth<7" in storage
+assert "std::vector<std::pair<uintptr_t,uintptr_t>> inventories" in snapshot
+assert "RefreshSnapshotAdministrator(*snapshot)" in storage
+assert "playerInventoryCache" in storage and "observedMutationPlayers" in storage
+assert '\\"takeAvailable\\"' in storage and '\\"takeUnavailableReason\\"' in storage
+for message in (
+    "Linked administrator character was not found in the live player list",
+    "Linked administrator character is still spawning",
+    "Linked administrator character cannot receive items while dead",
+    "Linked administrator inventory is unavailable",
+):
+    assert message in planner
 assert 'RuntimePaths::WebRoot()+"/items/"' in storage
 assert 'std::string icon=itemRoot+key+".png"' in storage
 
@@ -201,7 +265,11 @@ assert "linkAction.linkable=false" in planner and "linkAction.linkable=true" in 
 assert planner.index("linkAction.linkable=false") < planner.index("action.ownerGuid=newParts") < planner.index("linkAction.linkable=true")
 for token in ("storageOwnership", "transfer_ownership", "newOwnerId", "Transfer ownership", "autofill snapshot will move"):
     assert token in main or token in web
-assert "micros>=1000" in tick_action
+assert "micros>=GameThreadLimit(action.family)" in tick_action
+assert "AutofillGameThreadLimitMicroseconds=10000" in storage
+assert "EquipmentGameThreadLimitMicroseconds=10000" in storage
+assert 'chest.id=="0000000000000002"?OperationFamily::Equipment:family' in storage
+assert "PerformanceTrace::TimingScope::NativeGame" in tick_action
 assert "renameTextConstructed" in tick_action
 assert "finishAsFailure" in tick_action
 
@@ -233,9 +301,47 @@ assert "actual==r.renameValue.data()" in storage
 assert "This storage type did not preserve the requested name" in storage
 assert "renameCompatibility=-1" not in tick_action
 assert "Storage rename ABI validation failed" in storage
+assert "interfaceCheckReady" in storage
 assert 'if(renameCompatibility.load()!=1){error="Storage naming is unavailable for this game build"' in planner
 assert '\\"storageRename\\"' in main
 assert "storageRenameAvailable=Boolean(capabilities.storageRename)" in web
+
+# List-mode add workflows support keyboard result navigation and a two-step
+# Enter flow. Catalog mode deliberately retains its existing controls.
+empty_add = web[web.index("function showEmptySlotAddDialog("):web.index("function showEmptyStorageContext(")]
+assert "event.key==='ArrowDown'||event.key==='ArrowUp'" in empty_add
+assert "quantity.focus();quantity.select()" in empty_add
+assert "quantity.onkeydown" in empty_add and "add.click()" in empty_add
+add_panel = web[web.index("function renderAddPanel("):web.index("async function refreshStorage(")]
+assert "if(catalogMode)return" in add_panel
+assert "event.key==='ArrowDown'||event.key==='ArrowUp'" in add_panel
+assert "event.key==='Enter'&&!catalogMode&&choice" in add_panel
+assert "quantity.focus();quantity.select()" in add_panel
+
+# Occupied-slot context actions expose Take first for one or many selections.
+# Multi-take is one authoritative batch request with paired item revisions and
+# quantities, avoiding one HTTP request and status poll per selected stack.
+take_dialog = web[web.index("function showStorageTakeDialog("):web.index("function showEmptySlotAddDialog(")]
+assert ".storage-take-row input { box-sizing:border-box; width:100%; min-width:0; }" in web
+assert "input.value=String(entry.quantity)" in take_dialog
+assert "inputs[0].input.focus();inputs[0].input.select()" in take_dialog
+assert "if(event.key==='Enter'){event.preventDefault();submit()}" in take_dialog
+take_entries = web[web.index("async function takeStorageEntries("):web.index("function showStorageTakeDialog(")]
+assert "mutateGrid('take_batch'" in take_entries
+assert "itemIds:requests.map(request=>request.item.id)" in take_entries
+assert "quantities:requests.map(request=>request.quantity)" in take_entries
+assert "for(const request of requests)" not in take_entries
+assert 'operation=="take_batch"' in planner
+assert "JsonIntegerArray(request.body,\"quantities\")" in main
+assert "quantities.size()==itemIds.size()" in main
+assert "Administrator inventory does not have enough space for the complete selection" in planner
+assert "AddMovePlan(r,*snapshot,adminDestination,moves,error,&quantities)" in planner
+context_menu = web[web.index("function showStorageContext("):web.index("async function moveSelectedStorageStacks(")]
+assert context_menu.index("take.textContent='Take…'") < context_menu.index("addGroup('Move'")
+assert "showStorageTakeDialog(chest,entries)" in context_menu
+assert "take.disabled=!storageTakeAvailable" in context_menu
+assert "storageTakeUnavailableReason" in context_menu
+assert "storageTakeAvailable=Boolean(data.takeAvailable)" in web
 assert "renderStorageHeading(card,chest,heading)" in web
 assert "if(storageRenameAvailable)" in web
 
@@ -261,6 +367,7 @@ for field in (
     "staleIdentities",
     "rollbackFailures",
     "singleItemMaximumMicroseconds",
+    "equipmentMaximumMicroseconds",
     "batchMovementMaximumMicroseconds",
     "circuitBreakers",
     "singleItemMaximumMicroseconds",

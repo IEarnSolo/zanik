@@ -26,7 +26,7 @@ assert "currentDispatcher?0x07ABFE00" in dispatcher
 for offset in (
     "0x0A653420", "0x0A653CC0", "0x0A6554F0", "0x0A656FD0",
     "0x0A654980", "0x0A65F7E0", "0x0A3DAA00", "0x04A89480",
-    "0x0A0EF130", "0x0A0EF3A0", "0x0A0EF780", "0x04ACFAE0",
+    "0x0A0EF130", "0x0A0EF3A0", "0x0A0EF780", "0x04ACFB60",
     "0x079D0710", "0x04A1F9F0", "0x0A3B5970",
 ):
     assert offset in dispatcher
@@ -106,6 +106,6 @@ assert '\\"gravestoneRead\\"' in main
 assert "Promise.all([fetch('/api/admin/session'" not in page
 assert "storageAdmin.hidden=!capabilities.storageRead" in page
 assert "gravestoneAdmin.hidden=!capabilities.gravestoneRead" in page
-assert "if(storageMutationAvailable){try{const response=await fetch('/api/admin/storage/catalog'" in page
+assert "if(storageMutationAvailable||inventoryMutationAvailable){try{const response=await fetch('/api/admin/storage/catalog'" in page
 
 print("game update 25991736 compatibility checks passed")

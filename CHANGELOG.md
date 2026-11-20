@@ -2,6 +2,28 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.90] - 2026-11-20
+
+### Added
+
+- Add administrator views and online-only mutation controls for character inventories, hotbars, equipment, rune pouches, and ammunition pouches, while retaining durable read-only snapshots for offline characters.
+- Add persistent autofill snapshots for character inventories, hotbars, rune pouches, and ammunition pouches with immediate native mutation capture, slot-level status indicators, and the same foreign-item protection used for placed storage.
+- Add keyboard-driven item selection and quantity submission, contextual single- and multi-stack Take actions, and batched withdrawal support across the storage and character-inventory interfaces.
+- Add filtering for every diagnostics spike-analysis alert family, live per-type counts, and compact alert copy actions that preserve the current selection during page polling.
+
+### Changed
+
+- Refill matching autofill stacks only when their quantity falls below the saved target, preserving legitimate quantities above the snapshot in both placed storage and character inventories.
+- Unify the global Zanik header typography and fixed logo geometry across page families, tighten desktop and mobile controls, and simplify the logged-out mobile navigation surface.
+- Distinguish the hotbar from the backpack grid, complete the equipment layout with shield and amulet support, and route incompatible equipment additions to the appropriate character inventory.
+- Ship the updated native runtime and compatibility inventory through Zanik Manager's exact embedded server payload; Manager behavior and generated website assets are unchanged.
+
+### Fixed
+
+- Preserve UTF-8 storage names submitted by the website and reject naming only for storage types the game itself does not allow to retain a name.
+- Restore character inventory autofill after moves, consumption, empty-slot transitions, reconnects, and restarts without overwriting foreign items or duplicating held-slot equipment.
+- Keep diagnostics filter counts current without replacing an open dropdown during the two-second polling cycle.
+
 ## [0.2.89] - 2026-11-18
 
 ### Changed

@@ -45,7 +45,8 @@ public:
     bool Start(std::uint64_t timestamp = 0);
     bool Sample(const ServerPerformanceInput& input, std::uint64_t timestamp = 0);
     void RecordHttpDuration(std::uint64_t microseconds, const std::string& route = {});
-    std::string Json(std::uint64_t windowSeconds, bool newestInsightsFirst = false, std::uint64_t requestedInsightPage = 0) const;
+    static bool IsSupportedInsightType(const std::string& type);
+    std::string Json(std::uint64_t windowSeconds, bool newestInsightsFirst = false, std::uint64_t requestedInsightPage = 0, const std::string& insightType = {}) const;
     ServerPerformanceDiagnostics Diagnostics() const;
 
 private:

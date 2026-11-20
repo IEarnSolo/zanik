@@ -14,6 +14,7 @@ SRC += src/engine/admin_activity_test.cpp
 SRC += src/server_performance_store.cpp
 SRC += src/home_location_persistence.cpp
 SRC += src/storage_autofill_store.cpp
+SRC += src/player_inventory_snapshot_store.cpp
 OBJ = $(SRC:.cpp=.o)
 DEP = $(OBJ:.o=.d)
 OUT = dist/libdwstatus.so
@@ -31,8 +32,12 @@ $(OUT): $(OBJ)
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+dist/player_inventory_snapshot_store_test: tests/player_inventory_snapshot_store_test.cpp src/player_inventory_snapshot_store.o
+	mkdir -p dist
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 clean:
-	rm -f $(OBJ) $(DEP) $(OUT) dist/zanik-compat-analyzer dist/status_test dist/admin_store_test dist/memory_safe_read_test dist/compatibility_checks_test dist/home_location_persistence_test dist/storage_autofill_store_test dist/server_performance_store_test dist/runtime_paths_test
+	rm -f $(OBJ) $(DEP) $(OUT) dist/zanik-compat-analyzer dist/status_test dist/admin_store_test dist/memory_safe_read_test dist/compatibility_checks_test dist/home_location_persistence_test dist/storage_autofill_store_test dist/player_inventory_snapshot_store_test dist/server_performance_store_test dist/runtime_paths_test dist/unicode_test
 	$(MAKE) -C qol clean
 
 -include $(DEP)
@@ -51,6 +56,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	src/engine/admin_activity_test.o \
 	src/home_location_persistence.o \
 	src/storage_autofill_store.o \
+	src/player_inventory_snapshot_store.o \
 	src/utils/glibc_compat.o -o dist/status_test -pthread -ldl
 	./dist/status_test
 	$(CXX) $(CXXFLAGS) tests/admin_store_test.cpp src/admin_store.o -o dist/admin_store_test -pthread
@@ -63,10 +69,14 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	./dist/home_location_persistence_test
 	$(CXX) $(CXXFLAGS) tests/storage_autofill_store_test.cpp src/storage_autofill_store.o -o dist/storage_autofill_store_test
 	./dist/storage_autofill_store_test
+	$(CXX) $(CXXFLAGS) tests/player_inventory_snapshot_store_test.cpp src/player_inventory_snapshot_store.o -o dist/player_inventory_snapshot_store_test
+	./dist/player_inventory_snapshot_store_test
 	$(CXX) $(CXXFLAGS) tests/server_performance_store_test.cpp src/server_performance_store.o -o dist/server_performance_store_test -pthread
 	./dist/server_performance_store_test
 	$(CXX) $(CXXFLAGS) tests/runtime_paths_test.cpp -o dist/runtime_paths_test
 	./dist/runtime_paths_test
+	$(CXX) $(CXXFLAGS) tests/unicode_test.cpp -o dist/unicode_test
+	./dist/unicode_test
 	$(MAKE) -C qol test
 	$(PYTHON) tests/player_recipe_links_test.py
 	$(PYTHON) tests/recipe_category_navigation_test.py
@@ -92,6 +102,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(PYTHON) tests/player_page_polling_test.py
 	$(PYTHON) tests/player_discovery_performance_test.py
 	$(PYTHON) tests/storage_mutation_pipeline_test.py
+	$(PYTHON) tests/player_inventory_test.py
 	$(PYTHON) tests/storage_autofill_test.py
 	$(PYTHON) tests/game_thread_non_interference_test.py
 	$(PYTHON) tests/quest_schema_test.py

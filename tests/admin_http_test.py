@@ -95,8 +95,8 @@ with tempfile.TemporaryDirectory() as temporary:
             assert b'id="pasteToken"' in claim_page
             assert b"display-mode:standalone" in claim_page
             assert b"navigator.standalone===true" in claim_page
-            assert b"More \xe2\x86\x92 Admin login" in claim_page
-            assert b'class="site-admin-login-link" href="/admin/claim">Admin login</a>' in claim_page
+            assert b"open the menu and choose" in claim_page
+            assert b'class="site-admin-login-link" href="/admin/claim">Login</a>' in claim_page
         console_request = urllib.request.Request(
             base + "/api/admin/console-claim",
             data=first_id.encode(),

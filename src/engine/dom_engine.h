@@ -574,7 +574,11 @@ struct AdminStorageDiagnostics {
     std::uint64_t maximumStorageTickMicroseconds = 0;
     std::uint64_t maximumGravestoneTickMicroseconds = 0;
     int snapshotCompatibility = 0;
+    int playerInventorySnapshotPersistenceCompatibility = 0;
+    std::uint64_t playerInventorySnapshots = 0;
+    std::uint64_t playerInventorySnapshotMalformedRecords = 0;
     int singleItemCompatibility = 0;
+    int equipmentCompatibility = 0;
     int slotMovementCompatibility = 0;
     int batchAdditionCompatibility = 0;
     int batchMovementCompatibility = 0;
@@ -595,6 +599,7 @@ struct AdminStorageDiagnostics {
     std::uint64_t rollbackAttempts = 0;
     std::uint64_t rollbackFailures = 0;
     std::uint64_t singleItemMaximumMicroseconds = 0;
+    std::uint64_t equipmentMaximumMicroseconds = 0;
     std::uint64_t slotMovementMaximumMicroseconds = 0;
     std::uint64_t batchAdditionMaximumMicroseconds = 0;
     std::uint64_t batchMovementMaximumMicroseconds = 0;
@@ -697,14 +702,18 @@ bool SubmitAdminStorageMutation(const std::string& operation,
                                 const std::string& destinationChestId = {},
                                 int destinationSlot = -1,
                                 const std::vector<std::string>& itemIds = {},
+                                const std::vector<int>& quantities = {},
                                 const std::string& customName = {},
                                 const std::string& newOwnerCharacterGuid = {});
 std::string GetAdminStorageMutationStatus(const std::string& requestId,
                                           const std::string& sessionPrefix);
 std::string GetAdminPlayerStorageJson(const std::string& characterGuid,
                                       const std::string& administratorCharacterGuid = {});
+std::string GetAdminPlayerInventoryJson(const std::string& characterGuid,
+                                        const std::string& administratorCharacterGuid = {});
 void InvalidateAdminStorageSnapshots();
 bool ConfigureAdminStorageAutofill(const std::string& path);
+bool ConfigurePlayerInventorySnapshots(const std::string& path);
 bool SetAdminStorageAutofill(const std::string& characterGuid,
                              const std::string& chestId,
                              const std::string& administratorCharacterGuid,
@@ -714,6 +723,8 @@ bool SetAdminStorageAutofill(const std::string& characterGuid,
                              std::string& result);
 void ReconcileAdminStorageAutofill();
 AdminStorageDiagnostics GetAdminStorageDiagnostics();
+int GetAdminPlayerInventoryPagesCompatibility();
+int GetAdminEquipmentSlotCompatibility();
 std::uint64_t GetAdminStorageAutofillNormalizations();
 std::uint64_t GetAdminStorageAutofillMaximumMicroseconds();
 struct PerformanceTickSnapshot {

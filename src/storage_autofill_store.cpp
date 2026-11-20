@@ -107,26 +107,14 @@ StorageAutofillPlan PlanStorageAutofill(const StorageAutofillTemplate& desired,
         if (!protectedSlots[slot]) currentBySlot[slot] = &item;
     }
     struct Difference { const StorageAutofillItem* desired = nullptr; int quantity = 0; };
-    std::vector<Difference> deficits, surpluses;
+    std::vector<Difference> deficits;
     for (const auto& saved : desired.items) {
         if (protectedSlots[std::size_t(saved.slot)]) continue;
         const auto* actual = currentBySlot[std::size_t(saved.slot)];
         if (actual && actual->key != saved.key) continue;
         const int quantity = actual ? std::max(0, actual->quantity) : 0;
         if (quantity < saved.quantity) deficits.push_back({&saved, saved.quantity - quantity});
-        else if (quantity > saved.quantity) surpluses.push_back({&saved, quantity - saved.quantity});
     }
-    for (const auto& deficit : deficits) {
-        for (const auto& surplus : surpluses) {
-            if (deficit.desired->key != surplus.desired->key) continue;
-            const int quantity = std::min(deficit.quantity, surplus.quantity);
-            if (quantity > 0) return {StorageAutofillPlanKind::Move, deficit.desired->key,
-                                     quantity, surplus.desired->slot, deficit.desired->slot};
-        }
-    }
-    for (const auto& surplus : surpluses)
-        return {StorageAutofillPlanKind::Set, surplus.desired->key,
-                surplus.desired->quantity, surplus.desired->slot, -1};
     for (const auto& deficit : deficits) {
         long long quantity = 0;
         for (const auto& candidate : deficits)

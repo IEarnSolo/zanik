@@ -37,6 +37,7 @@ assert "canAddItemByData" in reconcile
 assert "autofillNormalize" in reconcile
 assert "snapshotOccupiedSlots" in reconcile
 assert "request->autofillNormalize.push_back({item.slot,item.quantity,item.maxStack,item.key})" in reconcile
+assert "std::max(saved.quantity,found->quantity)" in reconcile
 assert "autofillMutationTriggers.front()" in reconcile
 assert "candidateChest->inventory==trigger.inventory" in reconcile
 assert "autofillPriorityMatches" in reconcile
