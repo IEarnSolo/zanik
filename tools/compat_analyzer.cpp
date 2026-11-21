@@ -129,6 +129,13 @@ int main(int argc,char** argv){
     const std::string storageCanAddItemByData="UInventoryComponent::CanAddItemByData(UItemData const*, int)";
     const std::string storageMoveItem="UInventoryComponent::MoveItem(int, UInventoryComponent*, int, ADominionPlayerController*, int)";
     const std::string storageRemoveFromSlot="UInventoryComponent::RemoveFromSlot(int, int, ADominionPlayerController*)";
+    const std::string storageCanAddItem="UInventoryComponent::CanAddItem(UItem*) const";
+    const std::string storageAddItem="UInventoryComponent::AddItem(UItem*)";
+    const std::string storageCopyItem="UItem::CopyItem(UObject*) const";
+    const std::string storageItemPower="UItem::GetPowerLevel_Implementation() const";
+    const std::string storageCanMasterwork="UItem::CanHaveMasterWorkUpgrade() const";
+    const std::string storageApplyMasterwork="UItem::ApplyMasterWorkUpgrade()";
+    const std::string storageOnRepMasterwork="UItem::OnRep_NumMasterworkUpgradesApplied()";
     const std::string playerInventoryGetter="ADominionPlayerController::execGetInventory(UObject*, FFrame&, void*)";
     const std::string playerPersonalInventoryGetter="ADominionPlayerController::execGetPersonalInventory(UObject*, FFrame&, void*)";
     const std::string playerLoadoutGetter="ADominionPlayerController::execGetLoadout(UObject*, FFrame&, void*)";
@@ -204,6 +211,7 @@ int main(int argc,char** argv){
     std::uint64_t kismetLineTraceConstructAt=0,kismetLineTraceExecAt=0;
     std::uint64_t storageOwnerAt=0,storagePrivateAt=0,storageLinkableAt=0,storageSetLinkableReflectionAt=0,storageSetLinkableNativeAt=0,storageRegisterLinkedAt=0,storageUnregisterLinkedAt=0,storageItemsAt=0,storageItemDataAt=0,storageSetStackSizeAt=0,storageSetOwningCharacterGuidAt=0;
     std::uint64_t storageAddItemByDataAt=0,storageCanAddItemByDataAt=0,storageMoveItemAt=0,storageRemoveFromSlotAt=0;
+    std::uint64_t storageCanAddItemAt=0,storageAddItemAt=0,storageCopyItemAt=0,storageItemPowerAt=0,storageCanMasterworkAt=0,storageApplyMasterworkAt=0,storageOnRepMasterworkAt=0;
     std::uint64_t storageStackCountAt=0,storageCategoryAt=0,storageBasePowerAt=0,storageCategoryIconAt=0,worldTickAt=0;
     std::uint64_t storageCanAddItemsAt=0,storageAddItemsAt=0,buildingRequirementsAt=0,memoryFreeAt=0;
     std::uint64_t storageEmptySlotsAt=0,storageFilledSlotsAt=0;
@@ -232,6 +240,7 @@ int main(int argc,char** argv){
     for(const auto&r:records){const auto n=nameOf(r);if(n==adminNativeSkillReset)adminNativeSkillResetAt=adminNativeSkillResetAt?std::min(adminNativeSkillResetAt,r.address):r.address;if(n==adminNativeSkillXp)adminNativeSkillXpAt=adminNativeSkillXpAt?std::min(adminNativeSkillXpAt,r.address):r.address;}
     if(!killedAt||!deathAt||!displayAt||!mapRegionAt||!regionNameGetterAt||!dungeonAt||killedNames<1){std::cerr<<"required exact symbols missing\n";return 4;}
     if(!questGetStateAt||!questCurrentObjectiveAt){std::cerr<<"quest progress query symbols missing\n";return 4;}
+    for(const auto&r:records){const auto n=nameOf(r);if(n==storageCanAddItem)storageCanAddItemAt=storageCanAddItemAt?std::min(storageCanAddItemAt,r.address):r.address;if(n==storageAddItem)storageAddItemAt=storageAddItemAt?std::min(storageAddItemAt,r.address):r.address;if(n==storageCopyItem)storageCopyItemAt=storageCopyItemAt?std::min(storageCopyItemAt,r.address):r.address;if(n==storageItemPower)storageItemPowerAt=storageItemPowerAt?std::min(storageItemPowerAt,r.address):r.address;if(n==storageCanMasterwork)storageCanMasterworkAt=storageCanMasterworkAt?std::min(storageCanMasterworkAt,r.address):r.address;if(n==storageApplyMasterwork)storageApplyMasterworkAt=storageApplyMasterworkAt?std::min(storageApplyMasterworkAt,r.address):r.address;if(n==storageOnRepMasterwork)storageOnRepMasterworkAt=storageOnRepMasterworkAt?std::min(storageOnRepMasterworkAt,r.address):r.address;}
     if(!activityHealthGetterAt||!activityAttributesGetterAt||!activityIsDeadAt||!activitySkillGetterAt||!activitySkillXpAt||!activityRecipeQueryAt||!activityMaterialQueryAt||!activityPerkQueryAt||!activityRegionGetterAt||!activityRegionRevealAt||!activityRegionBitmapQueryAt){std::cerr<<"recent activity source symbols missing\n";return 4;}
     if(!adminActivityReflection.empty()){std::cerr<<"admin activity test reflection symbols missing\n";return 4;}
     if(!adminNativeSkillResetAt||!adminNativeSkillXpAt){std::cerr<<"admin activity native skill reset or XP symbol missing\n";return 4;}
@@ -247,6 +256,7 @@ int main(int argc,char** argv){
     if(!storageOwnerAt||!storagePrivateAt||!storageLinkableAt||!storageItemsAt||!storageItemDataAt||!storageSetStackSizeAt){std::cerr<<"storage symbols missing\n";return 4;}
     if(!storageSetOwningCharacterGuidAt||!storageSetLinkableReflectionAt||!storageSetLinkableNativeAt||!storageRegisterLinkedAt||!storageUnregisterLinkedAt){std::cerr<<"storage ownership or linked-membership transfer symbol missing\n";return 4;}
     if(!storageAddItemByDataAt||!storageCanAddItemByDataAt||!storageMoveItemAt||!storageRemoveFromSlotAt||!storageStackCountAt||!worldTickAt){std::cerr<<"storage mutation symbols missing\n";return 4;}
+    if(!storageCanAddItemAt||!storageAddItemAt||!storageCopyItemAt||!storageItemPowerAt||!storageCanMasterworkAt||!storageApplyMasterworkAt||!storageOnRepMasterworkAt){std::cerr<<"exact item copy or masterwork symbols missing\n";return 4;}
     auto hasExactSymbol=[&](const std::string&symbol){return names.find(symbol+'\n')!=std::string::npos;};
     if(!hasExactSymbol(playerInventoryGetter)||!hasExactSymbol(playerPersonalInventoryGetter)||!hasExactSymbol(playerLoadoutGetter)||!hasExactSymbol(playerLoadoutSlot)||!playerPagedSlotValidAt||!playerPagedSlotOffsetAt||!playerPagedSlotCountAt||!playerLoadoutSlotValidAt){std::cerr<<"player inventory, personal chest, or eight-slot loadout symbols missing\n";return 4;}
     if(!buildingEndPlayAt){std::cerr<<"storage removal tracking symbol missing\n";return 4;}
@@ -481,6 +491,14 @@ int main(int argc,char** argv){
     const unsigned char storageMoveLayout[]={0x55,0x53,0x50,0x4c,0x89,0xc0,0x48,0x89,0xfb,0x4c,0x8b,0x17};
     const unsigned char storageRemoveLayout[]={0x55,0x41,0x57,0x41,0x56,0x53,0x48,0x83,0xec,0x28,0x80,0xbf,0x68,0x02,0x00,0x00,0x00};
     for(const auto& check:{std::make_pair(storageAddItemByDataAt,std::make_pair(storageAddLayout,sizeof(storageAddLayout))),std::make_pair(storageMoveItemAt,std::make_pair(storageMoveLayout,sizeof(storageMoveLayout))),std::make_pair(storageRemoveFromSlotAt,std::make_pair(storageRemoveLayout,sizeof(storageRemoveLayout)))}){auto at=fileAt(check.first);if(at==~0ULL||at+check.second.second>binary.size()||std::memcmp(binary.data()+at,check.second.first,check.second.second)){std::cerr<<"storage mutation signature changed\n";return 12;}}
+    const unsigned char canAddItemLayout[]={0x55,0x41,0x57,0x41,0x56,0x41,0x54,0x53,0x48,0x85,0xF6};
+    const unsigned char addItemLayout[]={0x41,0x57,0x41,0x56,0x41,0x54,0x53,0x48,0x83,0xEC,0x28,0x48,0x85,0xF6};
+    const unsigned char copyItemLayout[]={0x41,0x57,0x41,0x56,0x41,0x54,0x53,0x48,0x83,0xEC,0x28,0x48,0x89,0xFB};
+    const unsigned char itemPowerLayout[]={0x48,0x8B,0x87,0xB0,0x00,0x00,0x00,0x48,0x85,0xC0,0x74,0x12,0x0F,0xB6,0x8F,0xB9,0x00,0x00,0x00,0x03,0x88,0x28,0x01,0x00,0x00};
+    const unsigned char canMasterworkLayout[]={0x48,0x8B,0x87,0xB0,0x00,0x00,0x00,0x48,0x85,0xC0,0x74,0x14,0x8B,0x48,0x08,0xF7,0xC1,0x00,0x00,0x00,0x40,0x75,0x09,0x80,0xB8,0x09,0x02,0x00,0x00,0x02};
+    const unsigned char applyMasterworkLayout[]={0x41,0x57,0x41,0x56,0x53,0x48,0x83,0xEC,0x20,0x48,0x8B,0x87,0xB0,0x00,0x00,0x00};
+    const unsigned char onRepMasterworkLayout[]={0x55,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53,0x48,0x83,0xEC,0x48,0x48,0x89,0xFB,0x48,0x8B,0x87,0xB0,0x00,0x00,0x00};
+    for(const auto&check:{std::make_pair(storageCanAddItemAt,std::make_pair(canAddItemLayout,sizeof(canAddItemLayout))),std::make_pair(storageAddItemAt,std::make_pair(addItemLayout,sizeof(addItemLayout))),std::make_pair(storageCopyItemAt,std::make_pair(copyItemLayout,sizeof(copyItemLayout))),std::make_pair(storageItemPowerAt,std::make_pair(itemPowerLayout,sizeof(itemPowerLayout))),std::make_pair(storageCanMasterworkAt,std::make_pair(canMasterworkLayout,sizeof(canMasterworkLayout))),std::make_pair(storageApplyMasterworkAt,std::make_pair(applyMasterworkLayout,sizeof(applyMasterworkLayout))),std::make_pair(storageOnRepMasterworkAt,std::make_pair(onRepMasterworkLayout,sizeof(onRepMasterworkLayout)))}){const auto at=fileAt(check.first);if(at==~0ULL||at+check.second.second>binary.size()||std::memcmp(binary.data()+at,check.second.first,check.second.second)){std::cerr<<"exact item copy or masterwork signature changed\n";return 12;}}
     const unsigned char stackVirtualLayout[]={0x55,0x41,0x56,0x53,0x89,0xf3,0x49,0x89,0xfe,0x48,0x8b,0x07,0xff,0x90,0xd8,0x02,0x00,0x00};auto stackVirtualFile=fileAt(storageStackCountAt);if(stackVirtualFile==~0ULL||stackVirtualFile+sizeof(stackVirtualLayout)>binary.size()||std::memcmp(binary.data()+stackVirtualFile,stackVirtualLayout,sizeof(stackVirtualLayout))){std::cerr<<"storage max stack virtual layout changed\n";return 12;}
     const unsigned char worldTickLayout[]={0x53,0x48,0x83,0xec,0x10,0x8b,0x47,0x08,0xa8,0x10,0x0f,0x85,0x92,0x00,0x00,0x00,0x48,0x8b,0x47,0x20,0x48,0x85,0xc0};
     auto worldTickFile=fileAt(worldTickAt);if(worldTickFile==~0ULL||worldTickFile+sizeof(worldTickLayout)>binary.size()||std::memcmp(binary.data()+worldTickFile,worldTickLayout,sizeof(worldTickLayout))){std::cerr<<"storage world tick signature changed\n";return 12;}
@@ -538,7 +556,7 @@ int main(int argc,char** argv){
     }
     if(!storageProductionReviewed)std::cerr<<"warning: storage mutation remains candidate-only for this executable\n";
     if(dumpNativeOffsets){
-        auto field=[&](const char*name,std::uint64_t value,bool&first){if(!first)std::cout<<',';first=false;std::cout<<'\"'<<name<<"\":\"0x"<<std::hex<<value<<"\"";};
+        auto field=[&](const char*name,std::uint64_t value,bool&first){if(!first)std::cout<<',';first=false;std::cout<<'\"'<<name<<"\":\"0x"<<std::hex<<value<<"\"";if(std::strcmp(name,"fTextDestructor")==0)std::cout<<",\"storageCanAddItem\":\"0x"<<storageCanAddItemAt<<"\",\"storageAddItem\":\"0x"<<storageAddItemAt<<"\",\"storageCopyItem\":\"0x"<<storageCopyItemAt<<"\",\"storageItemPower\":\"0x"<<storageItemPowerAt<<"\",\"storageCanMasterwork\":\"0x"<<storageCanMasterworkAt<<"\",\"storageApplyMasterwork\":\"0x"<<storageApplyMasterworkAt<<"\",\"storageOnRepMasterwork\":\"0x"<<storageOnRepMasterworkAt<<'\"';};
         bool first=true;std::cout<<'{';field("storageAddItemByData",storageAddItemByDataAt,first);field("storageCanAddItemByData",storageCanAddItemByDataAt,first);field("storageMoveItem",storageMoveItemAt,first);field("storageRemoveFromSlot",storageRemoveFromSlotAt,first);field("storageSetOwningCharacterGuid",storageSetOwningCharacterGuidAt,first);field("storageCanAddItems",storageCanAddItemsAt,first);field("storageAddItems",storageAddItemsAt,first);field("buildingRequirements",buildingRequirementsAt,first);field("memoryFree",memoryFreeAt,first);field("worldTick",worldTickAt,first);field("buildingEndPlay",buildingEndPlayAt,first);field("renameableGetCustomName",renameableGetCustomNameAt,first);field("renameableGetSetterId",renameableGetSetterIdAt,first);field("renameableSetCustomName",renameableSetCustomNameAt,first);field("renameableStaticClass",renameableStaticClassAt,first);field("doesImplementInterface",doesImplementInterfaceAt,first);field("serverSetObjectCustomName",serverSetObjectCustomNameAt,first);field("fTextFromString",fTextFromStringAt,first);field("uniqueNetIdDestructor",uniqueNetIdDestructorAt,first);field("fTextDestructor",fTextDestructorAt,first);field("graveGetInventory",graveGetInventoryAt,first);field("graveGetOwner",graveGetOwnerAt,first);field("graveCanAccess",graveCanAccessAt,first);field("graveRemove",graveRemoveAt,first);field("graveMoveAll",graveMoveAllAt,first);field("graveRegistry",graveRegistryAt,first);field("graveRegister",graveRegisterAt,first);field("graveUnregister",graveUnregisterAt,first);field("graveRespawnActor",graveRespawnActorAt,first);field("graveRestoreFromLevel",graveRestoreFromLevelAt,first);field("graveRegisterStreaming",graveRegisterStreamingAt,first);field("graveUnregisterStreaming",graveUnregisterStreamingAt,first);field("graveStreamingComplete",graveStreamingCompleteAt,first);field("graveProviderSources",graveProviderSourcesAt,first);field("gravePlayerSources",gravePlayerSourcesAt,first);field("graveStreamingSourceCopy",graveStreamingSourceCopyAt,first);field("graveStreamingSourceDestroy",graveStreamingSourceDestroyAt,first);std::cout<<"}\n";return 0;
     }
     const bool knownMap=hash=="d26de80fd01f4b73b726aed855a20377996b7c140ff33f1ec40150c0dd73b259"||
@@ -561,5 +579,6 @@ int main(int argc,char** argv){
              <<'\t'<<"0x"<<storageOwnerAt<<'\t'<<"0x"<<storagePrivateAt<<'\t'<<"0x"<<storageLinkableAt<<'\t'<<"0x"<<storageItemsAt<<'\t'<<"0x"<<storageItemDataAt<<'\t'<<"0x"<<storageSetStackSizeAt
              <<'\t'<<"0x158\t0x169\t0xF8\t0x168\t0x170\t0xB0\t0x58\t0x68"
              <<'\t'<<"0x"<<storageAddItemByDataAt<<'\t'<<"0x"<<storageCanAddItemByDataAt<<'\t'<<"0x"<<storageMoveItemAt<<'\t'<<"0x"<<storageRemoveFromSlotAt<<'\t'<<"0x"<<storageStackCountAt
-             <<'\t'<<"0x"<<storageMoveItemInternalAt<<'\t'<<"0x"<<renameableGetCustomNameAt<<'\t'<<"0x"<<fTextDestructorAt<<"\n";
+             <<'\t'<<"0x"<<storageMoveItemInternalAt<<'\t'<<"0x"<<renameableGetCustomNameAt<<'\t'<<"0x"<<fTextDestructorAt
+             <<'\t'<<"0x"<<storageCanAddItemAt<<'\t'<<"0x"<<storageAddItemAt<<'\t'<<"0x"<<storageCopyItemAt<<'\t'<<"0x"<<storageItemPowerAt<<'\t'<<"0x"<<storageCanMasterworkAt<<'\t'<<"0x"<<storageApplyMasterworkAt<<'\t'<<"0x"<<storageOnRepMasterworkAt<<"\n";
 }

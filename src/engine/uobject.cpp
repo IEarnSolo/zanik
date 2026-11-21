@@ -429,7 +429,7 @@ std::string Engine::GetStorageDiagnosticsJson() const {
         }out<<"]";
         out<<"}";
     }
-    out<<"],\"matched\":"<<matched<<",\"objectCount\":"<<count<<'}';return out.str();
+    out<<"],\"matched\":"<<matched<<",\"objectCount\":"<<count<<",\"itemInstanceCompatibility\":"<<GetAdminStorageItemInstanceCompatibility()<<'}';return out.str();
 }
 
 std::string Engine::GetPlayerStorageJson(const std::string& characterGuid) const {

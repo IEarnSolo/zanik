@@ -13,7 +13,8 @@ rows = [
 ]
 candidate = [row for row in rows if row[0] == server_sha]
 assert len(candidate) == 1
-assert len(candidate[0]) == 49
+assert len(candidate[0]) == 56
+assert candidate[0][49:56] == ["0xa66a2c0", "0xa675b00", "0xa68c180", "0xa68bf00", "0xa68d9c0", "0xa68d760", "0xa68dd50"]
 assert candidate[0][10:14] == ["-11075", "-117685", "420000", "world-map-1.0.0.2"]
 
 header = (root / "src" / "engine" / "dom_engine.h").read_text()

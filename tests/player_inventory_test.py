@@ -61,6 +61,19 @@ for token in [
     'rpcWithoutSlot',
     'BuildTargetedPlayerAutofillSnapshot',
     'PlayerOwnsInventory(inventory,*player)',
+    'ActionKind::CopyItem',
+    'CopyExactItem',
+    'ActionKind::AddMasterwork',
+    'AddMasterworkItem',
+    'onRepMasterworkUpgrades',
+    'a.desiredPowerLevel!=9||power!=8',
+    'created+0xB9',
+    'created+0xBA',
+    'ItemPowerLevel',
+    'IsMasterworkItemData',
+    'basePowerLevel',
+    'powerLevel',
+    'masterwork',
 ]:
     assert token in native, f"missing native player-inventory contract: {token}"
 
@@ -80,6 +93,7 @@ for token in [
     'urgentAutofillBurstBudget=std::chrono::milliseconds(50)',
     'player-inventory-snapshots.db',
     'ConfigurePlayerInventorySnapshots',
+    'adminStorageItemInstanceCompatibility',
 ]:
     assert token in main, f"missing authenticated player-inventory API contract: {token}"
 
@@ -122,6 +136,12 @@ for token in [
     "mutateGrid('move_to_storages_batch'",
     "direct.textContent=container.id==='0000000000000001'?'Personal chest':'Inventory'",
     "filling matching stacks before using empty slots. Hotbar and autofill-snapshotted slots are ignored.",
+    "power.setAttribute('aria-label','Power level')",
+    "power.className='power-level-select'",
+    ".power-level-select[hidden],.storage-delete-quantity[hidden]{display:none!important}",
+    "body.powerLevel=Number(powerLevel)",
+    "entry.masterwork&&Number(entry.powerLevel)>0?' · Power '",
+    "#playerInventory.offline{opacity:.64;filter:saturate(.68)}",
 ]:
     assert token in web, f"missing player-inventory UI contract: {token}"
 
@@ -135,7 +155,7 @@ for removed in [
     'Ammunition and arrows backpack.',
 ]:
     assert removed not in web
-for token in ["playerInventoryGetter", "playerPersonalInventoryGetter", "playerLoadoutGetter", "playerLoadoutSlot", "playerPagedSlotValid", "playerPagedSlotOffset", "playerPagedSlotCount", "playerLoadoutSlotValid", "player inventory, personal chest, or eight-slot loadout symbols missing"]:
+for token in ["playerInventoryGetter", "playerPersonalInventoryGetter", "playerLoadoutGetter", "playerLoadoutSlot", "playerPagedSlotValid", "playerPagedSlotOffset", "playerPagedSlotCount", "playerLoadoutSlotValid", "player inventory, personal chest, or eight-slot loadout symbols missing", "storageCopyItem", "storageItemPower", "storageCanMasterwork", "storageApplyMasterwork", "storageOnRepMasterwork", "OnRep_NumMasterworkUpgradesApplied", "exact item copy or masterwork signature changed"]:
     assert token in analyzer, f"missing player-inventory analyzer contract: {token}"
 
 print("admin player inventory and equipment regression checks passed")

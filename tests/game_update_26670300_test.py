@@ -8,7 +8,8 @@ server_sha = "248e13b8f37f052e3591a726c78ee6bc79c2a6df5d22825c11782cd9c950ae11"
 rows = [line.split("\t") for line in (root / "deploy/compatibility.tsv").read_text().splitlines()
         if line and not line.startswith("#")]
 candidate = [row for row in rows if row[0] == server_sha]
-assert len(candidate) == 1 and len(candidate[0]) == 49
+assert len(candidate) == 1 and len(candidate[0]) == 56
+assert candidate[0][49:56] == ["0xa66a900", "0xa676140", "0xa68c7c0", "0xa68c540", "0xa68e000", "0xa68dda0", "0xa68e390"]
 assert candidate[0][10:14] == ["-11075", "-117685", "420000", "world-map-1.0.0.2"]
 
 header = (root / "src/engine/dom_engine.h").read_text()
@@ -41,6 +42,10 @@ for offset in ("0x0A669E70", "0x0A66AA00", "0x0A66C540", "0x0A66F5D0",
                "0x0A6B6A50"):
     assert offset in storage
 assert "hash!=CurrentSha&&hash!=LatestSha&&hash!=CandidateSha" in storage
+quests = (root / "src/engine/player_quests.cpp").read_text()
+assert 'header[index]=="fTextDisplayStringOffset"' in quests
+assert 'header[index]=="fTextDestructor"' in quests
+assert "f.back()" not in quests
 activity_test = (root / "src/engine/admin_activity_test.cpp").read_text()
 for offset in ("0x0A72E940", "0x0A72F5F0", "0x0A533090"):
     assert offset in activity_test

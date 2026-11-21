@@ -13,8 +13,11 @@ struct PlayerInventorySnapshotItem {
     int slot = -1;
     int quantity = 0;
     int maxStack = 1;
+    int basePowerLevel = 0;
+    int powerLevel = 0;
     bool equippable = false;
     bool canUnequip = true;
+    bool masterwork = false;
 };
 
 struct PlayerInventorySnapshotContainer {

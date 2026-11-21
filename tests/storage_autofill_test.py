@@ -58,7 +58,7 @@ assert "RefreshKnownStorageChest" in targeted
 assert "GetObjectCount" not in targeted and "GetObjectByIndex" not in targeted
 assert "autofillTargetedRefreshMaximumMicros" in targeted
 assert "NormalizeAutofillAdd" in storage
-normalize = storage[storage.index("bool NormalizeAutofillAdd"):storage.index("bool RunNativeAction")]
+normalize = storage[storage.index("bool NormalizeAutofillAdd"):storage.index("bool AddMasterworkItem")]
 assert "addItemByData" not in normalize
 assert "moveItem" in normalize and "setStackSize" in normalize
 assert normalize.count("actualTotal!=desiredTotal") == 1

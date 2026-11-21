@@ -708,7 +708,8 @@ bool SubmitAdminStorageMutation(const std::string& operation,
                                 const std::vector<std::string>& itemIds = {},
                                 const std::vector<int>& quantities = {},
                                 const std::string& customName = {},
-                                const std::string& newOwnerCharacterGuid = {});
+                                const std::string& newOwnerCharacterGuid = {},
+                                int powerLevel = 0);
 std::string GetAdminStorageMutationStatus(const std::string& requestId,
                                           const std::string& sessionPrefix);
 std::string GetAdminPlayerStorageJson(const std::string& characterGuid,
@@ -727,6 +728,7 @@ bool SetAdminStorageAutofill(const std::string& characterGuid,
                              std::string& result);
 void ReconcileAdminStorageAutofill();
 AdminStorageDiagnostics GetAdminStorageDiagnostics();
+int GetAdminStorageItemInstanceCompatibility();
 int GetAdminPlayerInventoryPagesCompatibility();
 int GetAdminPersonalInventoryCompatibility();
 int GetAdminEquipmentSlotCompatibility();

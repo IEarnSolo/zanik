@@ -2,6 +2,25 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.92] - 2026-11-21
+
+### Added
+
+- Preserve the exact effective power level and other item-instance state when administrators copy upgraded masterwork equipment in character inventories or placed storages.
+- Add styled power-level selection to contextual Add and Add item workflows for eligible masterwork weapons and armour, including exact Power 9 creation for the native third-upgrade state supported by imported equipment.
+
+### Changed
+
+- Persist masterwork eligibility, base power, and effective power in durable offline inventory snapshots, and dim unavailable offline inventory cards more clearly.
+- Extend the reviewed compatibility contract with exact item-copy, masterwork eligibility, native upgrade, replicated upgrade-count, and masterwork refresh ABIs across all supported game builds.
+- Ship the updated native runtime and compatibility inventory through Zanik Manager's exact embedded server payload; Manager behavior and generated website assets are unchanged.
+
+### Fixed
+
+- Hide masterwork power controls until eligible equipment is selected, populate every supported choice, and prevent ordinary materials and consumables from displaying irrelevant power labels.
+- Resolve compatibility-table FText functions by named columns so newly appended compatibility fields cannot redirect quest cleanup during player login.
+- Allow requested Power 9 equipment to cross the released ascension-core catalog's Power 8 boundary using the same bounded replicated state retained by native saves, with exact readback and rollback on failure.
+
 ## [0.2.91] - 2026-11-20
 
 ### Added
