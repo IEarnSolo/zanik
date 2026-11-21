@@ -2,6 +2,19 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.93] - 2026-11-21
+
+### Changed
+
+- Allow administrators to configure whole-container and selected-slot autofill from durable cached inventory, hotbar, personal chest, rune pouch, and ammunition pouch snapshots while a character is offline, without enabling any other offline mutation.
+- Keep offline inventory cards visibly dimmed while exposing only their autofill checkbox, selection, and Autofill or Disable autofill actions.
+- Ship the updated native runtime and compatibility inventory through Zanik Manager's exact embedded server payload; Manager behavior and generated website assets are unchanged.
+
+### Fixed
+
+- Create Power 9 masterwork equipment whose released native ascension ladder stops below Power 8 by validating and applying the same authoritative replicated upgrade-count state used by imported equipment, with exact readback and rollback.
+- Preserve the cached inventory snapshot's original capture time when autofill is configured offline, so the resulting template accurately records the source data's age.
+
 ## [0.2.92] - 2026-11-21
 
 ### Added

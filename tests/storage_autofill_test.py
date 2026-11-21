@@ -79,6 +79,10 @@ assert "!enabled&&value.items.empty()" in settings
 assert "autofillStore->Remove(characterGuid,chestId)" in settings
 assert "Selected items added to the autofill snapshot" in settings
 assert "Selected items removed from the autofill snapshot" in settings
+assert "playerInventorySnapshotStore->Find(characterGuid,saved)" in settings
+assert "saved.containers.begin(),saved.containers.end()" in settings
+assert "capturedAt=saved.capturedAt" in settings
+assert "must be online to save an inventory autofill snapshot" not in settings
 
 destruction = storage[storage.index("void CleanupDestroyedStorageAutofill"):storage.index("bool HookMoveItem")]
 assert "knownAutofillStorages" in destruction
@@ -119,6 +123,8 @@ for token in ("Autofill from snapshot", "snapshotted slot", "never overwritten o
     assert token in web
 assert "Matching snapshotted stacks may be rebalanced after refilling" not in web
 for token in ("updateStorageAutofill", "scope='selection'", "Disable autofill", "mixed selection", "storage-context-disabled"):
+    assert token in web
+for token in ("inventoryAutofillAvailable", "canAutofill=inventoryAutofillAvailable&&!container.equipment", "selectionAvailable=inventoryMutationAvailable||(inventoryAutofillAvailable&&!container.equipment)", "toggle.disabled=!inventoryAutofillAvailable"):
     assert token in web
 assert "enabledCount>0&&enabledCount<entries.length" in web
 assert "autofill.disabled=true" in web

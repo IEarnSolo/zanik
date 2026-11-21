@@ -725,17 +725,21 @@ bool AddMasterworkItem(Request&r,const NativeAction&a,const unsigned char*emptyT
     if(!ReadSlots(a.destination,slots,count)){r.resultCode=-17;return false;}std::vector<std::pair<int,uintptr_t>> createdItems;for(int32_t slot=0;slot<count;++slot){const auto item=Mem::ReadPtr(slots+uintptr_t(slot)*8);if(item&&!before.count(item)&&Mem::ReadPtr(item+0xB0)==a.itemData)createdItems.push_back({slot,item});}
     auto removeCreated=[&](){for(auto it=createdItems.rbegin();it!=createdItems.rend();++it)removeFromSlot(reinterpret_cast<void*>(a.destination),it->first,1,reinterpret_cast<void*>(a.controller));};
     if(createdItems.size()!=1||!g_Engine->IsObjectLive(createdItems.front().second)){removeCreated();r.resultCode=-17;return false;}const uintptr_t created=createdItems.front().second;
-    int power=ItemPowerLevel(created);for(int step=0;power<a.desiredPowerLevel&&step<16;++step){
+    int power=ItemPowerLevel(created);auto setReplicatedPower=[&](){
+        // Imported power-9 items prove that the authoritative replicated
+        // upgrade count supports levels beyond some items' released native
+        // ascension-core ladder. Accept that fallback from any native stopping
+        // point only when the live count exactly explains the effective power.
+        const int base=BasePowerLevel(a.itemData),desiredUpgrades=a.desiredPowerLevel-base;
+        if(a.desiredPowerLevel!=9||power<base||power>=a.desiredPowerLevel||desiredUpgrades<1||desiredUpgrades>255||!Mem::Readable(reinterpret_cast<void*>(created+0xB9),2))return false;
+        const auto priorCount=Mem::ReadU8(created+0xB9),priorPrevious=Mem::ReadU8(created+0xBA);if(int(priorCount)!=power-base||desiredUpgrades<=priorCount)return false;
+        const auto desiredCount=static_cast<std::uint8_t>(desiredUpgrades);if(!Mem::SafeWrite(created+0xBA,priorCount)||!Mem::SafeWrite(created+0xB9,desiredCount)){Mem::SafeWrite(created+0xB9,priorCount);Mem::SafeWrite(created+0xBA,priorPrevious);onRepMasterworkUpgrades(reinterpret_cast<void*>(created));return false;}
+        onRepMasterworkUpgrades(reinterpret_cast<void*>(created));const int updated=ItemPowerLevel(created);if(updated!=a.desiredPowerLevel){Mem::SafeWrite(created+0xB9,priorCount);Mem::SafeWrite(created+0xBA,priorPrevious);onRepMasterworkUpgrades(reinterpret_cast<void*>(created));power=ItemPowerLevel(created);return false;}power=updated;return true;
+    };for(int step=0;power<a.desiredPowerLevel&&step<16;++step){
         if(!canHaveMasterworkUpgrade(reinterpret_cast<const void*>(created))){
-            // The save/replication format supports a third masterwork upgrade,
-            // but the released ascension-core catalog currently stops some
-            // equipment at power 8. Match imported power-9 instances by setting
-            // the authoritative upgrade count, then run the game's own refresh.
-            const int base=BasePowerLevel(a.itemData),upgrades=a.desiredPowerLevel-base;
-            if(a.desiredPowerLevel!=9||power!=8||upgrades<1||upgrades>255||!Mem::Readable(reinterpret_cast<void*>(created+0xB9),2)){removeCreated();r.resultCode=-17;return false;}
-            const auto prior=Mem::ReadU8(created+0xB9),desired=static_cast<std::uint8_t>(upgrades);if(!Mem::SafeWrite(created+0xBA,prior)||!Mem::SafeWrite(created+0xB9,desired)){removeCreated();r.resultCode=-17;return false;}onRepMasterworkUpgrades(reinterpret_cast<void*>(created));power=ItemPowerLevel(created);if(power!=a.desiredPowerLevel){Mem::SafeWrite(created+0xB9,prior);onRepMasterworkUpgrades(reinterpret_cast<void*>(created));removeCreated();r.resultCode=-17;return false;}break;
+            if(!setReplicatedPower()){removeCreated();r.resultCode=-17;return false;}break;
         }
-        const int prior=power;applyMasterworkUpgrade(reinterpret_cast<void*>(created));power=ItemPowerLevel(created);if(power!=prior+1){removeCreated();r.resultCode=-17;return false;}
+        const int prior=power;applyMasterworkUpgrade(reinterpret_cast<void*>(created));power=ItemPowerLevel(created);if(power!=prior+1){if(power<a.desiredPowerLevel&&setReplicatedPower())break;removeCreated();r.resultCode=-17;return false;}
     }
     if(power!=a.desiredPowerLevel){removeCreated();r.resultCode=-17;return false;}return true;
 }
@@ -1179,8 +1183,13 @@ bool SetAdminStorageAutofill(const std::string&characterGuid,const std::string&c
     if(chestId=="0000000000000002"){result="Equipment autofill is unavailable";return false;}
     {std::lock_guard<std::mutex> lock(jobsMutex);for(const auto&entry:jobs)if(entry.second->operation=="autofill"&&entry.second->conflictKey==characterGuid&&entry.second->targetId==chestId)entry.second->cancelled=true;}
     if(itemIds.empty()&&!enabled){if(!autofillStore->Remove(characterGuid,chestId)){autofillPersistenceCompatibility=-1;++autofillFailures;result="Storage autofill settings could not be saved";return false;}result="Storage autofill disabled";return true;}
-    const auto snapshot=playerInventory?BuildPlayerInventorySnapshot(characterGuid,administratorCharacterGuid):BuildStorageSnapshot(characterGuid,administratorCharacterGuid,true);if(!snapshot){result=playerInventory?"Player inventory snapshot preparation failed":"Storage snapshot preparation failed";return false;}if(playerInventory&&(!snapshot->targetFound||!snapshot->targetSpawned||!snapshot->targetController)){result="The selected character must be online to save an inventory autofill snapshot";return false;}const auto*chest=SnapshotFindChest(*snapshot,chestId);if(!chest){result=playerInventory?"Character inventory container is unavailable":"Storage container is no longer available";return false;}
-    StorageAutofillTemplate value;const bool existed=autofillStore->Find(characterGuid,chestId,value);if(!existed){value.ownerGuid=characterGuid;value.chestId=chestId;}value.capturedAt=std::int64_t(UnixNow());value.totalSlots=chest->totalSlots;
+    std::shared_ptr<const StorageSnapshot> snapshot;SnapshotChest cachedChest;const SnapshotChest*chest=nullptr;std::int64_t capturedAt=std::int64_t(UnixNow());
+    if(playerInventory){
+        snapshot=BuildPlayerInventorySnapshot(characterGuid,administratorCharacterGuid);const bool online=snapshot&&snapshot->targetFound&&snapshot->targetSpawned&&snapshot->targetController;if(online)chest=SnapshotFindChest(*snapshot,chestId);
+        else{PlayerInventoryDisplaySnapshot saved;if(!playerInventorySnapshotStore||!playerInventorySnapshotStore->Find(characterGuid,saved)){result="No saved inventory snapshot is available for this character";return false;}const auto container=std::find_if(saved.containers.begin(),saved.containers.end(),[&](const auto&value){return value.id==chestId;});if(container==saved.containers.end()){result="The saved inventory snapshot does not contain this container";return false;}cachedChest.id=container->id;cachedChest.totalSlots=container->totalSlots;cachedChest.hotbarStart=container->hotbarStart;cachedChest.hotbarCount=container->hotbarCount;for(const auto&item:container->items){SnapshotItem restored;restored.id=item.id;restored.key=item.key;restored.name=item.name;restored.icon=item.icon;restored.slot=item.slot;restored.displaySlot=item.slot;restored.quantity=item.quantity;restored.maxStack=item.maxStack;cachedChest.items.push_back(std::move(restored));}capturedAt=saved.capturedAt;chest=&cachedChest;}
+    }else{snapshot=BuildStorageSnapshot(characterGuid,administratorCharacterGuid,true);if(snapshot)chest=SnapshotFindChest(*snapshot,chestId);}
+    if(!chest){result=playerInventory?"Character inventory container is unavailable":"Storage container is no longer available";return false;}
+    StorageAutofillTemplate value;const bool existed=autofillStore->Find(characterGuid,chestId,value);if(!existed){value.ownerGuid=characterGuid;value.chestId=chestId;}value.capturedAt=capturedAt;value.totalSlots=chest->totalSlots;
     if(itemIds.empty()){value.items.clear();for(const auto&item:chest->items)value.items.push_back({DisplaySlot(item),item.quantity,item.maxStack,item.key});}
     else{
         std::unordered_set<std::string> unique;std::vector<const SnapshotItem*> selected;selected.reserve(itemIds.size());for(const auto&id:itemIds){if(!unique.insert(id).second){result="Duplicate storage item selection";return false;}const auto*item=SnapshotFindItem(*chest,id);if(!item){result="One or more selected items changed before autofill was updated";return false;}selected.push_back(item);}

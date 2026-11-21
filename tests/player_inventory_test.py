@@ -66,7 +66,9 @@ for token in [
     'ActionKind::AddMasterwork',
     'AddMasterworkItem',
     'onRepMasterworkUpgrades',
-    'a.desiredPowerLevel!=9||power!=8',
+    'a.desiredPowerLevel!=9||power<base||power>=a.desiredPowerLevel',
+    'int(priorCount)!=power-base',
+    'desiredUpgrades<=priorCount',
     'created+0xB9',
     'created+0xBA',
     'ItemPowerLevel',
@@ -76,6 +78,8 @@ for token in [
     'masterwork',
 ]:
     assert token in native, f"missing native player-inventory contract: {token}"
+
+assert 'power!=8' not in native, "power-9 fallback must support lower native stopping points"
 
 for token in [
     '\\"inventoryRead\\"',
@@ -111,9 +115,11 @@ for token in [
     "add.textContent='Add…'",
     "if(!container.equipment)",
     "if(inventoryMutationAvailable&&!container.equipment)renderAddPanel",
-    "if(!inventoryMutationAvailable)return",
-    "multi.hidden=!inventoryMutationAvailable",
-    "if(inventoryMutationAvailable)slot.onclick",
+    "canAutofill=inventoryAutofillAvailable&&!container.equipment",
+    "multi.hidden=!selectionAvailable",
+    "if(selectionAvailable)slot.onclick",
+    "inventoryAutofillAvailable=storageAutofillAvailable&&Boolean(data.snapshotAvailable)",
+    "toggle.disabled=!inventoryAutofillAvailable",
     "playerInventory.classList.toggle('offline',!data.online)",
     "new Date(captured*1000).toLocaleString()",
     'renderInventoryContainer(data.runes)',
