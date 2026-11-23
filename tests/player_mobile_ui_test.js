@@ -6,6 +6,9 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'web_page.h'), 
 const playerPage = source.match(/constexpr const char\* kPlayerPage = R"DWHTML\(([\s\S]*?)\)DWHTML";/);
 const playersPage = source.match(/constexpr const char\* kPlayersPage = R"DWHTML\(([\s\S]*?)\)DWHTML";/);
 if (!playerPage || !playersPage) throw new Error('player pages not found');
+if ((playerPage[1].match(/backdrop\.className='storage-delete-backdrop'/g) || []).length !== (playerPage[1].match(/setAttribute\('aria-modal','true'\)/g) || []).length) {
+  throw new Error('a full-window player modal is outside the shared background-scroll lock');
+}
 
 for (const token of [
   '@media(max-width:640px)',
@@ -14,6 +17,7 @@ for (const token of [
   '.storage-slot{box-sizing:border-box;width:100%;height:auto;min-width:0;min-height:0;aspect-ratio:1/1;overflow:hidden',
   '.storage-slot>img{position:absolute;inset:7%;width:86%;height:86%',
   '.storage-drag-toggle { display:none; }',
+  '.storage-drag-toggle[hidden] { display:none!important; }',
   'id="storageSelectionTip"',
   '.storage-selection-tip-title',
   'bottom:calc(var(--site-bottom-nav-h) + .4rem)',
@@ -43,12 +47,19 @@ for (const token of [
   'Long-press a slot for actions',
   "dragToggle.textContent=dragEnabled?'Disable drag':'Enable drag'",
   "if(event.pointerType==='touch'&&mobileStorageDragUi()&&storageTouchDragChestId!==chest.id)return",
-  "if(view!=='storage'){if(storageTouchDragChestId!==null)disableStorageTouchDrag();storageSelectionTip.hidden=true}",
+  "if(view!==activePlayerView)hideStorageSelectionTip()",
+  "if(view!==activePlayerView&&storageTouchDragChestId!==null)disableStorageTouchDrag()",
   "window.addEventListener('pagehide',disableStorageTouchDrag)",
   "document.addEventListener('visibilitychange',()=>{if(document.hidden)disableStorageTouchDrag()})",
   "document.addEventListener('zanik:responsive',()=>{if(!mobileStorageDragUi())disableStorageTouchDrag();else{syncStorageTouchDragUi();updateStorageSelectionTip()}})",
   'function storageSelectionTipContent(entry)',
-  "if(!mobileStorageDragUi()||activePlayerView!=='storage'||storageDrag||entries.length!==1)",
+  'function showMobileItemSelectionTip(entry)',
+  "(activePlayerView!=='storage'&&activePlayerView!=='inventory')",
+  "panel?.querySelectorAll('.storage-grid')",
+  'grid._selectionTipEntries=container.slots||[]',
+  'function clearAllStorageSelections()',
+  "event.target.closest('.storage-actions,.add-item-toggle,.add-panel,.storage-add-dialog')",
+  "button.addEventListener('click',()=>{clearAllStorageSelections();showMobileItemSelectionTip(entry)})",
   "if(mobileStorageDragUi())return",
   'hideStorageSelectionTip();closeStorageContext()',
   'updateMoveQueueStatus(chest.id);updateStorageSelectionTip()',
@@ -57,15 +68,46 @@ for (const token of [
   "preserve=event.ctrlKey||event.metaKey||card.classList.contains('storage-multi-select')",
   'const storageMouseDragArmMs=150',
   'function storageMouseDragBlocked(drag,event,readyAt,now=performance.now())',
+  'function bindInventorySlotDrag(slot,entry,index,container,selected,update)',
   "slot._storageDragReadyAt=performance.now()+storageMouseDragArmMs",
   "storageMouseDragBlocked(storageDrag,event,Number(slot._storageDragReadyAt)||0)",
   'bindStorageLongPress(slot,event=>showStorageContext(event,chest,entry,allChests))',
   'bindStorageLongPress(slot,event=>showEmptyStorageContext(event,chest))',
+  'bindStorageLongPress(slot,event=>showInventoryContext(event,container,entry))',
+  'if(dragAvailable)bindInventorySlotDrag(slot,entry,index,container,selected,update)',
+  "dragToggle.onclick=()=>{setStorageTouchDrag(container.id,storageTouchDragChestId!==container.id);update()}",
+  "targetGrid?.dataset.chest===container.id",
+  "if(!inventoryMutationAvailable&&['0000000000000001','0000000000000002','0000000000000003','0000000000000004','0000000000000005'].includes(storageTouchDragChestId))disableStorageTouchDrag()",
+  "withdraw.textContent='Withdraw…'",
+  "withdraw.onclick=()=>showInventoryWithdrawDialog",
   'function dismissStorageContextOnly(event)',
-  "document.addEventListener('pointerdown',event=>{dismissStorageContextOnly(event)},true)",
+  "document.addEventListener('pointerdown',event=>{dismissStorageContextOnly(event);if(event.target.closest('.storage-actions,.add-item-toggle,.add-panel,.storage-add-dialog'))clearAllStorageSelections()},true)",
   "document.addEventListener('click',event=>{if(Date.now()<storageContextDismissUntil)",
+  'html.storage-dialog-open { overflow:hidden; overscroll-behavior:none; }',
+  'body.storage-dialog-open { position:fixed;',
+  '.storage-delete-dialog :is(.storage-destination-list,.catalog-results,.storage-take-list,ul) { overscroll-behavior:contain; }',
+  'function syncStorageDialogLock()',
+  "document.body.querySelector(':scope > .storage-delete-backdrop')",
+  "window.scrollTo(0,storageDialogScrollY)",
+  "container.id==='0000000000000001'&&entries[0].held",
+  "entry?.held?' held-item':''",
 ]) {
   if (!playerPage[1].includes(token)) throw new Error(`missing mobile player UI contract: ${token}`);
+}
+
+const inventoryMenu = playerPage[1].slice(
+  playerPage[1].indexOf('function showInventoryContext('),
+  playerPage[1].indexOf('function renderInventoryGrid('),
+);
+for (const [before, after] of [
+  ["take.textContent='Take…'", "add.textContent='Add…'"],
+  ["add.textContent='Add…'", "trigger.textContent='Move…'"],
+  ["trigger.textContent='Move…'", "withdraw.textContent='Withdraw…'"],
+  ["withdraw.textContent='Withdraw…'", "equip.textContent='Equip'"],
+]) {
+  if (inventoryMenu.indexOf(before) < 0 || inventoryMenu.indexOf(before) >= inventoryMenu.indexOf(after)) {
+    throw new Error(`mobile inventory menu order is wrong: ${before} before ${after}`);
+  }
 }
 
 const storageTipSource = playerPage[1].match(/function storageTooltipText\([\s\S]*?\n    function hideStorageSelectionTip/);
@@ -131,6 +173,34 @@ fixture.listeners.pointerdown({ pointerType: 'touch', pointerId: 5, clientX: 10,
 fixture.listeners.pointermove({ pointerId: 5, clientX: 18, clientY: 10 });
 if (pendingTimer || fixture.classes.has('long-pressing')) throw new Error('moving touch did not cancel long-press');
 
+const modalLockSource = playerPage[1].match(/let storageDialogScrollY=[\s\S]*?new MutationObserver\(syncStorageDialogLock\)\.observe\(document\.body,\{childList:true\}\);/);
+if (!modalLockSource) throw new Error('shared storage-dialog scroll lock not found');
+const htmlClasses = new Set(), bodyClasses = new Set();
+let modalOpen = true, restoredScroll = null;
+const modalLockContext = {
+  window: { scrollY: 321, scrollTo: (x, y) => { restoredScroll = [x, y]; } },
+  document: {
+    documentElement: { classList: { add: name => htmlClasses.add(name), remove: name => htmlClasses.delete(name) } },
+    body: {
+      querySelector: () => modalOpen ? {} : null,
+      classList: { add: name => bodyClasses.add(name), remove: name => bodyClasses.delete(name) },
+      style: { top: '' },
+    },
+  },
+  MutationObserver: class { constructor(callback) { this.callback = callback; } observe() {} },
+};
+vm.createContext(modalLockContext);
+vm.runInContext(modalLockSource[0] + ';this.sync=syncStorageDialogLock', modalLockContext);
+modalLockContext.sync();
+if (!htmlClasses.has('storage-dialog-open') || !bodyClasses.has('storage-dialog-open') || modalLockContext.document.body.style.top !== '-321px') {
+  throw new Error('opening a full-window modal did not lock the background at its current scroll position');
+}
+modalOpen = false;
+modalLockContext.sync();
+if (htmlClasses.size || bodyClasses.size || modalLockContext.document.body.style.top !== '' || String(restoredScroll) !== '0,321') {
+  throw new Error('closing the last full-window modal did not restore the background scroll position');
+}
+
 const dismissalSource = playerPage[1].match(/function closeStorageContext\([\s\S]*?\n    async function updateStorageAutofill/);
 if (!dismissalSource) throw new Error('storage context dismissal helper not found');
 let removed = 0;
@@ -141,6 +211,9 @@ const dismissalContext = {
   storageContextMenu: menu,
   storageContextDismissUntil: 0,
   Date,
+  window: { scrollY: 0, scrollTo: () => {} },
+  document: { body: { querySelector: () => null, classList: {add() {}, remove() {}}, style: {} }, documentElement: {classList: {add() {}, remove() {}}} },
+  MutationObserver: class { observe() {} },
 };
 vm.createContext(dismissalContext);
 vm.runInContext(dismissalSource[0].replace(/\n    async function updateStorageAutofill$/, '') + ';this.dismiss=dismissStorageContextOnly', dismissalContext);
@@ -160,6 +233,9 @@ const desktopDismissalContext = {
   storageContextMenu: desktopMenu,
   storageContextDismissUntil: 0,
   Date,
+  window: { scrollY: 0, scrollTo: () => {} },
+  document: { body: { querySelector: () => null, classList: {add() {}, remove() {}}, style: {} }, documentElement: {classList: {add() {}, remove() {}}} },
+  MutationObserver: class { observe() {} },
 };
 vm.createContext(desktopDismissalContext);
 vm.runInContext(dismissalSource[0].replace(/\n    async function updateStorageAutofill$/, '') + ';this.dismiss=dismissStorageContextOnly', desktopDismissalContext);

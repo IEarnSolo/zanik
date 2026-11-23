@@ -21,7 +21,28 @@ for token in [
     'inventory.hotbarCount=hotbarCount',
     'EquipmentSlots()',
     'static const std::vector<int> slots{0,1,2,3,4,11,7,8}',
+    'constexpr int HeldRightBackingSlot=7',
+    'constexpr int HeldLeftBackingSlot=8',
+    'bool IsMirroredHeldLeftItem',
+    'candidate.slot==HeldRightBackingSlot&&candidate.objectIdentity==item.objectIdentity',
+    'item.held=std::any_of(equipment->items.begin(),equipment->items.end()',
+    '(candidate.slot==HeldRightBackingSlot||candidate.slot==HeldLeftBackingSlot)&&candidate.objectIdentity==item.objectIdentity',
+    'if(!IsMirroredHeldLeftItem(*container,item))stored.items.push_back',
+    'DisplaySlot(candidate)==slot&&!IsMirroredHeldLeftItem(*container,candidate)',
     'loadoutSlotValid',
+    'addLoadoutItemToSlot',
+    'removeLoadoutItem',
+    'heldItemEquipmentCompatibility=addLoadoutItemToSlot&&removeLoadoutItem?1:-1',
+    'ActionKind::EquipHeld',
+    'ActionKind::UnequipHeld',
+    'ActionKind::RelocateHeld',
+    'loadoutSourceSlot',
+    'MatchingInventoryItems',
+    'ReadInventoryState',
+    'sourcePreserved&&heldReference&&duplicatesPreserved&&inventoryPreserved',
+    'sourcePreserved&&heldReferencesCleared&&duplicatesPreserved&&inventoryPreserved',
+    'a.destinationSlot==HeldRightBackingSlot||a.destinationSlot==HeldLeftBackingSlot',
+    'Move this held item to the character inventory before equipping it',
     'pagedSlotValid',
     'IsPlayerInventoryContainerId',
     'requiresTargetOnline',
@@ -30,8 +51,17 @@ for token in [
     'EquipmentGameThreadLimitMicroseconds=10000',
     'GameThreadLimit(action.family)',
     'This is already your linked character',
-    'value.canUnequip=container.id!="0000000000000002"||(slot!=7&&slot!=8)',
-    'Held items remain in inventory and cannot be unequipped from the equipment card',
+    'value.canUnequip=true',
+    'Held-item unequip is unavailable for this game build',
+    'playerSlotMove=operation=="slot_move"&&destinationChestId==chestId',
+    'const int destinationBacking=BackingSlot(*destination,destinationSlot)',
+    'Inventory grid dragging cannot cross container boundaries',
+    'The destination item cannot swap into the source slot',
+    'Two-handed items remain in HeldRight',
+    'a.kind=ActionKind::RelocateHeld',
+    'if(!item->held){error="This inventory item is not equipped"',
+    'if(!addHeldUnequip(*item,*reference))return false',
+    '\\"held\\":"<<(item.held?"true":"false")',
     'chestId=="0000000000000002"?SnapshotFindChest(*snapshot,"0000000000000001"):chest',
     'GetAdminPlayerInventoryJson',
     'ConfigurePlayerInventorySnapshots',
@@ -79,6 +109,8 @@ for token in [
 ]:
     assert token in native, f"missing native player-inventory contract: {token}"
 
+assert 'adminPlayerHeldItemEquipmentCompatibility' in main
+
 assert 'power!=8' not in native, "power-9 fallback must support lower native stopping points"
 
 for token in [
@@ -106,6 +138,7 @@ for token in [
     'data-player-panel="inventory"',
     'function refreshInventory',
     'function renderInventoryGrid',
+    'function bindInventorySlotDrag',
     'function showInventoryContext',
     "take.textContent='Take…'",
     "copy.textContent='Copy'",
@@ -113,7 +146,7 @@ for token in [
     "unequip.textContent='Unequip'",
     "remove.textContent='Delete'",
     "add.textContent='Add…'",
-    "if(!container.equipment)",
+    "if(canMutate&&!container.equipment)",
     "if(inventoryMutationAvailable&&!container.equipment)renderAddPanel",
     "canAutofill=inventoryAutofillAvailable&&!container.equipment",
     "multi.hidden=!selectionAvailable",
@@ -127,8 +160,19 @@ for token in [
     'renderInventoryContainer(data.personal)',
     'inventory-hotbar-slot',
     'inventory-hotbar-divider',
+    "dragToggle.className='storage-drag-toggle'",
+    'dragToggle.hidden=!dragAvailable',
+    '.storage-drag-toggle[hidden] { display:none!important; }',
+    "dragAvailable=inventoryMutationAvailable",
+    "enqueueStorageMove(container,container,entry,index,Number(target.dataset.slot))",
+    "if(dragAvailable)bindInventorySlotDrag(slot,entry,index,container,selected,update)",
+    "entry?.held?' held-item':'')",
+    "entry.held?'; equipped in hand':''",
+    ".chest[data-chest=\"0000000000000001\"] .storage-slot.held-item",
+    'border-color:#A66424',
     'margin:0 0 -.15rem',
     'entries[0].canUnequip!==false',
+    "container.id==='0000000000000001'&&entries[0].held",
     'center calc(50% - .125rem)',
     'index<hotbarCount',
     "ZanikPolling.add('player-inventory',2000",
@@ -140,7 +184,28 @@ for token in [
     "mutateGrid('deposit_inventory'",
     "mutateGrid('deposit_personal'",
     "mutateGrid('move_to_storages_batch'",
-    "direct.textContent=container.id==='0000000000000001'?'Personal chest':'Inventory'",
+    "mutateGrid('move_to_storage_batch'",
+    "moveInventorySelectionToStorages(container,entries)",
+    "function showInventoryStorageDestinationDialog(source,entries,matchingFallback=true)",
+    "No storage contains an existing stack for the selected items",
+    "appendStorageDestinationLabel(button,destination)",
+    ".storage-context strong,.storage-destination-list strong",
+    "direct.textContent=container.id==='0000000000000001'?'Personal chest':container.id==='0000000000000005'?'Inventory':'Personal chest'",
+    "container.equipment?'move_equipment_batch':'move_batch'",
+    "container.equipment?showInventoryStorageDestinationDialog(container,entries,false):moveInventorySelectionToStorages(container,entries)",
+    "async function showInventoryWithdrawDialog(destination)",
+    "includePersonal=destination.id==='0000000000000001'",
+    "for(const chest of payloads[0].chests||[])collect(chest.items)",
+    "if(includePersonal)collect(payloads[1].personal?.items)",
+    "Selected: '+entry.name+' · You have '",
+    "quantity.focus();quantity.select()",
+    "zanik-withdraw-personal-first",
+    "priorityLabel.hidden=!includePersonal",
+    "mutateGrid('withdraw',destination",
+    "container.id==='0000000000000001'||container.id==='0000000000000005'",
+    "withdraw.textContent='Withdraw…'",
+    "withdraw.onclick=()=>showInventoryWithdrawDialog",
+    ".catalog-mode-label[hidden] { display:none!important; }",
     "filling matching stacks before using empty slots. Hotbar and autofill-snapshotted slots are ignored.",
     "power.setAttribute('aria-label','Power level')",
     "power.className='power-level-select'",
@@ -150,6 +215,28 @@ for token in [
     "#playerInventory.offline{opacity:.64;filter:saturate(.68)}",
 ]:
     assert token in web, f"missing player-inventory UI contract: {token}"
+
+inventory_context = web[web.index("function showInventoryContext("):web.index("function renderInventoryGrid(")]
+assert "container.id==='0000000000000001'||container.id==='0000000000000002'||container.id==='0000000000000005'" in inventory_context
+assert "moveInventorySelectionToStorages(container,entries)" in inventory_context
+assert inventory_context.index("take.textContent='Take…'") < inventory_context.index("add.textContent='Add…'")
+assert inventory_context.index("add.textContent='Add…'") < inventory_context.index("trigger.textContent='Move…'")
+assert inventory_context.index("trigger.textContent='Move…'") < inventory_context.index("withdraw.textContent='Withdraw…'")
+assert inventory_context.index("withdraw.textContent='Withdraw…'") < inventory_context.index("equip.textContent='Equip'")
+assert inventory_context.index("entries[0].held") < inventory_context.index("unequip.textContent='Unequip'")
+
+inventory_render = web[web.index("function renderInventoryContainer("):web.index("async function refreshInventory(")]
+assert "card.addEventListener('click',event=>" in inventory_render
+assert "event.target.closest('.storage-slot:not(.occupied)')" in inventory_render
+assert "event.target.closest('button,input,select,textarea,label,a,summary')" in inventory_render
+assert "clearStorageSelection(container.id)" in inventory_render
+
+withdraw_dialog = web[web.index("async function showInventoryWithdrawDialog("):web.index("function showInventoryContext(")]
+assert "quantity.max=String(entry.quantity)" in withdraw_dialog
+assert "prioritizePersonalChest:includePersonal&&priority.checked" in withdraw_dialog
+assert "No items are available in Storages or Personal Chest." in withdraw_dialog
+assert "No items are available in Storages." in withdraw_dialog
+assert "priorityLabel.hidden=!includePersonal" in withdraw_dialog
 
 assert web.index('data-player-view="inventory"') < web.index('data-player-view="storage"')
 assert web.index('data-player-panel="inventory"') < web.index('data-player-panel="storage"')
@@ -161,7 +248,7 @@ for removed in [
     'Ammunition and arrows backpack.',
 ]:
     assert removed not in web
-for token in ["playerInventoryGetter", "playerPersonalInventoryGetter", "playerLoadoutGetter", "playerLoadoutSlot", "playerPagedSlotValid", "playerPagedSlotOffset", "playerPagedSlotCount", "playerLoadoutSlotValid", "player inventory, personal chest, or eight-slot loadout symbols missing", "storageCopyItem", "storageItemPower", "storageCanMasterwork", "storageApplyMasterwork", "storageOnRepMasterwork", "OnRep_NumMasterworkUpgradesApplied", "exact item copy or masterwork signature changed"]:
+for token in ["playerInventoryGetter", "playerPersonalInventoryGetter", "playerLoadoutGetter", "playerLoadoutSlot", "playerPagedSlotValid", "playerPagedSlotOffset", "playerPagedSlotCount", "playerLoadoutSlotValid", "playerLoadoutRemoveItem", "loadoutRemoveItemSignature", "player inventory, personal chest, or eight-slot loadout symbols missing", "storageCopyItem", "storageItemPower", "storageCanMasterwork", "storageApplyMasterwork", "storageOnRepMasterwork", "OnRep_NumMasterworkUpgradesApplied", "exact item copy or masterwork signature changed"]:
     assert token in analyzer, f"missing player-inventory analyzer contract: {token}"
 
 print("admin player inventory and equipment regression checks passed")

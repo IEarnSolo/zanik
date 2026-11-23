@@ -39,7 +39,7 @@ for offset in ("0x0A669E70", "0x0A66AA00", "0x0A66C540", "0x0A66F5D0",
                "0x0A68C010", "0x0AAD4730", "0x0A6900F0", "0x0A5A3EC0",
                "0x0A688A50", "0x0A688A40", "0x04ADAB60", "0x0A0FDBA0",
                "0x080A8980", "0x0A695870", "0x0A696710", "0x0A697100",
-               "0x0A6B6A50"):
+               "0x0A6B6A50", "0x0A6B6570", "0x0A6B67E0"):
     assert offset in storage
 assert "hash!=CurrentSha&&hash!=LatestSha&&hash!=CandidateSha" in storage
 quests = (root / "src/engine/player_quests.cpp").read_text()
@@ -63,7 +63,9 @@ analyzer = (root / "tools/compat_analyzer.cpp").read_text()
 assert server_sha in analyzer and "StorageCompatibilityPolicy::CandidateSha" in analyzer
 for token in ("storageSetLinkableNative", "storageRegisterLinked", "storageUnregisterLinked",
               "nativeCompleteBuildingTarget", "nativePartialBuildingTarget", "playerPagedSlotValid",
-              "playerPagedSlotOffset", "playerPagedSlotCount", "playerLoadoutSlotValid"):
+              "playerPagedSlotOffset", "playerPagedSlotCount", "playerLoadoutSlotValid",
+              "playerLoadoutAddItemToSlot", "loadoutAddItemSignature",
+              "playerLoadoutRemoveItem", "loadoutRemoveItemSignature"):
     assert token in analyzer
 
 capabilities = {entry["id"]: entry for entry in

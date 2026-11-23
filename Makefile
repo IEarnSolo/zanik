@@ -80,6 +80,7 @@ test-core: $(OUT) dist/zanik-compat-analyzer
 	$(MAKE) -C qol test
 	$(PYTHON) tests/player_recipe_links_test.py
 	$(PYTHON) tests/recipe_category_navigation_test.py
+	$(PYTHON) tests/item_catalog_category_test.py
 	$(PYTHON) tests/recipe_npc_building_compatibility_test.py
 	$(PYTHON) tests/recipe_tree_wiki_links_test.py
 	$(PYTHON) tests/gitlab_pipeline_monitor_test.py

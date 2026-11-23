@@ -2,6 +2,29 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.94] - 2026-11-23
+
+### Changed
+
+- Ship the updated native runtime, website UI, and compatibility inventory through Zanik Manager's exact embedded server payload; Manager lifecycle behavior and generated website assets are unchanged.
+
+### Fixed
+
+- Add desktop and opt-in compact touch dragging within every Inventory-section grid, including hotbar, equipment, Personal Chest, Rune pouch, and Ammunition pouch, with the storage grid's drag delay, scroll protection, optimistic queue, slot validation, and rollback behavior.
+- Prevent full-window inventory and storage dialogs from scrolling the page behind them at either scroll boundary on desktop and compact layouts.
+- Mark hand-held inventory items with the game's brown equipped border and change their Inventory action to a duplicate-safe Unequip without decorating the separate Equipment grid.
+- Leave the held-left equipment cell empty when a two-handed item mirrors the exact held-right item, while preserving distinct shields and other left-hand equipment.
+- Equip weapons, shields, tools, fishing rods, torches, and every other hand-held item through the game's non-owning loadout reference instead of moving it out of the inventory, preventing false rejection errors and duplicate-item loss.
+- Correct Add Item and item-tooltip categories for audited weapons, armour, tools, ammunition, resources, quest items, seeds, plans, currencies, tomes, weapon enhancements, and reward packs—including the resource form of Fire Oil as a weapon enhancement—while retaining unusual, unused, raid-pack, throwable Fire Oil, and explicitly expired items in Miscellaneous.
+- Add an explicit clear-search control to Add Item searches for character inventories and storages.
+- Show the existing compact bottom item-information panel for inventory-grid, Add Item search, and catalog selections, and clear stale inventory or storage grid selections when Item Actions or Add Item interactions begin.
+- Clear inventory-family grid selections when clicking blank card space or an empty slot, while preserving selection during interactive control use and explicit multi-selection gestures.
+- Let Inventory and Personal Chest Move → Storages fall back to an explicit, capacity-labeled storage picker when none of the character's storages already contains the selected item, while retaining automatic matching-stack placement when available; custom storage names retain the established highlighted treatment.
+- Add Equipment Move actions for Personal Chest and explicit storage destinations, including held weapons and tools whose authoritative item remains in the backpack.
+- Add Inventory and Personal Chest Withdraw dialogs with searchable aggregate ownership totals, exact quantity movement, and a browser-remembered option to prioritize Personal Chest sources when withdrawing to Inventory.
+- Unequip held-right weapons and tools or held-left shields through the game's non-owning loadout removal path while proving the backing inventory and duplicate counts remain unchanged.
+- Keep Inventory and Personal Chest action ordering identical on desktop and mobile, including Withdraw after Move and before Equip on long-press menus.
+
 ## [0.2.93] - 2026-11-21
 
 ### Changed

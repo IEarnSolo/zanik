@@ -709,7 +709,8 @@ bool SubmitAdminStorageMutation(const std::string& operation,
                                 const std::vector<int>& quantities = {},
                                 const std::string& customName = {},
                                 const std::string& newOwnerCharacterGuid = {},
-                                int powerLevel = 0);
+                                int powerLevel = 0,
+                                bool prioritizePersonalChest = false);
 std::string GetAdminStorageMutationStatus(const std::string& requestId,
                                           const std::string& sessionPrefix);
 std::string GetAdminPlayerStorageJson(const std::string& characterGuid,
@@ -732,6 +733,7 @@ int GetAdminStorageItemInstanceCompatibility();
 int GetAdminPlayerInventoryPagesCompatibility();
 int GetAdminPersonalInventoryCompatibility();
 int GetAdminEquipmentSlotCompatibility();
+int GetAdminHeldItemEquipmentCompatibility();
 std::uint64_t GetAdminStorageAutofillNormalizations();
 std::uint64_t GetAdminStorageAutofillMaximumMicroseconds();
 struct PerformanceTickSnapshot {

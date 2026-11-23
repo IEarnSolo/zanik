@@ -306,7 +306,30 @@ assert "phase==1&&target.data" in storage
 assert "No eligible items have space in a destination with matching stacks" in storage
 assert 'operation=="deposit_personal"' in storage
 assert 'operation=="move_to_storages_batch"' in storage
+assert 'operation=="move_to_storage_batch"' in storage
+assert 'operation=="move_equipment_batch"' in storage
+assert 'operation=="withdraw"' in storage
+assert 'CatalogId(candidate.key)==catalogId' in storage
+assert 'chestId=="0000000000000001"&&prioritizePersonalChest&&personal' in storage
+assert 'chestId=="0000000000000001"&&!prioritizePersonalChest&&personal' in storage
+assert 'if(!IsPlayerInventoryContainerId(source.id))sources.push_back(&source)' in storage
+assert 'AddMovePlan(r,*snapshot,*chest,moves,error,&amounts)' in storage
+assert 'Items withdrawn to Personal Chest' in storage
+assert 'No storage contains an existing stack for the selected items' in storage
+assert 'if(!destination||IsPlayerInventoryContainerId(destination->id))' in storage
+assert 'AddMovePlan(r,*snapshot,*destination,items,error)' in storage
 assert 'destinationChestId=="0000000000000005"' in storage
+assert 'destination->id!="0000000000000005"' in storage
+assert 'candidate.objectIdentity==item->objectIdentity' in storage
+assert 'action.family=OperationFamily::Equipment' in storage
+
+assert 'directStorageMove=operation=="move_to_storage_batch"||operation=="move_equipment_batch"' in main
+assert '(!directStorageMove||validOpaque(destinationChestId))' in main
+assert 'operation=="withdraw"' in main
+assert 'JsonBoolean(request.body,"prioritizePersonalChest",prioritizePersonalChest)' in main
+assert 'chestId=="0000000000000001"||chestId=="0000000000000005"' in main
+assert 'bool prioritizePersonalChest = false' in header
+assert '\\"catalogId\\":\\"' in storage
 
 # Rename is statically ABI-gated, follows the authoritative player-controller
 # server path, and circuit-breaks immediately if interface readback is not preserved.
@@ -315,6 +338,9 @@ assert "0x0A593D70" in storage
 assert "cachedDisplayTextOffset.store" in storage
 assert "ProcessOneCustomName();" in engine_tick
 assert "ActionKind::RenameVerify" in planner
+assert 'playerSlotMove=operation=="slot_move"&&destinationChestId==chestId' in planner
+assert "destinationBacking=BackingSlot(*destination,destinationSlot)" in planner
+assert "ActionKind::RelocateHeld" in storage
 assert "actual==r.renameValue.data()" in storage
 assert "This storage type did not preserve the requested name" in storage
 assert "renameCompatibility=-1" not in tick_action
