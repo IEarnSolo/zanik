@@ -533,7 +533,7 @@ void Handle(int fd,std::string* performanceRoute=nullptr) {
         "/api/admin/logout","/api/admin/teleport","/api/admin/player-teleport",
         "/api/admin/storage/teleport","/api/admin/storage/mutate","/api/admin/storage/autofill",
         "/api/admin/gravestone/mutate","/api/admin/gravestone/teleport",
-        "/api/admin/quest/teleport","/api/admin/home/teleport","/api/admin/activity-test"
+        "/api/admin/quest/teleport","/api/admin/home/teleport","/api/admin/activity-test","/api/admin/player-settings"
     };
     if(request.method=="POST"&&!postRoutes.count(path)){
         Respond(fd,405,"application/json; charset=utf-8","{\"error\":\"Method not allowed\"}");return;
@@ -608,11 +608,14 @@ void Handle(int fd,std::string* performanceRoute=nullptr) {
             ",\"storageOwnership\":"+(ZanikConfig::AdminStorageMutation()&&storage.ownershipCompatibility==1?"true":"false")+
             ",\"storageAutofill\":"+(ZanikConfig::QolStorageAutofill()&&storage.autofillCompatibility==1?"true":"false")+
             ",\"gravestoneMutation\":"+(ZanikConfig::AdminGravestoneMutation()&&graves.compatibility==1?"true":"false")+
+            ",\"playerSettings\":"+(ZanikConfig::AdminPlayerSettings()&&DomEngine::AdminPlayerSettingsAvailable()?"true":"false")+
             ",\"teleport\":"+(ZanikConfig::AdminTeleport()&&teleport.compatibility==1?"true":"false")+
             ",\"locationTeleport\":"+(locationTeleport?"true":"false")+
             ",\"nodestoneTeleport\":"+(ZanikConfig::AdminTeleport()&&teleport.nodestoneCompatibility==1?"true":"false")+
             ",\"activityTesting\":"+(ZanikConfig::AdminActivityTesting()&&activityTest.compatibility==1?"true":"false")+"}";
         Respond(fd,200,"application/json; charset=utf-8","{\"authenticated\":true,\"characterId\":\""+JsonEscape(s.publicId)+"\",\"characterName\":\""+JsonEscape(s.characterName)+"\",\"online\":"+(online?"true":"false")+",\"csrf\":\""+s.csrf+"\",\"features\":"+ZanikConfig::Json()+",\"capabilities\":"+capabilities+"}",PersistentAdminCookie(raw));
+    } else if(path=="/api/admin/player-settings"){
+        if(request.method!="GET"&&request.method!="POST"){Respond(fd,405,"application/json; charset=utf-8",Status::ErrorJson("Method not allowed"));return;}AdminSession s;std::string raw;if(!authenticate(s,raw))return;if(!ZanikConfig::AdminPlayerSettings()){disabled();return;}const std::string playerId=request.method=="GET"?QueryValue(query,"id"):JsonValue(request.body,"playerId");StoredPlayer player;if(!playerStore->Find(playerId,player)||player.identity.rfind("character:",0)!=0){Respond(fd,404,"application/json; charset=utf-8",Status::ErrorJson("Known character not found"));return;}const std::string guid=player.identity.substr(10);if(request.method=="GET"){Respond(fd,200,"application/json; charset=utf-8",DomEngine::GetAdminPlayerSettingsJson(guid),PersistentAdminCookie(raw));return;}if(JsonValue(request.body,"csrf")!=s.csrf){Respond(fd,403,"application/json; charset=utf-8",Status::ErrorJson("Invalid CSRF token"));return;}const std::string setting=JsonValue(request.body,"setting");bool enabled=false;if(setting!="freeBuilding"||!JsonBoolean(request.body,"enabled",enabled)){Respond(fd,400,"application/json; charset=utf-8",Status::ErrorJson("Invalid player setting"));return;}std::string result;const bool ok=DomEngine::SetAdminPlayerFreeBuilding(guid,enabled,result);adminStore->Audit(s,playerId,std::string("player-setting:free-building:")+(enabled?"enabled":"disabled")+":"+(ok?"accepted":"rejected"));if(!ok){Respond(fd,503,"application/json; charset=utf-8",Status::ErrorJson(result));return;}Respond(fd,200,"application/json; charset=utf-8","{\"updated\":true,\"freeBuilding\":"+std::string(enabled?"true":"false")+",\"message\":\""+JsonEscape(result)+"\"}");
     } else if(path=="/api/recipe-unlock-settings"){
         Respond(fd,200,"application/json; charset=utf-8",recipeSettingsStore->Json());
     } else if(path=="/api/admin/recipe-unlock-settings"){
@@ -1093,6 +1096,7 @@ void Handle(int fd,std::string* performanceRoute=nullptr) {
         auto players = DomEngine::GetPlayerDiscoveryDiagnostics();
         auto adminTeleport = DomEngine::GetAdminTeleportDiagnostics();
         auto adminStorage = DomEngine::GetAdminStorageDiagnostics();
+        auto freeBuildingStages = DomEngine::GetFreeBuildingStageDiagnostics();
         auto adminActivityTest = DomEngine::GetAdminActivityTestDiagnostics();
         auto autofillLatency = DomEngine::GetAdminStorageAutofillLatencyDiagnostics();
         auto autofillBuildingCapture = DomEngine::GetAdminStorageAutofillBuildingCaptureDiagnostics();
@@ -1285,6 +1289,33 @@ void Handle(int fd,std::string* performanceRoute=nullptr) {
             ",\"adminStorageAutofillBuildingCaptureInventories\":" + std::to_string(autofillBuildingCapture.inventories) +
             ",\"adminStorageAutofillBuildingCaptureDrops\":" + std::to_string(autofillBuildingCapture.drops) +
             ",\"adminStorageAutofillBuildingCaptureMaximumMicroseconds\":" + std::to_string(autofillBuildingCapture.maximumMicroseconds) +
+            ",\"adminPlayerSettingsPersistenceCompatibility\":" + std::to_string(adminStorage.playerSettingsPersistenceCompatibility) +
+            ",\"adminFreeBuildingValidationCompatibility\":" + std::to_string(adminStorage.freeBuildingValidationCompatibility) +
+            ",\"adminFreeBuildingClientDifficultyCompatibility\":" + std::to_string(freeBuildingStages.clientDifficultyCompatibility) +
+            ",\"adminFreeBuildingCharacters\":" + std::to_string(adminStorage.freeBuildingCharacters) +
+            ",\"adminFreeBuildingSuppressions\":" + std::to_string(adminStorage.freeBuildingSuppressions) +
+            ",\"adminFreeBuildingAttributionDrops\":" + std::to_string(adminStorage.freeBuildingAttributionDrops) +
+            ",\"adminFreeBuildingValidationBypasses\":" + std::to_string(freeBuildingStages.validationBypasses) +
+            ",\"adminFreeBuildingSpawnBypasses\":" + std::to_string(freeBuildingStages.spawnBypasses) +
+            ",\"adminFreeBuildingConsumptionBypasses\":" + std::to_string(freeBuildingStages.consumptionBypasses) +
+            ",\"adminFreeBuildingCompletionCalls\":" + std::to_string(freeBuildingStages.completionCalls) +
+            ",\"adminFreeBuildingCompletionAttributed\":" + std::to_string(freeBuildingStages.completionAttributed) +
+            ",\"adminFreeBuildingCompletionLayoutRejects\":" + std::to_string(freeBuildingStages.completionLayoutRejects) +
+            ",\"adminFreeBuildingCompletionItemRejects\":" + std::to_string(freeBuildingStages.completionItemRejects) +
+            ",\"adminFreeBuildingCompletionAdvances\":" + std::to_string(freeBuildingStages.completionAdvances) +
+            ",\"adminFreeBuildingClientOverrides\":" + std::to_string(freeBuildingStages.clientOverrides) +
+            ",\"adminFreeBuildingClientRestores\":" + std::to_string(freeBuildingStages.clientRestores) +
+            ",\"adminFreeBuildingClientRefreshes\":" + std::to_string(freeBuildingStages.clientRefreshes) +
+            ",\"adminFreeBuildingClientRefreshFailures\":" + std::to_string(freeBuildingStages.clientRefreshFailures) +
+            ",\"adminFreeBuildingClientOverrideFailures\":" + std::to_string(freeBuildingStages.clientOverrideFailures) +
+            ",\"adminFreeBuildingClientCreateFailures\":" + std::to_string(freeBuildingStages.clientCreateFailures) +
+            ",\"adminFreeBuildingClientSourceFailures\":" + std::to_string(freeBuildingStages.clientSourceFailures) +
+            ",\"adminFreeBuildingClientApplyFailures\":" + std::to_string(freeBuildingStages.clientApplyFailures) +
+            ",\"adminFreeBuildingClientSourceFailureStage\":" + std::to_string(freeBuildingStages.clientSourceFailureStage) +
+            ",\"adminFreeBuildingClientInitFailureStage\":" + std::to_string(freeBuildingStages.clientInitFailureStage) +
+            ",\"adminFreeBuildingStringToNameFieldCount\":" + std::to_string(freeBuildingStages.stringToNameFieldCount) +
+            ",\"adminFreeBuildingStringToNameInputOffset\":" + std::to_string(freeBuildingStages.stringToNameInputOffset) +
+            ",\"adminFreeBuildingStringToNameReturnOffset\":" + std::to_string(freeBuildingStages.stringToNameReturnOffset) +
             ",\"adminStorageAutofillReplicationWakeCompatibility\":" + std::to_string(adminStorage.autofillReplicationWakeCompatibility) +
             ",\"adminStorageAutofillReplicationWakeCalls\":" + std::to_string(adminStorage.autofillReplicationWakeCalls) +
             ",\"adminStorageAutofillReplicationWakeFailures\":" + std::to_string(adminStorage.autofillReplicationWakeFailures) +
@@ -1413,7 +1444,7 @@ void Run() {
     const bool needsGameThreadDispatcher=performanceDiagnosticsEnabled||ZanikConfig::PlayerRecipeTracking()||
         ZanikConfig::PlayerQuestTracking()||ZanikConfig::AdminTeleport()||
         ZanikConfig::AdminStorageMutation()||ZanikConfig::AdminGravestoneMutation()||
-        ZanikConfig::AdminActivityTesting()||ZanikConfig::QolStorageAutofill();
+        ZanikConfig::AdminPlayerSettings()||ZanikConfig::AdminActivityTesting()||ZanikConfig::QolStorageAutofill();
     const bool storageTickReady=needsGameThreadDispatcher&&(!testHost||std::strcmp(testHost,"1")!=0)&&DomEngine::InitializeAdminStorageHookEarly();
     if((!testHost||std::strcmp(testHost,"1")!=0)&&needsGameThreadDispatcher)LogMessage(storageTickReady?"Zanik bounded game-thread dispatcher installed before world startup":"Zanik game-thread dispatcher compatibility unavailable");
     int port = Port();
@@ -1433,6 +1464,7 @@ void Run() {
     playerActivityStore=std::make_unique<PlayerActivityStore>(DataRoot()+"/player-activity.db");playerActivityStore->Load();
     serverPerformanceStore=std::make_unique<ServerPerformanceStore>(PerformancePath());serverPerformanceStore->Start();
     if(ZanikConfig::QolStorageAutofill()&&!DomEngine::ConfigureAdminStorageAutofill(DataRoot()+"/storage-autofill.db"))LogMessage("Storage autofill persistence is unavailable; autofill remains disabled");
+    if(ZanikConfig::AdminPlayerSettings()&&!DomEngine::ConfigurePlayerSettings(DataRoot()+"/player-settings.db"))LogMessage("Per-character player settings persistence is unavailable; player settings remain disabled");
     if(!DomEngine::ConfigurePlayerInventorySnapshots(DataRoot()+"/player-inventory-snapshots.db"))LogMessage("Offline player inventory snapshots are unavailable; live inventory remains enabled");
     // Migrate names confirmed from records created before native FText lookup.
     // Future internal names are migrated automatically when first observed.
@@ -1494,7 +1526,7 @@ void Run() {
             adminTeleportInitialized=DomEngine::InitializeAdminTeleport(DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());
             LogMessage(adminTeleportInitialized?"Admin lodestone teleport game-thread hook installed":"Admin lodestone teleport compatibility unavailable");
         }
-        if((ZanikConfig::AdminStorageMutation()||ZanikConfig::AdminGravestoneMutation()||ZanikConfig::AdminTeleport()||ZanikConfig::QolStorageAutofill())&&DomEngine::g_Engine->IsInitialized()&&!adminStorageAttempted){adminStorageAttempted=true;adminStorageInitialized=DomEngine::InitializeAdminStorage(DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());LogMessage(adminStorageInitialized?"Admin storage compatibility verified":"Admin storage compatibility unavailable");if(ZanikConfig::AdminGravestoneMutation()){const bool graves=DomEngine::InitializeAdminGravestones(DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());LogMessage(graves?"Admin gravestone compatibility verified":"Admin gravestone compatibility unavailable");}}
+        if((ZanikConfig::AdminStorageMutation()||ZanikConfig::AdminGravestoneMutation()||ZanikConfig::AdminTeleport()||ZanikConfig::AdminPlayerSettings()||ZanikConfig::QolStorageAutofill())&&DomEngine::g_Engine->IsInitialized()&&!adminStorageAttempted){adminStorageAttempted=true;adminStorageInitialized=DomEngine::InitializeAdminStorage(DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());LogMessage(adminStorageInitialized?"Admin storage compatibility verified":"Admin storage compatibility unavailable");if(ZanikConfig::AdminGravestoneMutation()){const bool graves=DomEngine::InitializeAdminGravestones(DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());LogMessage(graves?"Admin gravestone compatibility verified":"Admin gravestone compatibility unavailable");}}
         if(ZanikConfig::PlayerRecipeTracking()&&DomEngine::g_Engine->IsInitialized()&&!playerRecipeTrackingAttempted){playerRecipeTrackingAttempted=true;const bool recipes=DomEngine::InitializePlayerRecipeTracking(WebRoot()+"/recipe-runtime-catalog.tsv",DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());LogMessage(recipes?"Player recipe tracking compatibility verified":"Player recipe tracking compatibility unavailable");}
         if(ZanikConfig::PlayerRecipeTracking()&&DomEngine::g_Engine->IsInitialized()&&playerRecipeTrackingAttempted)DomEngine::RefreshPlayerRecipeTrackingCompatibility();
         if(ZanikConfig::PlayerQuestTracking()&&DomEngine::g_Engine->IsInitialized()&&!playerQuestTrackingAttempted){playerQuestTrackingAttempted=true;const bool quests=DomEngine::InitializePlayerQuestTracking(WebRoot()+"/quest-runtime-catalog.tsv",DomEngine::g_Engine->GetModuleBase(),DomEngine::g_Engine->GetModuleEnd());LogMessage(quests?"Player quest tracking compatibility verified":"Player quest tracking unavailable or waiting for quest objects");}

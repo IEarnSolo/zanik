@@ -2,6 +2,23 @@
 
 All notable changes to Zanik are documented here.
 
+## [0.2.95] - 2026-11-25
+
+### Added
+
+- Add an off-by-default administrator setting for free building on individual characters, with durable restricted persistence and authenticated controls on each character's Settings page.
+- Bypass building-material validation, donation requirements, completion requirements, and material consumption only for the enabled character while preserving placement, stability, shelter, ownership, and permission rules for everyone.
+
+### Changed
+
+- Replicate an owner-only building-material cost override so an enabled character's build menu accurately shows available pieces without changing the world's difficulty or another character's client state.
+- Extend exact-build compatibility analysis, runtime diagnostics, production validation, and automated coverage for the free-building native hooks, persistence, attribution, replication, and safe-failure boundaries.
+- Ship the updated native runtime and website UI through Zanik Manager's exact embedded server payload; Manager lifecycle behavior and generated website assets are unchanged.
+
+### Fixed
+
+- Refresh an already-open build menu after free building changes so its pieces dim or undim immediately, using the game's silent loaded-state reconciliation path without displaying an empty “NEW STRUCTURE UNLOCKED!” notification.
+
 ## [0.2.94] - 2026-11-23
 
 ### Changed

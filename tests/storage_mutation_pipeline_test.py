@@ -217,7 +217,7 @@ assert "FindCatalogData" in planner
 assert "ResolveRecipe" in planner
 assert "canAddItemByData" in planner
 assert "canAddItemsByData" in planner
-assert "PlayerOwnsInventory" in storage and "depth<7" in storage
+assert "PlayerOwnsInventory" in storage and "PlayerOwnsObject" in storage and "intDepth<8" in storage
 assert "std::vector<std::pair<uintptr_t,uintptr_t>> inventories" in snapshot
 assert "RefreshSnapshotAdministrator(*snapshot)" in storage
 assert "playerInventoryCache" in storage and "observedMutationPlayers" in storage

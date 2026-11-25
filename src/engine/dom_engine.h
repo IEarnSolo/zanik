@@ -617,6 +617,11 @@ struct AdminStorageDiagnostics {
     std::uint64_t nativeMutationDrops = 0;
     std::uint64_t nativeMutationMaximumMicroseconds = 0;
     std::uint64_t nativeMutationCaptureMaximumMicroseconds = 0;
+    int playerSettingsPersistenceCompatibility = 0;
+    int freeBuildingValidationCompatibility = 0;
+    std::uint64_t freeBuildingCharacters = 0;
+    std::uint64_t freeBuildingSuppressions = 0;
+    std::uint64_t freeBuildingAttributionDrops = 0;
     int autofillRpcCaptureCompatibility = 0;
     std::uint64_t autofillRpcCaptureCalls = 0;
     std::uint64_t autofillRpcFullStackCalls = 0;
@@ -720,6 +725,10 @@ std::string GetAdminPlayerInventoryJson(const std::string& characterGuid,
 void InvalidateAdminStorageSnapshots();
 bool ConfigureAdminStorageAutofill(const std::string& path);
 bool ConfigurePlayerInventorySnapshots(const std::string& path);
+bool ConfigurePlayerSettings(const std::string& path);
+bool AdminPlayerSettingsAvailable();
+std::string GetAdminPlayerSettingsJson(const std::string& characterGuid);
+bool SetAdminPlayerFreeBuilding(const std::string& characterGuid, bool enabled, std::string& result);
 bool SetAdminStorageAutofill(const std::string& characterGuid,
                              const std::string& chestId,
                              const std::string& administratorCharacterGuid,
@@ -729,6 +738,31 @@ bool SetAdminStorageAutofill(const std::string& characterGuid,
                              std::string& result);
 void ReconcileAdminStorageAutofill();
 AdminStorageDiagnostics GetAdminStorageDiagnostics();
+struct FreeBuildingStageDiagnostics {
+    int clientDifficultyCompatibility = 0;
+    std::uint64_t validationBypasses = 0;
+    std::uint64_t spawnBypasses = 0;
+    std::uint64_t consumptionBypasses = 0;
+    std::uint64_t completionCalls = 0;
+    std::uint64_t completionAttributed = 0;
+    std::uint64_t completionLayoutRejects = 0;
+    std::uint64_t completionItemRejects = 0;
+    std::uint64_t completionAdvances = 0;
+    std::uint64_t clientOverrides = 0;
+    std::uint64_t clientRestores = 0;
+    std::uint64_t clientRefreshes = 0;
+    std::uint64_t clientRefreshFailures = 0;
+    std::uint64_t clientOverrideFailures = 0;
+    std::uint64_t clientCreateFailures = 0;
+    std::uint64_t clientSourceFailures = 0;
+    std::uint64_t clientApplyFailures = 0;
+    int clientSourceFailureStage = 0;
+    int clientInitFailureStage = 0;
+    int stringToNameFieldCount = 0;
+    int stringToNameInputOffset = -1;
+    int stringToNameReturnOffset = -1;
+};
+FreeBuildingStageDiagnostics GetFreeBuildingStageDiagnostics();
 int GetAdminStorageItemInstanceCompatibility();
 int GetAdminPlayerInventoryPagesCompatibility();
 int GetAdminPersonalInventoryCompatibility();

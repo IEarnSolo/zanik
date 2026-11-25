@@ -3,6 +3,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 source = (ROOT / "deploy/validate-dev-update.ps1").read_text()
+for token in ("featureStates.adminPlayerSettings", "adminPlayerSettingsPersistenceCompatibility",
+              "adminFreeBuildingValidationCompatibility", "adminFreeBuildingClientDifficultyCompatibility",
+              "adminFreeBuildingAttributionDrops", "adminFreeBuildingClientOverrideFailures"):
+    assert token in source
 assert "[ValidateSet('Candidate','Production')]" in source
 assert "$ValidationMode = 'Production'" in source
 assert "$storageModeOk" in source

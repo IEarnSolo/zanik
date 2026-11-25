@@ -126,6 +126,10 @@ do {
            $update.adminStorageAutofillDestructionCompatibility -eq 1 -and $update.adminStorageAutofillDestructionDrops -eq 0 -and $update.adminStorageAutofillDestructionFailures -eq 0 -and
            $update.adminStorageAutofillPersistenceCompatibility -eq 1 -and $update.adminStorageAutofillRpcCaptureCompatibility -eq 1 -and
            $update.adminStorageAutofillBuildingCaptureCompatibility -eq 1 -and $update.adminStorageAutofillBuildingCaptureDrops -eq 0 -and
+           ($update.featureStates.adminPlayerSettings -eq 'disabled' -or
+             ($update.adminPlayerSettingsPersistenceCompatibility -eq 1 -and $update.adminFreeBuildingValidationCompatibility -eq 1 -and
+              $update.adminFreeBuildingClientDifficultyCompatibility -eq 1 -and
+              $update.adminFreeBuildingAttributionDrops -eq 0 -and $update.adminFreeBuildingClientOverrideFailures -eq 0)) -and
            $update.adminStorageAutofillReplicationWakeCompatibility -eq 1 -and $update.adminStorageAutofillNormalizationFailures -eq 0 -and
            $update.adminStorageOwnershipCompatibility -eq 1 -and $update.adminStorageOwnershipFailures -eq 0 -and
            $update.adminStorageCircuitBreakers -eq 0 -and
